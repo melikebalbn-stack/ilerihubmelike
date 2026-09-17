@@ -61,7 +61,9 @@ export default function AkademiCourseDetailPage() {
         }
       );
       if (!res.ok) {
-        alert("İşlem başarısız oldu. Lütfen tekrar deneyin.");
+        // 409: "Videonun %90'ı izlenmeli (%X)" gibi sunucu mesajını göster.
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || "İşlem başarısız oldu. Lütfen tekrar deneyin.");
         return;
       }
       await res.json();

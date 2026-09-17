@@ -1,7 +1,9 @@
 "use client";
 
+import { useCallback, useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { X, Download, Video, ExternalLink } from "lucide-react";
+import { VideoWatchPlayer } from "./VideoWatchPlayer";
 import {
   getContentFileUrl,
   getContentTypeLabel,
@@ -27,6 +29,23 @@ export function ContentViewerModal({
   // Harici video (SharePoint/Stream): <video> oynatamaz → yeni sekmede aç kartı.
   const isExternalVideo =
     content?.type === "VIDEO" && isExternalContentUrl(content.fileUrl);
+  // %90 izleme şartı: yalnız yüklenmiş VIDEO + IFS dışı kurs (sunucu karar verir,
+  // istemci aynı bayrağı gösterim için kullanır). Harici video/IFS/PDF: eski davranış.
+  const takipli = content?.type === "VIDEO" && !isExternalVideo && content?.izlemeSartiUygulanir === true;
+
+  const [watched, setWatched] = useState({
+    percent: content?.watchedPercent ?? 0,
+    seconds: content?.watchedSeconds ?? 0,
+  });
+  useEffect(() => {
+    setWatched({ percent: content?.watchedPercent ?? 0, seconds: content?.watchedSeconds ?? 0 });
+  }, [content?.id, content?.watchedPercent, content?.watchedSeconds]);
+  const onProgress = useCallback(
+    (p: { watchedSeconds: number; watchedPercent: number }) =>
+      setWatched({ percent: p.watchedPercent, seconds: p.watchedSeconds }),
+    []
+  );
+  const sartSaglandi = !takipli || watched.percent >= 90;
 
   return (
     <AnimatePresence>
@@ -106,6 +125,16 @@ export function ContentViewerModal({
                     Videoyu yeni sekmede aç
                   </a>
                 </div>
+              ) : content.type === "VIDEO" && takipli ? (
+                <VideoWatchPlayer
+                  key={content.id}
+                  contentId={content.id}
+                  src={fileUrl}
+                  initialWatchedSeconds={content.watchedSeconds ?? 0}
+                  initialPositionSec={content.lastPositionSec ?? 0}
+                  initialDurationSec={content.videoDurationSec ?? null}
+                  onProgress={onProgress}
+                />
               ) : content.type === "VIDEO" ? (
                 <video
                   src={fileUrl}
@@ -145,13 +174,18 @@ export function ContentViewerModal({
               <div className="text-xs" style={{ color: "var(--ak-text-tertiary)" }}>
                 {content.completedByCurrentUser
                   ? "✓ Tamamlandı"
+                  : takipli && !sartSaglandi
+                  ? `Videonun %90'ı izlenmeli (%${watched.percent})`
+                  : takipli
+                  ? `%${watched.percent} izlendi — tamamlayabilirsin`
                   : "İçeriği bitirince tamamla butonuna bas"}
               </div>
               {!content.completedByCurrentUser && (
                 <button
                   onClick={() => onMarkComplete(content.id)}
-                  disabled={isMarking}
-                  className="px-4 py-2 rounded-[10px] text-sm font-semibold disabled:opacity-50"
+                  disabled={isMarking || !sartSaglandi}
+                  title={!sartSaglandi ? `Videonun %90'ı izlenmeli (%${watched.percent})` : undefined}
+                  className="px-4 py-2 rounded-[10px] text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
                   style={{ background: "var(--ak-green)", color: "#fff" }}
                 >
                   {isMarking ? "Kaydediliyor..." : "Tamamlandı olarak işaretle"}

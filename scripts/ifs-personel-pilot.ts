@@ -21,7 +21,7 @@ import { planla, planOzetiMetni } from '../src/lib/ifs/personel-sync/plan'
 import { uygula } from '../src/lib/ifs/personel-sync/uygula'
 import { BellekKuyruk } from '../src/lib/ifs/personel-sync/kuyruk'
 import { IFS_SYNC_AKTOR_ID } from '../src/lib/ifs/personel-sync/kodlar'
-import { ayrilmaAnahtari, listEmployeeStatuses, getEmployee, getSfSite, ifsBaglanti, istek, orgAnahtari, posAnahtari, sfeAnahtari, type IfsOrg, type IfsPos, type IfsSfEmployee } from '../src/lib/ifs/personel-sync/ifs-api'
+import { alanFarki, ayrilmaAnahtari, listEmployeeStatuses, getEmployee, getSfSite, ifsBaglanti, istek, orgAnahtari, posAnahtari, sfeAnahtari, type IfsOrg, type IfsPos, type IfsSfEmployee } from '../src/lib/ifs/personel-sync/ifs-api'
 
 const arg = (ad: string) => { const i = process.argv.indexOf(ad); return i >= 0 ? process.argv[i + 1] : undefined }
 const YAZ = process.argv.includes('--yaz')
@@ -70,7 +70,17 @@ async function main() {
         else if (k.varlik === 'ORG') { const { body } = await istek<IfsOrg>(orgAnahtari(k.ifsAnahtar)); ok = body.OrgName === (k.govde?.OrgName ?? body.OrgName); detay = `${body.OrgName} sup=${body.SupOrgCode}` }
         else if (k.varlik === 'POZISYON') { const { body } = await istek<IfsPos>(posAnahtari(k.ifsAnahtar)); ok = body.PositionTitle === (k.govde?.PositionTitle ?? body.PositionTitle); detay = body.PositionTitle }
         else if (k.varlik === 'LABOR_CLASS') { const { body } = await istek<{ value?: Array<{ LaborClassNo: string }> }>(`ShopFloorEmployeesHandling.svc/Reference_LaborClass?$filter=Contract%20eq%20'ILER2'%20and%20LaborClassNo%20eq%20'${k.ifsAnahtar}'`); ok = (body.value?.length ?? 0) > 0; detay = ok ? 'var' : 'yok' }
-        else if (k.varlik === 'EMPLOYEE') { const c = await getEmployee(k.ifsAnahtar); const b = c?.body; ok = !!b && b.OrgCode === (k.govde?.EmpOrgCode ?? k.govde?.OrgCode ?? b.OrgCode) && b.PosCode === (k.govde?.EmpPosCode ?? k.govde?.PosCode ?? b.PosCode); detay = b ? `org=${b.OrgCode} pos=${b.PosCode} giriş=${b.EmploymentDate} bitiş=${b.EmploymentEndDate} ad=${b.InternalDisplayName} cins=${b.Gender} master=${b.MasterEmployment}` : 'YOK' }
+        else if (k.varlik === 'EMPLOYEE') {
+          const c = await getEmployee(k.ifsAnahtar); const b = c?.body
+          // Alan bazlı: atama (org/pos) + PATCH/CREATE ile yazılan her alan geri okunanla eşleşmeli.
+          const atama = (k.govde?._atama as { OrgCode?: string; PosCode?: string } | undefined)
+          const beklenenOrg = atama?.OrgCode ?? k.govde?.EmpOrgCode ?? k.govde?.OrgCode ?? b?.OrgCode
+          const beklenenPos = atama?.PosCode ?? k.govde?.EmpPosCode ?? k.govde?.PosCode ?? b?.PosCode
+          const yazilanAlanlar = Object.fromEntries(Object.entries(k.govde ?? {}).filter(([a]) => !a.startsWith('_') && a in (b ?? {})))
+          const fark = b ? alanFarki(yazilanAlanlar, b as unknown as Record<string, unknown>) : ['kayıt yok']
+          ok = !!b && b.OrgCode === beklenenOrg && b.PosCode === beklenenPos && fark.length === 0
+          detay = b ? `org=${b.OrgCode} pos=${b.PosCode} giriş=${b.EmploymentDate} bitiş=${b.EmploymentEndDate} ad=${b.InternalDisplayName} cins=${b.Gender} master=${b.MasterEmployment}${fark.length ? ' UYUŞMAYAN: ' + fark.join('; ') : ''}` : 'YOK'
+        }
         else if (k.varlik === 'SF_EMPLOYEE') { const { body } = await istek<IfsSfEmployee>(sfeAnahtari(k.ifsAnahtar)); ok = body.EmployeeId === k.ifsAnahtar; detay = `person=${body.PersonId}` }
         else if (k.varlik === 'SF_SITE') { const c = await getSfSite(k.ifsAnahtar); ok = !!c && c.body.PrimaryLaborClass === (k.govde?.PrimaryLaborClass ?? c.body.PrimaryLaborClass); detay = c ? `lc=${c.body.PrimaryLaborClass} durum=${c.body.Objstate}` : 'YOK' }
       } catch (e) { detay = (e as Error).message.slice(0, 140) }

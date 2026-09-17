@@ -175,7 +175,22 @@ export const getEmployeeFile = (empNo: string) => istek<IfsEmployeeFile>(empFile
 export const patchEmployeeFile = async (empNo: string, g: Record<string, unknown>) => {
   const mevcut = await getEmployeeFile(empNo)
   if (!mevcut.etag) throw new IfsSyncHatasi(0, 'ETag yok', empFileAnahtari(empNo))
-  return istek(empFileAnahtari(empNo), { method: 'PATCH', body: JSON.stringify(g), headers: { 'If-Match': mevcut.etag } })
+  const cevap = await istek(empFileAnahtari(empNo), { method: 'PATCH', body: JSON.stringify(g), headers: { 'If-Match': mevcut.etag } })
+  // ALAN BAZLI ROUND-TRIP (17.09): IFS bazı alanlarda 200 dönüp yazmıyor (EmploymentDate böyleydi).
+  // PATCH sonrası GET; yazılan her alan geri okunanla eşleşmiyorsa HATA — sessiz "başarı" olmasın.
+  const sonra = await getEmployeeFile(empNo)
+  const uyusmayan = alanFarki(g, sonra.body as unknown as Record<string, unknown>)
+  if (uyusmayan.length) throw new IfsSyncHatasi(cevap.status, `round-trip: PATCH 200 ama alan yazılmadı → ${uyusmayan.join('; ')}`, empFileAnahtari(empNo))
+  return cevap
+}
+
+/** Yazılan gövde ile geri okunan kaydı alan alan karşılaştırır; uyuşmayanları "Alan: yazılan≠okunan" listesi döner. */
+export function alanFarki(yazilan: Record<string, unknown>, okunan: Record<string, unknown>): string[] {
+  const norm = (v: unknown) => (v === undefined || v === null ? null : typeof v === 'string' ? v.trim() : v)
+  return Object.entries(yazilan)
+    .filter(([a]) => !a.startsWith('_') && !a.startsWith('@'))
+    .filter(([a, v]) => JSON.stringify(norm(v)) !== JSON.stringify(norm(okunan[a])))
+    .map(([a, v]) => `${a}: ${JSON.stringify(v)}≠${JSON.stringify(okunan[a] ?? null)}`)
 }
 
 /**

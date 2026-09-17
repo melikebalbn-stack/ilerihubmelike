@@ -61,7 +61,10 @@ export const IFS_ORG_TERM = { UST: 6, ALT: 8 } as const
  *  EmploymentPeriodsHandling.EmpEmployedTimes ile olmalı → 403 (grant yok).
  *  Planlayıcı yalnız aşağıdaki alanlar için UPDATE üretir; diğer farklar ATLA(sebep).
  */
-export const EMPLOYEE_PATCH_ALANLARI: readonly string[] = ['EmploymentDate', 'MasterEmployment']
+// EmploymentDate ÇIKARILDI (17.09): PersonnelFileHandling PATCH 200 döner ama alanı sessizce yok
+// sayar (5 kişi her gece yeniden UPDATE oluyordu). İstihdam başlangıcı EmploymentPeriodsHandling
+// işi (403). Fark artık ATLA(sebep)'te listelenir.
+export const EMPLOYEE_PATCH_ALANLARI: readonly string[] = ['MasterEmployment']
 /** Atama alanları — SingleEmployeeAssignmentsHandling sihirbazıyla değişir (bkz. ifs-api atamaDegistir). */
 export const EMPLOYEE_ATAMA_ALANLARI: readonly string[] = ['OrgCode', 'PosCode']
 /** Pasifleştirme (istihdam bitişi) için çalışan bir yol yok — bkz. yukarı. true olunca PASIF kalemi üretilir. */

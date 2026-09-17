@@ -222,16 +222,12 @@ export default function AvansSonuclarPage() {
   }, [filtrelenmisSatirlar, siralama])
 
   function excelAktar() {
-    const basliklar = ['Dönem', 'Bölüm', 'Sorumlu', 'Personel', 'Gönderim Tarihi']
+    const basliklar = ['Dönem', 'Bölüm', 'Talep Eden', 'Personel', 'Gönderim Tarihi']
     const satirMetinleri = filtrelenmisSatirlar.map((s) =>
       [
         `${s.donemAy}/${s.donemYil}`,
         s.bolum,
-        s.sorumluAdSoyad === 'IK_MANUEL'
-          ? 'İK tarafından eklendi'
-          : s.kendiFormuMu
-            ? 'Talep Eden (kendisi)'
-            : s.sorumluAdSoyad,
+        s.sorumluAdSoyad === 'IK_MANUEL' ? 'İK tarafından eklendi' : s.sorumluAdSoyad,
         s.calisanAdSoyad,
         new Date(s.gonderimTarihi).toLocaleDateString('tr-TR'),
       ]
@@ -268,10 +264,6 @@ export default function AvansSonuclarPage() {
           {s.sorumluAdSoyad === 'IK_MANUEL' ? (
             <Badge variant="outline" className="text-xs">
               İK tarafından eklendi
-            </Badge>
-          ) : s.kendiFormuMu ? (
-            <Badge variant="outline" className="text-xs">
-              Talep Eden (kendisi)
             </Badge>
           ) : (
             <div className="flex items-center gap-2">
@@ -498,7 +490,7 @@ export default function AvansSonuclarPage() {
                     <TableHead>Sicil No</TableHead>
                     <TableHead>İsim</TableHead>
                     <TableHead>Bölüm</TableHead>
-                    <TableHead>Sorumlu</TableHead>
+                    <TableHead>Talep Eden</TableHead>
                     <TableHead>Dönem</TableHead>
                     <TableHead>Gönderim Tarihi</TableHead>
                     <TableHead className="text-right">İşlem</TableHead>

@@ -28,6 +28,7 @@ export interface MasAynaOzet {
   acikUygun: number
   acilan: number
   guncellenen: number
+  mukerrer: number // (personnelId, ifsOrderNo, ifsOperationNo) UNIQUE çakışması — ayrı satır açılamadı, atlandı
   kapatilan: number
   durusAcilan: number
   durusKapatilan: number
@@ -72,7 +73,7 @@ export async function runMasAyna(opts: { dryRun?: boolean; limit?: number | null
   for (const o of operatorler) if (o.employeeNo && !opByMas.has(o.masId)) opByMas.set(o.masId, o.employeeNo)
 
   const ozet: MasAynaOzet = {
-    dryRun, acikOkunan: acikSatir.length, acikUygun: 0, acilan: 0, guncellenen: 0,
+    dryRun, acikOkunan: acikSatir.length, acikUygun: 0, acilan: 0, guncellenen: 0, mukerrer: 0,
     kapatilan: 0, durusAcilan: 0, durusKapatilan: 0, eslesmeyenDurusSebepleri: [], atlanan: [],
   }
 
@@ -137,45 +138,56 @@ export async function runMasAyna(opts: { dryRun?: boolean; limit?: number | null
     islenenAcik++ // eşleşen grup; limit'e bu sayı bakılır (atlananlar bütçe harcamaz)
     if (dryRun) continue
 
-    const meta = acikMeta.get(g.anahtar)
-    const baslatildiAt = meta?.startDateTime ?? simdi
-    const masId = Number(g.masProductionMasterId)
-    const opNo = g.operasyonNo ? Number(g.operasyonNo) : null
-    const ifsOrderNo = g.workOrderNo
+    // Bir grubun yazma hatası TÜM turu (dolayısıyla KAPANIŞ dalını) kesmesin — per-grup try/catch.
+    // P2002 (personnelId, ifsOrderNo, ifsOperationNo) UNIQUE: aynı kişi+iş+op başka masId altında
+    // zaten var → mirror'da ayrı satır açılamaz, mükerrer say ve geç.
+    try {
+      const meta = acikMeta.get(g.anahtar)
+      const baslatildiAt = meta?.startDateTime ?? simdi
+      const masId = Number(g.masProductionMasterId)
+      const opNo = g.operasyonNo ? Number(g.operasyonNo) : null
+      const ifsOrderNo = g.workOrderNo
 
-    // Session: o tezgah+personel için açık oturum yoksa aç (MAS başlangıç anıyla).
-    let session = await prisma.iproOperatorSession.findFirst({
-      where: { tezgahId: tz.id, personnelId: personId, cikisAt: null },
-      select: { id: true },
-    })
-    if (!session) {
-      session = await prisma.iproOperatorSession.create({
-        data: { tezgahId: tz.id, personnelId: personId, authMethod: 'LIST', girisAt: baslatildiAt },
+      // Session: o tezgah+personel için açık oturum yoksa aç (MAS başlangıç anıyla).
+      let session = await prisma.iproOperatorSession.findFirst({
+        where: { tezgahId: tz.id, personnelId: personId, cikisAt: null },
         select: { id: true },
       })
-    }
+      if (!session) {
+        session = await prisma.iproOperatorSession.create({
+          data: { tezgahId: tz.id, personnelId: personId, authMethod: 'LIST', girisAt: baslatildiAt },
+          select: { id: true },
+        })
+      }
 
-    const ifsData = ifsAlanlari(g, meta)
+      const ifsData = ifsAlanlari(g, meta)
 
-    // IproProductionLog: idempotency anahtarıyla ara → yoksa aç; varsa (ACIK) MAS güncel alanlarıyla güncelle.
-    const mevcut = await prisma.iproProductionLog.findFirst({
-      where: { masProductionMasterId: masId, ifsOrderNo, ifsOperationNo: opNo },
-      select: { id: true, durum: true },
-    })
-    if (!mevcut) {
-      await prisma.iproProductionLog.create({
-        data: {
-          tezgahId: tz.id, sessionId: session.id, personnelId: personId, kaynak: KAYNAK,
-          masProductionMasterId: masId, masProductionDetayId: meta?.masDetayId ?? null,
-          ifsOrderNo, ifsOperationNo: opNo, durum: 'ACIK', baslatildiAt,
-          qtyScrap: 0, ...ifsData,
-        },
+      // IproProductionLog: idempotency anahtarıyla ara → yoksa aç; varsa (ACIK) MAS güncel alanlarıyla güncelle.
+      const mevcut = await prisma.iproProductionLog.findFirst({
+        where: { masProductionMasterId: masId, ifsOrderNo, ifsOperationNo: opNo },
+        select: { id: true, durum: true },
       })
-      ozet.acilan++
-    } else if (mevcut.durum === 'ACIK') {
-      // Zaten açık: IFS alanları + güncel adet yenilenir (MAS'ta adet/plan/teslim değişebilir).
-      await prisma.iproProductionLog.update({ where: { id: mevcut.id }, data: ifsData })
-      ozet.guncellenen++
+      if (!mevcut) {
+        await prisma.iproProductionLog.create({
+          data: {
+            tezgahId: tz.id, sessionId: session.id, personnelId: personId, kaynak: KAYNAK,
+            masProductionMasterId: masId, masProductionDetayId: meta?.masDetayId ?? null,
+            ifsOrderNo, ifsOperationNo: opNo, durum: 'ACIK', baslatildiAt,
+            qtyScrap: 0, ...ifsData,
+          },
+        })
+        ozet.acilan++
+      } else if (mevcut.durum === 'ACIK') {
+        // Zaten açık: IFS alanları + güncel adet yenilenir (MAS'ta adet/plan/teslim değişebilir).
+        await prisma.iproProductionLog.update({ where: { id: mevcut.id }, data: ifsData })
+        ozet.guncellenen++
+      }
+    } catch (e) {
+      if ((e as { code?: string })?.code === 'P2002') {
+        ozet.mukerrer++
+      } else {
+        ozet.atlanan.push({ sebep: 'yazma_hatasi', anahtar: g.anahtar, detay: (e as Error)?.message?.slice(0, 120) ?? '?' })
+      }
     }
   }
 
@@ -220,43 +232,48 @@ export async function runMasAyna(opts: { dryRun?: boolean; limit?: number | null
       ozet.kapatilan++
       continue
     }
-    const bitirildiAt = agg?.endDateTime ?? simdi
-    const adet = agg != null ? Math.round(agg.adet) : log.qtyComplete
-    const tamamlandi = agg ? agg.isFinished : true // MAS'ta kayıt yoksa tamamlanmış/kaldırılmış say
-    const sinyalli = log.tezgah._count.plcPinler > 0
-
-    // uretimAdet: SİNYALLİ → IPRO PLC delta; SİNYALSİZ → MAS adedi (log'a yazılır ki oeeHesaplanabilir
-    // guard'ı [uretimAdet!=null] geçsin). log.hesapKaynagi sinyalsizde 'MAS' (audit).
-    let uretimAdet: number | null = null
-    let logHesapKaynagi: string | null = null
-    if (sinyalli && log.baslatildiAt) {
-      try {
-        uretimAdet = (await isPenceresiDeltaToplami(prisma, log.tezgah.kod, log.baslatildiAt, bitirildiAt)).toplam
-      } catch {
-        uretimAdet = null
-      }
-    } else if (!sinyalli) {
-      uretimAdet = adet
-      logHesapKaynagi = 'MAS'
-    }
-    await prisma.iproProductionLog.update({
-      where: { id: log.id },
-      data: {
-        durum: 'KAPALI',
-        bitirildiAt,
-        qtyComplete: adet,
-        tamamlandi,
-        uretimAdet,
-        ...(logHesapKaynagi ? { hesapKaynagi: logHesapKaynagi } : {}),
-      },
-    })
-    // OEE: uretilen adet log'dan okunur. Çoklu işte perf+quality+oee null (COKLU_IS) — oee-hesap içinde.
+    // Bir kaydın kapanış hatası diğerlerini kesmesin — per-log try/catch.
     try {
-      await oeeKaydiHesaplaVeYaz(prisma, log.id)
-    } catch {
-      /* OEE hatası ayna'yı bloklamasın */
+      const bitirildiAt = agg?.endDateTime ?? simdi
+      const adet = agg != null ? Math.round(agg.adet) : log.qtyComplete
+      const tamamlandi = agg ? agg.isFinished : true // MAS'ta kayıt yoksa tamamlanmış/kaldırılmış say
+      const sinyalli = log.tezgah._count.plcPinler > 0
+
+      // uretimAdet: SİNYALLİ → IPRO PLC delta; SİNYALSİZ → MAS adedi (log'a yazılır ki oeeHesaplanabilir
+      // guard'ı [uretimAdet!=null] geçsin). log.hesapKaynagi sinyalsizde 'MAS' (audit).
+      let uretimAdet: number | null = null
+      let logHesapKaynagi: string | null = null
+      if (sinyalli && log.baslatildiAt) {
+        try {
+          uretimAdet = (await isPenceresiDeltaToplami(prisma, log.tezgah.kod, log.baslatildiAt, bitirildiAt)).toplam
+        } catch {
+          uretimAdet = null
+        }
+      } else if (!sinyalli) {
+        uretimAdet = adet
+        logHesapKaynagi = 'MAS'
+      }
+      await prisma.iproProductionLog.update({
+        where: { id: log.id },
+        data: {
+          durum: 'KAPALI',
+          bitirildiAt,
+          qtyComplete: adet,
+          tamamlandi,
+          uretimAdet,
+          ...(logHesapKaynagi ? { hesapKaynagi: logHesapKaynagi } : {}),
+        },
+      })
+      // OEE: uretilen adet log'dan okunur. Çoklu işte perf+quality+oee null (COKLU_IS) — oee-hesap içinde.
+      try {
+        await oeeKaydiHesaplaVeYaz(prisma, log.id)
+      } catch {
+        /* OEE hatası ayna'yı bloklamasın */
+      }
+      ozet.kapatilan++
+    } catch (e) {
+      ozet.atlanan.push({ sebep: 'kapatma_hatasi', anahtar: `log:${log.id}`, detay: (e as Error)?.message?.slice(0, 120) ?? '?' })
     }
-    ozet.kapatilan++
   }
 
   // ── (c) DURUŞLAR → IproMachineDowntime aç/kapat ── (durus=0 ile tümüyle atlanır)
@@ -277,15 +294,20 @@ export async function runMasAyna(opts: { dryRun?: boolean; limit?: number | null
       continue
     }
     // Bu tezgahta açık MAS duruşu yoksa aç (idempotent: tezgah+kaynak='MAS'+bitis=null tek açık).
-    const mevcut = await prisma.iproMachineDowntime.findFirst({ where: { tezgahId: tz.id, kaynak: KAYNAK, bitis: null }, select: { id: true } })
-    if (!mevcut) {
-      await prisma.iproMachineDowntime.create({
-        data: {
-          tezgahId: tz.id, durusSebebiId: sebepId, baslangic: d.baslangic ?? simdi, kaynak: KAYNAK,
-          yorum: sebepId ? null : `MAS: ${d.sebepKod ?? '?'} - ${d.sebepAd ?? ''}`.trim(),
-        },
-      })
-      ozet.durusAcilan++
+    // Partial-unique çakışması (yarış) tüm turu kesmesin → per-duruş try/catch.
+    try {
+      const mevcut = await prisma.iproMachineDowntime.findFirst({ where: { tezgahId: tz.id, kaynak: KAYNAK, bitis: null }, select: { id: true } })
+      if (!mevcut) {
+        await prisma.iproMachineDowntime.create({
+          data: {
+            tezgahId: tz.id, durusSebebiId: sebepId, baslangic: d.baslangic ?? simdi, kaynak: KAYNAK,
+            yorum: sebepId ? null : `MAS: ${d.sebepKod ?? '?'} - ${d.sebepAd ?? ''}`.trim(),
+          },
+        })
+        ozet.durusAcilan++
+      }
+    } catch (e) {
+      ozet.atlanan.push({ sebep: 'durus_yazma_hatasi', anahtar: `durus:${d.id}`, detay: (e as Error)?.message?.slice(0, 120) ?? '?' })
     }
   }
   // KAPATMA: PENCERE YOK. MAS'ta ŞU AN açık duruşu olan tezgah kodları (tam küme) alınır; IPRO'da

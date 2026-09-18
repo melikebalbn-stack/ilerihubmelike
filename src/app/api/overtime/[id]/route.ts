@@ -85,7 +85,10 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const canViewAll = perms.includes('overtime.view.all')
     const isCreator = form.createdById === user.id
     const isPersonnel = !!user.personnelId && form.personnel.some((p) => p.personnelId === user.personnelId)
-    const isApprover = form.approvals.some((a) => a.approverId === user.id)
+    // Çift-onaycı (liste ve approve ucuyla AYNI kural): eskale edilmiş adımın yedeği
+    // (escalatedToId) de onaycı sayılır — 18.09.2026: yedek İK onaycısı listede gördüğü
+    // formu açamıyordu (403), forms.admin kısa devresi kalkınca ortaya çıktı.
+    const isApprover = form.approvals.some((a) => a.approverId === user.id || a.escalatedToId === user.id)
 
     // Omurga kapsamı (gerçekleşen adet satır-bazlı yetki + read erişimi):
     // undefined = tümü (admin/report.all); [adlar] = o bölümler; [] = hiçbiri.

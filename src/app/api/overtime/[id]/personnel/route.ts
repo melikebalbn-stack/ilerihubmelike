@@ -20,7 +20,7 @@ interface RouteParams {
  * Yetki kontrolü: Form sahibi (DRAFT'ta), onaylayıcı veya admin
  */
 async function checkPersonnelEditAccess(
-  form: { status: string; createdById: string; approvals: { approverId: string | null; decision: string | null }[] },
+  form: { status: string; createdById: string; approvals: { approverId: string | null; escalatedToId?: string | null; decision: string | null }[] },
   userId: string,
   isAdmin: boolean
 ): Promise<{ allowed: boolean; reason?: string }> {
@@ -36,7 +36,8 @@ async function checkPersonnelEditAccess(
   if (['PENDING', 'IN_PROGRESS'].includes(form.status)) {
     if (isAdmin) return { allowed: true }
     const pendingApproval = form.approvals.find((a) => a.decision === null)
-    if (pendingApproval && pendingApproval.approverId === userId) return { allowed: true }
+    // Çift-onaycı: eskale edilmiş adımın yedeği (escalatedToId) de düzenleyebilir ([id] GET / approve ile aynı).
+    if (pendingApproval && (pendingApproval.approverId === userId || pendingApproval.escalatedToId === userId)) return { allowed: true }
     return { allowed: false, reason: 'Personel listesini sadece sıradaki onaylayıcı düzenleyebilir' }
   }
 

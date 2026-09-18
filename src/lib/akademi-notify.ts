@@ -351,17 +351,14 @@ export async function notifyPackageAssigned(
   const name = nn(user.name, user.email);
   const link = pkg.link ?? "/akademi";
 
-  // 1) In-app (yalnız kullanıcı)
+  // 1) In-app (yalnız kullanıcı) — akademi_notifications + genel çan (okunan tablo)
+  const title = "Yeni eğitim paketi atandı";
+  const message = `${pkg.packageName} (${pkg.courseCount} kurs) eğitim paketi size atandı.`;
   try {
     await prisma.akademiNotification.create({
-      data: {
-        userId,
-        type: "PACKAGE_ASSIGNED",
-        title: "Yeni eğitim paketi atandı",
-        message: `${pkg.packageName} (${pkg.courseCount} kurs) eğitim paketi size atandı.`,
-        link,
-      },
+      data: { userId, type: "PACKAGE_ASSIGNED", title, message, link },
     });
+    await genelBildirimYaz(userId, title, message, link, "COURSE_ASSIGNED");
   } catch (err) {
     console.error(`[akademi-notify] package in-app failed for ${userId}:`, err);
   }
@@ -375,13 +372,16 @@ export async function notifyPackageAssigned(
       link,
     });
     try {
-      await sendEmail(
+      const r = await sendEmail(
         [{ email: user.email, name }],
         content.subject,
         content.text,
         content.html,
         logoAttachments()
       );
+      if (!r.success) {
+        console.error(`[akademi-notify] PACKAGE_ASSIGNED mail → ${user.email} BAŞARISIZ: ${r.error ?? "?"}`);
+      }
     } catch (err) {
       console.error(
         `[akademi-notify] package mail to ${user.email} failed:`,

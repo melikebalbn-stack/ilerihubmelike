@@ -233,15 +233,20 @@ export async function notifyAkademiEvent(ctx: NotifyContext): Promise<void> {
       typeof ctx.data.title === "string" ? ctx.data.title : null;
     const customMessage =
       typeof ctx.data.message === "string" ? ctx.data.message : null;
+    const title = customTitle ?? buildInAppTitle(ctx);
+    const message = customMessage ?? buildInAppMessage(ctx);
     await prisma.akademiNotification.create({
       data: {
         userId: ctx.userId,
         type: ctx.eventType,
-        title: customTitle ?? buildInAppTitle(ctx),
-        message: customMessage ?? buildInAppMessage(ctx),
+        title,
+        message,
         link: ctx.link ?? null,
       },
     });
+    // GENEL ÇAN (18.09.2026): akademi_notifications'ı okuyan ekran yok; kullanıcı
+    // bildirimi ancak genel Notification tablosunda görüyor. Aynı başlık/link.
+    await genelBildirimYaz(ctx.userId, title, message, ctx.link ?? null, ctx.eventType);
   } catch (err) {
     console.error(`[akademi-notify] in-app failed for ${ctx.userId}:`, err);
   }
@@ -249,15 +254,20 @@ export async function notifyAkademiEvent(ctx: NotifyContext): Promise<void> {
   // 1b) In-app — İK (her birine ayrı kayıt; başlık kişiyi belirtir)
   if (recipients.hr.length) {
     try {
+      const hrTitle = `${buildInAppTitle(ctx)} — ${recipients.user.name}`;
+      const hrMessage = `${recipients.user.name}: ${ctx.courseTitle} (${buildInAppTitle(ctx).toLowerCase()})`;
       await prisma.akademiNotification.createMany({
         data: recipients.hr.map((h) => ({
           userId: h.id,
           type: ctx.eventType,
-          title: `${buildInAppTitle(ctx)} — ${recipients.user.name}`,
-          message: `${recipients.user.name}: ${ctx.courseTitle} (${buildInAppTitle(ctx).toLowerCase()})`,
+          title: hrTitle,
+          message: hrMessage,
           link: ctx.link ?? null,
         })),
       });
+      for (const h of recipients.hr) {
+        await genelBildirimYaz(h.id, hrTitle, hrMessage, ctx.link ?? null, ctx.eventType);
+      }
     } catch (err) {
       console.error(`[akademi-notify] in-app (HR) failed:`, err);
     }
@@ -267,43 +277,60 @@ export async function notifyAkademiEvent(ctx: NotifyContext): Promise<void> {
   const content = dispatchTemplate(ctx, recipients);
 
   // Kullanıcıya
+  // sendEmail throw ETMEZ ({success:false} döner) → sonuç kontrol edilip alıcı loglanır.
+  const mailGonder = (kanal: string, to: { email: string; name: string }, text: string, html: string) =>
+    sendEmail([to], content.subject, text, html)
+      .then((r) => {
+        if (!r.success) {
+          console.error(`[akademi-notify] ${ctx.eventType} mail ${kanal} → ${to.email} BAŞARISIZ: ${r.error ?? "?"}`);
+        }
+      })
+      .catch((err) => console.error(`[akademi-notify] ${ctx.eventType} mail ${kanal} → ${to.email} hata:`, err));
+
   if (recipients.user.email) {
-    sendEmail(
-      [{ email: recipients.user.email, name: recipients.user.name }],
-      content.subject,
-      content.textForUser,
-      content.htmlForUser
-    ).catch((err) =>
-      console.error(
-        `[akademi-notify] mail to user ${recipients.user.email} failed:`,
-        err
-      )
-    );
+    void mailGonder("user", { email: recipients.user.email, name: recipients.user.name }, content.textForUser, content.htmlForUser);
   }
 
   // Yöneticiye (varsa ve olay için kanal açıksa — EXAM_* için KAPALI)
   if (managerEnabled && recipients.manager?.email) {
-    sendEmail(
-      [{ email: recipients.manager.email, name: recipients.manager.name }],
-      content.subject,
-      content.textForManager,
-      content.htmlForManager
-    ).catch((err) =>
-      console.error(`[akademi-notify] mail to manager failed:`, err)
-    );
+    void mailGonder("manager", { email: recipients.manager.email, name: recipients.manager.name }, content.textForManager, content.htmlForManager);
   }
 
   // İK (her birine ayrı — KVKK)
   for (const hrUser of recipients.hr) {
     if (!hrUser.email) continue;
-    sendEmail(
-      [{ email: hrUser.email, name: hrUser.name }],
-      content.subject,
-      content.textForManager,
-      content.htmlForManager
-    ).catch((err) =>
-      console.error(`[akademi-notify] mail to HR ${hrUser.email} failed:`, err)
-    );
+    void mailGonder("hr", { email: hrUser.email, name: hrUser.name }, content.textForManager, content.htmlForManager);
+  }
+}
+
+/**
+ * Genel Notification tablosuna yaz (mevcut çan). Mükerrer koruması: aynı kullanıcı
+ * + başlık + link son 60 sn içinde yazıldıysa atla (aynı olay iki kez tetiklenirse).
+ */
+async function genelBildirimYaz(
+  userId: string,
+  title: string,
+  message: string,
+  link: string | null,
+  eventType: AkademiEventType
+): Promise<void> {
+  try {
+    const yakinda = await prisma.notification.findFirst({
+      where: { userId, title, link, createdAt: { gte: new Date(Date.now() - 60_000) } },
+      select: { id: true },
+    });
+    if (yakinda) return;
+    const type =
+      eventType === "EXAM_FAILED" || eventType === "DEADLINE_MISSED" || eventType === "CERTIFICATE_EXPIRED"
+        ? "WARNING"
+        : eventType === "EXAM_PASSED" || eventType === "CERTIFICATE_ISSUED"
+        ? "SUCCESS"
+        : eventType === "DEADLINE_APPROACHING" || eventType === "CERTIFICATE_EXPIRING_SOON"
+        ? "REMINDER"
+        : "INFO";
+    await prisma.notification.create({ data: { userId, title, message, link, type } });
+  } catch (err) {
+    console.error(`[akademi-notify] genel bildirim yazılamadı (${userId}):`, err);
   }
 }
 

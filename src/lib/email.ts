@@ -136,6 +136,13 @@ function getTransporter() {
         user: process.env.SMTP_USER,
         pass: process.env.SMTP_PASSWORD,
       },
+      // POOL (18.09.2026): M365 SMTP AUTH eşzamanlı bağlantı sınırı — paralel
+      // sendEmail çağrıları (akademi 4 alıcı, cron toplu) "432 4.3.2 Concurrent
+      // connections limit exceeded" ile düşüyordu (11.07, 25-26.08, 16.09, 18.09).
+      // Tek bağlantı, kuyruklu sıralı gönderim; bağlantı 100 mesajda bir tazelenir.
+      pool: true,
+      maxConnections: 1,
+      maxMessages: 100,
     })
   }
   return transporter
@@ -229,8 +236,7 @@ export async function sendEmail(
   // Real SMTP sending
   try {
     const toAddresses = effectiveTo.map((r) => `${r.name} <${r.email}>`).join(', ')
-
-    const info = await smtp.sendMail({
+    const mail = {
       from: process.env.SMTP_FROM || `ILERIHub <${process.env.SMTP_USER}>`,
       to: toAddresses,
       subject: effectiveSubject,
@@ -239,14 +245,30 @@ export async function sendEmail(
       ...(attachments && attachments.length ? { attachments } : {}),
       ...(options?.replyTo ? { replyTo: options.replyTo } : {}),
       ...(effectiveCc.length ? { cc: effectiveCc.map((r) => `${r.name} <${r.email}>`).join(', ') } : {}),
-    })
+    }
+
+    // 421/432 (sunucu geçici sınır) → kısa bekleme ile 1 kez daha dene.
+    let info: { messageId?: string }
+    try {
+      info = await smtp.sendMail(mail)
+    } catch (firstErr) {
+      const code = (firstErr as { responseCode?: number })?.responseCode
+      if (code === 421 || code === 432) {
+        console.warn(`⚠️ SMTP ${code} — 1500 ms sonra yeniden deneniyor (${toAddresses})`)
+        await new Promise((r) => setTimeout(r, 1500))
+        info = await smtp.sendMail(mail)
+      } else {
+        throw firstErr
+      }
+    }
 
     console.log('✅ E-posta gönderildi:', info.messageId)
     // messageId ÇAĞIRANA DÖNÜYOR: ticket bildirimlerinde kayda damgalanıp
     // gelen yanıtın References başlığıyla eşleştirilecek (mail-isle.ticketBul).
     return { success: true, messageId: info.messageId }
   } catch (error) {
-    console.error('❌ E-posta gönderme hatası:', error)
+    // Alıcı da loglanır: hangi gönderimin düştüğü aksi hâlde bilinemiyordu.
+    console.error(`❌ E-posta gönderme hatası (${effectiveTo.map((r) => r.email).join(', ')}):`, error)
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',

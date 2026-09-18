@@ -414,3 +414,60 @@ describe('Sidebar — "Servis: Bu Ay Ne Değişti?" menü öğesi (FAZ 1B-EK Mad
     expect(screen.getByText('Servis: Bu Ay Ne Değişti?')).toBeInTheDocument()
   })
 })
+
+describe('Sidebar — Stratejik İK "Servis" alt-başlığı (Formlar deseninin uygulanması, 2026-09-18)', () => {
+  it('servis.view izinli kullanıcıda "Servis" başlığı görünür ve altında YALNIZ 2 öğe vardır', () => {
+    mockSession({ role: 'KULLANICI', department: 'Üretim', permissions: ['servis.view'] })
+    renderSidebar()
+    acIvGrubunu()
+    const servisKutu = screen.getByTestId('strategic-hr-subgroup-servis').parentElement as HTMLElement
+    const linkler = Array.from(servisKutu.querySelectorAll('a')).map((a) => a.textContent?.trim())
+    expect(linkler).toEqual(['Servis Yönetimi', 'Servis: Bu Ay Ne Değişti?'])
+  })
+
+  it('servis.view izni yoksa "Servis" başlığı hiç render edilmez (boş alt grup çizilmez)', () => {
+    mockSession({ role: 'HR_MANAGER', department: 'İnsan Varlıkları', permissions: [] })
+    renderSidebar()
+    acIvGrubunu()
+    expect(screen.queryByTestId('strategic-hr-subgroup-servis')).not.toBeInTheDocument()
+  })
+
+  it('diğer Stratejik İK öğeleri (subgroup\'suz) hâlâ başlıksız ve orijinal göreli sırasında render edilir — görsel regresyon yok', () => {
+    mockSession({
+      role: 'HR_MANAGER',
+      department: 'İnsan Varlıkları',
+      permissions: ['servis.view', 'recruitment.view', 'envanter.view', 'yilliktakvim.view'],
+    })
+    renderSidebar()
+    acIvGrubunu()
+
+    const servisKutu = screen.getByTestId('strategic-hr-subgroup-servis').parentElement as HTMLElement
+    const digerOgeler = [
+      'Yetenek Yönetimi', 'Yedekleme Planlaması', 'Performans Yönetimi',
+      'İşe Alım', 'Envanter', 'Organizasyon Şeması', 'Yıllık Çalışma Takvimi',
+    ]
+    for (const ad of digerOgeler) {
+      const el = screen.getByText(ad)
+      expect(el).toBeInTheDocument()
+      // "Servis" kutusunun İÇİNDE değil — başlıksız/düz bölgede kalmış.
+      expect(servisKutu.contains(el)).toBe(false)
+    }
+
+    // Kendi aralarındaki göreli sıra (orijinal dizi sırası) bozulmadı.
+    const stratejikIkKutu = screen.getByText('Yetenek Yönetimi').closest('div.space-y-1.ml-4') as HTMLElement
+    const duzAdlar = Array.from(stratejikIkKutu.querySelectorAll('a'))
+      .map((a) => a.textContent?.trim())
+      .filter((ad): ad is string => !!ad && !['Servis Yönetimi', 'Servis: Bu Ay Ne Değişti?'].includes(ad))
+    expect(duzAdlar).toEqual(digerOgeler)
+  })
+
+  it('yalnız TEK bir Stratejik İK alt-grubu var ("servis") — Formlar\'daki gibi her alt gruba başlık YOK', () => {
+    mockSession({ role: 'HR_MANAGER', department: 'İnsan Varlıkları', permissions: ['servis.view'] })
+    const { container } = renderSidebar()
+    acIvGrubunu()
+    const testIdler = Array.from(container.querySelectorAll('[data-testid^="strategic-hr-subgroup-"]')).map((el) =>
+      el.getAttribute('data-testid'),
+    )
+    expect(testIdler).toEqual(['strategic-hr-subgroup-servis'])
+  })
+})

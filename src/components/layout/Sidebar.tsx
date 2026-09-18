@@ -280,6 +280,18 @@ const iproMenuItems = [
   { name: "Ayarlar", icon: Settings, href: "/ipro/ayarlar", roles: [] as string[], permission: ["ipro.view", "ipro.admin"] },
 ]
 
+// Stratejik İK alt-grubu — Formlar'daki subgroup deseninin KÜÇÜK bir
+// uygulaması (2026-09-18). Formlar'dan FARKLI: yalnız TEK bir alt grup
+// ("servis") görsel bir başlık alır; subgroup'suz kalan diğer öğeler
+// (Yetenek Yönetimi, Yedekleme Planlaması, ... Yıllık Çalışma Takvimi)
+// ESKİ HALİYLE, başlıksız, düz render edilmeye devam eder — Formlar'daki
+// gibi HER alt grup (ör. "Genel") bir başlık ALMAZ. Bkz. strategicHrBySubgroup.
+const STRATEJIK_IK_ALT_GRUPLAR = [
+  { key: "servis", label: "Servis" },
+] as const
+
+type StrategicHrAltGrup = (typeof STRATEJIK_IK_ALT_GRUPLAR)[number]["key"]
+
 // Stratejik IK alt menüsü
 // Erişim: İnsan Varlıkları departmanı (tam erişim) + Departman müdürleri (kendi departmanları)
 const strategicHrMenuItems = [
@@ -288,11 +300,12 @@ const strategicHrMenuItems = [
   { name: "Performans Yönetimi", icon: Target, href: "/strategic-hr/performance", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"] },
   { name: "İşe Alım", icon: Briefcase, href: "/strategic-hr/recruitment", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"], permission: "recruitment.view" },
   { name: "Envanter", icon: Boxes, href: "/envanter", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"], permission: "envanter.view" },
-  { name: "Servis Yönetimi", icon: Truck, href: "/servis-yonetimi", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"], permission: "servis.view" },
-  // FAZ 1B-EK Madde 31 — "Bu Ay Ne Değişti?" özet ekranı. Ayrı bir satır
-  // (nested/expandable menü mekanizması bu dosyada YOK, mevcut düz liste
-  // deseni izlendi) — Servis Yönetimi ile AYNI permission (servis.view).
-  { name: "Servis: Bu Ay Ne Değişti?", icon: Truck, href: "/servis-yonetimi/bu-ay-ne-degisti", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"], permission: "servis.view" },
+  { name: "Servis Yönetimi", icon: Truck, href: "/servis-yonetimi", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"], permission: "servis.view", subgroup: "servis" as StrategicHrAltGrup },
+  // FAZ 1B-EK Madde 31 — "Bu Ay Ne Değişti?" özet ekranı. Servis Yönetimi
+  // ile AYNI permission (servis.view) VE aynı "servis" alt grubu — Stratejik
+  // İK açıldığında ikisi birlikte "Servis" başlığı altında görünür (bkz.
+  // strategicHrBySubgroup).
+  { name: "Servis: Bu Ay Ne Değişti?", icon: Truck, href: "/servis-yonetimi/bu-ay-ne-degisti", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"], permission: "servis.view", subgroup: "servis" as StrategicHrAltGrup },
   { name: "Organizasyon Şeması", icon: Network, href: "/strategic-hr/org-chart", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"] },
   // VIEW gate = YILLIK_TAKVIM_VIEW_PERMISSIONS (yilliktakvim.view | yilliktakvim.admin, OR).
   // admin eklendi — yalnız admin izinli kullanıcı sayfayı açabildiği hâlde menüde göremiyordu.
@@ -862,6 +875,19 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     // olan kullanıcıda da Stratejik İK grubu (ve dolayısıyla İV) açılır.
     ...(iaFlags.amir ? [iaAmirItem] : []),
   ]
+  // "servis" alt grubunu ayır (YETKİ FİLTRESİNDEN GEÇMİŞ listeden — görünürlük
+  // mantığı burada tekrarlanmaz). Geri kalan (subgroup'suz) öğeler AYRI bir
+  // düz listede, ORİJİNAL sırasıyla — bunlar başlıksız render edilir.
+  const strategicHrBySubgroup = STRATEJIK_IK_ALT_GRUPLAR.map(({ key, label }) => ({
+    key,
+    label,
+    items: filteredStrategicHrItems.filter(
+      (it) => (it as { subgroup?: StrategicHrAltGrup }).subgroup === key,
+    ),
+  }))
+  const strategicHrDuzOgeler = filteredStrategicHrItems.filter(
+    (it) => !(it as { subgroup?: StrategicHrAltGrup }).subgroup,
+  )
   const filteredOffboardingItems = filterItems(offboardingMenuItems)
   // PDKS permission alanını dizi tutuyor; filterItems cast (IPRO deseni).
   const filteredPdksItems = filterItems(pdksMenuItems as unknown as typeof mainMenuItems)
@@ -1544,7 +1570,22 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                 </button>
                 {strategicHrOpen && (
                   <div className="space-y-1 ml-4">
-                    {filteredStrategicHrItems.map(item => renderMenuItem(item))}
+                    {/* Subgroup'suz öğeler ESKİ HALİYLE, başlıksız, düz sırada. */}
+                    {strategicHrDuzOgeler.map(item => renderMenuItem(item))}
+                    {/* "Servis" alt grubu — Formlar'daki subgroup başlığıyla AYNI görsel dil. */}
+                    {strategicHrBySubgroup
+                      .filter(g => g.items.length > 0)
+                      .map(g => (
+                        <div key={g.key} className="space-y-1">
+                          <div
+                            data-testid={`strategic-hr-subgroup-${g.key}`}
+                            className="px-3 pt-2 pb-0.5 text-[11px] font-medium uppercase tracking-wide text-white/25 select-none"
+                          >
+                            {g.label}
+                          </div>
+                          {g.items.map(item => renderMenuItem(item))}
+                        </div>
+                      ))}
                   </div>
                 )}
               </>

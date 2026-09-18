@@ -64,7 +64,7 @@ interface HubKisi {
   iseGirisTarihi: Date; cikisTarihi: Date | null
   /** Son istihdam döneminin SGK çıkış kodu (EmploymentPeriod.exitCode) — PASIF kaleminde LeavingCauseId. */
   cikisKodu: string | null
-  departmentOrgUnitId: string | null; koltuk: HubPos | null; koltukSayisi: number
+  departmentOrgUnitId: string | null; koltuk: HubPos | null; koltukSayisi: number; koltukSecimNotu?: string
 }
 
 const norm = (v: unknown) => (v === undefined || v === '' ? null : v)
@@ -138,13 +138,19 @@ export async function planla(db: Db, sec: PlanSecenekleri = {}): Promise<Senkron
   for (const p of personel) {
     if (!sicilSenkronKapsamindaMi(p.sicilNo)) continue
     const koltuklar = (koltukByKisi.get(p.id) ?? []).filter((k) => !k.orgUnit.code.startsWith(KURUL_KOD_ONEKI))
-    const koltuk = koltuklar[0] ? hubPosMap.get(koltuklar[0].orgUnit.id) ?? null : null
     const deptOrgUnitId = p.department?.orgUnitId ?? deptByName.get(p.bolum)?.orgUnitId ?? null
+    // KOLTUK SEÇİMİ (18.09.2026): çok koltuklu kişide Personnel.bolum'un şema kutusu (DEPARTMENT)
+    // altındaki koltuk tercih edilir; yoksa en eski koltuk (createdAt asc — sorgu sırası).
+    // Kurul koltukları (ORG-KR-*) yukarıda zaten dışarıda.
+    const bolumAltinda = deptOrgUnitId ? koltuklar.find((k) => ustBolumId(k.orgUnit.id) === deptOrgUnitId) : undefined
+    const secilen = bolumAltinda ?? koltuklar[0]
+    const koltuk = secilen ? hubPosMap.get(secilen.orgUnit.id) ?? null : null
+    const koltukSecimNotu = koltuklar.length > 1 ? (bolumAltinda ? `bölümle eşleşen koltuk ${secilen.orgUnit.code}` : `bölümle eşleşen yok → en eski koltuk ${secilen?.orgUnit.code}`) : undefined
     const donem = p.employmentPeriods[0]
     kisiler.push({
       id: p.id, sicilNo: p.sicilNo, adSoyad: p.adSoyad, aktif: p.aktif, yakaRengi: p.yakaRengi, cinsiyet: p.cinsiyet, gorev: p.gorev, bolum: p.bolum,
       iseGirisTarihi: p.iseGirisTarihi, cikisTarihi: donem?.cikisTarihi ?? null, cikisKodu: donem?.exitCode?.trim() || null,
-      departmentOrgUnitId: deptOrgUnitId, koltuk, koltukSayisi: koltuklar.length,
+      departmentOrgUnitId: deptOrgUnitId, koltuk, koltukSayisi: koltuklar.length, koltukSecimNotu,
     })
   }
 
@@ -339,7 +345,7 @@ export async function planla(db: Db, sec: PlanSecenekleri = {}): Promise<Senkron
       // projeksiyonda KALICI YAZMIYOR (round-trip null). Fark hesabına alınmaz — yoksa her
       // kişi sonsuza dek UPDATE görünür.
     }
-    const sebepNot = k.koltukSayisi > 1 ? `çok koltuklu (${k.koltukSayisi}) → en eski koltuk ${k.koltuk.code}` : undefined
+    const sebepNot = k.koltukSayisi > 1 ? `çok koltuklu (${k.koltukSayisi}) → ${k.koltukSecimNotu}` : undefined
     if (!m) {
       empKalemleri.push({
         varlik: 'EMPLOYEE', hubId: k.id, ifsAnahtar: k.sicilNo, etiket, islem: 'CREATE', sebep: sebepNot,

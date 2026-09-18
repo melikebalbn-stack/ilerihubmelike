@@ -6,6 +6,7 @@ import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { CourseHero } from "@/components/akademi/courses/CourseHero";
 import { ContentRow } from "@/components/akademi/courses/ContentRow";
+import { VideoContentCard } from "@/components/akademi/courses/VideoContentCard";
 import { ContentViewerModal } from "@/components/akademi/courses/ContentViewerModal";
 import { CourseExamsSection } from "./_components/course-exams-section";
 import type { CourseDetail, ContentItem } from "@/types/akademi";
@@ -147,6 +148,14 @@ export default function AkademiCourseDetailPage() {
     );
   }
 
+  // Eğitim ilerlemesi = tamamlanan / zorunlu (GOREV dışı) içerik. Hero bunu gösterir;
+  // course-progress.ts'in sınav ağırlıklı yüzdesi (sertifika/rapor) DEĞİŞMEDİ.
+  const zorunluIcerikler = course.contents.filter((c) => c.type !== "GOREV");
+  const zorunluIcerik = zorunluIcerikler.length;
+  const tamamlananIcerik = zorunluIcerikler.filter((c) => c.completedByCurrentUser).length;
+  const egitimYuzdesi =
+    zorunluIcerik > 0 ? Math.round((tamamlananIcerik / zorunluIcerik) * 100) : Math.round(course.progressPercent);
+
   return (
     <div className="px-8 py-7 max-w-5xl mx-auto">
       <Link
@@ -158,41 +167,60 @@ export default function AkademiCourseDetailPage() {
         Eğitimlere Dön
       </Link>
 
-      <CourseHero course={course} />
+      <CourseHero course={course} contentPercent={egitimYuzdesi} />
 
-      <div className="mb-3">
-        <h2
-          className="text-base font-bold mb-3"
-          style={{ color: "var(--ak-text-primary)" }}
-        >
-          İçerikler ({course.contents.length})
-        </h2>
-      </div>
-
-      {course.contents.length === 0 ? (
-        <div
-          className="ak-card-static p-6 text-center text-sm"
-          style={{ color: "var(--ak-text-tertiary)" }}
-        >
-          Bu eğitime henüz içerik eklenmemiş.
+      {/* 1. ADIM — EĞİTİM: VIDEO içerikler büyük kart, diğerleri satır. */}
+      <section
+        className="ak-card-static p-5 mb-5"
+        style={{ borderColor: "var(--ak-border-default)" }}
+      >
+        <div className="flex items-center justify-between mb-4">
+          <h2
+            className="text-xs font-bold uppercase tracking-wider"
+            style={{ color: "var(--ak-text-secondary)" }}
+          >
+            1. Adım — Eğitim
+          </h2>
+          <span className="text-xs" style={{ color: "var(--ak-text-tertiary)" }}>
+            {tamamlananIcerik}/{zorunluIcerik} içerik tamamlandı
+          </span>
         </div>
-      ) : (
-        <div className="space-y-2.5">
-          {course.contents.map((c, i) => (
-            <ContentRow
-              key={c.id}
-              content={c}
-              index={i}
-              onOpen={setViewerContent}
-              onMarkComplete={handleMarkComplete}
-              onGorevDurum={handleGorevDurum}
-              isMarking={markingId === c.id}
-            />
-          ))}
-        </div>
-      )}
 
-      <CourseExamsSection courseId={course.id} />
+        {course.contents.length === 0 ? (
+          <div
+            className="p-6 text-center text-sm"
+            style={{ color: "var(--ak-text-tertiary)" }}
+          >
+            Bu eğitime henüz içerik eklenmemiş.
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {course.contents.map((c, i) =>
+              c.type === "VIDEO" ? (
+                <VideoContentCard
+                  key={c.id}
+                  content={c}
+                  index={i}
+                  onOpen={setViewerContent}
+                />
+              ) : (
+                <ContentRow
+                  key={c.id}
+                  content={c}
+                  index={i}
+                  onOpen={setViewerContent}
+                  onMarkComplete={handleMarkComplete}
+                  onGorevDurum={handleGorevDurum}
+                  isMarking={markingId === c.id}
+                />
+              )
+            )}
+          </div>
+        )}
+      </section>
+
+      {/* 2. ADIM — SINAV: sunucudan gelen locked ile kilitli görünüm. */}
+      <CourseExamsSection courseId={course.id} reloadKey={course.progressPercent + ":" + tamamlananIcerik} />
 
       <ContentViewerModal
         content={viewerContent}

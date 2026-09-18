@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   Clock,
   Play,
+  Lock,
 } from "lucide-react";
 
 type ExamItem = {
@@ -26,9 +27,20 @@ type ExamItem = {
     canStart: boolean;
     lastAttempt: { id: string; score: number | null } | null;
   };
+  // Dalga 1: sunucu kilidi — tüm zorunlu içerikler tamamlanmadan başlatılamaz.
+  locked?: boolean;
+  lockReason?: string | null;
+  contentProgress?: { completed: number; required: number };
 };
 
-export function CourseExamsSection({ courseId }: { courseId: string }) {
+export function CourseExamsSection({
+  courseId,
+  reloadKey,
+}: {
+  courseId: string;
+  /** İçerik tamamlanınca değişir → kilit durumu yeniden çekilir. */
+  reloadKey?: string;
+}) {
   const [exams, setExams] = useState<ExamItem[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -38,22 +50,33 @@ export function CourseExamsSection({ courseId }: { courseId: string }) {
       .then((d) => setExams(d.exams ?? []))
       .catch(() => setExams([]))
       .finally(() => setLoading(false));
-  }, [courseId]);
+  }, [courseId, reloadKey]);
 
   if (loading || exams.length === 0) return null;
 
+  const locked = exams.some((e) => e.locked);
+  const lockReason = exams.find((e) => e.locked)?.lockReason ?? null;
+
   return (
-    <div
-      className="border rounded-lg p-4 bg-white mt-6"
-      style={{ borderColor: "var(--ak-border-default)" }}
+    <section
+      className="ak-card-static p-5 mb-5 transition-opacity"
+      style={{ borderColor: "var(--ak-border-default)", opacity: locked ? 0.65 : 1 }}
     >
-      <h3
-        className="font-semibold flex items-center gap-2 mb-3"
-        style={{ color: "var(--ak-text-primary)" }}
-      >
-        <FileQuestion size={18} />
-        İlişkili Sınavlar ({exams.length})
-      </h3>
+      <div className="flex items-center justify-between mb-4">
+        <h2
+          className="text-xs font-bold uppercase tracking-wider flex items-center gap-2"
+          style={{ color: "var(--ak-text-secondary)" }}
+        >
+          {locked ? <Lock size={14} /> : <FileQuestion size={14} />}
+          2. Adım — Sınav
+        </h2>
+        {locked && lockReason && (
+          <span className="text-xs font-medium" style={{ color: "var(--ak-text-tertiary)" }}>
+            <Lock size={12} className="inline mr-1 -mt-0.5" />
+            {lockReason}
+          </span>
+        )}
+      </div>
       <div className="space-y-2">
         {exams.map((e) => (
           <div
@@ -95,6 +118,16 @@ export function CourseExamsSection({ courseId }: { courseId: string }) {
                     <Clock size={12} />
                     Devam Et
                   </Link>
+                ) : e.locked ? (
+                  <button
+                    type="button"
+                    disabled
+                    title={e.lockReason ?? "Önce eğitim içeriklerini tamamlayın"}
+                    className="text-xs px-2 py-1 bg-slate-400 text-white rounded inline-flex items-center gap-1 font-medium cursor-not-allowed"
+                  >
+                    <Lock size={12} />
+                    Başla
+                  </button>
                 ) : e.userStatus.canStart ? (
                   <Link
                     href={`/akademi/exams/${e.id}`}
@@ -116,6 +149,6 @@ export function CourseExamsSection({ courseId }: { courseId: string }) {
           </div>
         ))}
       </div>
-    </div>
+    </section>
   );
 }

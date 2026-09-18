@@ -12,9 +12,14 @@ import type { CourseDetail } from "@/types/akademi";
 
 interface Props {
   course: CourseDetail;
+  /** Eğitim ilerlemesi (tamamlanan/zorunlu içerik, %). Verilmezse kurs yüzdesi. */
+  contentPercent?: number;
 }
 
-export function CourseHero({ course }: Props) {
+export function CourseHero({ course, contentPercent }: Props) {
+  // Hero'da sınav ağırlıklı kurs yüzdesi yanıltıcıydı (%70 = içerik bitti, sınav yok);
+  // gösterilen değer içerik tamamlama oranı. course-progress.ts değişmedi.
+  const shown = contentPercent ?? course.progressPercent;
   return (
     <div
       className="relative rounded-[14px] overflow-hidden p-6 mb-6 text-white ak-animate-in"
@@ -82,15 +87,15 @@ export function CourseHero({ course }: Props) {
         <div className="md:w-64 shrink-0">
           <div className="bg-white/10 backdrop-blur rounded-xl p-4">
             <div className="text-xs uppercase tracking-wide text-white/70 mb-1">
-              İlerleme
+              Eğitim ilerlemesi
             </div>
             <div className="text-3xl font-bold mb-2">
-              %<AnimatedNumber value={Math.round(course.progressPercent)} />
+              %<AnimatedNumber value={Math.round(shown)} />
             </div>
             <ProgressBar
-              value={course.progressPercent}
+              value={shown}
               size="md"
-              color={course.isCompleted ? "green" : "accent"}
+              color={shown >= 100 || course.isCompleted ? "green" : "accent"}
             />
           </div>
         </div>

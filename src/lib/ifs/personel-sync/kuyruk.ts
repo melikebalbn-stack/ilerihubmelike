@@ -52,10 +52,15 @@ export class PrismaKuyruk implements KuyrukDeposu {
     }
     return n
   }
+  // upsert (18.09): ?tam=1 taramasında kalemler kuyruktan gelmez, satır yoktur — eski `update`
+  // "No record was found" ile ilk cron koşusunu 500'e düşürdü. Yoksa CRON:tam-tarama tetikli oluştur;
+  // tablo böylece her varlığın son senkron durumunu tutan defter olur.
   async sonuc(k: Pick<KuyrukKaydi, 'varlikTipi' | 'hubId'>, s: { durum: KuyrukDurumu; islem?: Islem; ifsAnahtar?: string; hata?: string | null }) {
-    await this.db.ifsPersonelSyncKayit.update({
+    const veri = { durum: s.durum, islem: s.islem ?? null, ifsAnahtar: s.ifsAnahtar ?? null, hata: s.hata ?? null, sonDenemeAt: new Date() }
+    await this.db.ifsPersonelSyncKayit.upsert({
       where: { varlikTipi_hubId: { varlikTipi: k.varlikTipi, hubId: k.hubId } },
-      data: { durum: s.durum, islem: s.islem ?? null, ifsAnahtar: s.ifsAnahtar, hata: s.hata ?? null, sonDenemeAt: new Date(), denemeSayisi: { increment: 1 } },
+      update: { ...veri, denemeSayisi: { increment: 1 } },
+      create: { varlikTipi: k.varlikTipi, hubId: k.hubId, tetik: 'CRON:tam-tarama', denemeSayisi: 1, ...veri },
     })
   }
 }

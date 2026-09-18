@@ -99,32 +99,37 @@ model User {
   iproKiosk          IproKiosk?
 
   // QDMS Relations
-  qdmsDocumentsOwned        QdmsDocument[]              @relation("DocumentOwner")
-  qdmsDocumentsCreated      QdmsDocument[]              @relation("DocumentCreator")
-  qdmsDocumentRevisions     QdmsDocumentRevision[]
-  qdmsDocumentApprovals     QdmsDocumentApproval[]
-  qdmsDocumentDistributions QdmsDocumentDistribution[]
-  qdmsCapasInitiated        QdmsCapa[]                  @relation("CapaInitiator")
-  qdmsCapasResponsible      QdmsCapa[]                  @relation("CapaResponsible")
-  qdmsCapasVerified         QdmsCapa[]                  @relation("CapaVerifier")
-  qdmsCapaActions           QdmsCapaAction[]
-  qdmsNcrsDetected          QdmsNonConformance[]        @relation("NCRDetector")
-  qdmsNcrsDisposition       QdmsNonConformance[]        @relation("NCRDisposition")
-  qdmsNcrsClosed            QdmsNonConformance[]        @relation("NCRCloser")
-  qdmsAuditsAsAuditee       QdmsAudit[]                 @relation("Auditee")
-  qdmsAuditsAsLeadAuditor   QdmsAudit[]                 @relation("LeadAuditor")
-  qdmsAuditTeamMembers      QdmsAuditTeamMember[]
-  qdmsRisksCreated          QdmsRisk[]                  @relation("RiskCreator")
-  qdmsRisksResponsible      QdmsRisk[]
-  qdmsSupplierEvaluations   QdmsSupplierEvaluation[]
-  qdmsChangeRequests        QdmsChangeRequest[]         @relation("ChangeRequester")
-  qdmsChangesImplemented    QdmsChangeRequest[]         @relation("ChangeImplementer")
-  qdmsChangesVerified       QdmsChangeRequest[]         @relation("ChangeVerifier")
-  qdmsChangeApprovals       QdmsChangeRequestApproval[]
-  qdmsTrainingRecords       QdmsTrainingRecord[]
-  qdmsTrainingsGiven        QdmsTrainingRecord[]        @relation("Trainer")
-  qdmsComplaintsReceived    QdmsCustomerComplaint[]     @relation("ComplaintReceiver")
-  qdmsComplaintsResponsible QdmsCustomerComplaint[]     @relation("ComplaintResponsible")
+  qdmsDocumentsOwned         QdmsDocument[]                  @relation("DocumentOwner")
+  qdmsDocumentsCreated       QdmsDocument[]                  @relation("DocumentCreator")
+  qdmsDocumentRevisions      QdmsDocumentRevision[]
+  qdmsDocumentApprovals      QdmsDocumentApproval[]
+  qdmsDocumentDistributions  QdmsDocumentDistribution[]
+  qdmsCapasInitiated         QdmsCapa[]                      @relation("CapaInitiator")
+  qdmsCapasResponsible       QdmsCapa[]                      @relation("CapaResponsible")
+  qdmsCapasVerified          QdmsCapa[]                      @relation("CapaVerifier")
+  qdmsCapaActions            QdmsCapaAction[]
+  qdmsNcrsDetected           QdmsNonConformance[]            @relation("NCRDetector")
+  qdmsNcrsDisposition        QdmsNonConformance[]            @relation("NCRDisposition")
+  qdmsNcrsClosed             QdmsNonConformance[]            @relation("NCRCloser")
+  qdmsNcrsActionResponsible  QdmsNonConformance[]            @relation("NCRActionResponsible")
+  qdmsNcrsActionApprover     QdmsNonConformance[]            @relation("NCRActionApprover")
+  qdmsNcrParticipations      QdmsNonConformanceParticipant[] @relation("NCRParticipant")
+  qdmsNcrDateHistoryChanges  QdmsNonConformanceDateHistory[] @relation("NCRDateHistoryChanger")
+  qdmsNcrAttachmentsUploaded QdmsNonConformanceAttachment[]  @relation("NCRAttachmentUploader")
+  qdmsAuditsAsAuditee        QdmsAudit[]                     @relation("Auditee")
+  qdmsAuditsAsLeadAuditor    QdmsAudit[]                     @relation("LeadAuditor")
+  qdmsAuditTeamMembers       QdmsAuditTeamMember[]
+  qdmsRisksCreated           QdmsRisk[]                      @relation("RiskCreator")
+  qdmsRisksResponsible       QdmsRisk[]
+  qdmsSupplierEvaluations    QdmsSupplierEvaluation[]
+  qdmsChangeRequests         QdmsChangeRequest[]             @relation("ChangeRequester")
+  qdmsChangesImplemented     QdmsChangeRequest[]             @relation("ChangeImplementer")
+  qdmsChangesVerified        QdmsChangeRequest[]             @relation("ChangeVerifier")
+  qdmsChangeApprovals        QdmsChangeRequestApproval[]
+  qdmsTrainingRecords        QdmsTrainingRecord[]
+  qdmsTrainingsGiven         QdmsTrainingRecord[]            @relation("Trainer")
+  qdmsComplaintsReceived     QdmsCustomerComplaint[]         @relation("ComplaintReceiver")
+  qdmsComplaintsResponsible  QdmsCustomerComplaint[]         @relation("ComplaintResponsible")
 
   // ISO 27001 Eğitim Atamaları
   iso27001TrainingAssignments Iso27001TrainingAssignment[]
@@ -336,14 +341,15 @@ model Department {
   updatedAt                     DateTime                       @updatedAt
 
   // QDMS Relations
-  qdmsDocuments             QdmsDocument[]
-  qdmsDocumentDistributions QdmsDocumentDistribution[]
-  qdmsCapas                 QdmsCapa[]
-  qdmsNonConformances       QdmsNonConformance[]
-  qdmsAudits                QdmsAudit[]
-  qdmsRisks                 QdmsRisk[]
-  qdmsChangeRequests        QdmsChangeRequest[]
-  qdmsCustomerComplaints    QdmsCustomerComplaint[]
+  qdmsDocuments               QdmsDocument[]
+  qdmsDocumentDistributions   QdmsDocumentDistribution[]
+  qdmsCapas                   QdmsCapa[]
+  qdmsNonConformances         QdmsNonConformance[]
+  qdmsNonConformancesCausedBy QdmsNonConformance[]       @relation("NCRCausedByDepartment")
+  qdmsAudits                  QdmsAudit[]
+  qdmsRisks                   QdmsRisk[]
+  qdmsChangeRequests          QdmsChangeRequest[]
+  qdmsCustomerComplaints      QdmsCustomerComplaint[]
 
   // Calendar Relations
   calendarEvents CalendarEvent[]
@@ -3809,9 +3815,27 @@ model QdmsNonConformance {
   batchNumber String? // Parti no
   quantity    Int? // Etkilenen miktar
 
-  // Departman
+  // Ek Tanım Bilgisi
+  subPartCode       String? // Alt Parça Kodu
+  customerName      String? // Müşteri Adı (ileride SyteLine'dan otomatik çekilecek)
+  workOrderNo       String? // İş Emri No (ileride SyteLine'dan otomatik çekilecek)
+  workOrderQuantity Int? // İş Emri Adedi
+  reworkQuantity    Int? // Rework Adedi
+  scrapQuantity     Int? // Hurda Adedi
+
+  // Departman (Hatanın Tespit Edildiği Bölüm)
   departmentId String?
   department   Department? @relation(fields: [departmentId], references: [id])
+
+  // Hataya Neden Olan Bölüm
+  causedByDepartmentId String?
+  causedByDepartment   Department? @relation("NCRCausedByDepartment", fields: [causedByDepartmentId], references: [id])
+
+  // Kök Neden / Aksiyon
+  rootCauseOccurrence String? @db.Text // Oluşum Kök Nedeni
+  rootCauseEscape     String? @db.Text // Kaçış Kök Nedeni
+  interimAction       String? @db.Text // Geçici Aksiyon
+  permanentAction     String? @db.Text // Kalıcı Aksiyon
 
   // Disposition
   disposition      String? // Karar (Kabul, Red, Yeniden İşleme, İmha)
@@ -3819,6 +3843,17 @@ model QdmsNonConformance {
   dispositionBy    User?     @relation("NCRDisposition", fields: [dispositionById], references: [id])
   dispositionDate  DateTime?
   dispositionNotes String?   @db.Text
+
+  // Aksiyon Planlama
+  plannedActionDate    DateTime? // Planlanan Aksiyon Tarihi
+  actionCompletionDate DateTime? // Aksiyon Tamamlama Tarihi
+  actionResponsibleId  String?
+  actionResponsible    User?     @relation("NCRActionResponsible", fields: [actionResponsibleId], references: [id])
+  actionApproverId     String?
+  actionApprover       User?     @relation("NCRActionApprover", fields: [actionApproverId], references: [id])
+
+  // Öğrenilmiş Dersler
+  lessonsLearned String[] // Excel'e aktarılabilir liste
 
   // Maliyet
   costOfNonConformance Float? // Kalitesizlik maliyeti
@@ -3833,6 +3868,11 @@ model QdmsNonConformance {
   closedById String?
   closedBy   User?          @relation("NCRCloser", fields: [closedById], references: [id])
 
+  // İlişkiler
+  participants QdmsNonConformanceParticipant[] // Toplantıya Katılanlar
+  dateHistory  QdmsNonConformanceDateHistory[] // Tarih revizyon geçmişi
+  attachments  QdmsNonConformanceAttachment[] // Döküman ekleri
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -3840,6 +3880,61 @@ model QdmsNonConformance {
   @@index([level])
   @@index([status])
   @@index([departmentId])
+  @@index([causedByDepartmentId])
+  @@index([actionResponsibleId])
+  @@index([actionApproverId])
+}
+
+// Toplantıya Katılanlar
+model QdmsNonConformanceParticipant {
+  id     String             @id @default(cuid())
+  ncrId  String
+  ncr    QdmsNonConformance @relation(fields: [ncrId], references: [id], onDelete: Cascade)
+  userId String
+  user   User               @relation("NCRParticipant", fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@unique([ncrId, userId])
+  @@index([ncrId])
+  @@index([userId])
+}
+
+// Tarih Revizyon Geçmişi (eski tarih değerlerinin görülebilmesi için)
+model QdmsNonConformanceDateHistory {
+  id    String             @id @default(cuid())
+  ncrId String
+  ncr   QdmsNonConformance @relation(fields: [ncrId], references: [id], onDelete: Cascade)
+
+  fieldName String // "plannedActionDate" | "actionCompletionDate"
+  oldValue  DateTime?
+  newValue  DateTime?
+
+  changedById String
+  changedBy   User     @relation("NCRDateHistoryChanger", fields: [changedById], references: [id])
+  changedAt   DateTime @default(now())
+
+  @@index([ncrId])
+}
+
+// Döküman Ekleri
+model QdmsNonConformanceAttachment {
+  id    String             @id @default(cuid())
+  ncrId String
+  ncr   QdmsNonConformance @relation(fields: [ncrId], references: [id], onDelete: Cascade)
+
+  fileName String
+  fileUrl  String
+  fileType String?
+  fileSize Int?
+
+  uploadedById   String
+  uploadedBy     User    @relation("NCRAttachmentUploader", fields: [uploadedById], references: [id])
+  uploadedByName String?
+
+  createdAt DateTime @default(now())
+
+  @@index([ncrId])
 }
 
 // =============================================================================
@@ -9740,22 +9835,22 @@ enum CourseDifficulty {
 }
 
 model Content {
-  id          String      @id @default(cuid())
-  courseId    String
-  title       String
-  description String?     @db.Text
-  type        ContentType
-  filePath    String?
-  fileUrl     String?
-  duration    Int?
-  fileSize    Int?
+  id               String      @id @default(cuid())
+  courseId         String
+  title            String
+  description      String?     @db.Text
+  type             ContentType
+  filePath         String?
+  fileUrl          String?
+  duration         Int?
+  fileSize         Int?
   // VIDEO: gerçek süre (sn) — ilk oynatmada istemcinin video.duration'ından yazılır,
   // %90 izleme şartı bunun üzerinden hesaplanır (duration dakika/elle, güvenilmez).
   videoDurationSec Int?
-  order       Int         @default(0)
-  isActive    Boolean     @default(true)
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  order            Int         @default(0)
+  isActive         Boolean     @default(true)
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
 
   course         Course              @relation(fields: [courseId], references: [id], onDelete: Cascade)
   progress       ContentProgress[]
@@ -10048,14 +10143,14 @@ model CourseProgress {
 }
 
 model ContentProgress {
-  id             String    @id @default(cuid())
-  userId         String
-  contentId      String
-  completed      Boolean   @default(false)
-  watchedSeconds Int?      // birikimli GERÇEK izleme (sn) — ileri sarma sayılmaz, monoton artar
-  lastPositionSec Int?     // kaldığı yer (sn) — kaldığı yerden devam için
-  completedAt    DateTime?
-  updatedAt      DateTime  @updatedAt
+  id              String    @id @default(cuid())
+  userId          String
+  contentId       String
+  completed       Boolean   @default(false)
+  watchedSeconds  Int? // birikimli GERÇEK izleme (sn) — ileri sarma sayılmaz, monoton artar
+  lastPositionSec Int? // kaldığı yer (sn) — kaldığı yerden devam için
+  completedAt     DateTime?
+  updatedAt       DateTime  @updatedAt
 
   user    User    @relation(fields: [userId], references: [id])
   content Content @relation(fields: [contentId], references: [id])

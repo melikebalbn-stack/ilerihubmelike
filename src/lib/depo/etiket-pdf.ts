@@ -1,5 +1,6 @@
 /**
- * Depo "Malzeme Tanıtım Kartı" PDF (EL-4) — 100×80 mm yatay, tek sayfa.
+ * Depo "Malzeme Tanıtım Kartı" PDF (EL-4) — fiziksel etiket 80×100 mm (yazıcı stoğu),
+ * içerik onaylanmış 100×80 mm yatay tasarımın 90° döndürülerek gömülmüş hali.
  *
  * Font/DataMatrix altyapısı üretim malzeme etiketinden (src/lib/uretim/
  * malzeme-etiketi-pdf.ts) yeniden kullanıldı: pdf-lib + @pdf-lib/fontkit +
@@ -13,7 +14,7 @@
  */
 import fs from 'fs/promises'
 import path from 'path'
-import { PDFDocument, rgb, type PDFFont } from 'pdf-lib'
+import { PDFDocument, rgb, type PDFFont, concatTransformationMatrix } from 'pdf-lib'
 import fontkit from '@pdf-lib/fontkit'
 import * as bwipjs from 'bwip-js/node'
 
@@ -34,8 +35,12 @@ export interface MalzemeEtiketiVeri {
 }
 
 const MM = 2.83465
-const PAGE_W = 100 * MM // 283.46 pt
-const PAGE_H = 80 * MM // 226.77 pt
+// Sanal tuval: onaylanmış tasarımın kendi (yatay) koordinat sistemi — değişmedi.
+const VW = 100 * MM
+const VH = 80 * MM
+// Fiziksel sayfa: gerçek etiket yazıcısı stoğu (TSC TL241, "USER" — 80×100 mm dikey).
+const PAGE_W = 80 * MM
+const PAGE_H = 100 * MM
 const BLACK = rgb(0, 0, 0)
 const WHITE = rgb(1, 1, 1)
 const GRAY = rgb(0.45, 0.45, 0.45)
@@ -103,21 +108,25 @@ export async function generateMalzemeEtiketi(veri: MalzemeEtiketiVeri): Promise<
   const bold: PDFFont = await pdf.embedFont(f.bold, { subset: true })
   const page = pdf.addPage([PAGE_W, PAGE_H])
 
+  // Sanal (yatay, 100×80) tuvali fiziksel (dikey, 80×100) sayfaya 90° döndürerek gömer:
+  // x' = PAGE_W - y ; y' = x  →  concat matrisi [a,b,c,d,e,f] = [0,1,-1,0,PAGE_W,0]
+  page.pushOperators(concatTransformationMatrix(0, 1, -1, 0, PAGE_W, 0))
+
   const margin = 4 * MM
 
   // ── Üst siyah şerit ──
   const stripH = 9 * MM
-  page.drawRectangle({ x: 0, y: PAGE_H - stripH, width: PAGE_W, height: stripH, color: BLACK })
-  const stripY = PAGE_H - stripH / 2 - 4.5
+  page.drawRectangle({ x: 0, y: VH - stripH, width: VW, height: stripH, color: BLACK })
+  const stripY = VH - stripH / 2 - 4.5
   page.drawText('ILERI GROUP', { x: margin, y: stripY, size: 12, font: bold, color: WHITE })
   const t2 = 'MALZEME TANITIM KARTI'
-  page.drawText(t2, { x: PAGE_W - margin - reg.widthOfTextAtSize(t2, 8.5), y: stripY + 1, size: 8.5, font: reg, color: WHITE })
+  page.drawText(t2, { x: VW - margin - reg.widthOfTextAtSize(t2, 8.5), y: stripY + 1, size: 8.5, font: reg, color: WHITE })
 
-  const contentTop = PAGE_H - stripH - 8
+  const contentTop = VH - stripH - 8
 
   // ── DataMatrix (sağ üst) ──
   const dmSize = 26 * MM
-  const dmX = PAGE_W - margin - dmSize
+  const dmX = VW - margin - dmSize
   const dmContent = `B:${veri.barkodId}|P:${veri.stokKodu}|T:${veri.lot ?? '*'}|Q:${veri.miktar}|S:${veri.etiketNo}`
   try {
     const png = await bwipjs.toBuffer({ bcid: 'datamatrix', text: dmContent, scale: 4, backgroundcolor: 'FFFFFF' })
@@ -127,11 +136,13 @@ export async function generateMalzemeEtiketi(veri: MalzemeEtiketiVeri): Promise<
     /* DataMatrix üretilemezse kart yine basılır */
   }
   // DM altı: görünür (insan-okunur) BARKOD NO. etiketNo alt ızgarada '(S) ETIKET NO' olarak var.
+  // Uzun barkod no'larda (çok haneli) kutuya sığması için punto otomatik düşer.
   const cap = `BARKOD NO: ${veri.barkodId}`
-  page.drawText(cap, {
-    x: dmX + (dmSize - bold.widthOfTextAtSize(cap, 7.5)) / 2,
+  const capFit = fitText(cap, bold, dmSize, 7.5, 6, true)
+  page.drawText(capFit.text, {
+    x: dmX + (dmSize - bold.widthOfTextAtSize(capFit.text, capFit.size)) / 2,
     y: contentTop - dmSize - 10,
-    size: 7.5,
+    size: capFit.size,
     font: bold,
     color: BLACK,
   })
@@ -195,14 +206,14 @@ export async function generateMalzemeEtiketi(veri: MalzemeEtiketiVeri): Promise<
 
   // ── Alt bilgi şeridi ──
   const footLineY = margin + 4 * MM
-  page.drawLine({ start: { x: margin, y: footLineY }, end: { x: PAGE_W - margin, y: footLineY }, thickness: 0.6, color: GRAY })
+  page.drawLine({ start: { x: margin, y: footLineY }, end: { x: VW - margin, y: footLineY }, thickness: 0.6, color: GRAY })
   const modulKisa = veri.kaynakModul.replace('Depo El Terminali / Stok Tasima', 'Depo Terminali/Tasima')
   const info = `Basan: ${veri.basanKullanici} · ${nowStamp()} · ${modulKisa}`
   const rightTxt = 'ILERIHub · IFS ILER2'
   const rightW = reg.widthOfTextAtSize(rightTxt, 6)
-  const infoFit = fitText(info, reg, PAGE_W - 2 * margin - rightW - 8, 6, 5, true)
+  const infoFit = fitText(info, reg, VW - 2 * margin - rightW - 8, 6, 5, true)
   page.drawText(infoFit.text, { x: margin, y: footLineY - 9, size: infoFit.size, font: reg, color: GRAY })
-  page.drawText(rightTxt, { x: PAGE_W - margin - rightW, y: footLineY - 9, size: 6, font: reg, color: GRAY })
+  page.drawText(rightTxt, { x: VW - margin - rightW, y: footLineY - 9, size: 6, font: reg, color: GRAY })
 
   return pdf.save()
 }

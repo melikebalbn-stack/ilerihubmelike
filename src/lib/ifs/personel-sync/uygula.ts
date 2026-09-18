@@ -6,7 +6,7 @@
  */
 import type { prisma as PrismaTip } from '@/lib/prisma'
 import { logAuditEvent } from '@/lib/audit-log'
-import { IfsSyncHatasi, atamaDegistir, createEmployee, createEmployeeStatus, createLaborClass, createLeavingCause, createOrg, createPosition, createSfEmployee, createSfSite, patchEmployeeFile, patchEmployeeStatus, patchLaborClass, patchLeavingCause, patchOrg, patchPosition, patchSfSite, sfSiteDurum } from './ifs-api'
+import { IfsSyncHatasi, alanFarki, atamaDegistir, createEmployee, getEmployee, patchPersGender, patchPersonInfo, personInfoAnahtari, createEmployeeStatus, createLaborClass, createLeavingCause, createOrg, createPosition, createSfEmployee, createSfSite, patchEmployeeFile, patchEmployeeStatus, patchLaborClass, patchLeavingCause, patchOrg, patchPosition, patchSfSite, sfSiteDurum } from './ifs-api'
 import type { KuyrukDeposu } from './kuyruk'
 import { istihdamSonlandir } from './terminate'
 import { IFS_SYNC_AKTOR_ID } from './kodlar'
@@ -43,11 +43,27 @@ async function yaz(k: PlanKalemi): Promise<number> {
         const r = await istihdamSonlandir({ empNo: k.ifsAnahtar, bitis: String(g.EmploymentEndDate), leavingCauseId: Number(g.LeavingCauseId), leavingCauseType: String(g.LeavingCauseType ?? '') })
         return r.status
       }
-      // Atama sihirbazı + (varsa) Employee File PATCH.
-      const { _atama, ...alanlar } = g as { _atama?: { OrgCode: string; PosCode: string; ValidFrom: string } } & Record<string, unknown>
+      // Atama sihirbazı + kişi alanları (PersonInfoSet / PersSet) + (varsa) Employee File PATCH.
+      const { _atama, _kisi, _cinsiyet, ...alanlar } = g as {
+        _atama?: { OrgCode: string; PosCode: string; ValidFrom: string }
+        _kisi?: { FirstName: string; LastName: string; Name: string }
+        _cinsiyet?: 'Id1' | 'Id2'
+      } & Record<string, unknown>
       let st = 204
       if (_atama) st = (await atamaDegistir(k.ifsAnahtar, _atama.OrgCode, _atama.PosCode, _atama.ValidFrom)).status
+      if (_kisi) st = (await patchPersonInfo(k.ifsAnahtar, _kisi)).status
+      if (_cinsiyet) st = (await patchPersGender(k.ifsAnahtar, _cinsiyet)).status
       if (Object.keys(alanlar).length) st = (await patchEmployeeFile(k.ifsAnahtar, alanlar)).status
+      // Alan bazlı round-trip: kişi alanları CompanyPersons görünümünden okunur (PersonInfo PATCH'i oraya türer).
+      if (_kisi || _cinsiyet) {
+        const sonra = await getEmployee(k.ifsAnahtar)
+        const beklenen: Record<string, unknown> = {
+          ...(_kisi ? { Fname: _kisi.FirstName, Lname: _kisi.LastName, InternalDisplayName: _kisi.Name } : {}),
+          ...(_cinsiyet ? { Gender: _cinsiyet === 'Id1' ? 'Male' : 'Female' } : {}),
+        }
+        const uyusmayan = sonra ? alanFarki(beklenen, sonra.body as unknown as Record<string, unknown>) : ['kayıt yok']
+        if (uyusmayan.length) throw new IfsSyncHatasi(st, `round-trip: kişi PATCH ${st} ama ${uyusmayan.join('; ')}`, personInfoAnahtari(k.ifsAnahtar))
+      }
       return st
     }
     case 'SF_EMPLOYEE': return (await createSfEmployee(k.ifsAnahtar)).status

@@ -65,6 +65,14 @@ export const IFS_ORG_TERM = { UST: 6, ALT: 8 } as const
 // sayar (5 kişi her gece yeniden UPDATE oluyordu). İstihdam başlangıcı EmploymentPeriodsHandling
 // işi (403). Fark artık ATLA(sebep)'te listelenir.
 export const EMPLOYEE_PATCH_ALANLARI: readonly string[] = ['MasterEmployment']
+/**
+ * Kişi alanları (18.09, grant sonrası): ad/soyad/görünen ad PersonHandling.PersonInfoSet PATCH ile,
+ * cinsiyet PersonnelFileHandling.PersSet PATCH ile (enum Lookup_Gender Id1=Male, Id2=Female) yazılır.
+ * CompanyPersons görünümünde Fname/Lname/InternalDisplayName/Gender olarak okunur (round-trip oradan).
+ */
+export const EMPLOYEE_KISI_ALANLARI: readonly string[] = ['Fname', 'Lname', 'InternalDisplayName', 'Gender']
+/** IFS Genders LOV metni → PersSet.Gender enum üyesi. */
+export const IFS_GENDER_ENUM: Readonly<Record<'Male' | 'Female', 'Id1' | 'Id2'>> = { Male: 'Id1', Female: 'Id2' }
 /** Atama alanları — SingleEmployeeAssignmentsHandling sihirbazıyla değişir (bkz. ifs-api atamaDegistir). */
 export const EMPLOYEE_ATAMA_ALANLARI: readonly string[] = ['OrgCode', 'PosCode']
 /** Pasifleştirme (istihdam bitişi): TerminateEmploymentHandling asistanı ile (terminate.ts, 18.09 kanıtlı). true → PASIF kalemi üretilir. */

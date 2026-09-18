@@ -9,7 +9,7 @@
  */
 import type { prisma as PrismaTip } from '@/lib/prisma'
 import {
-  EMPLOYEE_ATAMA_ALANLARI, EMPLOYEE_PASIF_DESTEKLI, EMPLOYEE_PATCH_ALANLARI, EMPLOYEE_SABITLERI, IFS_ACIK_UCLU_TARIH, IFS_LABOR_CLASS_SABITLERI, IFS_ORG_TERM, IFS_STRUCTURE, IFS_STRUCT_BU_ID, IFS_ORG_VALID_FROM, IFS_ORG_VALID_TO, KAYNAKHANE_BOLUM, KURUL_KOD_ONEKI,
+  EMPLOYEE_ATAMA_ALANLARI, EMPLOYEE_KISI_ALANLARI, EMPLOYEE_PASIF_DESTEKLI, EMPLOYEE_PATCH_ALANLARI, IFS_GENDER_ENUM, EMPLOYEE_SABITLERI, IFS_ACIK_UCLU_TARIH, IFS_LABOR_CLASS_SABITLERI, IFS_ORG_TERM, IFS_STRUCTURE, IFS_STRUCT_BU_ID, IFS_ORG_VALID_FROM, IFS_ORG_VALID_TO, KAYNAKHANE_BOLUM, KURUL_KOD_ONEKI,
   KodTuretmeHatasi, adSoyadAyir, baslikHali, bolumShopFloorMu, ifsCinsiyet, ifsTarih, kaynakTuru, kisiShopFloorMu,
   laborClassAciklamasi, laborClassKodu, orgKodu, posKodu, sicilSenkronKapsamindaMi, type KaynakTuru,
 } from './kodlar'
@@ -372,12 +372,17 @@ export async function planla(db: Db, sec: PlanSecenekleri = {}): Promise<Senkron
       // (ad, cinsiyet, ORG/POZİSYON ATAMASI) bu istemciye açık projeksiyonlarla yazılamıyor → sebepte listelenir.
       const yazilabilir = Object.fromEntries(Object.entries(f).filter(([a]) => EMPLOYEE_PATCH_ALANLARI.includes(a)))
       const atamaDegisti = Object.keys(f).some((a) => EMPLOYEE_ATAMA_ALANLARI.includes(a))
-      const yazilamaz = Object.keys(f).filter((a) => !EMPLOYEE_PATCH_ALANLARI.includes(a) && !EMPLOYEE_ATAMA_ALANLARI.includes(a))
+      // Kişi alanları (ad/soyad/görünen ad → PersonInfoSet; cinsiyet → PersSet). Hub cinsiyeti boşsa gönderilmez.
+      const adDegisti = ['Fname', 'Lname', 'InternalDisplayName'].some((a) => a in f)
+      const cinsiyetDegisti = 'Gender' in f && !!cinsiyet
+      const yazilamaz = Object.keys(f).filter((a) => !EMPLOYEE_PATCH_ALANLARI.includes(a) && !EMPLOYEE_ATAMA_ALANLARI.includes(a) && !(EMPLOYEE_KISI_ALANLARI.includes(a) && (a === 'Gender' ? cinsiyetDegisti : adDegisti)))
       const govde: Record<string, unknown> = Object.fromEntries(Object.entries(yazilabilir).map(([a, v]) => [a, v.yeni]))
       // Atama değişimi: sihirbaz (org+pos birlikte; ValidFromNew = bugün, eski atama dün kapanır).
       if (atamaDegisti) govde._atama = { OrgCode: org.ifsKod, PosCode: k.koltuk.ifsKod, ValidFrom: bugun }
-      const yazilamazNotu = yazilamaz.length ? `IFS_AD_GUNCELLEME_YOK: ${yazilamaz.join(',')} farklı ama açık projeksiyonlarda güncellenemiyor` : undefined
-      if (Object.keys(yazilabilir).length || atamaDegisti) empKalemleri.push({ varlik: 'EMPLOYEE', hubId: k.id, ifsAnahtar: k.sicilNo, etiket, islem: 'UPDATE', fark: f, govde, etag: m['@odata.etag'] ?? null, sebep: [sebepNot, yazilamazNotu].filter(Boolean).join(' · ') || undefined })
+      if (adDegisti) govde._kisi = { FirstName: Fname, LastName: Lname, Name: gorunenAd }
+      if (cinsiyetDegisti) govde._cinsiyet = IFS_GENDER_ENUM[cinsiyet!]
+      const yazilamazNotu = yazilamaz.length ? `IFS_ALAN_GUNCELLEME_YOK: ${yazilamaz.join(',')} farklı ama açık projeksiyonlarda güncellenemiyor` : undefined
+      if (Object.keys(yazilabilir).length || atamaDegisti || adDegisti || cinsiyetDegisti) empKalemleri.push({ varlik: 'EMPLOYEE', hubId: k.id, ifsAnahtar: k.sicilNo, etiket, islem: 'UPDATE', fark: f, govde, etag: m['@odata.etag'] ?? null, sebep: [sebepNot, yazilamazNotu].filter(Boolean).join(' · ') || undefined })
       else if (yazilamaz.length) empKalemleri.push({ varlik: 'EMPLOYEE', hubId: k.id, ifsAnahtar: k.sicilNo, etiket, islem: 'ATLA', fark: f, sebep: yazilamazNotu })
       else empKalemleri.push({ varlik: 'EMPLOYEE', hubId: k.id, ifsAnahtar: k.sicilNo, etiket, islem: 'NOOP', fark: f, sebep: sebepNot })
     }

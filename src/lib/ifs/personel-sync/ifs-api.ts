@@ -175,6 +175,25 @@ export const getEmpEmployedTime = async (empNo: string): Promise<IfsEmpEmployedT
   return r.body.value?.[0] ?? null
 }
 
+/**
+ * KİŞİ alanları (18.09 grant sonrası):
+ *  - Ad/soyad/görünen ad: PersonHandling.svc/PersonInfoSet(PersonId) PATCH {FirstName, LastName, Name}
+ *    → CompanyPersons Fname/Lname/InternalDisplayName kendiliğinden türer. PersonsHandling 403, gerekmiyor.
+ *  - Cinsiyet: PersonnelFileHandling.svc/PersSet(PersonId) PATCH {Gender:'Id1'|'Id2'} (enum Lookup_Gender;
+ *    sayı/'Male' 400). CompanyPersonSet.Gender "not updatable".
+ * Round-trip çağıran tarafta (uygula) CompanyPersons üzerinden alan bazlı.
+ */
+export const personInfoAnahtari = (personId: string) => `PersonHandling.svc/PersonInfoSet(PersonId='${q(personId)}')`
+export const persAnahtari = (personId: string) => `PersonnelFileHandling.svc/PersSet(PersonId='${q(personId)}')`
+export const patchPersonInfo = async (personId: string, g: { FirstName?: string; LastName?: string; Name?: string }) => {
+  const cur = await istek<Record<string, unknown>>(personInfoAnahtari(personId))
+  return istek(personInfoAnahtari(personId), { method: 'PATCH', headers: { 'If-Match': cur.etag ?? '*' }, body: JSON.stringify(g) })
+}
+export const patchPersGender = async (personId: string, gender: 'Id1' | 'Id2') => {
+  const cur = await istek<Record<string, unknown>>(persAnahtari(personId))
+  return istek(persAnahtari(personId), { method: 'PATCH', headers: { 'If-Match': cur.etag ?? '*' }, body: JSON.stringify({ Gender: gender }) })
+}
+
 /** Çalışan GÜNCELLEME: PersonnelFileHandling (Employee File). GET → ETag → PATCH If-Match. Yalnız EMPLOYEE_PATCH_ALANLARI. */
 export interface IfsEmployeeFile { EmpNo: string; EmploymentDate: string | null; MasterEmployment: boolean | null; OrgCode: string | null; PosCode: string | null; EmployeeStatus: string | null; '@odata.etag'?: string }
 export const empFileAnahtari = (empNo: string) => `PersonnelFileHandling.svc/CompanyPersonSet(CompanyId='${IFS_COMPANY}',EmpNo='${q(empNo)}')`

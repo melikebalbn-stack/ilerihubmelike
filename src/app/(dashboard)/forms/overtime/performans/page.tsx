@@ -20,6 +20,8 @@ import {
   Recycle, AlertTriangle, TrendingUp,
 } from "lucide-react"
 import { apiFetch } from "@/lib/api-fetch"
+import VeriKalitesiKpiPanel from "@/components/overtime/VeriKalitesiKpiPanel"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 const NAVY = "#1B4F72"
 
@@ -117,6 +119,8 @@ async function fetchJson<T>(url: string): Promise<T | { __err: number }> {
 }
 
 export default function OvertimePerformancePage() {
+  // KPI Faz 2: üst sekme — "Performans" (mevcut) | "Veri Kalitesi KPI" (yeni panel, kendi veri yükler)
+  const [sekme, setSekme] = useState<"performans" | "kpi">("performans")
   const [mode, setMode] = useState<Mode>("day")
   const [dayDate, setDayDate] = useState("")
   const [weekStart, setWeekStart] = useState("")
@@ -254,6 +258,14 @@ export default function OvertimePerformancePage() {
         <h1 className="text-2xl font-bold" style={{ color: NAVY }}>Mesai Üretim Performansı</h1>
       </div>
 
+      <Tabs value={sekme} onValueChange={(v) => setSekme(v as "performans" | "kpi")}>
+        <TabsList>
+          <TabsTrigger value="performans">Performans</TabsTrigger>
+          <TabsTrigger value="kpi">Veri Kalitesi KPI</TabsTrigger>
+        </TabsList>
+      </Tabs>
+
+      {sekme === "kpi" ? <VeriKalitesiKpiPanel /> : (<>
       {/* ── 1) ÜÇ SEÇİCİ (yan yana; aktif vurgulu, pasifler soluk) ── */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         {/* GÜN */}
@@ -470,6 +482,7 @@ export default function OvertimePerformancePage() {
           </Card>
         </>
       )}
+      </>)}
     </div>
   )
 }

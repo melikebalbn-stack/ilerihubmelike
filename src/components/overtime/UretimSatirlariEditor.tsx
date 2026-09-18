@@ -11,10 +11,18 @@ import { Plus, Trash2 } from "lucide-react"
 export interface UretimSatirInput {
   parcaKodu: string
   hedefAdet: string // string state; submit sırasında Number'a çevrilir
+  // KPI Faz 2: "Sayılamayan iş" (ayar, birim sorumlusu, eğitim…) — işaretliyken hedef 0'a
+  // kilitlenir. Yalnız UI durumu; API/şemada karşılığı hedefAdet=0 (KPI'ya girmez).
+  sayilamayan?: boolean
 }
 
 export function emptyUretimSatir(): UretimSatirInput {
-  return { parcaKodu: "", hedefAdet: "" }
+  return { parcaKodu: "", hedefAdet: "", sayilamayan: false }
+}
+
+/** Mevcut satırdan UI durumu: hedef 0 ise kutucuk işaretli gelir (kayıtlı 0 = sayılamayan). */
+export function sayilamayanMi(hedefAdet: number | null | undefined): boolean {
+  return hedefAdet === 0
 }
 
 /** Bir satır dolu mu (herhangi bir alanı doldurulmuş)? */
@@ -66,6 +74,10 @@ export default function UretimSatirlariEditor({ rows, onChange, isVardiya = fals
   function update(i: number, field: keyof UretimSatirInput, value: string) {
     onChange(rowsSafe.map((r, idx) => (idx === i ? { ...r, [field]: value } : r)))
   }
+  // Sayılamayan iş: işaretlenince hedef "0" ve kilitli; kaldırılınca alan boşalır (tekrar zorunlu).
+  function toggleSayilamayan(i: number, checked: boolean) {
+    onChange(rowsSafe.map((r, idx) => (idx === i ? { ...r, sayilamayan: checked, hedefAdet: checked ? "0" : "" } : r)))
+  }
   function addRow() {
     onChange([...rowsSafe, emptyUretimSatir()])
   }
@@ -85,6 +97,9 @@ export default function UretimSatirlariEditor({ rows, onChange, isVardiya = fals
         <div className="w-28 text-xs font-medium text-gray-600">
           Hedef Adet
           {!isVardiya && <span className="text-red-500"> *</span>}
+        </div>
+        <div className="w-24 text-xs font-medium text-gray-600" title="Ayar, birim sorumlusu, eğitim gibi adetle ölçülmeyen iş — KPI'ya girmez">
+          Sayılamayan
         </div>
         <div className="w-9" />
       </div>
@@ -118,11 +133,22 @@ export default function UretimSatirlariEditor({ rows, onChange, isVardiya = fals
                 min="0"
                 placeholder="Ör: 50"
                 value={row.hedefAdet}
-                disabled={disabled}
+                disabled={disabled || !!row.sayilamayan}
                 onChange={(e) => update(i, "hedefAdet", e.target.value)}
                 className={showHedefErr ? "border-red-300 focus-visible:ring-red-400" : ""}
               />
             </div>
+            <label className="w-24 flex items-center gap-1.5 h-10 text-xs text-gray-700 select-none">
+              <input
+                type="checkbox"
+                className="h-4 w-4"
+                checked={!!row.sayilamayan}
+                disabled={disabled}
+                onChange={(e) => toggleSayilamayan(i, e.target.checked)}
+                aria-label="Sayılamayan iş"
+              />
+              Sayılamayan
+            </label>
             <Button
               type="button"
               variant="ghost"
@@ -150,7 +176,7 @@ export default function UretimSatirlariEditor({ rows, onChange, isVardiya = fals
       </Button>
 
       {!isVardiya && !rowsSafe.some(satirGecerliMi) && (
-        <p className="text-xs text-red-500">En az bir geçerli üretim satırı gerekli (parça kodu + hedef adet &gt; 0).</p>
+        <p className="text-xs text-red-500">En az bir geçerli üretim satırı gerekli (parça kodu + hedef adet; sayılamayan iş için kutucuğu işaretleyin).</p>
       )}
     </div>
   )

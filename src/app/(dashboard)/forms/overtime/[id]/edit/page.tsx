@@ -17,6 +17,7 @@ import UretimSatirlariEditor, {
   emptyUretimSatir,
   personelSatirlariGecerli,
   toApiUretimSatirlari,
+  sayilamayanMi,
 } from "@/components/overtime/UretimSatirlariEditor"
 
 // ---------------------------------------------------------------------------
@@ -170,6 +171,7 @@ export default function EditOvertimeFormPage() {
                 ? p.uretimSatirlari.map((u: { parcaKodu?: string | null; hedefAdet?: number | null }) => ({
                     parcaKodu: u.parcaKodu ?? "",
                     hedefAdet: u.hedefAdet != null ? String(u.hedefAdet) : "",
+                    sayilamayan: sayilamayanMi(u.hedefAdet), // kayıtlı 0 → kutucuk işaretli
                   }))
                 : [emptyUretimSatir()],
           }

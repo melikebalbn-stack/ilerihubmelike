@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { apiSuccess, apiError, apiNotFound, apiBadRequest } from '@/lib/api-response'
 import { requireUser } from '@/lib/auth/require-user'
 import { resolveAllowedDepts } from '@/lib/overtime-performance'
-import { buildSingles, buildUretimRows, buildBackfillRow, coerceIntNonNeg, coerceHedefAdet, buildParcaKoduDuzeltme, type OvertimePersonnelInput } from '@/lib/overtime-uretim'
+import { buildSingles, buildUretimRows, buildBackfillRow, coerceIntNonNeg, coerceHedefAdet, buildParcaKoduDuzeltme, eksikHedefSatiri, type OvertimePersonnelInput } from '@/lib/overtime-uretim'
 import { logAuditEvent } from '@/lib/audit-log'
 
 // Bölüm adı normalize: workDepartment ↔ omurga (getDeptSubtreeNames) adları güvenli
@@ -87,6 +87,11 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     // Faz 1 çift yazma: tekil alanlar (buildSingles) + çoklu üretim satırları.
     // targetProduction retired — yazılmıyor.
     const pInput = body as OvertimePersonnelInput
+    // HEDEF ZORUNLU (MESAI): parça kodu girilmişse hedef adet şart; sayılamayan iş için 0.
+    if (form.formTipi !== 'VARDIYA') {
+      const eksik = eksikHedefSatiri(pInput)
+      if (eksik) return apiBadRequest(eksik)
+    }
     const singles = buildSingles(pInput)
 
     // Personeli ekle

@@ -127,6 +127,28 @@ export function buildUretimRows(p: OvertimePersonnelInput): NormalizedUretimRow[
 }
 
 /**
+ * HEDEF ZORUNLU (KPI Faz 2, 18.09.2026): parça kodu girilmiş ama hedefAdet boş/geçersiz olan
+ * satır SESSİZCE ATILMAZ — çağıran 400 döner. buildUretimRows'un "atla" davranışı
+ * korunur (legacy/VARDIYA), bu yardımcı yalnız MESAI'de create/update/personel-ekle
+ * yolunda çağrılır. Döner: hata metni (ilk sorunlu satır) ya da null.
+ * "Sayılamayan iş" (ayar, birim sorumlusu, eğitim…) = hedefAdet 0: kaydedilir, KPI'ya girmez.
+ * Ayrı şema alanı gerekmez — 0 zaten "kasıtlı, performansa girmez" anlamını taşıyor.
+ */
+export function eksikHedefSatiri(p: OvertimePersonnelInput): string | null {
+  const raw: UretimRowInput[] = hasExplicitRows(p)
+    ? (p.uretimSatirlari as UretimRowInput[])
+    : [{ parcaKodu: p.mesaiNedeni ?? null, hedefAdet: p.hedefAdet ?? null }]
+  for (let i = 0; i < raw.length; i++) {
+    const parcaKodu = String(raw[i].parcaKodu ?? '').trim()
+    if (parcaKodu === '') continue
+    if (coerceHedefAdet(raw[i].hedefAdet) == null) {
+      return `"${parcaKodu}" satırı için hedef adet zorunlu (sayılamayan iş için 0 girin)`
+    }
+  }
+  return null
+}
+
+/**
  * OvertimePersonnel tekil alanları (create/update sırasında yazılacak). targetProduction
  * ARTIK YAZILMAZ. `uretimSatirlari` geldiyse 1. geçerli satırdan; yoksa legacy tekil
  * alanlardan türetilir. Tekil `mesaiNedeni` geri uyumluluk için parça kodunu taşımayı

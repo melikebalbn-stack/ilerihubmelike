@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { apiSuccess, apiError, apiBadRequest } from '@/lib/api-response'
 import { OvertimeType, OvertimeStatus, FormTipi } from '@/generated/prisma'
 import { requireUser } from '@/lib/auth/require-user'
-import { buildSingles, buildUretimRows, type OvertimePersonnelInput } from '@/lib/overtime-uretim'
+import { buildSingles, buildUretimRows, eksikHedefSatiri, type OvertimePersonnelInput } from '@/lib/overtime-uretim'
 import { resolveAllowedDepts } from '@/lib/overtime-performance'
 
 // Vardiya Faz 1: gece vardiyası sabit penceresi (Pzt-Cuma 21:00 → ertesi 07:00).
@@ -293,6 +293,9 @@ export async function POST(request: NextRequest) {
       }
       // Faz 2: MESAI'de en az 1 geçerli üretim satırı (parça kodu + hedefAdet >= 0) zorunlu.
       // buildUretimRows uretimSatirlari[] veya legacy tekil alanlardan türetir. VARDIYA: opsiyonel.
+      // HEDEF ZORUNLU: parça kodu var, hedef yok → açık 400 (sessiz atlama yok).
+      const eksik = isVardiya ? null : eksikHedefSatiri(p)
+      if (eksik) return apiBadRequest(eksik)
       if (!isVardiya && buildUretimRows(p).length === 0) {
         return apiBadRequest('Her personel için en az bir parça kodu ve hedef adet (0 veya daha büyük) girilmelidir')
       }

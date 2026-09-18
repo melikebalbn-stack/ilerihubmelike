@@ -162,6 +162,7 @@ export default function OvertimeDetailPage() {
   const [addWorkDept, setAddWorkDept] = useState("")
   const [addHedefAdet, setAddHedefAdet] = useState("")
   const [addParcaKodu, setAddParcaKodu] = useState("") // Faz 2: eklenen personelin parça kodu
+  const [addSayilamayan, setAddSayilamayan] = useState(false) // KPI Faz 2: sayılamayan iş → hedef 0
 
   // Bölümler yüklenince varsayılan workDept seç
   useEffect(() => {
@@ -212,6 +213,13 @@ export default function OvertimeDetailPage() {
   }, [allPersonnelItems.length])
 
   async function handleAddPersonnel(personnelItemId: string) {
+    // HEDEF ZORUNLU (KPI Faz 2): MESAI'de parça kodu + hedef adet (sayılamayan iş → 0) girilmeden ekleme yok.
+    if (form?.formTipi !== "VARDIYA") {
+      if (!addParcaKodu.trim()) { toast.error("Parça kodu (Mesai Nedeni) zorunlu"); return }
+      if (addHedefAdet.trim() === "" || !Number.isFinite(Number(addHedefAdet)) || Number(addHedefAdet) < 0) {
+        toast.error("Hedef adet zorunlu — sayılamayan iş için kutucuğu işaretleyin"); return
+      }
+    }
     setAddingId(personnelItemId)
     try {
       const targetPerson = allPersonnelItems.find((p) => p.id === personnelItemId)
@@ -237,6 +245,7 @@ export default function OvertimeDetailPage() {
       setForm(updated)
       setAddHedefAdet("")
       setAddParcaKodu("")
+      setAddSayilamayan(false)
       toast.success("Personel eklendi")
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Bir hata oluştu")
@@ -786,11 +795,22 @@ export default function OvertimeDetailPage() {
                 type="number"
                 inputMode="numeric"
                 min="0"
-                placeholder="Hedef Adet"
+                placeholder="Hedef Adet (zorunlu)"
                 value={addHedefAdet}
+                disabled={addSayilamayan}
                 onChange={(e) => setAddHedefAdet(e.target.value)}
                 className="w-32"
               />
+              {/* KPI Faz 2: sayılamayan iş → hedef 0 kaydedilir, KPI'ya girmez */}
+              <label className="flex items-center gap-1.5 text-xs whitespace-nowrap select-none">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4"
+                  checked={addSayilamayan}
+                  onChange={(e) => { setAddSayilamayan(e.target.checked); setAddHedefAdet(e.target.checked ? "0" : "") }}
+                />
+                Sayılamayan iş
+              </label>
               <Button
                 variant="ghost"
                 size="sm"

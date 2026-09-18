@@ -3,6 +3,7 @@ import {
   buildUretimRows,
   buildSingles,
   buildBackfillRow,
+  eksikHedefSatiri,
   buildParcaKoduDuzeltme,
   coerceIntNonNeg,
   coerceHedefAdet,
@@ -344,5 +345,21 @@ describe('buildParcaKoduDuzeltme', () => {
     expect(bosNote.data?.parcaKoduDuzeltmeNote).toBeNull() // verildi ama boş → null
     const yokNote = buildParcaKoduDuzeltme({ parcaKodu: '8048', eskiParcaKodu: null }, '8049', U, undefined, NOW)
     expect('parcaKoduDuzeltmeNote' in yokNote.data!).toBe(false) // hiç verilmedi → eklenmez
+  })
+})
+
+// KPI Faz 2 (18.09.2026): hedef zorunlu — parça kodu var, hedef yok → açık hata metni.
+describe('eksikHedefSatiri', () => {
+  it('parça kodu + hedef boş → hata metni (satır adıyla)', () => {
+    expect(eksikHedefSatiri({ uretimSatirlari: [{ parcaKodu: 'AYAR', hedefAdet: '' }] })).toContain('"AYAR"')
+  })
+  it('hedef 0 (sayılamayan iş) → geçerli, hata yok', () => {
+    expect(eksikHedefSatiri({ uretimSatirlari: [{ parcaKodu: 'AYAR', hedefAdet: 0 }] })).toBeNull()
+  })
+  it('legacy tekil alan: mesaiNedeni var, hedefAdet null → hata', () => {
+    expect(eksikHedefSatiri({ mesaiNedeni: '8005', hedefAdet: null })).not.toBeNull()
+  })
+  it('parça kodu boş satır (dokunulmamış) → yok sayılır', () => {
+    expect(eksikHedefSatiri({ uretimSatirlari: [{ parcaKodu: '', hedefAdet: '' }, { parcaKodu: 'X', hedefAdet: 5 }] })).toBeNull()
   })
 })

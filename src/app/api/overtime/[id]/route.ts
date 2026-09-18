@@ -4,7 +4,7 @@ import { apiSuccess, apiError, apiNotFound, apiBadRequest } from '@/lib/api-resp
 import { OvertimeType } from '@/generated/prisma'
 import { requireUser } from '@/lib/auth/require-user'
 import { resolveAllowedDepts } from '@/lib/overtime-performance'
-import { buildSingles, buildUretimRows, type OvertimePersonnelInput } from '@/lib/overtime-uretim'
+import { buildSingles, buildUretimRows, eksikHedefSatiri, type OvertimePersonnelInput } from '@/lib/overtime-uretim'
 
 interface RouteParams {
   params: Promise<{ id: string }>
@@ -239,6 +239,9 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         }
         // Faz 2: MESAI'de en az 1 geçerli üretim satırı (parça kodu + hedefAdet >= 0) zorunlu.
         // VARDIYA formunda opsiyonel. buildUretimRows uretimSatirlari[] veya legacy'den türetir.
+        // HEDEF ZORUNLU: parça kodu var, hedef yok → açık 400 (sessiz atlama yok).
+        const eksik = isVardiyaForm ? null : eksikHedefSatiri(p)
+        if (eksik) return apiBadRequest(eksik)
         if (!isVardiyaForm && buildUretimRows(p).length === 0) {
           return apiBadRequest('Her personel için en az bir parça kodu ve hedef adet (0 veya daha büyük) girilmelidir')
         }

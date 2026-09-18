@@ -72,6 +72,9 @@ async function fetchOverlappingForms(from: Date, to: Date) {
  */
 async function aggregate(from: Date, to: Date, allowedDepts: string[] | undefined, granularity: Granularity): Promise<PerfResult> {
   const deptFilter = allowedDepts === undefined ? null : new Set(allowedDepts)
+  // KPI Faz 2 (18.09.2026): ana performans hesabı da uretimYapar=false bölümleri DIŞLAR
+  // (eksik-veri raporuyla aynı tek kaynak; eskiden yalnız o rapor bakıyordu).
+  const nonUretim = await getNonUretimBolumler()
   const forms = await fetchOverlappingForms(from, to)
 
   const byDept = new Map<string, PerfKisi[]>()
@@ -94,6 +97,7 @@ async function aggregate(from: Date, to: Date, allowedDepts: string[] | undefine
 
     for (const op of f.personnel) {
       const dept = op.workDepartment || '—'
+      if (nonUretim.has(dept)) continue // üretim-dışı bölüm → performansa girmez
       if (deptFilter && !deptFilter.has(dept)) continue
       // Üretim satırları TEK KAYNAK. Tekil OvertimePersonnel.hedefAdet/gerceklesenAdet
       // KULLANILMAZ: (a) hedef düzeltmesi yalnız satıra yazılır (personnel PUT singleData'ya
@@ -429,4 +433,104 @@ export async function getLatestApprovedDate(): Promise<Date | null> {
     select: { date: true },
   })
   return latest?.date ?? null
+}
+
+// ───────────────────────── KPI Faz 2: veri kalitesi (aylık × bölüm) ─────────────────────────
+
+export type KpiBolumSatir = {
+  bolum: string
+  satir: number // hedef>0 satır (sayılamayan hedef=0 HARİÇ)
+  eksik: number // gerceklesenAdet NULL
+  eksikPct: number
+  hesaplanan: number // hedef>0 ve gerçekleşen dolu
+  ustu100: number
+  ustu100Pct: number
+  ustu150: number
+  ustu150Pct: number
+  hedefToplam: number
+  gercToplam: number
+  agirlikliPct: number | null // Σgerç/Σhedef — satır ortalaması KULLANILMAZ
+}
+export type KpiAy = { ay: string; form: number } & Omit<KpiBolumSatir, 'bolum'>
+export type KpiResult = {
+  from: string
+  to: string
+  haricBolumler: string[] // uretimYapar=false
+  aylar: KpiAy[] // kronolojik
+  bolumler: KpiBolumSatir[] // en kötüden iyiye (eksikPct desc, sonra ustu100Pct desc)
+}
+
+/** KPI penceresi başlangıcı: Temmuz 2026 (Haziran yapısal — adet alanı yoktu). */
+export const KPI_BASLANGIC = new Date(Date.UTC(2026, 6, 1))
+
+const pctOrNull = (a: number, b: number): number | null => (b > 0 ? Math.round((a / b) * 1000) / 10 : null)
+const pct0 = (a: number, b: number): number => pctOrNull(a, b) ?? 0
+
+type KpiAcc = { form: Set<string>; satir: number; eksik: number; hesaplanan: number; ustu100: number; ustu150: number; hedef: number; gerc: number }
+const newAcc = (): KpiAcc => ({ form: new Set(), satir: 0, eksik: 0, hesaplanan: 0, ustu100: 0, ustu150: 0, hedef: 0, gerc: 0 })
+const finishAcc = (a: KpiAcc) => ({
+  satir: a.satir,
+  eksik: a.eksik,
+  eksikPct: pct0(a.eksik, a.satir),
+  hesaplanan: a.hesaplanan,
+  ustu100: a.ustu100,
+  ustu100Pct: pct0(a.ustu100, a.hesaplanan),
+  ustu150: a.ustu150,
+  ustu150Pct: pct0(a.ustu150, a.hesaplanan),
+  hedefToplam: a.hedef,
+  gercToplam: a.gerc,
+  agirlikliPct: pctOrNull(a.gerc, a.hedef),
+})
+
+/**
+ * Mesai veri-kalitesi KPI'ı — APPROVED MESAI formları, form tarihi (date) ile aya bağlanır
+ * (prorate YOK: KPI "girişin tamlığı"nı ölçer, üretim dağılımını değil).
+ *   - hedefAdet=0 (sayılamayan iş) her ölçütte HARİÇ; hedef NULL satır da hariç (Temmuz sonrası yok)
+ *   - eksik = gerceklesenAdet NULL (hedef>0 satırlarda)
+ *   - >%100 / >%150 = hesaplanan (hedef>0 ∧ gerç dolu) satırlar üzerinden
+ *   - ağırlıklı performans = Σgerç/Σhedef (hesaplanan satırlar) — satır ortalaması kullanılmaz
+ *   - uretimYapar=false bölümler hariç; allowedDepts (resolveAllowedDepts) uygulanır
+ */
+export async function getVeriKalitesiKpi(from: Date, to: Date, allowedDepts?: string[]): Promise<KpiResult> {
+  const nonUretim = await getNonUretimBolumler()
+  const deptFilter = allowedDepts === undefined ? null : new Set(allowedDepts)
+  const forms = await prisma.overtimeForm.findMany({
+    where: { status: 'APPROVED', formTipi: 'MESAI', date: { gte: from, lte: to } },
+    select: {
+      id: true,
+      date: true,
+      personnel: { select: { workDepartment: true, uretimSatirlari: { select: { hedefAdet: true, gerceklesenAdet: true } } } },
+    },
+  })
+  const byAy = new Map<string, KpiAcc>()
+  const byDept = new Map<string, KpiAcc>()
+  for (const f of forms) {
+    const ay = f.date.toISOString().slice(0, 7)
+    for (const op of f.personnel) {
+      const dept = op.workDepartment || '—'
+      if (nonUretim.has(dept)) continue
+      if (deptFilter && !deptFilter.has(dept)) continue
+      for (const u of op.uretimSatirlari) {
+        if (u.hedefAdet == null || u.hedefAdet <= 0) continue // sayılamayan / hedefsiz → KPI dışı
+        if (!byAy.has(ay)) byAy.set(ay, newAcc())
+        if (!byDept.has(dept)) byDept.set(dept, newAcc())
+        for (const acc of [byAy.get(ay)!, byDept.get(dept)!]) {
+          acc.form.add(f.id)
+          acc.satir++
+          if (u.gerceklesenAdet == null) { acc.eksik++; continue }
+          acc.hesaplanan++
+          acc.hedef += u.hedefAdet
+          acc.gerc += u.gerceklesenAdet
+          const p = (u.gerceklesenAdet / u.hedefAdet) * 100
+          if (p > 100) acc.ustu100++
+          if (p > 150) acc.ustu150++
+        }
+      }
+    }
+  }
+  const aylar: KpiAy[] = [...byAy.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([ay, a]) => ({ ay, form: a.form.size, ...finishAcc(a) }))
+  const bolumler: KpiBolumSatir[] = [...byDept.entries()]
+    .map(([bolum, a]) => ({ bolum, ...finishAcc(a) }))
+    .sort((x, y) => y.eksikPct - x.eksikPct || y.ustu100Pct - x.ustu100Pct || y.satir - x.satir)
+  return { from: iso(from), to: iso(to), haricBolumler: [...nonUretim].sort(), aylar, bolumler }
 }

@@ -1,5 +1,7 @@
 import { getTumStoklar } from '@/lib/envanter/tum-stoklar'
 import { sendEmail } from '@/lib/email'
+import { escapeHtml, ileriHubUrl } from '@/lib/email-templates/akademi/_base'
+import { renderEmail, logoAttachments, dataTable, p } from '@/lib/email-templates/layout'
 
 // Kritik stok bildirimi alıcıları — ENV değişkeninden okunur (koda GÖMÜLMEZ):
 //   ENVANTER_KRITIK_BILDIRIM_ALICI  (virgülle çoklu adres). Önerilen değer:
@@ -56,19 +58,31 @@ export async function kritikUrunBildirimGonder(): Promise<{
   const konu = `Kritik Stok Uyarısı — ${kritikler.length} ürün sipariş bekliyor`
   const govde = `Aşağıdaki ürünler kritik veya minimum stok seviyesinin altına düşmüştür. Sipariş açılması önerilir:\n\n${satirlar}\n\nBu bir otomatik envanter bildirimidir.`
 
-  const htmlSatirlar = kritikler
-    .map(
-      (s) =>
-        `<tr><td>${s.urunKodu}</td><td>${s.varyantAdi ?? '-'}</td><td style="text-align:right">${s.mevcut}</td><td style="text-align:right">${s.minStok ?? '-'}</td><td style="text-align:right">${s.kritikStok ?? '-'}</td><td>${s.durum}</td></tr>`,
-    )
-    .join('')
-  const html = `<p>Aşağıdaki ürünler kritik/minimum stok seviyesinin altındadır. Sipariş açılması önerilir:</p>
-<table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse">
-<thead><tr><th>Kod</th><th>Varyant</th><th>Mevcut</th><th>Min</th><th>Kritik</th><th>Durum</th></tr></thead>
-<tbody>${htmlSatirlar}</tbody></table>
-<p style="color:#888;font-size:12px">Bu bir otomatik envanter bildirimidir.</p>`
+  const html = renderEmail({
+    module: 'Envanter',
+    title: 'Kritik stok uyarısı',
+    subtitle: `${kritikler.length} ürün sipariş bekliyor`,
+    preheader: konu,
+    bodyHtml: p(
+      'Aşağıdaki ürünler kritik veya minimum stok seviyesinin altına düşmüştür. Sipariş açılması önerilir:',
+    ),
+    afterHtml: dataTable(
+      ['Kod', 'Varyant', 'Mevcut', 'Min', 'Kritik', 'Durum'],
+      kritikler.map((s) => [
+        `<strong>${escapeHtml(s.urunKodu)}</strong>`,
+        escapeHtml(s.varyantAdi ?? '-'),
+        String(s.mevcut),
+        String(s.minStok ?? '-'),
+        String(s.kritikStok ?? '-'),
+        s.durum === 'KRITIK' ? `<strong style="color:#b91c1c;">${s.durum}</strong>` : escapeHtml(s.durum),
+      ]),
+      ['left', 'left', 'right', 'right', 'right', 'left'],
+    ),
+    cta: { label: 'Envantere Git', url: ileriHubUrl('/envanter') },
+    footnote: 'Bu bir otomatik envanter bildirimidir.',
+  })
 
-  const sonuc = await sendEmail(ALICILAR, konu, govde, html)
+  const sonuc = await sendEmail(ALICILAR, konu, govde, html, logoAttachments())
 
   return {
     gonderildi: sonuc.success,

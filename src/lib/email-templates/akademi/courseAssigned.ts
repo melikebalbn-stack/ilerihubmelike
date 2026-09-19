@@ -1,10 +1,11 @@
 import type { NotifyContext, RecipientGroup } from "@/lib/akademi-notify";
 import {
   EmailContent,
-  wrapHtml,
+  akademiMail,
   escapeHtml,
   formatDateTR,
   ileriHubUrl,
+  p,
 } from "./_base";
 
 export function courseAssigned(
@@ -18,32 +19,37 @@ export function courseAssigned(
 
   const subject = `Yeni Eğitim: ${ctx.courseTitle}`;
 
-  const userBody = `
-    <p>Merhaba ${userName},</p>
-    <p>Size yeni bir eğitim atandı. Aşağıdaki bilgileri inceleyip eğitime başlamanız beklenmektedir.</p>
-    <div class="info-box">
-      <strong>Eğitim:</strong> ${courseTitle}<br>
-      <strong>Son Tarih:</strong> ${deadline}
-    </div>
-    <a href="${courseUrl}" class="button">Eğitime Git</a>
-    <div class="meta">Eğitim son tarihinden önce tamamlamanız önemlidir. Süre yaklaştığında ek hatırlatma alacaksınız.</div>
-  `;
-
-  const managerBody = `
-    <p>Bilgi maili.</p>
-    <p><strong>${userName}</strong> isimli çalışana yeni bir eğitim atandı.</p>
-    <div class="info-box">
-      <strong>Eğitim:</strong> ${courseTitle}<br>
-      <strong>Çalışan:</strong> ${userName}<br>
-      <strong>Son Tarih:</strong> ${deadline}
-    </div>
-    <div class="meta">Bu mail bilgi amaçlıdır; sizin tarafınızdan bir aksiyon gerekmemektedir.</div>
-  `;
-
   return {
     subject,
-    htmlForUser: wrapHtml("Yeni Eğitim Atandı", userBody),
-    htmlForManager: wrapHtml("Eğitim Ataması Bildirimi", managerBody),
+    htmlForUser: akademiMail({
+      title: "Yeni eğitim atandı",
+      subtitle: `Son tarih: ${deadline}`,
+      preheader: `${ctx.courseTitle} eğitimi size atandı`,
+      bodyHtml:
+        p(`Merhaba ${userName},`) +
+        p("Size yeni bir eğitim atandı. Aşağıdaki bilgileri inceleyip eğitime başlamanız beklenmektedir."),
+      infoRows: [
+        { label: "Eğitim", value: courseTitle },
+        { label: "Son Tarih", value: deadline },
+      ],
+      cta: { label: "Eğitime Git", url: courseUrl },
+      footnote:
+        "Eğitimi son tarihinden önce tamamlamanız önemlidir; süre yaklaştığında ek hatırlatma alacaksınız.",
+    }),
+    htmlForManager: akademiMail({
+      title: "Eğitim ataması bildirimi",
+      subtitle: `${recipients.user.name} · Son tarih: ${deadline}`,
+      preheader: `${recipients.user.name} için yeni eğitim: ${ctx.courseTitle}`,
+      bodyHtml:
+        p("Bilgi maili.") +
+        p(`<strong>${userName}</strong> isimli çalışana yeni bir eğitim atandı.`),
+      infoRows: [
+        { label: "Eğitim", value: courseTitle },
+        { label: "Çalışan", value: userName },
+        { label: "Son Tarih", value: deadline },
+      ],
+      footnote: "Bu mail bilgi amaçlıdır; sizin tarafınızdan bir aksiyon gerekmemektedir.",
+    }),
     textForUser: `Merhaba ${recipients.user.name},\n\nSize yeni bir eğitim atandı.\n\nEğitim: ${ctx.courseTitle}\nSon Tarih: ${deadline}\n\nBağlantı: ${courseUrl}\n\nİleri Group · Akademi`,
     textForManager: `${recipients.user.name} isimli çalışana yeni eğitim atandı.\n\nEğitim: ${ctx.courseTitle}\nSon Tarih: ${deadline}\n\nİleri Group · Akademi`,
   };

@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { sendEmail } from '@/lib/email'
 import { sendPushToUser } from '@/lib/push-notifications'
-import { ileriHubUrl } from '@/lib/email-templates/akademi/_base'
+import { ileriHubUrl, escapeHtml } from '@/lib/email-templates/akademi/_base'
+import { renderEmail, logoAttachments } from '@/lib/email-templates/layout'
 import { parseMembers } from '@/lib/tickets/team-members'
 import { ihlalDegerlendir, ihlalEtiketi, KAPALI_DURUMLAR, type IhlalKarari, type TakvimBaglami } from '@/lib/sla/ihlal'
 import { getSlaAyar, getTatilMap } from '@/lib/sla'
@@ -135,24 +136,17 @@ function mailGovdesi(t: { ticketNumber: string; subject: string }, etiket: strin
     `Ticket: ${t.ticketNumber}\n` +
     `Konu: ${t.subject}\n\n` +
     `Talebe git: ${link}\n\nİleri Group`
-  const html = `<!doctype html><html lang="tr"><head><meta charset="utf-8"></head>
-<body style="margin:0;background:#f4f6f8;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6f8;">
-    <tr><td align="center" style="padding:24px 12px;">
-      <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="width:560px;max-width:560px;background:#ffffff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
-        <tr><td bgcolor="#1B4F72" style="background:#1B4F72;padding:14px 24px;">
-          <span style="color:#ffffff;font-size:15px;font-weight:700;">ILERIHub · IT Destek</span>
-        </td></tr>
-        <tr><td style="padding:22px 24px;">
-          <h1 style="margin:0 0 12px;font-size:18px;color:#b91c1c;">${etiket}</h1>
-          <p style="margin:0 0 8px;font-size:14px;color:#1f2733;"><strong>${t.ticketNumber}</strong></p>
-          <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#475569;">${t.subject}</p>
-          <a href="${link}" style="display:inline-block;background:#1B4F72;color:#ffffff;text-decoration:none;padding:10px 18px;border-radius:6px;font-size:14px;">Talebe git</a>
-        </td></tr>
-      </table>
-    </td></tr>
-  </table>
-</body></html>`
+  const html = renderEmail({
+    module: 'Destek',
+    title: etiket,
+    subtitle: `Talep No: ${t.ticketNumber}`,
+    preheader: `${etiket} — ${t.ticketNumber}`,
+    infoRows: [
+      { label: 'Talep No', value: `<strong>${escapeHtml(t.ticketNumber)}</strong>` },
+      { label: 'Konu', value: escapeHtml(t.subject) },
+    ],
+    cta: { label: 'Talebe git', url: link },
+  })
   return { subject, text, html }
 }
 
@@ -251,7 +245,7 @@ export async function POST(req: NextRequest) {
         try {
           await sendEmail(
             alicilar.map((a) => ({ email: a.email, name: a.name })),
-            mail.subject, mail.text, mail.html,
+            mail.subject, mail.text, mail.html, logoAttachments(),
           )
         } catch (err) {
           console.error(`[ticket-sla] ${t.ticketNumber}: mail hatası:`, err)

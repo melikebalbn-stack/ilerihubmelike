@@ -1,5 +1,5 @@
 import type { NotifyContext, RecipientGroup } from "@/lib/akademi-notify";
-import { EmailContent, wrapHtml, escapeHtml, ileriHubUrl } from "./_base";
+import { EmailContent, akademiMail, escapeHtml, ileriHubUrl, p } from "./_base";
 
 export function examFailed(
   ctx: NotifyContext,
@@ -19,34 +19,39 @@ export function examFailed(
     ? "Tekrar deneme hakkınız bulunuyor."
     : "Maksimum deneme sayısına ulaştınız. Bölüm yöneticinizle iletişime geçin.";
 
-  const userBody = `
-    <p>Merhaba ${userName},</p>
-    <p>${courseTitle} sınavında geçme barajının altında kaldınız.</p>
-    <div class="info-box">
-      <strong>Puan:</strong> %${score}<br>
-      <strong>Geçme Barajı:</strong> %${passingScore}<br>
-      <strong>Deneme:</strong> ${attempt}<br>
-      <strong>Tekrar Deneme:</strong> ${canRetake ? "Evet" : "Hayır"}
-    </div>
-    <a href="${url}" class="button">Sonucu Görüntüle</a>
-    <div class="meta">${retakeNote}</div>
-  `;
-
-  const managerBody = `
-    <p>Bilgi maili.</p>
-    <p><strong>${userName}</strong> isimli çalışan eğitim sınavında başarısız oldu.</p>
-    <div class="info-box">
-      <strong>Eğitim:</strong> ${courseTitle}<br>
-      <strong>Puan:</strong> %${score} (Baraj: %${passingScore})<br>
-      <strong>Deneme:</strong> ${attempt}<br>
-      <strong>Tekrar Deneme:</strong> ${canRetake ? "Mümkün" : "Tükendi"}
-    </div>
-  `;
-
   return {
     subject,
-    htmlForUser: wrapHtml("Sınav Sonucu", userBody),
-    htmlForManager: wrapHtml("Sınav Başarısızlığı Bildirimi", managerBody),
+    htmlForUser: akademiMail({
+      title: "Sınav sonucu",
+      subtitle: `Puan: %${score} · Geçme barajı: %${passingScore}`,
+      preheader: `${ctx.courseTitle} sınav sonucunuz: %${score}`,
+      bodyHtml:
+        p(`Merhaba ${userName},`) +
+        p(`${courseTitle} sınavında geçme barajının altında kaldınız.`),
+      infoRows: [
+        { label: "Eğitim", value: courseTitle },
+        { label: "Puan", value: `%${score}` },
+        { label: "Geçme Barajı", value: `%${passingScore}` },
+        { label: "Deneme", value: String(attempt) },
+        { label: "Tekrar Deneme", value: canRetake ? "Evet" : "Hayır" },
+      ],
+      cta: { label: "Sonucu Görüntüle", url },
+      footnote: retakeNote,
+    }),
+    htmlForManager: akademiMail({
+      title: "Sınav başarısızlığı bildirimi",
+      subtitle: `${recipients.user.name} · %${score}`,
+      preheader: `${recipients.user.name} — ${ctx.courseTitle} sınavında başarısız`,
+      bodyHtml:
+        p("Bilgi maili.") +
+        p(`<strong>${userName}</strong> isimli çalışan eğitim sınavında başarısız oldu.`),
+      infoRows: [
+        { label: "Eğitim", value: courseTitle },
+        { label: "Puan", value: `%${score} (Baraj: %${passingScore})` },
+        { label: "Deneme", value: String(attempt) },
+        { label: "Tekrar Deneme", value: canRetake ? "Mümkün" : "Tükendi" },
+      ],
+    }),
     textForUser: `Merhaba ${recipients.user.name},\n\n"${ctx.courseTitle}" sınavında geçme barajının altında kaldınız.\nPuan: %${score} (Baraj: %${passingScore})\nDeneme: ${attempt}\n${retakeNote}\n\nİleri Group · Akademi`,
     textForManager: `${recipients.user.name} "${ctx.courseTitle}" sınavında başarısız oldu.\nPuan: %${score} / Baraj: %${passingScore}\nDeneme: ${attempt}\nTekrar: ${canRetake ? "Mümkün" : "Tükendi"}\n\nİleri Group · Akademi`,
   };

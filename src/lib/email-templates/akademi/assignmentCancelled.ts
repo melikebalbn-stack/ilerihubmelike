@@ -1,5 +1,5 @@
 import type { NotifyContext, RecipientGroup } from "@/lib/akademi-notify";
-import { EmailContent, wrapHtml, escapeHtml, ileriHubUrl } from "./_base";
+import { EmailContent, akademiMail, escapeHtml, ileriHubUrl, p } from "./_base";
 
 export function assignmentCancelled(
   ctx: NotifyContext,
@@ -15,30 +15,34 @@ export function assignmentCancelled(
 
   const subject = `Eğitim Ataması İptal: ${ctx.courseTitle}`;
 
-  const userBody = `
-    <p>Merhaba ${userName},</p>
-    <p>Size atanan aşağıdaki eğitim iptal edilmiştir.</p>
-    <div class="info-box">
-      <strong>Eğitim:</strong> ${courseTitle}<br>
-      <strong>Sebep:</strong> ${reason}
-    </div>
-    <a href="${url}" class="button">Akademiye Git</a>
-    <div class="meta">Bu eğitim için artık herhangi bir aksiyon almanız gerekmemektedir.</div>
-  `;
-
-  const managerBody = `
-    <p>Bilgi maili.</p>
-    <p><strong>${userName}</strong> isimli çalışanın eğitim ataması iptal edildi.</p>
-    <div class="info-box">
-      <strong>Eğitim:</strong> ${courseTitle}<br>
-      <strong>Sebep:</strong> ${reason}
-    </div>
-  `;
-
   return {
     subject,
-    htmlForUser: wrapHtml("Eğitim Ataması İptal Edildi", userBody),
-    htmlForManager: wrapHtml("Eğitim İptali Bildirimi", managerBody),
+    htmlForUser: akademiMail({
+      title: "Eğitim ataması iptal edildi",
+      subtitle: ctx.courseTitle,
+      preheader: `${ctx.courseTitle} eğitim atamanız iptal edildi`,
+      bodyHtml:
+        p(`Merhaba ${userName},`) +
+        p("Size atanan aşağıdaki eğitim iptal edilmiştir."),
+      infoRows: [
+        { label: "Eğitim", value: courseTitle },
+        { label: "Sebep", value: reason },
+      ],
+      cta: { label: "Akademiye Git", url },
+      footnote: "Bu eğitim için artık herhangi bir aksiyon almanız gerekmemektedir.",
+    }),
+    htmlForManager: akademiMail({
+      title: "Eğitim iptali bildirimi",
+      subtitle: `${recipients.user.name} · ${ctx.courseTitle}`,
+      preheader: `${recipients.user.name} için eğitim ataması iptal edildi`,
+      bodyHtml:
+        p("Bilgi maili.") +
+        p(`<strong>${userName}</strong> isimli çalışanın eğitim ataması iptal edildi.`),
+      infoRows: [
+        { label: "Eğitim", value: courseTitle },
+        { label: "Sebep", value: reason },
+      ],
+    }),
     textForUser: `Merhaba ${recipients.user.name},\n\nSize atanan "${ctx.courseTitle}" eğitimi iptal edilmiştir.\nSebep: ${ctx.data.reason ?? "Belirtilmedi"}\n\nİleri Group · Akademi`,
     textForManager: `${recipients.user.name} için "${ctx.courseTitle}" eğitim ataması iptal edildi.\nSebep: ${ctx.data.reason ?? "Belirtilmedi"}\n\nİleri Group · Akademi`,
   };

@@ -1,5 +1,5 @@
 import type { NotifyContext, RecipientGroup } from "@/lib/akademi-notify";
-import { EmailContent, wrapHtml, escapeHtml, ileriHubUrl } from "./_base";
+import { EmailContent, akademiMail, escapeHtml, ileriHubUrl, p } from "./_base";
 
 export function examPassed(
   ctx: NotifyContext,
@@ -14,32 +14,37 @@ export function examPassed(
 
   const subject = `Tebrikler: ${ctx.courseTitle} sınavını geçtiniz`;
 
-  const userBody = `
-    <p>Merhaba ${userName},</p>
-    <p>Tebrikler! <strong>${courseTitle}</strong> sınavını başarıyla geçtiniz.</p>
-    <div class="info-box">
-      <strong>Puan:</strong> %${score}<br>
-      <strong>Geçme Barajı:</strong> %${passingScore}<br>
-      <strong>Deneme:</strong> ${attempt}
-    </div>
-    <a href="${url}" class="button">Sonucu Görüntüle</a>
-    <div class="meta">Eğitim sertifikanız hazırlanıyorsa ayrıca bildirim alacaksınız.</div>
-  `;
-
-  const managerBody = `
-    <p>Bilgi maili.</p>
-    <p><strong>${userName}</strong> isimli çalışan eğitim sınavını başarıyla geçti.</p>
-    <div class="info-box">
-      <strong>Eğitim:</strong> ${courseTitle}<br>
-      <strong>Puan:</strong> %${score} (Baraj: %${passingScore})<br>
-      <strong>Deneme:</strong> ${attempt}
-    </div>
-  `;
-
   return {
     subject,
-    htmlForUser: wrapHtml("Sınavı Geçtiniz", userBody),
-    htmlForManager: wrapHtml("Sınav Başarısı Bildirimi", managerBody),
+    htmlForUser: akademiMail({
+      title: "Sınavı geçtiniz",
+      subtitle: `Puan: %${score} · Geçme barajı: %${passingScore}`,
+      preheader: `${ctx.courseTitle} sınavını %${score} ile geçtiniz`,
+      bodyHtml:
+        p(`Merhaba ${userName},`) +
+        p(`Tebrikler! <strong>${courseTitle}</strong> sınavını başarıyla geçtiniz.`),
+      infoRows: [
+        { label: "Eğitim", value: courseTitle },
+        { label: "Puan", value: `%${score}` },
+        { label: "Geçme Barajı", value: `%${passingScore}` },
+        { label: "Deneme", value: String(attempt) },
+      ],
+      cta: { label: "Sonucu Görüntüle", url },
+      footnote: "Eğitim sertifikanız hazırlanıyorsa ayrıca bildirim alacaksınız.",
+    }),
+    htmlForManager: akademiMail({
+      title: "Sınav başarısı bildirimi",
+      subtitle: `${recipients.user.name} · %${score}`,
+      preheader: `${recipients.user.name} — ${ctx.courseTitle} sınavını geçti`,
+      bodyHtml:
+        p("Bilgi maili.") +
+        p(`<strong>${userName}</strong> isimli çalışan eğitim sınavını başarıyla geçti.`),
+      infoRows: [
+        { label: "Eğitim", value: courseTitle },
+        { label: "Puan", value: `%${score} (Baraj: %${passingScore})` },
+        { label: "Deneme", value: String(attempt) },
+      ],
+    }),
     textForUser: `Tebrikler ${recipients.user.name}!\n\n"${ctx.courseTitle}" sınavını geçtiniz.\nPuan: %${score} (Baraj: %${passingScore})\nDeneme: ${attempt}\n\nİleri Group · Akademi`,
     textForManager: `${recipients.user.name} "${ctx.courseTitle}" sınavını geçti.\nPuan: %${score} / Baraj: %${passingScore}\nDeneme: ${attempt}\n\nİleri Group · Akademi`,
   };

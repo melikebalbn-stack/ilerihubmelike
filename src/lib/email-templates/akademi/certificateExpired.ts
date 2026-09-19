@@ -1,10 +1,11 @@
 import type { NotifyContext, RecipientGroup } from "@/lib/akademi-notify";
 import {
   EmailContent,
-  wrapHtml,
+  akademiMail,
   escapeHtml,
   formatDateTR,
   ileriHubUrl,
+  p,
 } from "./_base";
 
 export function certificateExpired(
@@ -22,33 +23,35 @@ export function certificateExpired(
 
   const subject = `Sertifika Geçersiz: ${ctx.courseTitle}`;
 
-  const userBody = `
-    <p>Merhaba ${userName},</p>
-    <p>Aşağıdaki sertifikanızın geçerlilik süresi sona ermiştir.</p>
-    <div class="info-box">
-      <strong>Eğitim:</strong> ${courseTitle}<br>
-      <strong>Sertifika No:</strong> ${certNo}<br>
-      <strong>Bitiş Tarihi:</strong> ${expiredAt}
-    </div>
-    <a href="${url}" class="button">Sertifikayı Görüntüle</a>
-    <div class="meta">Yetkinliğinizi sürdürmek için lütfen bölüm yöneticinizle yenileme süreci hakkında görüşün.</div>
-  `;
-
-  const managerBody = `
-    <p>Bilgi maili.</p>
-    <p><strong>${userName}</strong> isimli çalışanın sertifikasının geçerlilik süresi dolmuştur.</p>
-    <div class="info-box">
-      <strong>Eğitim:</strong> ${courseTitle}<br>
-      <strong>Sertifika No:</strong> ${certNo}<br>
-      <strong>Bitiş Tarihi:</strong> ${expiredAt}
-    </div>
-    <div class="meta">Çalışanın yetkinliğinin sürdürülmesi için yenileme süreci başlatılmalıdır.</div>
-  `;
+  const rows = [
+    { label: "Eğitim", value: courseTitle },
+    { label: "Sertifika No", value: certNo },
+    { label: "Bitiş Tarihi", value: expiredAt },
+  ];
 
   return {
     subject,
-    htmlForUser: wrapHtml("Sertifika Geçersiz Oldu", userBody),
-    htmlForManager: wrapHtml("Sertifika Geçersizlik Bildirimi", managerBody),
+    htmlForUser: akademiMail({
+      title: "Sertifika geçersiz oldu",
+      subtitle: `Bitiş: ${expiredAt}`,
+      preheader: `${ctx.courseTitle} sertifikanızın süresi doldu`,
+      bodyHtml:
+        p(`Merhaba ${userName},`) +
+        p("Aşağıdaki sertifikanızın geçerlilik süresi sona ermiştir."),
+      infoRows: rows,
+      cta: { label: "Sertifikayı Görüntüle", url },
+      footnote: "Yetkinliğinizi sürdürmek için lütfen bölüm yöneticinizle yenileme süreci hakkında görüşün.",
+    }),
+    htmlForManager: akademiMail({
+      title: "Sertifika geçersizlik bildirimi",
+      subtitle: `${recipients.user.name} · Bitiş: ${expiredAt}`,
+      preheader: `${recipients.user.name} — ${ctx.courseTitle} sertifikası geçersiz oldu`,
+      bodyHtml:
+        p("Bilgi maili.") +
+        p(`<strong>${userName}</strong> isimli çalışanın sertifikasının geçerlilik süresi dolmuştur.`),
+      infoRows: rows,
+      footnote: "Çalışanın yetkinliğinin sürdürülmesi için yenileme süreci başlatılmalıdır.",
+    }),
     textForUser: `Merhaba ${recipients.user.name},\n\n"${ctx.courseTitle}" sertifikanız geçersiz olmuştur.\nBitiş: ${expiredAt}\n\nYenileme için bölüm yöneticinizle görüşün.\n\nİleri Group · Akademi`,
     textForManager: `${recipients.user.name} - "${ctx.courseTitle}" sertifikası geçersiz oldu.\nBitiş: ${expiredAt}\n\nİleri Group · Akademi`,
   };

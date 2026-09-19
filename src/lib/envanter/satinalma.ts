@@ -1,5 +1,7 @@
 import { prisma } from '@/lib/prisma'
 import { sendEmail } from '@/lib/email'
+import { escapeHtml, ileriHubUrl } from '@/lib/email-templates/akademi/_base'
+import { renderEmail, logoAttachments, p } from '@/lib/email-templates/layout'
 import { createEnvanterStokHareket, logEnvanterIslem } from './service'
 
 export type SatinAlmaDurumTip =
@@ -145,6 +147,22 @@ async function bildirGecis(talep: {
           Array.from(hedefler.values()).map((h) => ({ email: h.email, name: h.name })),
           baslik,
           mesaj,
+          renderEmail({
+            module: 'Envanter',
+            title: 'Satın alma talebi güncellendi',
+            subtitle: `${talep.formNo} · ${durumEtiketi}`,
+            preheader: mesaj,
+            bodyHtml: p(
+              `<strong>${escapeHtml(talep.formNo)}</strong> numaralı talep <strong>${escapeHtml(durumEtiketi)}</strong> aşamasına geçti.`,
+            ),
+            infoRows: [
+              { label: 'Form No', value: escapeHtml(talep.formNo) },
+              { label: 'Durum', value: escapeHtml(durumEtiketi) },
+              { label: 'Talep Eden', value: escapeHtml(talep.talepEdenAd) },
+            ],
+            cta: { label: 'Talebi Görüntüle', url: ileriHubUrl(link) },
+          }),
+          logoAttachments(),
         )
       } catch (err) {
         console.error('[satinalma] mail gönderme hatası:', err)

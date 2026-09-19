@@ -13,6 +13,8 @@
 
 import { prisma } from '@/lib/prisma'
 import { sendEmail } from '@/lib/email'
+import { ileriHubUrl } from '@/lib/email-templates/akademi/_base'
+import { renderEmail, logoAttachments, p } from '@/lib/email-templates/layout'
 import { sendPushToUser } from '@/lib/push-notifications'
 import { zimmetTurGosterim, YAZILIM_KOK_ADI } from '@/lib/zimmet/tur'
 
@@ -73,16 +75,24 @@ Tür: ${turLabel}
 
 Detayları görmek için ILERIHub'a giriş yapabilirsiniz.`
 
-  const html = `
-    <p>Merhaba ${esc(recipientName)},</p>
-    <p><strong>${esc(zimmet.teslimEdenAdi)}</strong> tarafından yeni bir zimmet tutanağı oluşturuldu ve onayınızı bekliyor.</p>
-    <ul>
-      <li><strong>Zimmet sahibi:</strong> ${esc(zimmet.zimmetSahibiAdi)}</li>
-      <li><strong>Departman:</strong> ${esc(zimmet.departman ?? '—')}</li>
-      <li><strong>Tür:</strong> ${esc(turLabel)}</li>
-    </ul>
-    <p>Detayları görmek için ILERIHub'a giriş yapabilirsiniz.</p>
-  `
+  const html = renderEmail({
+    module: 'Zimmet',
+    title: 'Onay bekleyen zimmet tutanağı',
+    subtitle: `${zimmet.zimmetSahibiAdi} · ${turLabel}`,
+    preheader: `${zimmet.teslimEdenAdi}: ${zimmet.zimmetSahibiAdi} için zimmet tutanağı onayınızı bekliyor`,
+    bodyHtml:
+      p(`Merhaba ${esc(recipientName)},`) +
+      p(
+        `<strong>${esc(zimmet.teslimEdenAdi)}</strong> tarafından yeni bir zimmet tutanağı oluşturuldu ve onayınızı bekliyor.`,
+      ),
+    infoRows: [
+      { label: 'Zimmet sahibi', value: esc(zimmet.zimmetSahibiAdi) },
+      { label: 'Departman', value: esc(zimmet.departman ?? '—') },
+      { label: 'Tür', value: esc(turLabel) },
+    ],
+    afterHtml: p("Detayları görmek için ILERIHub'a giriş yapabilirsiniz."),
+    cta: { label: 'Tutanağı Onayla', url: ileriHubUrl(`/zimmet-formu/${zimmet.id}/onayla`) },
+  })
 
   return { subject, body, html }
 }
@@ -93,7 +103,7 @@ async function sendApprovalEmail(
   bilinenOzelTurler: string[],
 ): Promise<void> {
   const { subject, body, html } = buildApprovalEmailContent(zimmet, approver.name, bilinenOzelTurler)
-  await sendEmail([{ name: approver.name, email: approver.email }], subject, body, html)
+  await sendEmail([{ name: approver.name, email: approver.email }], subject, body, html, logoAttachments())
 }
 
 // ════════════════════════════════════════════════════════════
@@ -163,12 +173,18 @@ async function sendZimmetSahibiImzaEmail(
       .replace(/'/g, '&#039;')
   const subject = '[ILERIHub] Zimmet tutanağınız onaylandı — imzanız bekleniyor'
   const body = `Merhaba ${recipientName},\n\nZimmet tutanağınız onaylandı ve imzanızı bekliyor.\n\nDetaylar için ILERIHub'a giriş yapabilirsiniz.`
-  const html = `
-    <p>Merhaba ${esc(recipientName)},</p>
-    <p>Zimmet tutanağınız onaylandı ve imzanızı bekliyor.</p>
-    <p>Detaylar için ILERIHub'a giriş yapabilirsiniz.</p>
-  `
-  await sendEmail([{ name: recipientName, email: zimmetSahibi.email }], subject, body, html)
+  const html = renderEmail({
+    module: 'Zimmet',
+    title: 'Zimmet tutanağınız onaylandı',
+    subtitle: 'İmzanız bekleniyor',
+    preheader: 'Zimmet tutanağınız onaylandı ve imzanızı bekliyor',
+    bodyHtml:
+      p(`Merhaba ${esc(recipientName)},`) +
+      p('Zimmet tutanağınız onaylandı ve imzanızı bekliyor.') +
+      p("Detaylar için ILERIHub'a giriş yapabilirsiniz."),
+    cta: { label: 'Tutanağı İmzala', url: ileriHubUrl(`/zimmet-formu/${zimmetId}/imzala`) },
+  })
+  await sendEmail([{ name: recipientName, email: zimmetSahibi.email }], subject, body, html, logoAttachments())
 }
 
 async function sendZimmetSahibiImzaPush(
@@ -297,14 +313,25 @@ export async function dispatchZimmetDevirOnayIstegi({
 Eski sistemden aktarılan ${kayitSayisi} zimmet kaydı üzerinize kayıtlı ve onayınızı bekliyor. Lütfen kontrol edip size ait olanları onaylayın, olmayanları gerekçesiyle reddedin.
 
 Zimmetlerim ekranından işlem yapabilirsiniz: /zimmet-formu/zimmetlerim`
-  const html = `
-    <p>Merhaba ${esc(recipientName)},</p>
-    <p>Eski sistemden aktarılan <strong>${kayitSayisi}</strong> zimmet kaydı üzerinize kayıtlı ve onayınızı bekliyor. Lütfen kontrol edip size ait olanları onaylayın, olmayanları gerekçesiyle reddedin.</p>
-    <p><a href="/zimmet-formu/zimmetlerim">Zimmetlerim</a> ekranından işlem yapabilirsiniz.</p>
-  `
+  // Eski HTML'deki <a href="/zimmet-formu/zimmetlerim"> göreli yoldu (mail
+  // istemcisinde çalışmaz) → buton mutlak URL ile.
+  const html = renderEmail({
+    module: 'Zimmet',
+    title: 'Onayınızı bekleyen zimmetler',
+    subtitle: `${kayitSayisi} kayıt · eski sistemden aktarım`,
+    preheader: `Üzerinize kayıtlı ${kayitSayisi} zimmet onayınızı bekliyor`,
+    bodyHtml:
+      p(`Merhaba ${esc(recipientName)},`) +
+      p(
+        `Eski sistemden aktarılan <strong>${kayitSayisi}</strong> zimmet kaydı üzerinize kayıtlı ve onayınızı bekliyor. ` +
+          'Lütfen kontrol edip size ait olanları onaylayın, olmayanları gerekçesiyle reddedin.',
+      ) +
+      p('Zimmetlerim ekranından işlem yapabilirsiniz.'),
+    cta: { label: 'Zimmetlerim', url: ileriHubUrl('/zimmet-formu/zimmetlerim') },
+  })
 
   const results = await Promise.allSettled([
-    sendEmail([{ name: recipientName, email: kullanici.email }], subject, body, html),
+    sendEmail([{ name: recipientName, email: kullanici.email }], subject, body, html, logoAttachments()),
     prisma.notification.create({
       data: {
         userId: kullanici.id,

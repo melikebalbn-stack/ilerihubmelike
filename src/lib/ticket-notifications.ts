@@ -26,6 +26,7 @@ import { parseMembers } from '@/lib/tickets/team-members'
 import { sendEmail, generateTicketCreatedEmailContent } from '@/lib/email'
 import { sendPushToUser } from '@/lib/push-notifications'
 import { ileriHubUrl, escapeHtml } from '@/lib/email-templates/akademi/_base'
+import { renderEmail, logoAttachments, p, quote } from '@/lib/email-templates/layout'
 
 // ════════════════════════════════════════════════════════════
 // TİP TANIMLARI
@@ -176,7 +177,8 @@ async function ticketMailGonder(
   metin: string,
   html?: string,
 ): Promise<string | undefined> {
-  const sonuc = await sendEmail([alici], konu, metin, html, undefined, {
+  // Kurumsal yerleşim logoyu cid ile gömer → ek burada TEK yerden verilir.
+  const sonuc = await sendEmail([alici], konu, metin, html, logoAttachments(), {
     replyTo: TICKET_REPLY_TO,
   })
   return sonuc.messageId
@@ -544,28 +546,19 @@ export async function dispatchTicketKapandi(
       `Konu: ${ticket.subject}\n\n` +
       `Aldığınız hizmeti değerlendirmek için talebe gidin:\n${ileriHubUrl(link)}\n\n` +
       `Değerlendirme bağlantısı 14 gün geçerlidir.\n\nİleri Group`
-    const html = `<!doctype html><html lang="tr"><head><meta charset="utf-8"></head>
-<body style="margin:0;background:#f4f6f8;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6f8;">
-    <tr><td align="center" style="padding:24px 12px;">
-      <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="width:560px;max-width:560px;background:#ffffff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
-        <tr><td bgcolor="#1B4F72" style="background:#1B4F72;padding:14px 24px;">
-          <span style="color:#ffffff;font-size:15px;font-weight:700;">ILERIHub · IT Destek</span>
-        </td></tr>
-        <tr><td style="padding:22px 24px;">
-          <h1 style="margin:0 0 12px;font-size:18px;color:#166534;">Talebiniz ${durumMetni}</h1>
-          <p style="margin:0 0 8px;font-size:14px;color:#1f2733;"><strong>${ticket.ticketNumber}</strong></p>
-          <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#475569;">${ticket.subject}</p>
-          <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#475569;">
-            Aldığınız hizmeti değerlendirir misiniz? Bir dakikanızı alır.
-          </p>
-          <a href="${ileriHubUrl(link)}" style="display:inline-block;background:#1B4F72;color:#ffffff;text-decoration:none;padding:10px 18px;border-radius:6px;font-size:14px;">Değerlendir</a>
-          <p style="margin:16px 0 0;font-size:12px;color:#94a3b8;">Bağlantı 14 gün geçerlidir.</p>
-        </td></tr>
-      </table>
-    </td></tr>
-  </table>
-</body></html>`
+    const html = renderEmail({
+      module: 'Destek',
+      title: `Talebiniz ${durumMetni}`,
+      subtitle: `Talep No: ${ticket.ticketNumber}`,
+      preheader: `${ticket.ticketNumber} ${durumMetni} — aldığınız hizmeti değerlendirebilirsiniz`,
+      infoRows: [
+        { label: 'Talep No', value: `<strong>${escapeHtml(ticket.ticketNumber)}</strong>` },
+        { label: 'Konu', value: escapeHtml(ticket.subject) },
+      ],
+      afterHtml: p('Aldığınız hizmeti değerlendirir misiniz? Bir dakikanızı alır.'),
+      cta: { label: 'Değerlendir', url: ileriHubUrl(link) },
+      footnote: 'Bağlantı 14 gün geçerlidir.',
+    })
     const messageId = await ticketMailGonder({ name: r.name, email: r.email }, title, text, html)
     // Kapanış mailinin kendi yorum satırı yok → Ticket.emailMessageId (boşsa).
     await messageIdDamgala(messageId, { ticketId: ticket.id })
@@ -700,28 +693,19 @@ export async function dispatchTicketYorum(
       `Yanıtlayan: ${yorum.authorName}\n\n` +
       `${govde}\n\n` +
       `Talebe gitmek için:\n${ileriHubUrl(link)}\n\nİleri Group`
-    const html = `<!doctype html><html lang="tr"><head><meta charset="utf-8"></head>
-<body style="margin:0;background:#f4f6f8;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6f8;">
-    <tr><td align="center" style="padding:24px 12px;">
-      <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="width:560px;max-width:560px;background:#ffffff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
-        <tr><td bgcolor="#1B4F72" style="background:#1B4F72;padding:14px 24px;">
-          <span style="color:#ffffff;font-size:15px;font-weight:700;">ILERIHub · IT Destek</span>
-        </td></tr>
-        <tr><td style="padding:22px 24px;">
-          <h1 style="margin:0 0 12px;font-size:18px;color:#1B4F72;">Talebinize yeni yanıt</h1>
-          <p style="margin:0 0 8px;font-size:14px;color:#1f2733;"><strong>${ticket.ticketNumber}</strong></p>
-          <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#475569;">${escapeHtml(ticket.subject)}</p>
-          <div style="margin:0 0 16px;padding:12px 14px;background:#f8fafc;border-left:3px solid #1B4F72;border-radius:4px;">
-            <p style="margin:0 0 6px;font-size:12px;color:#94a3b8;">${escapeHtml(yorum.authorName)}</p>
-            <p style="margin:0;font-size:14px;line-height:1.6;color:#1f2733;white-space:pre-wrap;">${escapeHtml(govde)}</p>
-          </div>
-          <a href="${ileriHubUrl(link)}" style="display:inline-block;background:#1B4F72;color:#ffffff;text-decoration:none;padding:10px 18px;border-radius:6px;font-size:14px;">Talebe Git</a>
-        </td></tr>
-      </table>
-    </td></tr>
-  </table>
-</body></html>`
+    const html = renderEmail({
+      module: 'Destek',
+      title: 'Talebinize yeni yanıt',
+      subtitle: `Talep No: ${ticket.ticketNumber} · ${yorum.authorName}`,
+      preheader: `${ticket.ticketNumber}: ${yorum.authorName} yanıtladı`,
+      infoRows: [
+        { label: 'Talep No', value: `<strong>${escapeHtml(ticket.ticketNumber)}</strong>` },
+        { label: 'Konu', value: escapeHtml(ticket.subject) },
+        { label: 'Yanıtlayan', value: escapeHtml(yorum.authorName) },
+      ],
+      afterHtml: quote(escapeHtml(govde), escapeHtml(yorum.authorName)),
+      cta: { label: 'Talebe Git', url: ileriHubUrl(link) },
+    })
     const messageId = await ticketMailGonder({ name: r.name, email: r.email }, title, text, html)
     // Yorumun KENDİ satırına damga: her yorum kendi zincirini taşır.
     await messageIdDamgala(messageId, { commentId: yorum.commentId, ticketId: ticket.id })
@@ -793,35 +777,27 @@ export async function dispatchTicketCozuldu(ticket: TicketCozumInfo): Promise<vo
       `${ileriHubUrl(link)}\n\nİleri Group`
 
     const cozumBlogu = cozum
-      ? `<div style="margin:0 0 16px;padding:12px 14px;background:#f8fafc;border-left:3px solid #1B4F72;border-radius:4px;">
-           <p style="margin:0 0 6px;font-size:12px;color:#94a3b8;">Çözüm · ${escapeHtml(ticket.cozenAd)}</p>
-           <p style="margin:0;font-size:14px;line-height:1.6;color:#1f2733;white-space:pre-wrap;">${escapeHtml(cozum)}</p>
-         </div>`
+      ? quote(escapeHtml(cozum), `Çözüm · ${escapeHtml(ticket.cozenAd)}`)
       : ''
 
-    const html = `<!doctype html><html lang="tr"><head><meta charset="utf-8"></head>
-<body style="margin:0;background:#f4f6f8;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6f8;">
-    <tr><td align="center" style="padding:24px 12px;">
-      <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="width:560px;max-width:560px;background:#ffffff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
-        <tr><td bgcolor="#1B4F72" style="background:#1B4F72;padding:14px 24px;">
-          <span style="color:#ffffff;font-size:15px;font-weight:700;">ILERIHub · IT Destek</span>
-        </td></tr>
-        <tr><td style="padding:22px 24px;">
-          <h1 style="margin:0 0 12px;font-size:18px;color:#166534;">Talebiniz çözüldü</h1>
-          <p style="margin:0 0 8px;font-size:14px;color:#1f2733;"><strong>${ticket.ticketNumber}</strong></p>
-          <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#475569;">${escapeHtml(ticket.subject)}</p>
-          ${cozumBlogu}
-          <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#475569;">
-            Sorun devam ediyorsa <strong>${ticket.itirazGunu} gün</strong> içinde talebe girip
-            &quot;Sorun devam ediyor&quot; deyin. Bir şey yapmazsanız talep kendiliğinden kapanır.
-          </p>
-          <a href="${ileriHubUrl(link)}" style="display:inline-block;background:#1B4F72;color:#ffffff;text-decoration:none;padding:10px 18px;border-radius:6px;font-size:14px;">Talebe Git</a>
-        </td></tr>
-      </table>
-    </td></tr>
-  </table>
-</body></html>`
+    const html = renderEmail({
+      module: 'Destek',
+      title: 'Talebiniz çözüldü',
+      subtitle: `Talep No: ${ticket.ticketNumber} · Çözen: ${ticket.cozenAd}`,
+      preheader: `${ticket.ticketNumber} çözüldü — ${ticket.itirazGunu} gün içinde itiraz edebilirsiniz`,
+      infoRows: [
+        { label: 'Talep No', value: `<strong>${escapeHtml(ticket.ticketNumber)}</strong>` },
+        { label: 'Konu', value: escapeHtml(ticket.subject) },
+        { label: 'Çözen', value: escapeHtml(ticket.cozenAd) },
+      ],
+      afterHtml:
+        cozumBlogu +
+        p(
+          `Sorun devam ediyorsa <strong>${ticket.itirazGunu} gün</strong> içinde talebe girip ` +
+            `&quot;Sorun devam ediyor&quot; deyin. Bir şey yapmazsanız talep kendiliğinden kapanır.`,
+        ),
+      cta: { label: 'Talebe Git', url: ileriHubUrl(link) },
+    })
     const messageId = await ticketMailGonder({ name: r.name, email: r.email }, title, text, html)
     // Çözüm metni yazıldıysa onun yorum satırına, yazılmadıysa Ticket'a.
     await messageIdDamgala(messageId, { commentId: ticket.cozumYorumId, ticketId: ticket.id })
@@ -865,28 +841,22 @@ export async function dispatchTicketItiraz(ticket: TicketItirazInfo): Promise<vo
       `Konu: ${ticket.subject}\n\n` +
       `Talep yeniden "İşlemde" durumuna alındı ve üzerinizde.\n\n` +
       `${ileriHubUrl(link)}\n\nİleri Group`
-    const html = `<!doctype html><html lang="tr"><head><meta charset="utf-8"></head>
-<body style="margin:0;background:#f4f6f8;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6f8;">
-    <tr><td align="center" style="padding:24px 12px;">
-      <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="width:560px;max-width:560px;background:#ffffff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
-        <tr><td bgcolor="#1B4F72" style="background:#1B4F72;padding:14px 24px;">
-          <span style="color:#ffffff;font-size:15px;font-weight:700;">ILERIHub · IT Destek</span>
-        </td></tr>
-        <tr><td style="padding:22px 24px;">
-          <h1 style="margin:0 0 12px;font-size:18px;color:#b91c1c;">Sorun devam ediyor</h1>
-          <p style="margin:0 0 8px;font-size:14px;color:#1f2733;"><strong>${ticket.ticketNumber}</strong></p>
-          <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#475569;">${escapeHtml(ticket.subject)}</p>
-          <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#475569;">
-            <strong>${escapeHtml(ticket.itirazEdenAd)}</strong> çözümün sorunu gidermediğini bildirdi.
-            Talep yeniden &quot;İşlemde&quot; durumuna alındı ve üzerinizde.
-          </p>
-          <a href="${ileriHubUrl(link)}" style="display:inline-block;background:#1B4F72;color:#ffffff;text-decoration:none;padding:10px 18px;border-radius:6px;font-size:14px;">Talebe Git</a>
-        </td></tr>
-      </table>
-    </td></tr>
-  </table>
-</body></html>`
+    const html = renderEmail({
+      module: 'Destek',
+      title: 'Sorun devam ediyor',
+      subtitle: `Talep No: ${ticket.ticketNumber} · ${ticket.itirazEdenAd}`,
+      preheader: `${ticket.ticketNumber}: ${ticket.itirazEdenAd} çözümün sorunu gidermediğini bildirdi`,
+      infoRows: [
+        { label: 'Talep No', value: `<strong>${escapeHtml(ticket.ticketNumber)}</strong>` },
+        { label: 'Konu', value: escapeHtml(ticket.subject) },
+        { label: 'Bildiren', value: escapeHtml(ticket.itirazEdenAd) },
+      ],
+      afterHtml: p(
+        `<strong>${escapeHtml(ticket.itirazEdenAd)}</strong> çözümün sorunu gidermediğini bildirdi. ` +
+          `Talep yeniden &quot;İşlemde&quot; durumuna alındı ve üzerinizde.`,
+      ),
+      cta: { label: 'Talebe Git', url: ileriHubUrl(link) },
+    })
     const messageId = await ticketMailGonder({ name: r.name, email: r.email }, title, text, html)
     await messageIdDamgala(messageId, { ticketId: ticket.id })
   } catch (err) {
@@ -975,35 +945,26 @@ export async function dispatchTicketKaydedildi(ticket: TicketKaydedildiInfo): Pr
       `Kayıt yolu: ${kanalMetni}\n\n` +
       `Talebin durumunu buradan izleyebilir, gelişmeleri e-posta ile alırsınız:\n` +
       `${ileriHubUrl(link)}\n\nİleri Group`
-    const html = `<!doctype html><html lang="tr"><head><meta charset="utf-8"></head>
-<body style="margin:0;background:#f4f6f8;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6f8;">
-    <tr><td align="center" style="padding:24px 12px;">
-      <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="width:560px;max-width:560px;background:#ffffff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
-        <tr><td bgcolor="#1B4F72" style="background:#1B4F72;padding:14px 24px;">
-          <span style="color:#ffffff;font-size:15px;font-weight:700;">ILERIHub · IT Destek</span>
-        </td></tr>
-        <tr><td style="padding:22px 24px;">
-          <h1 style="margin:0 0 12px;font-size:18px;color:#1B4F72;">Talebiniz kaydedildi</h1>
-          <p style="margin:0 0 8px;font-size:14px;color:#1f2733;"><strong>${ticket.ticketNumber}</strong></p>
-          <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#475569;">${escapeHtml(ticket.subject)}</p>
-          <div style="margin:0 0 16px;padding:12px 14px;background:#f8fafc;border-left:3px solid #1B4F72;border-radius:4px;">
-            <p style="margin:0;font-size:13px;line-height:1.6;color:#475569;">
-              Bu talep <strong>${escapeHtml(ticket.kaydedenAd)}</strong> (IT ekibi) tarafından,
-              ${kanalMetni} üzerine sizin adınıza kaydedildi.
-            </p>
-          </div>
-          <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#475569;">
-            Talebin sahibi sizsiniz: gelişmeler size bildirilecek ve çözüm sonrası
-            hizmeti değerlendirmeniz istenecek.
-          </p>
-          <a href="${ileriHubUrl(link)}" style="display:inline-block;background:#1B4F72;color:#ffffff;text-decoration:none;padding:10px 18px;border-radius:6px;font-size:14px;">Talebe Git</a>
-        </td></tr>
-      </table>
-    </td></tr>
-  </table>
-</body></html>`
-    await sendEmail([{ name: r.name, email: r.email }], title, text, html, undefined, {
+    const html = renderEmail({
+      module: 'Destek',
+      title: 'Talebiniz kaydedildi',
+      subtitle: `Talep No: ${ticket.ticketNumber} · ${kanalMetni}`,
+      preheader: `${ticket.ticketNumber} adınıza kaydedildi`,
+      infoRows: [
+        { label: 'Talep No', value: `<strong>${escapeHtml(ticket.ticketNumber)}</strong>` },
+        { label: 'Konu', value: escapeHtml(ticket.subject) },
+        { label: 'Kaydeden', value: `${escapeHtml(ticket.kaydedenAd)} (IT ekibi)` },
+        { label: 'Kayıt yolu', value: kanalMetni },
+      ],
+      afterHtml:
+        p(
+          `Bu talep <strong>${escapeHtml(ticket.kaydedenAd)}</strong> (IT ekibi) tarafından, ` +
+            `${kanalMetni} üzerine sizin adınıza kaydedildi.`,
+        ) +
+        p('Talebin sahibi sizsiniz: gelişmeler size bildirilecek ve çözüm sonrası hizmeti değerlendirmeniz istenecek.'),
+      cta: { label: 'Talebe Git', url: ileriHubUrl(link) },
+    })
+    await sendEmail([{ name: r.name, email: r.email }], title, text, html, logoAttachments(), {
       replyTo: TICKET_REPLY_TO,
     })
   } catch (err) {

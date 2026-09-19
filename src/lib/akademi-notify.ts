@@ -1,18 +1,9 @@
-import fs from "fs";
-import path from "path";
 import { prisma } from "@/lib/prisma";
-import { sendEmail, type EmailAttachment } from "@/lib/email";
+import { sendEmail } from "@/lib/email";
+// Kurumsal yerleşim logoyu cid:ilerihub-logo ile gömer → her HTML mailde ek verilmeli.
+import { logoAttachments } from "@/lib/email-templates/layout";
 import * as templates from "@/lib/email-templates/akademi";
 import { dueDateSetEmail } from "@/lib/email-templates/akademi/dueDateSet";
-
-// ILERIHub logosu — maile CID gömme (dış URL değil; her istemcide çalışır,
-// image-blocking sorunu olmaz). Dosya yoksa attachment atlanır (alt text kalır).
-function logoAttachments(): EmailAttachment[] | undefined {
-  const p = path.join(process.cwd(), "public", "ilerihublogo.png");
-  return fs.existsSync(p)
-    ? [{ filename: "ilerihublogo.png", path: p, cid: "ilerihub-logo" }]
-    : undefined;
-}
 
 export type RecipientUser = { id: string; email: string | null; name: string };
 
@@ -279,7 +270,7 @@ export async function notifyAkademiEvent(ctx: NotifyContext): Promise<void> {
   // Kullanıcıya
   // sendEmail throw ETMEZ ({success:false} döner) → sonuç kontrol edilip alıcı loglanır.
   const mailGonder = (kanal: string, to: { email: string; name: string }, text: string, html: string) =>
-    sendEmail([to], content.subject, text, html)
+    sendEmail([to], content.subject, text, html, logoAttachments())
       .then((r) => {
         if (!r.success) {
           console.error(`[akademi-notify] ${ctx.eventType} mail ${kanal} → ${to.email} BAŞARISIZ: ${r.error ?? "?"}`);
@@ -447,7 +438,8 @@ export async function notifyDueDateSetBatch(
           [{ email: rec.email, name: adSoyad }],
           subject,
           text,
-          html
+          html,
+          logoAttachments()
         ).catch((err) =>
           console.error(
             `[akademi-notify] dueDate mail to ${rec.email} failed:`,

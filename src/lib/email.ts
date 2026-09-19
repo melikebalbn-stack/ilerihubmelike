@@ -1,5 +1,6 @@
 import { CalibrationEmailType, TaskEmailType } from '@/generated/prisma'
 import nodemailer from 'nodemailer'
+import { renderEmail, p as emailP, quote as emailQuote } from '@/lib/email-templates/layout'
 import { generateVisitReportPDFBuffer, VisitReportForPDF } from '@/lib/pdf/visit-report-pdf-server'
 
 export interface EmailRecipient {
@@ -979,40 +980,34 @@ Talebi görüntülemek için: ${ticketUrl}
 —
 ILERIHub Bildirim Sistemi`
 
-  const headerBg = isCritical ? '#fee2e2' : '#dbeafe'
-  const headerBorder = isCritical ? '#fca5a5' : '#93c5fd'
-  const headerText = isCritical ? '#991b1b' : '#1e40af'
-  const labelText = isCritical ? '🔴 ACİL — YENİ IT TALEBİ' : 'YENİ IT TALEBİ'
+  const labelText = isCritical ? 'ACİL — Yeni IT talebi' : 'Yeni IT talebi'
+  const acilis = new Date(ticket.createdAt).toLocaleString('tr-TR')
 
-  const html = `<!DOCTYPE html>
-<html lang="tr">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f8fafc;color:#0f172a;">
-  <div style="max-width:600px;margin:24px auto;background:#ffffff;border-radius:8px;overflow:hidden;border:1px solid #e2e8f0;">
-    <div style="background:${headerBg};padding:20px 24px;border-bottom:1px solid ${headerBorder};">
-      <div style="font-size:11px;color:${headerText};text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px;font-weight:600;">${labelText}</div>
-      <div style="font-size:18px;font-weight:600;color:#0f172a;">${esc(ticket.ticketNumber)} — ${esc(ticket.subject)}</div>
-    </div>
-    <div style="padding:24px;">
-      <div style="margin-bottom:18px;color:#475569;font-size:14px;">Merhaba ${esc(recipientName)},<br>Yeni bir IT destek talebi açıldı. Detaylar aşağıdadır.</div>
-      <table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:16px;">
-        <tr><td style="padding:6px 0;color:#64748b;width:120px;">Açan</td><td style="padding:6px 0;color:#0f172a;font-weight:500;">${esc(ticket.requesterName)}</td></tr>
-        <tr><td style="padding:6px 0;color:#64748b;">Departman</td><td style="padding:6px 0;color:#0f172a;">${esc(ticket.requesterDept)}</td></tr>
-        <tr><td style="padding:6px 0;color:#64748b;">Kategori</td><td style="padding:6px 0;color:#0f172a;">${esc(ticket.category)}</td></tr>
-        <tr><td style="padding:6px 0;color:#64748b;">Öncelik</td><td style="padding:6px 0;color:#0f172a;font-weight:${isCritical ? '600' : '400'};">${priorityLabel[ticket.priority] || ticket.priority}</td></tr>
-        <tr><td style="padding:6px 0;color:#64748b;">Açılış</td><td style="padding:6px 0;color:#0f172a;">${new Date(ticket.createdAt).toLocaleString('tr-TR')}</td></tr>
-      </table>
-      <div style="padding:14px 16px;background:#f8fafc;border-left:3px solid #cbd5e1;border-radius:4px;font-size:14px;color:#334155;white-space:pre-wrap;line-height:1.5;">${esc(ticket.description)}</div>
-      <div style="text-align:center;margin-top:24px;">
-        <a href="${ticketUrl}" style="display:inline-block;background:#3b82f6;color:#ffffff;padding:11px 28px;border-radius:6px;text-decoration:none;font-weight:500;font-size:14px;">Talebi Görüntüle</a>
-      </div>
-    </div>
-    <div style="background:#f8fafc;padding:14px 24px;text-align:center;font-size:12px;color:#94a3b8;border-top:1px solid #e2e8f0;">
-      ILERIHub Bildirim Sistemi · İleri Group
-    </div>
-  </div>
-</body>
-</html>`
+  const html = renderEmail({
+    module: 'Destek',
+    title: labelText,
+    subtitle: `${ticket.ticketNumber} · ${acilis}`,
+    preheader: `${ticket.ticketNumber} — ${ticket.subject}`,
+    bodyHtml:
+      emailP(`Merhaba ${esc(recipientName)},`) +
+      emailP('Yeni bir IT destek talebi açıldı. Detaylar aşağıdadır.'),
+    infoRows: [
+      { label: 'Talep No', value: `<strong>${esc(ticket.ticketNumber)}</strong>` },
+      { label: 'Başlık', value: esc(ticket.subject) },
+      { label: 'Açan', value: esc(ticket.requesterName) },
+      { label: 'Departman', value: esc(ticket.requesterDept) },
+      { label: 'Kategori', value: esc(ticket.category) },
+      {
+        label: 'Öncelik',
+        value: isCritical
+          ? `<strong style="color:#b91c1c;">${esc(priorityLabel[ticket.priority] || ticket.priority)}</strong>`
+          : esc(priorityLabel[ticket.priority] || ticket.priority),
+      },
+      { label: 'Açılış', value: acilis },
+    ],
+    afterHtml: emailQuote(esc(ticket.description), 'Açıklama'),
+    cta: { label: 'Talebi Görüntüle', url: ticketUrl },
+  })
 
   return { subject, body, html }
 }

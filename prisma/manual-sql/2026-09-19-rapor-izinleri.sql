@@ -1,6 +1,6 @@
 -- Rapor Tasarımcısı (Faz 1): 3 izin + super-admin rol bağı.
 --
--- Prod'a ELLE uygulanır (prisma migrate dışı). Kod tarafı: src/lib/auth/permissions.ts
+-- Prod'a ELLE uygulanır (prisma migrate dışı; bu klasör migrations/ ALTINDA OLMAMALI — Prisma her alt klasörü migration sayar ve deploy kapısı "pending: manual" ile durur (19.09.2026)). Kod tarafı: src/lib/auth/permissions.ts
 -- (PERMISSION_KEYS / PERMISSION_DESCRIPTIONS). super-admin seed-roles.ts'te 'ALL'
 -- aldığı için seed de aynı sonucu üretir; bu dosya seed koşturmadan uygulama içindir.
 -- Başka role atama YOK. ON CONFLICT DO NOTHING — idempotent, additive.

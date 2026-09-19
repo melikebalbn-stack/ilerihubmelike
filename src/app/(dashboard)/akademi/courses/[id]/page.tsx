@@ -224,7 +224,12 @@ export default function AkademiCourseDetailPage() {
 
       <ContentViewerModal
         content={viewerContent}
-        onClose={() => setViewerContent(null)}
+        onClose={() => {
+          // Kapanınca kursu yenile: izleme yüzdesi/kaldığı yer sunucudan gelsin —
+          // aksi hâlde yeniden açılışta sayfa yüklendiği andaki (0) değerle başlıyordu.
+          setViewerContent(null);
+          loadCourse();
+        }}
         onMarkComplete={handleMarkComplete}
         isMarking={markingId !== null}
       />

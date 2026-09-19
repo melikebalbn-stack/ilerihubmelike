@@ -42,31 +42,39 @@ export function VideoWatchPlayer({
   const videoRef = useRef<HTMLVideoElement>(null);
   const watchedRef = useRef(initialWatchedSeconds);
   const lastTimeRef = useRef<number | null>(null);
+  // Son bilinen konum: unmount/cleanup anında videoRef.current null olabiliyor →
+  // beacon positionSec=0 gidiyor ve sunucu kaldığı yeri 0'a EZİYORDU (19.09 hatası).
+  const positionRef = useRef(initialPositionSec);
   const durationRef = useRef<number | null>(initialDurationSec);
   const lastSentRef = useRef(initialWatchedSeconds);
+  const lastSentPosRef = useRef(initialPositionSec);
   const [percent, setPercent] = useState(() => pct(initialWatchedSeconds, initialDurationSec));
 
   const url = `/api/akademi/contents/${contentId}/watch`;
 
   const payload = useCallback(() => {
     const v = videoRef.current;
+    if (v && Number.isFinite(v.currentTime)) positionRef.current = v.currentTime;
     return JSON.stringify({
       watchedSeconds: Math.floor(watchedRef.current),
-      positionSec: Math.floor(v?.currentTime ?? 0),
+      positionSec: Math.floor(positionRef.current),
       durationSec: durationRef.current ? Math.floor(durationRef.current) : undefined,
     });
   }, []);
 
   const send = useCallback(
     async (beacon = false) => {
-      // Değişiklik yoksa gönderme (konum yine de güncellensin diye 5 sn tolerans).
-      if (!beacon && Math.floor(watchedRef.current) === Math.floor(lastSentRef.current)) {
-        return;
-      }
+      // Değişiklik yoksa gönderme: ne izlenen süre ne de konum (≥5 sn) değişmediyse atla.
+      const v = videoRef.current;
+      if (v && Number.isFinite(v.currentTime)) positionRef.current = v.currentTime;
+      const watchedSame = Math.floor(watchedRef.current) === Math.floor(lastSentRef.current);
+      const posSame = Math.abs(positionRef.current - lastSentPosRef.current) < 5;
+      if (!beacon && watchedSame && posSame) return;
       const body = payload();
       if (beacon && typeof navigator !== "undefined" && navigator.sendBeacon) {
         navigator.sendBeacon(url, new Blob([body], { type: "text/plain" }));
         lastSentRef.current = watchedRef.current;
+        lastSentPosRef.current = positionRef.current;
         return;
       }
       try {
@@ -76,7 +84,10 @@ export function VideoWatchPlayer({
           body,
           keepalive: true,
         });
-        if (res.ok) lastSentRef.current = watchedRef.current;
+        if (res.ok) {
+          lastSentRef.current = watchedRef.current;
+          lastSentPosRef.current = positionRef.current;
+        }
       } catch {
         /* ağ kopması: sayaç istemcide birikir, sonraki heartbeat yakalar */
       }
@@ -109,6 +120,7 @@ export function VideoWatchPlayer({
     };
     const onTimeUpdate = () => {
       const now = v.currentTime;
+      positionRef.current = now;
       const last = lastTimeRef.current;
       if (last !== null && !v.paused && !v.seeking) {
         const delta = now - last;
@@ -125,9 +137,11 @@ export function VideoWatchPlayer({
     };
     const onSeek = () => {
       lastTimeRef.current = v.currentTime;
+      positionRef.current = v.currentTime;
     };
     const onPauseOrEnd = () => {
       lastTimeRef.current = v.currentTime;
+      positionRef.current = v.currentTime;
       void send(false);
     };
     const onVisibility = () => {

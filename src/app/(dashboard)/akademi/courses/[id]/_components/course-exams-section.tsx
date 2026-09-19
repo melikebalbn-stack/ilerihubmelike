@@ -70,13 +70,20 @@ export function CourseExamsSection({
           {locked ? <Lock size={14} /> : <FileQuestion size={14} />}
           2. Adım — Sınav
         </h2>
-        {locked && lockReason && (
-          <span className="text-xs font-medium" style={{ color: "var(--ak-text-tertiary)" }}>
-            <Lock size={12} className="inline mr-1 -mt-0.5" />
-            {lockReason}
-          </span>
-        )}
       </div>
+      {locked && (
+        <div
+          className="mb-3 px-3 py-2 rounded-md text-xs font-medium flex items-start gap-2"
+          style={{ background: "rgba(245,158,11,0.12)", color: "#92400e" }}
+          role="status"
+        >
+          <Lock size={14} className="shrink-0 mt-0.5" />
+          <span>
+            <strong>Eğitimi tamamlamadan sınava geçemezsiniz.</strong>
+            {lockReason ? ` ${lockReason}.` : ""}
+          </span>
+        </div>
+      )}
       <div className="space-y-2">
         {exams.map((e) => (
           <div

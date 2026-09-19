@@ -70,7 +70,10 @@ export async function POST(
 
   const clamp = (v: number) => (videoDurationSec ? Math.min(v, videoDurationSec) : v);
   const watched = Math.max(existing?.watchedSeconds ?? 0, watchedIn !== null ? clamp(watchedIn) : 0);
-  const position = positionIn !== null ? clamp(positionIn) : existing?.lastPositionSec ?? 0;
+  // Konum: 0 gelirse mevcut konumu EZME (unmount beacon'ı 0 gönderebiliyordu) —
+  // gerçek "başa dönüş" de zaten bir sonraki heartbeat'te doğru konumla gelir.
+  const position =
+    positionIn !== null && positionIn > 0 ? clamp(positionIn) : existing?.lastPositionSec ?? 0;
 
   const prog = await prisma.contentProgress.upsert({
     where: { userId_contentId: { userId, contentId: content.id } },

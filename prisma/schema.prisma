@@ -241,6 +241,12 @@ model User {
   offboardingFormsReceived OffboardingForm[] @relation("OffboardingReceiver")
   offboardingFormsCreated  OffboardingForm[] @relation("OffboardingCreator")
 
+  // Rapor tasarımcısı Faz 1 (back-relations)
+  raporVeriSetleri    RaporVeriSeti[]    @relation("raporVeriSetiOlusturan")
+  raporSablonlari     RaporSablon[]      @relation("raporSablonOlusturan")
+  raporSurumleri      RaporSablonSurum[] @relation("raporSurumKaydeden")
+  raporCalistirmalari RaporCalistirma[]  @relation("raporCalistiran")
+
   // Zimmet Teslim Formu (cihaz teslim tutanağı — offboarding'den AYRI modül)
   zimmetFormlariSahip     ZimmetFormu[] @relation("ZimmetFormuSahibi")
   zimmetFormlariOnaylanan ZimmetFormu[] @relation("ZimmetFormuOnaylayan")
@@ -14787,4 +14793,115 @@ model IfsPersonelSyncKayit {
   @@unique([varlikTipi, hubId])
   @@index([durum])
   @@map("ifs_personel_sync_kayit")
+}
+
+// ============================================================
+// Rapor Tasarımcısı — Faz 1
+// ============================================================
+
+enum RaporKaynakTipi {
+  IFS_ODATA
+  POSTGRES
+}
+
+enum RaporSablonDurum {
+  TASLAK
+  YAYINDA
+  ARSIV
+}
+
+enum RaporCiktiTipi {
+  EKRAN
+  XLSX
+  PDF
+}
+
+model RaporKatalog {
+  id          String          @id @default(cuid())
+  kaynakTipi  RaporKaynakTipi
+  kaynakAd    String
+  entity      String
+  alan        String
+  veriTipi    String
+  etiket      String?
+  anahtarMi   Boolean         @default(false)
+  aktif       Boolean         @default(true)
+  guncellenme DateTime        @updatedAt
+
+  @@unique([kaynakAd, entity, alan])
+  @@index([entity])
+  @@map("rapor_katalog")
+}
+
+model RaporVeriSeti {
+  id          String   @id @default(cuid())
+  ad          String   @unique
+  aciklama    String?
+  tanim       Json
+  onbellekSn  Int      @default(300)
+  aktif       Boolean  @default(true)
+  olusturanId String?
+  olusturma   DateTime @default(now())
+  guncellenme DateTime @updatedAt
+
+  olusturan User?         @relation("raporVeriSetiOlusturan", fields: [olusturanId], references: [id], onDelete: SetNull)
+  sablonlar RaporSablon[]
+
+  @@map("rapor_veri_seti")
+}
+
+model RaporSablon {
+  id           String           @id @default(cuid())
+  kod          String           @unique
+  ad           String
+  aciklama     String?
+  veriSetiId   String
+  icerik       Json
+  surum        Int              @default(1)
+  durum        RaporSablonDurum @default(TASLAK)
+  izinAnahtari String?
+  olusturanId  String?
+  olusturma    DateTime         @default(now())
+  guncellenme  DateTime         @updatedAt
+
+  veriSeti      RaporVeriSeti      @relation(fields: [veriSetiId], references: [id])
+  olusturan     User?              @relation("raporSablonOlusturan", fields: [olusturanId], references: [id], onDelete: SetNull)
+  surumler      RaporSablonSurum[]
+  calistirmalar RaporCalistirma[]
+
+  @@index([durum])
+  @@map("rapor_sablon")
+}
+
+model RaporSablonSurum {
+  id         String   @id @default(cuid())
+  sablonId   String
+  surum      Int
+  icerik     Json
+  kaydedenId String?
+  olusturma  DateTime @default(now())
+
+  sablon   RaporSablon @relation(fields: [sablonId], references: [id], onDelete: Cascade)
+  kaydeden User?       @relation("raporSurumKaydeden", fields: [kaydedenId], references: [id], onDelete: SetNull)
+
+  @@unique([sablonId, surum])
+  @@map("rapor_sablon_surum")
+}
+
+model RaporCalistirma {
+  id           String         @id @default(cuid())
+  sablonId     String
+  calistiranId String?
+  parametreler Json?
+  satirSayisi  Int?
+  sureMs       Int?
+  cikti        RaporCiktiTipi @default(EKRAN)
+  hata         String?
+  olusturma    DateTime       @default(now())
+
+  sablon     RaporSablon @relation(fields: [sablonId], references: [id], onDelete: Cascade)
+  calistiran User?       @relation("raporCalistiran", fields: [calistiranId], references: [id], onDelete: SetNull)
+
+  @@index([sablonId, olusturma])
+  @@map("rapor_calistirma")
 }

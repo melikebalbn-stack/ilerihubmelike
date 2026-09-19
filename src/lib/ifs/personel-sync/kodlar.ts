@@ -81,6 +81,15 @@ export const IFS_GENDER_ENUM: Readonly<Record<'Male' | 'Female', 'Id1' | 'Id2'>>
  *  - FreeField1/2: pilot 16.09 — IFS bu projeksiyonda kalıcı yazmıyor (plan.ts notu).
  */
 export const EMPLOYEE_ROUNDTRIP_DISI: readonly string[] = ['ValidFrom', 'ValidTo', 'FreeField1', 'FreeField2']
+/**
+ * Yaka → IFS Employee Category (CompanyEmpCategories: BY=1, MY=2, GY=3 — GY 19.09 ifscloudtest'e eklendi).
+ * Kategori yalnız CREATE'te (CompanyPersons POST) yazılır; mevcut çalışanda Employee File PATCH
+ * "not updatable" (19.09) → fark NOOP + IFS_ALAN_GUNCELLEME_YOK notu. Bilinmeyen yaka → undefined (gönderilmez).
+ */
+export const YAKA_EMP_KATEGORI: Readonly<Record<string, 'BY' | 'MY' | 'GY'>> = { BEYAZ: 'BY', MAVI: 'MY', GRI: 'GY' }
+export function ifsEmpKategori(yaka: string | null | undefined): 'BY' | 'MY' | 'GY' | undefined {
+  return yaka ? YAKA_EMP_KATEGORI[yaka] : undefined
+}
 /** Atama alanları — SingleEmployeeAssignmentsHandling sihirbazıyla değişir (bkz. ifs-api atamaDegistir). */
 export const EMPLOYEE_ATAMA_ALANLARI: readonly string[] = ['OrgCode', 'PosCode']
 /** Pasifleştirme (istihdam bitişi): TerminateEmploymentHandling asistanı ile (terminate.ts, 18.09 kanıtlı). true → PASIF kalemi üretilir. */

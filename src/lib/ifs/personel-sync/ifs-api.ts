@@ -156,11 +156,13 @@ export interface IfsEmployee {
   OrgCode: string | null; PosCode: string | null; EmpOrgCode?: string | null; EmpPosCode?: string | null
   EmploymentDate: string | null; EmploymentEndDate: string | null; ValidFrom: string | null; ValidTo: string | null
   Gender: string | null; EntitledToOvertime: boolean | null; MasterEmployment: boolean | null
+  /** Employee Category (BY/MY/GY) — CREATE'te yazılır, sonra Employee File'dan değişmez. */
+  EmpCatName?: string | null
   '@odata.etag'?: string
 }
 const EMP_SET = 'EmployeesHandling.svc/CompanyPersons'
 export const empAnahtari = (empNo: string) => `${EMP_SET}(CompanyId='${IFS_COMPANY}',EmpNo='${q(empNo)}')`
-const EMP_SELECT = 'EmpNo,PersonId,Fname,Lname,InternalDisplayName,OrgCode,PosCode,EmpOrgCode,EmpPosCode,EmploymentDate,EmploymentEndDate,ValidFrom,ValidTo,Gender,EntitledToOvertime,MasterEmployment'
+const EMP_SELECT = 'EmpNo,PersonId,Fname,Lname,InternalDisplayName,OrgCode,PosCode,EmpOrgCode,EmpPosCode,EmploymentDate,EmploymentEndDate,ValidFrom,ValidTo,Gender,EntitledToOvertime,MasterEmployment,EmpCatName'
 /** Yalnız senkron kapsamındaki (ILR-) çalışanlar. */
 export const listEmployees = () => tumu<IfsEmployee>(`${EMP_SET}?$filter=${enc(`CompanyId eq '${IFS_COMPANY}' and startswith(EmpNo,'${SICIL_ONEKI}')`)}&$select=${EMP_SELECT}&$top=500`)
 export const listAllEmployees = () => tumu<IfsEmployee>(`${EMP_SET}?$filter=${enc(`CompanyId eq '${IFS_COMPANY}'`)}&$select=${EMP_SELECT}&$top=500`)

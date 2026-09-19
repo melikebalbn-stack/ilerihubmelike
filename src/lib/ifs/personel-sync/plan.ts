@@ -9,7 +9,7 @@
  */
 import type { prisma as PrismaTip } from '@/lib/prisma'
 import {
-  EMPLOYEE_ATAMA_ALANLARI, EMPLOYEE_KISI_ALANLARI, EMPLOYEE_PASIF_DESTEKLI, EMPLOYEE_PATCH_ALANLARI, IFS_GENDER_ENUM, EMPLOYEE_SABITLERI, IFS_ACIK_UCLU_TARIH, IFS_LABOR_CLASS_SABITLERI, IFS_ORG_TERM, IFS_STRUCTURE, IFS_STRUCT_BU_ID, IFS_ORG_VALID_FROM, IFS_ORG_VALID_TO, KAYNAKHANE_BOLUM, KURUL_KOD_ONEKI,
+  EMPLOYEE_ATAMA_ALANLARI, EMPLOYEE_KISI_ALANLARI, EMPLOYEE_PASIF_DESTEKLI, EMPLOYEE_PATCH_ALANLARI, IFS_GENDER_ENUM, ifsEmpKategori, EMPLOYEE_SABITLERI, IFS_ACIK_UCLU_TARIH, IFS_LABOR_CLASS_SABITLERI, IFS_ORG_TERM, IFS_STRUCTURE, IFS_STRUCT_BU_ID, IFS_ORG_VALID_FROM, IFS_ORG_VALID_TO, KAYNAKHANE_BOLUM, KURUL_KOD_ONEKI,
   KodTuretmeHatasi, adSoyadAyir, baslikHali, bolumShopFloorMu, ifsCinsiyet, ifsTarih, kaynakTuru, kisiShopFloorMu,
   laborClassAciklamasi, laborClassKodu, orgKodu, posKodu, sicilSenkronKapsamindaMi, type KaynakTuru,
 } from './kodlar'
@@ -346,10 +346,14 @@ export async function planla(db: Db, sec: PlanSecenekleri = {}): Promise<Senkron
     const gorunenAd = baslikHali(k.adSoyad)
     const giris = ifsTarih(k.iseGirisTarihi)!
     const cinsiyet = ifsCinsiyet(k.cinsiyet)
+    // Yaka → Employee Category. CREATE'te ZORUNLU (bilinmeyen yaka → ATLA); mevcut kişide fark yalnız not.
+    const kategori = ifsEmpKategori(k.yakaRengi)
+    if (!kategori) { empKalemleri.push({ varlik: 'EMPLOYEE', hubId: k.id, ifsAnahtar: k.sicilNo, etiket, islem: 'ATLA', sebep: `YAKA_TANIMSIZ: '${k.yakaRengi}' → Employee Category eşlemesi yok (BEYAZ/MAVI/GRI bekleniyor)` }); continue }
     const hedef: Record<string, unknown> = {
       Fname, Lname, InternalDisplayName: gorunenAd,
       OrgCode: org.ifsKod, PosCode: k.koltuk.ifsKod,
       EmploymentDate: giris, MasterEmployment: EMPLOYEE_SABITLERI.MasterEmployment,
+      EmpCatName: kategori,
       ...(cinsiyet ? { Gender: cinsiyet } : {}),
       // FreeField1/2 (yaka, bölüm adı) CREATE gövdesinde gönderilir ama pilot 16.09: IFS bu
       // projeksiyonda KALICI YAZMIYOR (round-trip null). Fark hesabına alınmaz — yoksa her
@@ -362,7 +366,7 @@ export async function planla(db: Db, sec: PlanSecenekleri = {}): Promise<Senkron
         govde: {
           EmpNo: k.sicilNo, PersonId: k.sicilNo, Fname, Lname, InternalDisplayName: gorunenAd, ExternalDisplayName: gorunenAd, EmployeeName: gorunenAd,
           ValidFrom: giris, ValidTo: IFS_ACIK_UCLU_TARIH, EmploymentDate: giris, EmploymentEndDate: IFS_ACIK_UCLU_TARIH,
-          EmpOrgCode: org.ifsKod, EmpPosCode: k.koltuk.ifsKod, ...EMPLOYEE_SABITLERI,
+          EmpOrgCode: org.ifsKod, EmpPosCode: k.koltuk.ifsKod, ...EMPLOYEE_SABITLERI, EmpCatName: kategori,
           ...(cinsiyet ? { Gender: cinsiyet } : {}), FreeField1: k.yakaRengi, FreeField2: k.bolum,
         },
       })

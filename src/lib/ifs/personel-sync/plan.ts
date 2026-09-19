@@ -383,7 +383,11 @@ export async function planla(db: Db, sec: PlanSecenekleri = {}): Promise<Senkron
       if (cinsiyetDegisti) govde._cinsiyet = IFS_GENDER_ENUM[cinsiyet!]
       const yazilamazNotu = yazilamaz.length ? `IFS_ALAN_GUNCELLEME_YOK: ${yazilamaz.join(',')} farklı ama açık projeksiyonlarda güncellenemiyor` : undefined
       if (Object.keys(yazilabilir).length || atamaDegisti || adDegisti || cinsiyetDegisti) empKalemleri.push({ varlik: 'EMPLOYEE', hubId: k.id, ifsAnahtar: k.sicilNo, etiket, islem: 'UPDATE', fark: f, govde, etag: m['@odata.etag'] ?? null, sebep: [sebepNot, yazilamazNotu].filter(Boolean).join(' · ') || undefined })
-      else if (yazilamaz.length) empKalemleri.push({ varlik: 'EMPLOYEE', hubId: k.id, ifsAnahtar: k.sicilNo, etiket, islem: 'ATLA', fark: f, sebep: yazilamazNotu })
+      // Tek fark bilerek yazılmayan alan (EmploymentDate) ise ATLA değil NOOP + not (19.09): bu kişiler
+      // yeniden işe giren rehire sınıfı (ILR-00016 gibi) — Hub'daki yeni giriş tarihi IFS'te ancak
+      // yeni istihdam dönemi (NewEmploymentHandling asistanı) açılınca oluşur; rehire yolu kodlanınca
+      // fark ve bu not kendiliğinden kalkar. ATLA gece raporunda sahte "atlandı" şişirmesin.
+      else if (yazilamaz.length) empKalemleri.push({ varlik: 'EMPLOYEE', hubId: k.id, ifsAnahtar: k.sicilNo, etiket, islem: 'NOOP', fark: f, sebep: [sebepNot, yazilamazNotu].filter(Boolean).join(' · ') })
       else empKalemleri.push({ varlik: 'EMPLOYEE', hubId: k.id, ifsAnahtar: k.sicilNo, etiket, islem: 'NOOP', fark: f, sebep: sebepNot })
     }
     // Shop-floor (Karar 2)

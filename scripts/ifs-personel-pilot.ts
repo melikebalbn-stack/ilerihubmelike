@@ -20,7 +20,7 @@ import { prisma } from '../src/lib/prisma'
 import { planla, planOzetiMetni } from '../src/lib/ifs/personel-sync/plan'
 import { uygula } from '../src/lib/ifs/personel-sync/uygula'
 import { BellekKuyruk } from '../src/lib/ifs/personel-sync/kuyruk'
-import { IFS_SYNC_AKTOR_ID } from '../src/lib/ifs/personel-sync/kodlar'
+import { EMPLOYEE_ROUNDTRIP_DISI, IFS_SYNC_AKTOR_ID } from '../src/lib/ifs/personel-sync/kodlar'
 import { alanFarki, ayrilmaAnahtari, listEmployeeStatuses, getEmployee, getEmpEmployedTime, getSfSite, ifsBaglanti, istek, orgAnahtari, posAnahtari, sfeAnahtari, type IfsOrg, type IfsPos, type IfsSfEmployee } from '../src/lib/ifs/personel-sync/ifs-api'
 
 const arg = (ad: string) => { const i = process.argv.indexOf(ad); return i >= 0 ? process.argv[i + 1] : undefined }
@@ -81,7 +81,8 @@ async function main() {
           const atama = (k.govde?._atama as { OrgCode?: string; PosCode?: string } | undefined)
           const beklenenOrg = atama?.OrgCode ?? k.govde?.EmpOrgCode ?? k.govde?.OrgCode ?? b?.OrgCode
           const beklenenPos = atama?.PosCode ?? k.govde?.EmpPosCode ?? k.govde?.PosCode ?? b?.PosCode
-          const yazilanAlanlar = Object.fromEntries(Object.entries(k.govde ?? {}).filter(([a]) => !a.startsWith('_') && a in (b ?? {})))
+          // Yazma-anı alanları (ValidFrom/ValidTo, FreeField*) okuma görünümünde kalıcı değil → karşılaştırma dışı.
+          const yazilanAlanlar = Object.fromEntries(Object.entries(k.govde ?? {}).filter(([a]) => !a.startsWith('_') && !EMPLOYEE_ROUNDTRIP_DISI.includes(a) && a in (b ?? {})))
           const fark = b ? alanFarki(yazilanAlanlar, b as unknown as Record<string, unknown>) : ['kayıt yok']
           ok = !!b && b.OrgCode === beklenenOrg && b.PosCode === beklenenPos && fark.length === 0
           detay = b ? `org=${b.OrgCode} pos=${b.PosCode} giriş=${b.EmploymentDate} bitiş=${b.EmploymentEndDate} ad=${b.InternalDisplayName} cins=${b.Gender} master=${b.MasterEmployment}${fark.length ? ' UYUŞMAYAN: ' + fark.join('; ') : ''}` : 'YOK'

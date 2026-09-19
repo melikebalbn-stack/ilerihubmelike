@@ -73,6 +73,14 @@ export const EMPLOYEE_PATCH_ALANLARI: readonly string[] = ['MasterEmployment']
 export const EMPLOYEE_KISI_ALANLARI: readonly string[] = ['Fname', 'Lname', 'InternalDisplayName', 'Gender']
 /** IFS Genders LOV metni → PersSet.Gender enum üyesi. */
 export const IFS_GENDER_ENUM: Readonly<Record<'Male' | 'Female', 'Id1' | 'Id2'>> = { Male: 'Id1', Female: 'Id2' }
+/**
+ * CREATE gövdesinde gönderilen ama CompanyPersons OKUMASINDA kalıcı olmayan alanlar — round-trip
+ * karşılaştırması dışında tutulur (19.09: ILR-0001/0002 "ValidFrom ≠ null" yanlış alarmı).
+ *  - ValidFrom/ValidTo: ilk atamanın geçerliliği; atama LU'sunda saklanır, CompanyPersons null döner,
+ *    açık projeksiyonlarda tarih okuması yok (QryCompanyPersActives yalnız org/pos/Primary).
+ *  - FreeField1/2: pilot 16.09 — IFS bu projeksiyonda kalıcı yazmıyor (plan.ts notu).
+ */
+export const EMPLOYEE_ROUNDTRIP_DISI: readonly string[] = ['ValidFrom', 'ValidTo', 'FreeField1', 'FreeField2']
 /** Atama alanları — SingleEmployeeAssignmentsHandling sihirbazıyla değişir (bkz. ifs-api atamaDegistir). */
 export const EMPLOYEE_ATAMA_ALANLARI: readonly string[] = ['OrgCode', 'PosCode']
 /** Pasifleştirme (istihdam bitişi): TerminateEmploymentHandling asistanı ile (terminate.ts, 18.09 kanıtlı). true → PASIF kalemi üretilir. */

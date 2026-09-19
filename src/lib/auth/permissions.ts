@@ -185,6 +185,11 @@ export const PERMISSION_KEYS = {
   // === YÖNETİM (KPI takibi) ===
   KPI_VIEW: 'kpi.view',
   KPI_MANAGE: 'kpi.manage',
+
+  // === RAPOR TASARIMCISI (Faz 1) ===
+  RAPOR_VIEW: 'rapor.view',
+  RAPOR_TASARLA: 'rapor.tasarla',
+  RAPOR_KATALOG: 'rapor.katalog',
 } as const;
 
 export type PermissionKey = typeof PERMISSION_KEYS[keyof typeof PERMISSION_KEYS];
@@ -218,6 +223,7 @@ export const MODULE_LABELS: Record<string, string> = {
   yilliktakvim: 'Yıllık Çalışma Takvimi',
   entegrasyon: 'Entegrasyonlar (Syteline/IFS)',
   kpi: 'Yönetim — KPI',
+  rapor: 'Rapor Tasarımcısı',
 };
 
 /**
@@ -349,4 +355,8 @@ export const PERMISSION_DESCRIPTIONS: Record<string, string> = {
 
   'kpi.view': 'Yönetim KPI panelini görüntüleme (departman KPI tabloları, grafikler, aksiyonlar)',
   'kpi.manage': 'KPI tanımı ekleme, aylık ölçüm girme/güncelleme, aksiyon ekleme',
+
+  'rapor.view': 'Raporları görüntüleme ve çalıştırma',
+  'rapor.tasarla': 'Rapor şablonu ve veri seti oluşturma/düzenleme',
+  'rapor.katalog': 'Veri kataloğunu yönetme (entity ekleme/çıkarma)',
 };

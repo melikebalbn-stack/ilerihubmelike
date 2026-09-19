@@ -101,6 +101,7 @@ export async function GET(
       id: attempt.exam.id,
       title: attempt.exam.title,
       passingScore: attempt.exam.passingScore,
+      courseId: attempt.exam.courseId,
     },
     summary: {
       totalEarned,

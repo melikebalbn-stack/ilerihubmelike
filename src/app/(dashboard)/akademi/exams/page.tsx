@@ -22,6 +22,8 @@ type ExamItem = {
   course: { id: string; title: string } | null;
   userStatus: {
     canStart: boolean;
+    passed?: boolean;
+    passedScore?: number | null;
     hasInProgress: boolean;
     inProgressAttemptId: string | null;
     usedAttempts: number;
@@ -115,14 +117,21 @@ function ExamCard({ exam }: { exam: ExamItem }) {
         >
           Son Sonucu Gör
         </Link>
-        {userStatus.canStart && (
+        {userStatus.passed ? (
+          <div
+            className="w-full bg-green-100 text-green-800 text-center py-2 rounded-md text-sm font-medium"
+            title="Bu sınav geçildi; tekrar girilemez"
+          >
+            ✓ Geçti{userStatus.passedScore != null ? ` — %${userStatus.passedScore}` : ""}
+          </div>
+        ) : userStatus.canStart ? (
           <Link
             href={`/akademi/exams/${exam.id}`}
             className="w-full bg-slate-900 text-white text-center py-2 rounded-md hover:bg-slate-800 block text-sm"
           >
             Tekrar Dene ({userStatus.remainingAttempts} hak)
           </Link>
-        )}
+        ) : null}
       </div>
     );
   } else if (userStatus.canStart) {

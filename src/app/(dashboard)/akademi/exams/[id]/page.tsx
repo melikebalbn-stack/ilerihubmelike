@@ -104,7 +104,9 @@ export default function ExamDetailPage({
       a.status !== "IN_PROGRESS" ||
       (a.expiresAt && new Date(a.expiresAt).getTime() < now)
   ).length;
-  const canStart = !inProgress && usedCount < exam.maxAttempts;
+  const passedAttempt = exam.attempts.find((a) => a.status === "COMPLETED" && a.passed === true);
+  // Geçilmiş sınav tekrar başlatılamaz (sunucu da 403 döner).
+  const canStart = !passedAttempt && !inProgress && usedCount < exam.maxAttempts;
 
   return (
     <div className="ak-animate-in max-w-3xl mx-auto space-y-4">
@@ -173,6 +175,10 @@ export default function ExamDetailPage({
             >
               Yarım Kalan Sınava Devam Et
             </Link>
+          ) : passedAttempt ? (
+            <div className="text-center py-3 rounded-md bg-green-100 text-green-800 font-medium">
+              ✓ Bu sınavı geçtiniz{passedAttempt.score != null ? ` — %${passedAttempt.score}` : ""}. Tekrar girilemez.
+            </div>
           ) : canStart ? (
             <button
               onClick={handleStart}

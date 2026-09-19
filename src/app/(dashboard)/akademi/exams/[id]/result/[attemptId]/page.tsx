@@ -3,7 +3,6 @@
 import { useEffect, useState, use } from "react";
 import Link from "next/link";
 import {
-  ArrowLeft,
   CheckCircle2,
   XCircle,
   Clock,
@@ -11,6 +10,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { useAkademiAuth } from "@/lib/akademi-auth";
+import { AkademiBackLink } from "@/components/akademi/shared/AkademiBackLink";
 
 type ResultData = {
   attempt: {
@@ -21,7 +21,7 @@ type ResultData = {
     startedAt: string;
     completedAt: string | null;
   };
-  exam: { id: string; title: string; passingScore: number };
+  exam: { id: string; title: string; passingScore: number; courseId: string | null };
   // Sunucuda hesaplanır — soru/seçenek/cevap anahtarı bu uçtan GELMEZ.
   summary: {
     totalEarned: number;
@@ -80,14 +80,11 @@ export default function ExamResultPage({
 
   return (
     <div className="ak-animate-in max-w-3xl mx-auto space-y-4">
-      <Link
-        href={`/akademi/exams/${examId}`}
-        className="inline-flex items-center gap-1 text-sm hover:underline"
-        style={{ color: "var(--ak-text-secondary)" }}
-      >
-        <ArrowLeft size={14} />
-        Sınava Dön
-      </Link>
+      {/* "Sınava Dön" yanıltıcıydı (sınava geri götürüyor gibi); hedef kurs sayfası. */}
+      <AkademiBackLink
+        href={exam.courseId ? `/akademi/courses/${exam.courseId}` : "/akademi/exams"}
+        label={exam.courseId ? "Eğitime Dön" : "Sınavlara Dön"}
+      />
 
       <ResultHeader
         attempt={attempt}

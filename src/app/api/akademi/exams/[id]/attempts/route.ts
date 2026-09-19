@@ -50,6 +50,19 @@ export async function POST(
     }
   }
 
+  // GEÇİLMİŞ SINAV KAPALI (19.09.2026): passed=true deneme varsa yeni deneme AÇILMAZ —
+  // deneme hakkı kalmış olsa bile (puan kayıtlı, sertifika/ilerleme ona bağlı).
+  const gecti = await prisma.userExamAttempt.findFirst({
+    where: { userId, examId, status: "COMPLETED", passed: true },
+    select: { id: true, score: true },
+  });
+  if (gecti) {
+    return NextResponse.json(
+      { error: "Bu sınavı zaten geçtiniz", passed: true, score: gecti.score },
+      { status: 403 }
+    );
+  }
+
   const usedCount = await prisma.userExamAttempt.count({
     where: {
       userId,

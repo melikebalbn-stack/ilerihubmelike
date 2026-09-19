@@ -72,6 +72,7 @@ export async function GET(
       questionCount: e._count.questions,
       userStatus: {
         passed,
+        passedScore: attempts.find((a) => a.status === "COMPLETED" && a.passed === true)?.score ?? null,
         hasInProgress: !!inProgress,
         inProgressAttemptId: inProgress?.id ?? null,
         usedAttempts,

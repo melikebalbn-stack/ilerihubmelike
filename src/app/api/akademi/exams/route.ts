@@ -57,7 +57,9 @@ export async function GET(req: NextRequest) {
         a.status !== "IN_PROGRESS" ||
         (a.expiresAt && new Date(a.expiresAt).getTime() < now)
     ).length;
-    const canStart = !inProgress && usedAttempts < e.maxAttempts;
+    const passedAttempt = attempts.find((a) => a.status === "COMPLETED" && a.passed === true);
+    // Geçilmiş sınav tekrar başlatılamaz (sunucu attempts POST'ta da 403).
+    const canStart = !passedAttempt && !inProgress && usedAttempts < e.maxAttempts;
 
     return {
       id: e.id,
@@ -70,6 +72,8 @@ export async function GET(req: NextRequest) {
       course: e.course,
       userStatus: {
         canStart,
+        passed: !!passedAttempt,
+        passedScore: passedAttempt?.score ?? null,
         hasInProgress: !!inProgress,
         inProgressAttemptId: inProgress?.id ?? null,
         usedAttempts,

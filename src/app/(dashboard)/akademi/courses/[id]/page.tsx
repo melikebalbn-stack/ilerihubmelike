@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
+import { AkademiBackLink } from "@/components/akademi/shared/AkademiBackLink";
 import { CourseHero } from "@/components/akademi/courses/CourseHero";
 import { ContentRow } from "@/components/akademi/courses/ContentRow";
 import { VideoContentCard } from "@/components/akademi/courses/VideoContentCard";
@@ -158,14 +159,7 @@ export default function AkademiCourseDetailPage() {
 
   return (
     <div className="px-8 py-7 max-w-5xl mx-auto">
-      <Link
-        href={backHref}
-        className="inline-flex items-center gap-2 text-sm font-medium mb-5"
-        style={{ color: "var(--ak-text-secondary)" }}
-      >
-        <ArrowLeft className="w-4 h-4" />
-        Eğitimlere Dön
-      </Link>
+      <AkademiBackLink href={backHref} label="Eğitimlere Dön" />
 
       <CourseHero course={course} contentPercent={egitimYuzdesi} />
 

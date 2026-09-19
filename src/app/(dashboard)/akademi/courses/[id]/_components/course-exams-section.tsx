@@ -20,6 +20,7 @@ type ExamItem = {
   questionCount: number;
   userStatus: {
     passed: boolean;
+    passedScore?: number | null;
     hasInProgress: boolean;
     inProgressAttemptId: string | null;
     usedAttempts: number;
@@ -113,9 +114,12 @@ export function CourseExamsSection({
               </div>
               <div className="text-right shrink-0">
                 {e.userStatus.passed ? (
-                  <div className="text-xs px-2 py-1 bg-green-100 text-green-800 rounded inline-flex items-center gap-1 font-medium">
+                  <div
+                    className="text-xs px-2 py-1 bg-green-100 text-green-800 rounded inline-flex items-center gap-1 font-medium"
+                    title="Bu sınav geçildi; tekrar girilemez"
+                  >
                     <CheckCircle2 size={12} />
-                    Geçti
+                    Geçti{e.userStatus.passedScore != null ? ` — %${e.userStatus.passedScore}` : ""}
                   </div>
                 ) : e.userStatus.hasInProgress ? (
                   <Link

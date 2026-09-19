@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { PersonnelRequestStatus } from "@/generated/prisma";
 import { requireSession } from "@/lib/auth/require-session";
+import { kadroTalepErisimiCore, kadroTalepErisimYok } from "@/lib/kadro-talep/kadro-talep-yetki";
 import { kadroTalepGorunurluk } from "@/lib/kadro-talep/kadro-talep-gorunurluk";
 import * as XLSX from "xlsx";
 import { logAuditEvent } from "@/lib/audit-log";
@@ -37,11 +38,14 @@ export async function GET(request: NextRequest) {
     // requireSession + aynı görünürlük kapsaması (admin / departman / kendi).
     const { session, error } = await requireSession();
     if (error) return error;
+    // ÖN KAPI (19.09.2026 erişim daraltma): admin ∨ view ∨ koltuk ∨ kadro.talep.ac; aksi 403.
+    const erisim = await kadroTalepErisimiCore(session.user.id, session.user.permissions ?? []);
+    if (!erisim.erisebilir) return kadroTalepErisimYok();
 
     // Kapsam TEK KAYNAK: liste ucuyla AYNI fonksiyon (kadro-talep-gorunurluk.ts).
     // Eskiden bu zincir elle kopyalanmıştı; iki uç ıraksamasın diye çıkarıldı.
     const { searchParams } = new URL(request.url);
-    const { hasFullAccess, canViewByDept, where } = kadroTalepGorunurluk(session, searchParams);
+    const { hasFullAccess, canViewByDept, where } = kadroTalepGorunurluk(session, searchParams, erisim);
     const status = searchParams.get("status");
     const department = searchParams.get("department");
     const myRequests = searchParams.get("myRequests") === "true";

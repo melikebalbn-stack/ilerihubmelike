@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth/require-session";
+import { kadroTalepErisimiCore, kadroTalepErisimYok } from "@/lib/kadro-talep/kadro-talep-yetki";
 import { format } from "date-fns";
 import { generateKadroTalepPdfBuffer } from "@/lib/pdf/kadro-talep-pdf";
 
@@ -8,8 +9,11 @@ import { generateKadroTalepPdfBuffer } from "@/lib/pdf/kadro-talep-pdf";
 // Not: 'bos-form' statik segment olduğundan [id] dinamik route'undan önce eşleşir.
 export async function GET() {
   try {
-    const { error } = await requireSession();
+    const { session, error } = await requireSession();
     if (error) return error; // oturumsuz → 401
+    // ÖN KAPI (19.09.2026 erişim daraltma): admin ∨ view ∨ koltuk ∨ kadro.talep.ac; aksi 403.
+    const erisim = await kadroTalepErisimiCore(session.user.id, session.user.permissions ?? []);
+    if (!erisim.erisebilir) return kadroTalepErisimYok();
 
     const buffer = generateKadroTalepPdfBuffer(null, { bosForm: true });
     const fileName = `IV-FR-24_bos-form_${format(new Date(), "yyyyMMdd")}.pdf`;

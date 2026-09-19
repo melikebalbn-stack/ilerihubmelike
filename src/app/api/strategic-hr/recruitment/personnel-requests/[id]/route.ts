@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { PersonnelRequestStatus } from "@/generated/prisma";
 import { requireSession } from "@/lib/auth/require-session";
+import { kadroTalepErisimiCore, kadroTalepErisimYok } from "@/lib/kadro-talep/kadro-talep-yetki";
 import {
   kadroTalepGorunurluk,
   kadroTalepGorebilirMi,
@@ -75,8 +76,11 @@ export async function GET(
     if (error) return error;
 
     const { id } = await params;
+    // ÖN KAPI (19.09.2026 erişim daraltma): admin ∨ view ∨ koltuk ∨ kadro.talep.ac; aksi 403.
+    const erisim = await kadroTalepErisimiCore(session.user.id, session.user.permissions ?? []);
+    if (!erisim.erisebilir) return kadroTalepErisimYok();
     // Kapsam TEK KAYNAK — liste/export ile aynı modül (kadro-talep-gorunurluk.ts).
-    const kapsam = kadroTalepGorunurluk(session);
+    const kapsam = kadroTalepGorunurluk(session, undefined, erisim);
 
     const personnelRequest = await prisma.personnelRequest.findUnique({
       where: { id },
@@ -137,6 +141,14 @@ export async function PUT(
     const { action } = body; // "approve", "reject", "update", "submit", "cancel"
 
     const userEmail = (session.user.email || "").toLowerCase();
+
+    // ÖN KAPI (19.09.2026): admin ∨ view ∨ koltuk ∨ kadro.talep.ac; İSTİSNA: bu talebin
+    // onay zincirindeki onaycı (approve/reject kendi adımını verebilmeli — PDF ile aynı).
+    const erisim = await kadroTalepErisimiCore(session.user.id, session.user.permissions ?? []);
+    if (!erisim.erisebilir) {
+      const onayci = await prisma.personnelRequestApproval.findFirst({ where: { personnelRequestId: id, approverId: userId }, select: { id: true } });
+      if (!onayci) return kadroTalepErisimYok();
+    }
 
     // PR-RECRUIT-RBAC: hasFullAccess=admin (onay/red için)
     const perms = session.user.permissions ?? [];
@@ -459,6 +471,9 @@ export async function DELETE(
 
     const { id } = await params;
     const userEmail = (session.user.email || "").toLowerCase();
+    // ÖN KAPI (19.09.2026 erişim daraltma): admin ∨ view ∨ koltuk ∨ kadro.talep.ac; aksi 403.
+    const erisim = await kadroTalepErisimiCore(session.user.id, session.user.permissions ?? []);
+    if (!erisim.erisebilir) return kadroTalepErisimYok();
 
     // PR-RECRUIT-RBAC: silme — admin veya talep sahibi
     const hasFullAccess = session.user.permissions?.includes("recruitment.admin") ?? false;

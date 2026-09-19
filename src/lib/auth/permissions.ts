@@ -130,6 +130,9 @@ export const PERMISSION_KEYS = {
   RECRUITMENT_CREATE: 'recruitment.create',
   RECRUITMENT_CANDIDATE_VIEW: 'recruitment.candidate.view',
 
+  // === KADRO TALEP (strategic-hr/kadro-talep) — forma özel, İK/koltuk yetkisi vermez ===
+  KADRO_TALEP_AC: 'kadro.talep.ac',
+
   // === ENVANTER (zimmet/stok/satınalma/sezon) ===
   ENVANTER_VIEW:  'envanter.view',
   ENVANTER_ADMIN: 'envanter.admin',
@@ -317,6 +320,7 @@ export const PERMISSION_DESCRIPTIONS: Record<string, string> = {
   'recruitment.admin': 'İşe alım tam yönetim (pozisyon/aday/talep)',
   'recruitment.view': 'İşe alım kendi departmanı görünürlük',
   'recruitment.create': 'Pozisyon/personel talebi oluşturma',
+  'kadro.talep.ac': 'Personel (kadro) talep formu açma — yalnız kendi talepleri; İK/koltuk yetkisi vermez',
   'recruitment.candidate.view': 'Aday detay görme (CV ve değerlendirme)',
 
   'envanter.view':  'Envanter görüntüleme (ürün/stok/zimmet/sezon/satınalma)',

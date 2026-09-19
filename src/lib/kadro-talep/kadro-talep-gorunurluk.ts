@@ -6,10 +6,12 @@
  * çıkarıldı; iki uç ıraksamasın. (rma-query.ts'teki `buildRmaWhere` ile aynı gerekçe —
  * orada liste ve export filtresi elle kopyalanmıştı ve sapma riski taşıyordu.)
  *
- * NOT — bu bir REFACTOR: kural DEĞİŞMEDİ, yalnız tek yere toplandı. Mevcut davranış:
+ * KURAL (19.09.2026 erişim daraltma — ÖN KAPI kadro-talep-yetki.ts kadroTalepErisimi):
  *   · admin (recruitment.admin)      → hepsi
  *   · view (recruitment.view)        → OR [ kendi departmanı, kendi açtığı ]
- *   · hiç yetkisi yok                → yalnız kendi açtığı
+ *   · koltuk / kadro.talep.ac        → yalnız kendi açtığı
+ *   · hiç yetkisi yok                → ERİŞİM YOK (uçlar ön kapıda 403; buraya gelmez.
+ *                                      Gelirse de `erisebilir=false` → hiçbir kayıt)
  *   · ?myRequests=true               → yalnız kendi açtığı (admin dahil, en öncelikli)
  *   · ?department=                   → YALNIZ admin'de dikkate alınır
  * Departman eşleşmesi TAM (contains değil) ve iki taraf da `session.user.department`
@@ -29,6 +31,8 @@ export type KadroTalepKapsam = {
   userDepartment: string;
   /** Liste/export sorgusu için hazır `where` (status + department filtreleri dahil). */
   where: Prisma.PersonnelRequestWhereInput;
+  /** Ön kapı kararı (admin ∨ view ∨ koltuk ∨ kadro.talep.ac). false → hiçbir kayıt. */
+  erisebilir: boolean;
 };
 
 type OturumParcasi = {
@@ -42,14 +46,22 @@ type OturumParcasi = {
 export function kadroTalepGorunurluk(
   session: OturumParcasi,
   searchParams?: URLSearchParams,
+  /** Ön kapı kararı (kadroTalepErisimi). Verilmezse eski davranış (yalnız izin bayrakları). */
+  erisim?: { erisebilir: boolean },
 ): KadroTalepKapsam {
   const userEmail = (session.user.email || "").toLowerCase();
   const userDepartment = session.user.department || "";
   const perms = session.user.permissions ?? [];
   const hasFullAccess = perms.includes("recruitment.admin");
   const canViewByDept = perms.includes("recruitment.view");
+  const erisebilir = erisim ? erisim.erisebilir : true;
 
   const where: Prisma.PersonnelRequestWhereInput = {};
+
+  // Savunma: ön kapıyı geçmemiş çağrı → hiçbir kayıt (id eşleşmez). Uçlar zaten 403 döner.
+  if (!erisebilir) {
+    return { hasFullAccess: false, canViewByDept: false, userEmail, userDepartment, where: { id: "__erisim_yok__" }, erisebilir };
+  }
 
   if (searchParams) {
     const status = searchParams.get("status") as PersonnelRequestStatus | null;
@@ -62,8 +74,8 @@ export function kadroTalepGorunurluk(
     } else if (!hasFullAccess && canViewByDept) {
       where.OR = [{ department: userDepartment }, { requesterEmail: userEmail }];
     } else if (!hasFullAccess) {
-      // Hiç recruitment yetkisi yok: yalnız kendi açtığı talepleri görür
-      // (talep oluşturma müdür/İK'ya açık olduğu için, açan kendi takip edebilsin).
+      // Koltuk (müdür/müdür yrd.) veya kadro.talep.ac: yalnız kendi açtığı talepler.
+      // (Yetkisiz kişi buraya GELMEZ — ön kapı 403.)
       where.requesterEmail = userEmail;
     }
 
@@ -73,17 +85,18 @@ export function kadroTalepGorunurluk(
     if (department && hasFullAccess) where.department = department;
   }
 
-  return { hasFullAccess, canViewByDept, userEmail, userDepartment, where };
+  return { hasFullAccess, canViewByDept, userEmail, userDepartment, where, erisebilir };
 }
 
 /**
  * Tek kaydın detayını görebilir mi? (Liste `where`'inin kayıt bazlı karşılığı.)
- * admin → evet; sahibi → evet; view + aynı departman → evet; diğerleri → hayır (403).
+ * erişim yok → hayır; admin → evet; sahibi → evet; view + aynı departman → evet; diğerleri → hayır (403).
  */
 export function kadroTalepGorebilirMi(
-  kapsam: Pick<KadroTalepKapsam, "hasFullAccess" | "canViewByDept" | "userEmail" | "userDepartment">,
+  kapsam: Pick<KadroTalepKapsam, "hasFullAccess" | "canViewByDept" | "userEmail" | "userDepartment"> & { erisebilir?: boolean },
   talep: { requesterEmail: string; department: string },
 ): boolean {
+  if (kapsam.erisebilir === false) return false;
   if (kapsam.hasFullAccess) return true;
   if (talep.requesterEmail.toLowerCase() === kapsam.userEmail) return true;
   return kapsam.canViewByDept && talep.department === kapsam.userDepartment;

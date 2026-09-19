@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth/require-session";
+import { kadroTalepErisimiCore, kadroTalepErisimYok } from "@/lib/kadro-talep/kadro-talep-yetki";
 import { format } from "date-fns";
 import {
   generateKadroTalepPdfBuffer,
@@ -33,12 +34,15 @@ export async function GET(
       return NextResponse.json({ error: "Talep bulunamadı" }, { status: 404 });
     }
 
-    // Yetki (mevcut desen): admin / owner / onay zincirindeki onaycı. Client'ta hesaplanmaz.
+    // Yetki: admin / owner / onay zincirindeki onaycı. Client'ta hesaplanmaz.
+    // ÖN KAPI (19.09.2026): owner yolu yalnız forma erişebilenlerde (admin ∨ view ∨ koltuk ∨
+    // kadro.talep.ac); onaycı istisnası KORUNUR (kendi adımını görebilmeli).
     const perms = session.user.permissions ?? [];
     const isAdmin =
       perms.includes("recruitment.admin") || perms.includes("hr.admin");
     const userEmail = (session.user.email || "").toLowerCase();
-    const isOwner = pr.requesterEmail.toLowerCase() === userEmail;
+    const erisim = await kadroTalepErisimiCore(session.user.id, perms);
+    const isOwner = erisim.erisebilir && pr.requesterEmail.toLowerCase() === userEmail;
     const isApprover = pr.approvals.some(
       (a) => (a.approver?.email || "").toLowerCase() === userEmail
     );

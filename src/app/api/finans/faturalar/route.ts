@@ -3,8 +3,8 @@ import { prisma } from '@/lib/prisma'
 import { InvoiceCurrency, Prisma } from '@/generated/prisma'
 import { requireUser } from '@/lib/auth/require-user'
 import { apiSuccess, apiCreated, apiBadRequest, apiForbidden, apiError } from '@/lib/api-response'
-import { getRateForDate } from './_lib/tcmb'
 import { canAccessFaturaTakip } from '@/lib/faturalar-access'
+import { resolveDepartments, computeAmounts } from './_lib/invoice'
 
 const CURRENCIES: InvoiceCurrency[] = ['TRY', 'USD', 'EUR']
 
@@ -22,18 +22,33 @@ export async function GET(request: NextRequest) {
     const where: Prisma.InvoiceWhereInput = {}
     if (department === 'GENEL') {
       where.departmentOrgUnitId = null
+      where.allocations = { none: {} }
     } else if (department) {
-      where.departmentOrgUnitId = department
+      where.OR = [
+        { departmentOrgUnitId: department },
+        { allocations: { some: { departmentOrgUnitId: department } } },
+      ]
     }
     if (search) {
-      where.OR = [
-        { companyName: { contains: search, mode: 'insensitive' } },
-        { invoiceNumber: { contains: search, mode: 'insensitive' } },
-      ]
+      const searchFilter: Prisma.InvoiceWhereInput = {
+        OR: [
+          { companyName: { contains: search, mode: 'insensitive' } },
+          { invoiceNumber: { contains: search, mode: 'insensitive' } },
+        ],
+      }
+      // department filtresi zaten OR kullanıyorsa, arama ile birlikte AND'e sar
+      if (where.OR) {
+        const departmentFilter = { OR: where.OR }
+        delete where.OR
+        where.AND = [departmentFilter, searchFilter]
+      } else {
+        where.OR = searchFilter.OR
+      }
     }
 
     const invoices = await prisma.invoice.findMany({
       where,
+      include: { allocations: { orderBy: { percentage: 'desc' } } },
       orderBy: { invoiceDate: 'desc' },
     })
 
@@ -47,6 +62,7 @@ export async function GET(request: NextRequest) {
 }
 
 // POST — yeni fatura kaydı (€ karşılığı bu endpoint içinde TCMB kuruna göre hesaplanır)
+// Tek bölüm: departmentOrgUnitId. Birden fazla bölüm: allocations: [{ departmentOrgUnitId, percentage }] (toplam %100)
 export async function POST(request: NextRequest) {
   try {
     const { user, error } = await requireUser()
@@ -54,7 +70,7 @@ export async function POST(request: NextRequest) {
     if (!canAccessFaturaTakip(user.role, user.department)) return apiForbidden()
 
     const body = await request.json()
-    const { invoiceDate, companyName, invoiceNumber, amount, currency, departmentOrgUnitId, note } = body
+    const { invoiceDate, companyName, invoiceNumber, amount, currency, departmentOrgUnitId, allocations, note } = body
 
     if (!invoiceDate) return apiBadRequest('Fatura tarihi gerekli')
     if (!companyName?.trim()) return apiBadRequest('Firma adı gerekli')
@@ -63,12 +79,8 @@ export async function POST(request: NextRequest) {
     if (!amount || isNaN(amountNum) || amountNum <= 0) return apiBadRequest('Geçerli bir tutar gir')
     if (!CURRENCIES.includes(currency)) return apiBadRequest('Geçersiz para birimi')
 
-    let departmentName: string | null = null
-    if (departmentOrgUnitId) {
-      const dept = await prisma.orgUnit.findUnique({ where: { id: departmentOrgUnitId }, select: { name: true } })
-      if (!dept) return apiBadRequest('Geçersiz bölüm')
-      departmentName = dept.name
-    }
+    const resolved = await resolveDepartments(departmentOrgUnitId, allocations)
+    if (typeof resolved === 'string') return apiBadRequest(resolved)
 
     const existing = await prisma.invoice.findUnique({ where: { invoiceNumber: invoiceNumber.trim() } })
     if (existing) return apiBadRequest('Bu fatura no zaten kayıtlı')
@@ -77,14 +89,7 @@ export async function POST(request: NextRequest) {
     if (isNaN(date.getTime())) return apiBadRequest('Geçersiz tarih')
 
     const dateStr = invoiceDate.slice(0, 10)
-
-    // Girilen para biriminin TRY karşılığı için kur
-    const tryRate = currency === 'TRY' ? 1 : (await getRateForDate(dateStr, currency)).rate
-    // TRY -> EUR dönüşümü için EUR kuru (girilen para birimi zaten EUR ise aynısı)
-    const eurRate = currency === 'EUR' ? tryRate : (await getRateForDate(dateStr, 'EUR')).rate
-
-    const amountTRY = currency === 'TRY' ? amountNum : amountNum * tryRate
-    const amountEUR = currency === 'EUR' ? amountNum : amountTRY / eurRate
+    const { exchangeRate, amountTRY, amountEUR } = await computeAmounts(currency, amountNum, dateStr)
 
     const invoice = await prisma.invoice.create({
       data: {
@@ -93,14 +98,26 @@ export async function POST(request: NextRequest) {
         invoiceNumber: invoiceNumber.trim(),
         amount: amountNum,
         currency,
-        exchangeRate: eurRate,
+        exchangeRate,
         amountTRY,
         amountEUR,
-        departmentOrgUnitId: departmentOrgUnitId || null,
-        departmentName,
+        departmentOrgUnitId: resolved.departmentOrgUnitId,
+        departmentName: resolved.departmentName,
         note: note?.trim() || null,
         createdById: user.id,
+        ...(resolved.allocations.length > 0 && {
+          allocations: {
+            create: resolved.allocations.map((d) => ({
+              departmentOrgUnitId: d.departmentOrgUnitId,
+              departmentName: d.departmentName,
+              percentage: d.percentage,
+              amountTRY: (amountTRY * d.percentage) / 100,
+              amountEUR: (amountEUR * d.percentage) / 100,
+            })),
+          },
+        }),
       },
+      include: { allocations: true },
     })
 
     return apiCreated({ invoice })

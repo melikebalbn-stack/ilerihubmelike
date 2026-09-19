@@ -19,7 +19,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Plus, Search, AlertCircle, Trash2, FileSpreadsheet } from 'lucide-react'
+import { Plus, Search, AlertCircle, Trash2, Pencil, FileSpreadsheet } from 'lucide-react'
 import {
   Bar,
   BarChart,
@@ -30,7 +30,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { InvoiceFormDialog } from './InvoiceFormDialog'
+import { InvoiceFormDialog, type EditableInvoice } from './InvoiceFormDialog'
 import { ImportDialog } from './ImportDialog'
 
 const NAVY = '#1B4F72'
@@ -40,6 +40,12 @@ type Currency = 'TRY' | 'USD' | 'EUR'
 interface Department {
   id: string
   name: string
+}
+
+interface Allocation {
+  departmentOrgUnitId: string
+  departmentName: string
+  percentage: string
 }
 
 interface Invoice {
@@ -53,6 +59,14 @@ interface Invoice {
   amountEUR: string
   departmentOrgUnitId: string | null
   departmentName: string | null
+  note: string | null
+  allocations: Allocation[]
+}
+
+interface DepartmentTotal {
+  label: string
+  eur: number
+  tl: number
 }
 
 interface MonthSummary {
@@ -60,14 +74,10 @@ interface MonthSummary {
   genel: number
   sistemGelistirme: number
   toplamTRY: number
+  toplamEUR: number
   genelTRY: number
   sistemGelistirmeTRY: number
-}
-
-interface DepartmentTotal {
-  label: string
-  eur: number
-  tl: number
+  departments: DepartmentTotal[]
 }
 
 interface Summary {
@@ -82,6 +92,22 @@ function formatEur(n: number) {
 function formatTL(n: number) {
   return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 }).format(n || 0)
 }
+function formatPercent(n: number) {
+  if (n === 0) return '%0'
+  const abs = Math.abs(n)
+  // Fatura toplamı ciroya kıyasla çok küçük olabiliyor (binde/on binde bir) —
+  // sabit 1-2 ondalık her şeyi "%0.0"a yuvarlayıp bilgisiz hale getiriyordu.
+  if (abs >= 1) return `%${n.toFixed(1)}`
+  if (abs >= 0.01) return `%${n.toFixed(2)}`
+  return `%${n.toFixed(4)}`
+}
+function formatThousands(digits: string) {
+  if (!digits) return ''
+  return new Intl.NumberFormat('tr-TR').format(Number(digits))
+}
+function parseThousands(formatted: string) {
+  return Number(formatted.replace(/\./g, '')) || 0
+}
 function formatMonthLabel(key: string) {
   const [y, m] = key.split('-')
   const d = new Date(Number(y), Number(m) - 1, 1)
@@ -91,9 +117,10 @@ function formatMonthLabel(key: string) {
 export default function FaturalarClient() {
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [summary, setSummary] = useState<Summary | null>(null)
-  const [revenues, setRevenues] = useState<Record<string, number>>({})
+  const [ciroInput, setCiroInput] = useState('')
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
+  const [editingInvoice, setEditingInvoice] = useState<EditableInvoice | null>(null)
   const [showImport, setShowImport] = useState(false)
   const [filter, setFilter] = useState('ALL') // 'ALL' | 'GENEL' | <orgUnitId>
   const [search, setSearch] = useState('')
@@ -115,13 +142,11 @@ export default function FaturalarClient() {
     if (res.ok) setSummary(await res.json())
   }, [])
 
-  const loadRevenues = useCallback(async () => {
+  const loadTotalCiro = useCallback(async () => {
     const res = await fetch('/api/finans/faturalar/revenue')
     if (res.ok) {
       const data = await res.json()
-      const map: Record<string, number> = {}
-      for (const r of data.revenues ?? []) map[r.month] = r.revenueTRY
-      setRevenues(map)
+      setCiroInput(data.totalRevenueEUR != null ? formatThousands(String(Math.round(data.totalRevenueEUR))) : '')
     }
   }, [])
 
@@ -135,7 +160,7 @@ export default function FaturalarClient() {
 
   useEffect(() => {
     setLoading(true)
-    Promise.all([loadInvoices(), loadSummary(), loadRevenues(), loadDepartments()]).finally(() => setLoading(false))
+    Promise.all([loadInvoices(), loadSummary(), loadTotalCiro(), loadDepartments()]).finally(() => setLoading(false))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -166,16 +191,12 @@ export default function FaturalarClient() {
     }
   }
 
-  async function handleRevenueChange(monthKey: string, value: string) {
-    setRevenues((prev) => ({ ...prev, [monthKey]: Number(value) || 0 }))
-  }
-
-  async function handleRevenueBlur(monthKey: string) {
-    const value = revenues[monthKey] ?? 0
+  async function handleCiroBlur() {
+    const value = parseThousands(ciroInput)
     await fetch('/api/finans/faturalar/revenue', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ month: monthKey, revenueTRY: value }),
+      body: JSON.stringify({ totalRevenueEUR: value }),
     })
   }
 
@@ -188,6 +209,8 @@ export default function FaturalarClient() {
       })),
     [summary]
   )
+
+  const totalCiro = parseThousands(ciroInput)
 
   if (loading) {
     return (
@@ -212,7 +235,13 @@ export default function FaturalarClient() {
           <Button variant="outline" onClick={() => setShowImport(true)}>
             <FileSpreadsheet className="mr-1.5 h-4 w-4" /> Excel İçe/Dışa Aktar
           </Button>
-          <Button style={{ backgroundColor: NAVY }} onClick={() => setShowForm(true)}>
+          <Button
+            style={{ backgroundColor: NAVY }}
+            onClick={() => {
+              setEditingInvoice(null)
+              setShowForm(true)
+            }}
+          >
             <Plus className="mr-1.5 h-4 w-4" /> Yeni Fatura Ekle
           </Button>
         </div>
@@ -263,69 +292,26 @@ export default function FaturalarClient() {
 
       <Card>
         <CardContent className="pt-6">
-          <div className="text-sm font-semibold text-muted-foreground">Aylık ciro karşılaştırması</div>
-          <p className="mb-3 text-xs text-muted-foreground/80">
-            Her ay için ciroyu elle gir, oran otomatik hesaplansın.
-          </p>
-          {!summary?.months.length ? (
-            <p className="py-2 text-sm text-muted-foreground">Henüz fatura kaydı yok.</p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Ay</TableHead>
-                  <TableHead className="text-right">Fatura Toplamı (₺)</TableHead>
-                  <TableHead className="text-right">Genel (₺)</TableHead>
-                  <TableHead className="text-right">Sistem Geliştirme (₺)</TableHead>
-                  <TableHead className="text-right w-40">Ciro (₺)</TableHead>
-                  <TableHead className="text-right">Toplam Oran</TableHead>
-                  <TableHead className="text-right">Sist. Gel. Oranı</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {summary.months.map((m) => {
-                  const ciroVal = revenues[m.key] ?? 0
-                  const oran = ciroVal > 0 ? (m.toplamTRY / ciroVal) * 100 : null
-                  const oranSG = ciroVal > 0 ? (m.sistemGelistirmeTRY / ciroVal) * 100 : null
-                  return (
-                    <TableRow key={m.key}>
-                      <TableCell>{formatMonthLabel(m.key)}</TableCell>
-                      <TableCell className="text-right">{formatTL(m.toplamTRY)}</TableCell>
-                      <TableCell className="text-right text-muted-foreground">{formatTL(m.genelTRY)}</TableCell>
-                      <TableCell className="text-right" style={{ color: NAVY }}>
-                        {formatTL(m.sistemGelistirmeTRY)}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Input
-                          value={revenues[m.key] ?? ''}
-                          onChange={(e) => handleRevenueChange(m.key, e.target.value)}
-                          onBlur={() => handleRevenueBlur(m.key)}
-                          placeholder="ciro gir"
-                          inputMode="decimal"
-                          className="h-8 text-right"
-                        />
-                      </TableCell>
-                      <TableCell className="text-right font-semibold" style={{ color: oran == null ? '#BBB' : NAVY }}>
-                        {oran == null ? '—' : `${oran.toFixed(2)}%`}
-                      </TableCell>
-                      <TableCell className="text-right font-semibold" style={{ color: oranSG == null ? '#BBB' : '#993C1D' }}>
-                        {oranSG == null ? '—' : `${oranSG.toFixed(2)}%`}
-                      </TableCell>
-                    </TableRow>
-                  )
-                })}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardContent className="pt-6">
-          <div className="text-sm font-semibold text-muted-foreground">Bölüme göre dağılım</div>
-          <p className="mb-3 text-xs text-muted-foreground/80">
-            Tüm zamanlar toplamı, bölüm bazında (organizasyon şemasındaki Müdürlükler + Genel).
-          </p>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="text-sm font-semibold text-muted-foreground">Bölüme göre dağılım</div>
+              <p className="mb-3 text-xs text-muted-foreground/80">
+                Tüm zamanlar toplamı, bölüm bazında (organizasyon şemasındaki Müdürlükler + Genel). Cironun Oranı,
+                aşağıya girdiğin ciroya göre.
+              </p>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">Ciro (€)</label>
+              <Input
+                value={ciroInput}
+                onChange={(e) => setCiroInput(formatThousands(e.target.value.replace(/\D/g, '')))}
+                onBlur={handleCiroBlur}
+                placeholder="ciro gir"
+                inputMode="numeric"
+                className="h-8 w-40 text-right"
+              />
+            </div>
+          </div>
           {!summary?.departments.length ? (
             <p className="py-2 text-sm text-muted-foreground">Henüz fatura kaydı yok.</p>
           ) : (
@@ -335,12 +321,12 @@ export default function FaturalarClient() {
                   <TableHead>Bölüm</TableHead>
                   <TableHead className="text-right">Toplam (₺)</TableHead>
                   <TableHead className="text-right">Toplam (€)</TableHead>
-                  <TableHead className="text-right">Pay</TableHead>
+                  <TableHead className="text-right">Cironun Oranı</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {summary.departments.map((d) => {
-                  const pay = summary.totals.toplam > 0 ? (d.eur / summary.totals.toplam) * 100 : 0
+                  const deptCiroOran = totalCiro > 0 ? (d.eur / totalCiro) * 100 : null
                   return (
                     <TableRow key={d.label}>
                       <TableCell style={{ color: d.label === 'Sistem Geliştirme Müdürlüğü' ? NAVY : undefined }}>
@@ -348,7 +334,9 @@ export default function FaturalarClient() {
                       </TableCell>
                       <TableCell className="text-right">{formatTL(d.tl)}</TableCell>
                       <TableCell className="text-right font-semibold">{formatEur(d.eur)}</TableCell>
-                      <TableCell className="text-right text-muted-foreground">{pay.toFixed(1)}%</TableCell>
+                      <TableCell className="text-right" style={{ color: deptCiroOran == null ? '#BBB' : NAVY }}>
+                        {deptCiroOran == null ? '—' : formatPercent(deptCiroOran)}
+                      </TableCell>
                     </TableRow>
                   )
                 })}
@@ -424,31 +412,66 @@ export default function FaturalarClient() {
                   </TableCell>
                   <TableCell className="text-right font-semibold">{formatEur(Number(inv.amountEUR))}</TableCell>
                   <TableCell>
-                    <Select
-                      value={inv.departmentOrgUnitId || 'GENEL'}
-                      onValueChange={(v) => handleDepartmentChange(inv.id, v)}
-                    >
-                      <SelectTrigger className="h-7 w-44 text-xs" style={{ color: inv.departmentOrgUnitId ? NAVY : '#5F5E5A' }}>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="GENEL">Genel</SelectItem>
-                        {departments.map((d) => (
-                          <SelectItem key={d.id} value={d.id}>
-                            {d.name}
-                          </SelectItem>
+                    {inv.allocations.length > 0 ? (
+                      <div className="text-xs" title="Birden fazla bölüme bölünmüş — düzeltmek için Yeni Fatura'daki gibi silip yeniden ekle">
+                        {inv.allocations.map((a) => (
+                          <div key={a.departmentOrgUnitId} style={{ color: NAVY }}>
+                            {a.departmentName} <span className="text-muted-foreground">%{Number(a.percentage)}</span>
+                          </div>
                         ))}
-                      </SelectContent>
-                    </Select>
+                      </div>
+                    ) : (
+                      <Select
+                        value={inv.departmentOrgUnitId || 'GENEL'}
+                        onValueChange={(v) => handleDepartmentChange(inv.id, v)}
+                      >
+                        <SelectTrigger className="h-7 w-44 text-xs" style={{ color: inv.departmentOrgUnitId ? NAVY : '#5F5E5A' }}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="GENEL">Genel</SelectItem>
+                          {departments.map((d) => (
+                            <SelectItem key={d.id} value={d.id}>
+                              {d.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
                   </TableCell>
                   <TableCell>
-                    <button
-                      onClick={() => handleDelete(inv.id)}
-                      className="text-muted-foreground hover:text-destructive"
-                      title="Sil"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => {
+                          setEditingInvoice({
+                            id: inv.id,
+                            invoiceDate: inv.invoiceDate,
+                            companyName: inv.companyName,
+                            invoiceNumber: inv.invoiceNumber,
+                            amount: inv.amount,
+                            currency: inv.currency,
+                            departmentOrgUnitId: inv.departmentOrgUnitId,
+                            note: inv.note,
+                            allocations: inv.allocations.map((a) => ({
+                              departmentOrgUnitId: a.departmentOrgUnitId,
+                              percentage: a.percentage,
+                            })),
+                          })
+                          setShowForm(true)
+                        }}
+                        className="text-muted-foreground hover:text-[#1B4F72]"
+                        title="Düzenle"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(inv.id)}
+                        className="text-muted-foreground hover:text-destructive"
+                        title="Sil"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))
@@ -459,8 +482,12 @@ export default function FaturalarClient() {
 
       <InvoiceFormDialog
         open={showForm}
-        onOpenChange={setShowForm}
-        onCreated={() => {
+        onOpenChange={(v) => {
+          setShowForm(v)
+          if (!v) setEditingInvoice(null)
+        }}
+        invoice={editingInvoice}
+        onSaved={() => {
           loadInvoices()
           loadSummary()
         }}

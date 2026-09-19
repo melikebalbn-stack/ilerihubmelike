@@ -7,7 +7,7 @@
  * sorgu metni tanımdan (rapor.tasarla izinli güvenilir kaynak), değerler DAİMA $n ile.
  */
 import { prisma } from '@/lib/prisma'
-import { ifsBaglanti, istek } from '@/lib/ifs/personel-sync/ifs-api'
+import { ifsBaglanti, istek, type IfsCevap } from '@/lib/ifs/personel-sync/ifs-api'
 import { filtreCoz, postgresParametreleri } from './parametre'
 import type { Birlestirme, Kaynak, KaynakIfs, KaynakPostgres, KaynakIstatistik, RaporParametreler, VeriSetiSonuc, VeriSetiTanim } from './tipler'
 
@@ -39,12 +39,14 @@ async function ifsCek(k: KaynakIfs, p: RaporParametreler): Promise<Satir[]> {
   const { mainRoot } = ifsBaglanti()
   let yol: string | null = `${k.projeksiyon}.svc/${k.entitySet}?${qs.join('&')}`
   while (yol && out.length < top) {
-    const cevap = await istek<{ value?: Satir[]; '@odata.nextLink'?: string }>(yol)
+    // Tip açıklamaları: yol → cevap → nl → yol döngüsel çıkarım TS7022 veriyordu.
+    type Sayfa = { value?: Satir[]; '@odata.nextLink'?: string }
+    const cevap: IfsCevap<Sayfa> = await istek<Sayfa>(yol)
     for (const ham of cevap.body.value ?? []) {
       if (out.length >= top) break
       out.push(odataAlanlariAt(ham))
     }
-    const nl = cevap.body['@odata.nextLink']
+    const nl: string | undefined = cevap.body['@odata.nextLink']
     yol = nl ? nl.replace(mainRoot, '') : null
   }
   return out

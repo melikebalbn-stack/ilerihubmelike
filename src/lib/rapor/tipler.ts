@@ -57,3 +57,61 @@ export interface VeriSetiSonuc {
   kaynakIstatistik: KaynakIstatistik[]
   toplamSureMs: number
 }
+
+// ── Şablon (RaporSablon.icerik JSON'unun şekli) ──────────────────────────
+
+export type Bicim = '#.##0' | '#.##0,00' | '%0,0' | '%0,00' | 'gg.aa.yyyy' | 'gg.aa.yyyy ss:dd' | 'metin'
+
+export interface KosulluBicim {
+  /** İfade dili: '{verim} < 90'. */
+  kosul: string
+  renk?: 'kritik' | 'iyi' | 'uyari'
+  kalin?: boolean
+}
+
+export type AltToplamFn = 'topla' | 'ortalama' | 'say' | 'enbuyuk' | 'enkucuk' | 'orani' | 'yok'
+
+export interface Kolon {
+  /** Satırdaki anahtar VEYA hesaplanan alan adı. */
+  alan: string
+  baslik: string
+  /** Yüzde; verilmezse eşit dağıtılır. */
+  genislik?: number
+  /** Verilmezse: sayı/tarih → sag, diğer → sol. */
+  hiza?: 'sol' | 'sag' | 'orta'
+  bicim?: Bicim
+  kosulluBicim?: KosulluBicim[]
+  altToplam?: AltToplamFn
+  /** altToplam='orani' → topla(oraniPay) / topla(oraniPayda) × 100. */
+  oraniPay?: string
+  oraniPayda?: string
+}
+
+export interface HesaplananAlan { ad: string; ifade: string; bicim?: Bicim }
+
+export interface GrupTanim {
+  alan: string
+  /** İfade; verilmezse alanın ham değeri. */
+  baslik?: string
+  yeniSayfa?: boolean
+}
+
+export interface SablonParametre {
+  ad: string
+  tip: 'metin' | 'sayi' | 'tarih' | 'liste'
+  etiket: string
+  zorunlu?: boolean
+}
+
+export interface SablonIcerik {
+  baslik: string
+  altBaslik?: string
+  parametreler?: SablonParametre[]
+  hesaplananAlanlar?: HesaplananAlan[]
+  /** Sıralı, en fazla 3 seviye. */
+  gruplar?: GrupTanim[]
+  kolonlar: Kolon[]
+  /** Varsayılan true. */
+  genelToplam?: boolean
+  sayfaAlti?: { sol?: string; sag?: string }
+}

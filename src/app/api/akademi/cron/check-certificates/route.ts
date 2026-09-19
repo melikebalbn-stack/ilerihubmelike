@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
           validUntil: c.validUntil,
           daysLeft: 30,
         },
-        link: `/akademi/certificates/${c.id}`,
+        link: "/akademi/certificates", // [id] sayfası yok → liste (19.09.2026)
       });
       expiringSent++;
     } catch (err) {
@@ -71,7 +71,7 @@ export async function POST(req: NextRequest) {
           certificateNo: c.certificateNo,
           expiredAt: c.validUntil,
         },
-        link: `/akademi/certificates/${c.id}`,
+        link: "/akademi/certificates", // [id] sayfası yok → liste (19.09.2026)
       });
       expiredSent++;
     } catch (err) {

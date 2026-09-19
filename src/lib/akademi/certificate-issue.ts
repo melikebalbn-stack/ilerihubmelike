@@ -122,7 +122,8 @@ export async function issueCertificateIfEligible(
       certificateNo: cert.certificateNo,
       validUntil: cert.validUntil,
     },
-    link: `/akademi/certificates/${cert.id}`,
+    // /akademi/certificates/[id] sayfası YOK (maildeki link 404 veriyordu, 19.09.2026) → liste.
+    link: "/akademi/certificates",
   }).catch((err) =>
     console.error("[certificate-issue] notify failed:", err)
   );

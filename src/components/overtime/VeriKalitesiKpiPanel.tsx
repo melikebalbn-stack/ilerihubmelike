@@ -51,6 +51,9 @@ function PerfHucre({ v }: { v: number | null }) {
 }
 
 function isoToday(): string { return new Date().toISOString().slice(0, 10) }
+/** "Üretim dışı" satırı için kısa bölüm adı (yalnız görünüm; tam ad title'da). */
+const kisaBolumAdi = (ad: string) =>
+  ad.replace("Yarı Mamul ve Hammadde Depo", "Yarı Mamul Depo").replace(" Müdürlüğü", " Müd.")
 
 export default function VeriKalitesiKpiPanel() {
   const [from, setFrom] = useState("2026-07-01")
@@ -105,7 +108,7 @@ export default function VeriKalitesiKpiPanel() {
   return (
     <div className="space-y-6">
       {/* Filtre satırı + sağda üretim dışı listesi */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-2 text-sm font-medium" style={{ color: NAVY }}><ClipboardCheck className="h-4 w-4" /> Veri Kalitesi KPI</div>
           <div className="flex items-center gap-2 text-sm">
@@ -116,7 +119,11 @@ export default function VeriKalitesiKpiPanel() {
           </div>
         </div>
         {data?.haricBolumler.length ? (
-          <div className="text-[11px] text-muted-foreground max-w-xl text-right">Üretim dışı (hariç): {data.haricBolumler.join(", ")}</div>
+          // Tek satır: adlar kısaltılır ("Müdürlüğü"→"Müd.", "Yarı Mamul ve Hammadde Depo"→"Yarı Mamul Depo"),
+          // yine sığmazsa ellipsis; tam liste title'da.
+          <div className="text-[11px] text-muted-foreground min-w-0 flex-1 truncate text-right" title={`Üretim dışı (hariç): ${data.haricBolumler.join(", ")}`}>
+            Üretim dışı (hariç): {data.haricBolumler.map(kisaBolumAdi).join(", ")}
+          </div>
         ) : null}
       </div>
 
@@ -128,7 +135,28 @@ export default function VeriKalitesiKpiPanel() {
         <Card><CardContent className="py-16 text-center text-muted-foreground">Bu rapor için yetkili olduğunuz bir bölüm bulunmuyor.</CardContent></Card>
       ) : (
         <>
-          {/* 1) Bölüm tablosu — en üstte */}
+          {/* 1) Özet kartları — EN ÜSTTE, seçili aralığın TAMAMI (20.09 düzen-2) */}
+          {t && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <Card><CardContent className="p-4">
+                <div className="text-xs text-muted-foreground">Eksik veri girişi</div>
+                <div className="text-2xl font-bold" style={{ color: eksikRenk(eksikPctT) }}>{pct(eksikPctT)}</div>
+                <div className="text-xs text-muted-foreground mt-1">{n(t.satir)} üretim satırının {n(t.eksik)} tanesinde gerçekleşen adet hiç girilmemiş.</div>
+              </CardContent></Card>
+              <Card><CardContent className="p-4">
+                <div className="text-xs text-muted-foreground">Şüpheli performans</div>
+                <div className="text-2xl font-bold" style={{ color: NAVY }}>{pct(ustu100PctT)}</div>
+                <div className="text-xs text-muted-foreground mt-1">Hesaplanan {n(t.hesaplanan)} satırdan {n(t.ustu100)} tanesi %100 üstü; bunlardan {n(t.ustu150)} tanesi %150&apos;yi de aşıyor.</div>
+              </CardContent></Card>
+              <Card><CardContent className="p-4">
+                <div className="text-xs text-muted-foreground">Ağırlıklı performans</div>
+                <div className="text-2xl font-bold"><PerfHucre v={perfT} /></div>
+                <div className="text-xs text-muted-foreground mt-1">Toplam {n(t.gercToplam)} gerçekleşen / {n(t.hedefToplam)} hedef adet.</div>
+              </CardContent></Card>
+            </div>
+          )}
+
+          {/* 2) Bölüm tablosu */}
           <Card>
             <CardContent className="p-4 space-y-3">
               <h3 className="text-base font-semibold" style={{ color: NAVY }}>Hangi bölüm ne kadar eksik giriyor?</h3>
@@ -252,27 +280,6 @@ export default function VeriKalitesiKpiPanel() {
             </CardContent>
           </Card>
 
-          {/* 2) Özet kartları — seçili aralığın TAMAMI */}
-          {t && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <Card><CardContent className="p-4">
-                <div className="text-xs text-muted-foreground">Eksik veri girişi</div>
-                <div className="text-2xl font-bold" style={{ color: eksikRenk(eksikPctT) }}>{pct(eksikPctT)}</div>
-                <div className="text-xs text-muted-foreground mt-1">{n(t.satir)} üretim satırının {n(t.eksik)} tanesinde gerçekleşen adet hiç girilmemiş.</div>
-              </CardContent></Card>
-              <Card><CardContent className="p-4">
-                <div className="text-xs text-muted-foreground">Şüpheli performans</div>
-                <div className="text-2xl font-bold" style={{ color: NAVY }}>{pct(ustu100PctT)}</div>
-                <div className="text-xs text-muted-foreground mt-1">Hesaplanan {n(t.hesaplanan)} satırdan {n(t.ustu100)} tanesi %100 üstü; bunlardan {n(t.ustu150)} tanesi %150&apos;yi de aşıyor.</div>
-              </CardContent></Card>
-              <Card><CardContent className="p-4">
-                <div className="text-xs text-muted-foreground">Ağırlıklı performans</div>
-                <div className="text-2xl font-bold"><PerfHucre v={perfT} /></div>
-                <div className="text-xs text-muted-foreground mt-1">Toplam {n(t.gercToplam)} gerçekleşen / {n(t.hedefToplam)} hedef adet.</div>
-              </CardContent></Card>
-            </div>
-          )}
-
           {/* 3) Aylık trend — kompakt tablo */}
           <Card>
             <CardContent className="p-4 space-y-2">
@@ -301,10 +308,6 @@ export default function VeriKalitesiKpiPanel() {
                   </Table>
                 </div>
               )}
-              <p className="text-xs text-muted-foreground pt-2">
-                Kurallar: yalnız APPROVED mesai formları; hedef 0 (sayılamayan iş) ve üretim dışı bölümler hariç; eksik = gerçekleşen girilmemiş satır;
-                şüpheli = hesaplanan satırlarda &gt;%100 (ağır: &gt;%150); performans = Σgerçekleşen / Σhedef (ağırlıklı). Pencere Temmuz 2026&apos;dan başlar.
-              </p>
             </CardContent>
           </Card>
         </>

@@ -25,6 +25,8 @@ export interface KaynakPostgres {
   sorgu: string
   /** Sıra ile $1, $2 …'ye girecek rapor parametresi adları. */
   parametreler?: string[]
+  /** Tasarım ekranı meta verisi (motor kullanmaz): tablo + seçili kolonlar + WHERE metni ({p.x} ile). */
+  tasarim?: { tablo: string; alanlar: string[]; where?: string }
 }
 
 export type Kaynak = KaynakIfs | KaynakPostgres

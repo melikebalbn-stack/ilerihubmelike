@@ -24,11 +24,11 @@ const TOP_UST_SINIR = 5000
 
 // ── Kaynak çekme ─────────────────────────────────────────────────────────
 
-async function ifsCek(k: KaynakIfs, p: RaporParametreler): Promise<Satir[]> {
+async function ifsCek(k: KaynakIfs, p: RaporParametreler, topSinir = TOP_UST_SINIR): Promise<Satir[]> {
   if (!/^[A-Za-z0-9_]+$/.test(k.projeksiyon) || !/^[A-Za-z0-9_]+$/.test(k.entitySet)) {
     throw new VeriSetiHatasi(`${k.ad}: geçersiz projeksiyon/entitySet adı`)
   }
-  const top = Math.min(Math.max(1, k.top ?? TOP_VARSAYILAN), TOP_UST_SINIR)
+  const top = Math.min(Math.max(1, k.top ?? TOP_VARSAYILAN), topSinir)
   const qs: string[] = []
   if (k.select?.length) qs.push(`$select=${k.select.join(',')}`)
   if (k.filtre) qs.push(`$filter=${encodeURIComponent(filtreCoz(k.filtre, p))}`)
@@ -63,9 +63,9 @@ async function postgresCek(k: KaynakPostgres, p: RaporParametreler): Promise<Sat
   return prisma.$queryRawUnsafe<Satir[]>(k.sorgu, ...degerler)
 }
 
-async function kaynakCek(k: Kaynak, p: RaporParametreler): Promise<{ ad: string; satirlar: Satir[]; sureMs: number }> {
+async function kaynakCek(k: Kaynak, p: RaporParametreler, sec: CalistirmaSecenekleri): Promise<{ ad: string; satirlar: Satir[]; sureMs: number }> {
   const t0 = Date.now()
-  const satirlar = k.tip === 'ifs-odata' ? await ifsCek(k, p) : await postgresCek(k, p)
+  const satirlar = k.tip === 'ifs-odata' ? await ifsCek(k, p, sec.ifsTopSinir) : await postgresCek(k, p)
   return { ad: k.ad, satirlar, sureMs: Date.now() - t0 }
 }
 
@@ -127,34 +127,88 @@ function alanlariEsle(satirlar: BilesikSatir[], alanlar: Record<string, string>,
   })
 }
 
-// ── Giriş noktası ────────────────────────────────────────────────────────
+// ── Statik doğrulama (kaydetme + çalıştırma öncesi) ─────────────────────
 
-export async function veriSetiCalistir(tanim: VeriSetiTanim, parametreler: RaporParametreler = {}): Promise<VeriSetiSonuc> {
-  const t0 = Date.now()
-  if (!tanim.kaynaklar?.length) throw new VeriSetiHatasi('Veri setinde kaynak yok')
+const AD_DESENI = /^[A-Za-z_][A-Za-z0-9_]*$/
+
+export interface CalistirmaSecenekleri {
+  /** IFS $top üst sınırı (önizleme için küçültülür). Varsayılan 5000. */
+  ifsTopSinir?: number
+}
+
+/**
+ * Tanımı veri çekmeden denetler; hata mesajı listesi döner (boş = geçerli).
+ * Kural seti veriSetiCalistir ile aynı: mükerrer/geçersiz kaynak adı, IFS ad biçimleri,
+ * birleştirme yolları ve sırası, birleştirmeye girmeyen kaynak, alan eşlemesi.
+ */
+export function tanimDogrula(tanim: VeriSetiTanim): string[] {
+  const h: string[] = []
+  if (!tanim || !Array.isArray(tanim.kaynaklar) || !tanim.kaynaklar.length) return ['Veri setinde en az bir kaynak olmalı']
   const adlar = new Set<string>()
   for (const k of tanim.kaynaklar) {
-    if (adlar.has(k.ad)) throw new VeriSetiHatasi(`Kaynak adı mükerrer: '${k.ad}'`)
+    if (!k.ad || !AD_DESENI.test(k.ad)) h.push(`Kaynak adı geçersiz: '${k.ad ?? ''}' (harf/rakam/alt çizgi, harfle başlamalı)`)
+    else if (adlar.has(k.ad)) h.push(`Kaynak adı mükerrer: '${k.ad}'`)
     adlar.add(k.ad)
+    if (k.tip === 'ifs-odata') {
+      if (!/^[A-Za-z0-9_]+$/.test(k.projeksiyon ?? '')) h.push(`${k.ad}: projeksiyon adı geçersiz`)
+      if (!/^[A-Za-z0-9_]+$/.test(k.entitySet ?? '')) h.push(`${k.ad}: entity set adı geçersiz`)
+    } else if (k.tip === 'postgres') {
+      if (!k.sorgu?.trim()) h.push(`${k.ad}: SQL sorgusu boş`)
+      else if (!/^\s*(select|with)\b/i.test(k.sorgu)) h.push(`${k.ad}: yalnız SELECT/WITH sorgusu kabul edilir`)
+      const n = (k.parametreler ?? []).length
+      const enBuyuk = Math.max(0, ...[...(k.sorgu ?? '').matchAll(/\$(\d+)/g)].map((m) => Number(m[1])))
+      if (enBuyuk > n) h.push(`${k.ad}: sorguda $${enBuyuk} var ama ${n} parametre tanımlı`)
+    } else {
+      h.push(`Bilinmeyen kaynak tipi: '${(k as { tip?: string }).tip ?? ''}'`)
+    }
   }
+  const yol = (y: string, baglam: string): { kaynak: string; alan: string } | null => {
+    const i = (y ?? '').indexOf('.')
+    if (i <= 0 || i === y.length - 1) { h.push(`${baglam}: '${y ?? ''}' 'kaynakAd.alan' biçiminde olmalı`); return null }
+    const r = { kaynak: y.slice(0, i), alan: y.slice(i + 1) }
+    if (!adlar.has(r.kaynak)) { h.push(`${baglam}: bilinmeyen kaynak '${r.kaynak}'`); return null }
+    return r
+  }
+  const birlesmis = new Set<string>([tanim.kaynaklar[0].ad])
+  for (const b of tanim.birlestir ?? []) {
+    const sol = yol(b.sol, 'birleştirme sol'), sag = yol(b.sag, 'birleştirme sağ')
+    if (b.tip !== 'inner' && b.tip !== 'left') h.push(`birleştirme tipi geçersiz: '${b.tip}'`)
+    if (sol && !birlesmis.has(sol.kaynak)) h.push(`birleştirme: sol kaynak '${sol.kaynak}' henüz birleşmemiş (sıra hatası)`)
+    if (sag && birlesmis.has(sag.kaynak)) h.push(`birleştirme: sağ kaynak '${sag.kaynak}' zaten birleşmiş`)
+    if (sag) birlesmis.add(sag.kaynak)
+  }
+  const birlesmeyen = [...adlar].filter((a) => !birlesmis.has(a))
+  if (birlesmeyen.length) h.push(`Birleştirmeye girmeyen kaynak(lar): ${birlesmeyen.join(', ')}`)
+  const alanlar = tanim.alanlar ?? {}
+  if (!Object.keys(alanlar).length) h.push('Çıktı alanı tanımlanmamış (alanlar boş)')
+  for (const [cikti, y] of Object.entries(alanlar)) {
+    if (!AD_DESENI.test(cikti)) h.push(`Çıktı alan adı geçersiz: '${cikti}'`)
+    yol(y, `alanlar.${cikti}`)
+  }
+  return h
+}
+
+// ── Giriş noktası ────────────────────────────────────────────────────────
+
+export async function veriSetiCalistir(tanim: VeriSetiTanim, parametreler: RaporParametreler = {}, secenekler: CalistirmaSecenekleri = {}): Promise<VeriSetiSonuc> {
+  const t0 = Date.now()
+  const hatalar = tanimDogrula(tanim)
+  if (hatalar.length) throw new VeriSetiHatasi(hatalar.join('; '))
+  const adlar = new Set(tanim.kaynaklar.map((k) => k.ad))
 
   // Kaynaklar paralel.
-  const sonuclar = await Promise.all(tanim.kaynaklar.map((k) => kaynakCek(k, parametreler)))
+  const sonuclar = await Promise.all(tanim.kaynaklar.map((k) => kaynakCek(k, parametreler, secenekler)))
   const satirlarByAd = new Map(sonuclar.map((s) => [s.ad, s.satirlar]))
   const kaynakIstatistik: KaynakIstatistik[] = sonuclar.map((s) => ({ ad: s.ad, satir: s.satirlar.length, sureMs: s.sureMs }))
 
-  // İlk kaynak taban; birleştirmeler sırayla.
+  // İlk kaynak taban; birleştirmeler sırayla (sıra/varlık denetimi tanimDogrula'da yapıldı).
   const tabanAd = tanim.kaynaklar[0].ad
   let bilesik: BilesikSatir[] = (satirlarByAd.get(tabanAd) ?? []).map((s) => ({ [tabanAd]: s }))
   const birlesmis = new Set<string>([tabanAd])
   for (const b of tanim.birlestir ?? []) {
     const sagAd = yolAyir(b.sag, 'birlestir.sag').kaynak
-    const sagSatirlar = satirlarByAd.get(sagAd)
-    if (!sagSatirlar) throw new VeriSetiHatasi(`birlestir: bilinmeyen sağ kaynak '${sagAd}'`)
-    bilesik = birlestir(bilesik, b, sagSatirlar, birlesmis)
+    bilesik = birlestir(bilesik, b, satirlarByAd.get(sagAd) ?? [], birlesmis)
   }
-  const birlesmeyen = [...adlar].filter((a) => !birlesmis.has(a))
-  if (birlesmeyen.length) throw new VeriSetiHatasi(`Birleştirmeye girmeyen kaynak(lar): ${birlesmeyen.join(', ')}`)
 
   const satirlar = alanlariEsle(bilesik, tanim.alanlar ?? {}, adlar)
   return { satirlar, kaynakIstatistik, toplamSureMs: Date.now() - t0 }

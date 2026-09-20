@@ -108,3 +108,33 @@ export function metadataAyristir(xml: string): MetadataEntity[] {
   }
   return out
 }
+
+// ── EntitySet ↔ EntityType eşlemesi ──────────────────────────────────────
+// Katalog EntityType adını tutar (ShopOrd); OData sorgusu EntitySet ister (ShopOrds,
+// ShopOrderOperationSet…). Ad türetilemez → $metadata'dan okunur, süreç içinde önbellek.
+
+const ENTITY_SET_TTL_MS = 60 * 60 * 1000
+const entitySetCache = new Map<string, { zaman: number; esleme: Map<string, string[]> }>()
+
+/** CSDL EntityContainer: EntityType adı → onu sunan EntitySet adları. */
+export function entitySetleriAyristir(xml: string): Map<string, string[]> {
+  const out = new Map<string, string[]>()
+  const re = /<EntitySet\b([^>]*)\/?>/g
+  for (let m = re.exec(xml); m; m = re.exec(xml)) {
+    const set = attr(m[1], 'Name')
+    const tip = attr(m[1], 'EntityType')?.split('.').pop()
+    if (!set || !tip) continue
+    const l = out.get(tip)
+    if (l) l.push(set); else out.set(tip, [set])
+  }
+  return out
+}
+
+/** Projeksiyonun EntityType → EntitySet[] eşlemesi (1 saat önbellek). */
+export async function entitySetleri(projeksiyon: string): Promise<Map<string, string[]>> {
+  const c = entitySetCache.get(projeksiyon)
+  if (c && Date.now() - c.zaman < ENTITY_SET_TTL_MS) return c.esleme
+  const esleme = entitySetleriAyristir(await metadataGetir(projeksiyon))
+  entitySetCache.set(projeksiyon, { zaman: Date.now(), esleme })
+  return esleme
+}

@@ -456,9 +456,12 @@ export type KpiResult = {
   from: string
   to: string
   haricBolumler: string[] // uretimYapar=false
+  toplam: KpiAy // seçili aralığın TAMAMI (kartlar bunu gösterir — ay/bölüm tablosuyla tutarlı)
   aylar: KpiAy[] // kronolojik
   bolumler: KpiBolumSatir[] // en kötüden iyiye (eksikPct desc, sonra ustu100Pct desc)
 }
+/** Bölüm detayı: gerçekleşen adedi girilmemiş (hedef>0) üretim satırları. */
+export type KpiEksikSatir = { formId: string; formNo: string; tarih: string; personel: string; sicil: string; parcaKodu: string; hedefAdet: number }
 
 /** KPI penceresi başlangıcı: Temmuz 2026 (Haziran yapısal — adet alanı yoktu). */
 export const KPI_BASLANGIC = new Date(Date.UTC(2026, 6, 1))
@@ -504,6 +507,7 @@ export async function getVeriKalitesiKpi(from: Date, to: Date, allowedDepts?: st
   })
   const byAy = new Map<string, KpiAcc>()
   const byDept = new Map<string, KpiAcc>()
+  const toplamAcc = newAcc()
   for (const f of forms) {
     const ay = f.date.toISOString().slice(0, 7)
     for (const op of f.personnel) {
@@ -514,7 +518,7 @@ export async function getVeriKalitesiKpi(from: Date, to: Date, allowedDepts?: st
         if (u.hedefAdet == null || u.hedefAdet <= 0) continue // sayılamayan / hedefsiz → KPI dışı
         if (!byAy.has(ay)) byAy.set(ay, newAcc())
         if (!byDept.has(dept)) byDept.set(dept, newAcc())
-        for (const acc of [byAy.get(ay)!, byDept.get(dept)!]) {
+        for (const acc of [byAy.get(ay)!, byDept.get(dept)!, toplamAcc]) {
           acc.form.add(f.id)
           acc.satir++
           if (u.gerceklesenAdet == null) { acc.eksik++; continue }
@@ -532,5 +536,43 @@ export async function getVeriKalitesiKpi(from: Date, to: Date, allowedDepts?: st
   const bolumler: KpiBolumSatir[] = [...byDept.entries()]
     .map(([bolum, a]) => ({ bolum, ...finishAcc(a) }))
     .sort((x, y) => y.eksikPct - x.eksikPct || y.ustu100Pct - x.ustu100Pct || y.satir - x.satir)
-  return { from: iso(from), to: iso(to), haricBolumler: [...nonUretim].sort(), aylar, bolumler }
+  const toplam: KpiAy = { ay: `${iso(from)}..${iso(to)}`, form: toplamAcc.form.size, ...finishAcc(toplamAcc) }
+  return { from: iso(from), to: iso(to), haricBolumler: [...nonUretim].sort(), toplam, aylar, bolumler }
+}
+
+/**
+ * Bölüm detayı — seçili aralıkta o bölümün gerçekleşen adedi GİRİLMEMİŞ (hedef>0) satırları.
+ * Kapsam KPI ile aynı: uretimYapar=false bölüm → boş; allowedDepts dışı bölüm → boş
+ * (çağıran 403 da verebilir; burada fail-closed boş liste).
+ */
+export async function getVeriKalitesiEksikSatirlar(from: Date, to: Date, bolum: string, allowedDepts?: string[]): Promise<KpiEksikSatir[]> {
+  const nonUretim = await getNonUretimBolumler()
+  if (nonUretim.has(bolum)) return []
+  if (allowedDepts !== undefined && !allowedDepts.includes(bolum)) return []
+  const forms = await prisma.overtimeForm.findMany({
+    where: { status: 'APPROVED', formTipi: 'MESAI', date: { gte: from, lte: to }, personnel: { some: { workDepartment: bolum } } },
+    orderBy: { date: 'desc' },
+    select: {
+      id: true,
+      formNo: true,
+      date: true,
+      personnel: {
+        where: { workDepartment: bolum },
+        select: {
+          personnel: { select: { adSoyad: true, sicilNo: true } },
+          uretimSatirlari: { orderBy: { sira: 'asc' }, select: { parcaKodu: true, hedefAdet: true, gerceklesenAdet: true } },
+        },
+      },
+    },
+  })
+  const out: KpiEksikSatir[] = []
+  for (const f of forms) {
+    for (const op of f.personnel) {
+      for (const u of op.uretimSatirlari) {
+        if (u.hedefAdet == null || u.hedefAdet <= 0 || u.gerceklesenAdet != null) continue
+        out.push({ formId: f.id, formNo: f.formNo, tarih: iso(f.date), personel: op.personnel?.adSoyad ?? '—', sicil: op.personnel?.sicilNo ?? '—', parcaKodu: u.parcaKodu, hedefAdet: u.hedefAdet })
+      }
+    }
+  }
+  return out
 }

@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { sendEmail } from "@/lib/email";
 import { sendPushToUser } from "@/lib/push-notifications";
-import { ileriHubUrl } from "@/lib/email-templates/akademi/_base";
+import { ileriHubUrl, escapeHtml } from "@/lib/email-templates/akademi/_base";
+import { renderEmail, logoAttachments, p } from "@/lib/email-templates/layout";
 
 export const dynamic = "force-dynamic";
 
@@ -31,35 +32,20 @@ function buildReminderMail(input: {
     `Mesai Tarihi: ${dateStr}\n` +
     `Onay adımınız: ${role}\n\n` +
     `Forma git: ${link}\n\nİleri Group`;
-  const html = `<!doctype html><html lang="tr"><head><meta charset="utf-8"></head>
-<body style="margin:0;background:#f4f6f8;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6f8;">
-    <tr><td align="center" style="padding:24px 12px;">
-      <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="width:560px;max-width:560px;background:#ffffff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
-        <tr><td bgcolor="#1B4F72" style="background:#1B4F72;padding:14px 24px;">
-          <span style="color:#ffffff;font-size:15px;font-weight:700;">ILERIHub · Mesai Onayı</span>
-        </td></tr>
-        <tr><td style="padding:22px 24px;">
-          <h1 style="margin:0 0 12px;font-size:18px;color:#1f2733;">Onayınız bekliyor</h1>
-          <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#475569;">
-            Aşağıdaki mesai formu <strong>${role}</strong> onay adımında sizi bekliyor.
-          </p>
-          <table role="presentation" cellpadding="0" cellspacing="0" style="font-size:13px;color:#334155;">
-            <tr><td style="padding:2px 0;color:#64748b;">Form No</td><td style="padding:2px 0 2px 16px;font-weight:600;">${formNo}</td></tr>
-            <tr><td style="padding:2px 0;color:#64748b;">Oluşturan</td><td style="padding:2px 0 2px 16px;font-weight:600;">${ownerName}</td></tr>
-            <tr><td style="padding:2px 0;color:#64748b;">Mesai Tarihi</td><td style="padding:2px 0 2px 16px;font-weight:600;">${dateStr}</td></tr>
-          </table>
-          <div style="margin:20px 0 4px;">
-            <a href="${link}" style="display:inline-block;background-color:#1B4F72;color:#ffffff;font-size:14px;font-weight:bold;line-height:44px;text-decoration:none;border-radius:6px;padding:0 26px;">&nbsp;Forma git&nbsp;</a>
-          </div>
-        </td></tr>
-        <tr><td style="border-top:1px solid #e2e8f0;padding:14px 24px;background:#fbfcfd;">
-          <p style="margin:0;font-size:11px;color:#94a3b8;">Bu e-posta İleriHub tarafından otomatik gönderilmiştir.<br>© İleri Group</p>
-        </td></tr>
-      </table>
-    </td></tr>
-  </table>
-</body></html>`;
+  const html = renderEmail({
+    module: "Mesai",
+    title: "Onayınız bekliyor",
+    subtitle: `${formNo} · ${role}`,
+    preheader: `${formNo} mesai formu ${role} adımında onayınızı bekliyor`,
+    bodyHtml: p(`Aşağıdaki mesai formu <strong>${escapeHtml(role)}</strong> onay adımında sizi bekliyor.`),
+    infoRows: [
+      { label: "Form No", value: `<strong>${escapeHtml(formNo)}</strong>` },
+      { label: "Oluşturan", value: escapeHtml(ownerName) },
+      { label: "Mesai Tarihi", value: escapeHtml(dateStr) },
+      { label: "Onay adımınız", value: escapeHtml(role) },
+    ],
+    cta: { label: "Forma git", url: link },
+  });
   return { subject, text, html };
 }
 
@@ -81,36 +67,23 @@ function buildEscalationMail(input: {
     `Mesai Tarihi: ${dateStr}\n` +
     `Onay adımı: ${role}\n\n` +
     `Forma git: ${link}\n\nİleri Group`;
-  const html = `<!doctype html><html lang="tr"><head><meta charset="utf-8"></head>
-<body style="margin:0;background:#f4f6f8;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6f8;">
-    <tr><td align="center" style="padding:24px 12px;">
-      <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="width:560px;max-width:560px;background:#ffffff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
-        <tr><td bgcolor="#1B4F72" style="background:#1B4F72;padding:14px 24px;">
-          <span style="color:#ffffff;font-size:15px;font-weight:700;">ILERIHub · Mesai Onayı</span>
-        </td></tr>
-        <tr><td style="padding:22px 24px;">
-          <h1 style="margin:0 0 12px;font-size:18px;color:#1f2733;">Onay size devredildi</h1>
-          <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#475569;">
-            Aşağıdaki mesai formu <strong>${role}</strong> adımında ${minutes} dk içinde onaylanmadığı için
-            yedek onaycı olarak <strong>size</strong> yönlendirildi.
-          </p>
-          <table role="presentation" cellpadding="0" cellspacing="0" style="font-size:13px;color:#334155;">
-            <tr><td style="padding:2px 0;color:#64748b;">Form No</td><td style="padding:2px 0 2px 16px;font-weight:600;">${formNo}</td></tr>
-            <tr><td style="padding:2px 0;color:#64748b;">Oluşturan</td><td style="padding:2px 0 2px 16px;font-weight:600;">${ownerName}</td></tr>
-            <tr><td style="padding:2px 0;color:#64748b;">Mesai Tarihi</td><td style="padding:2px 0 2px 16px;font-weight:600;">${dateStr}</td></tr>
-          </table>
-          <div style="margin:20px 0 4px;">
-            <a href="${link}" style="display:inline-block;background-color:#1B4F72;color:#ffffff;font-size:14px;font-weight:bold;line-height:44px;text-decoration:none;border-radius:6px;padding:0 26px;">&nbsp;Forma git&nbsp;</a>
-          </div>
-        </td></tr>
-        <tr><td style="border-top:1px solid #e2e8f0;padding:14px 24px;background:#fbfcfd;">
-          <p style="margin:0;font-size:11px;color:#94a3b8;">Bu e-posta İleriHub tarafından otomatik gönderilmiştir.<br>© İleri Group</p>
-        </td></tr>
-      </table>
-    </td></tr>
-  </table>
-</body></html>`;
+  const html = renderEmail({
+    module: "Mesai",
+    title: "Onay size devredildi",
+    subtitle: `${formNo} · ${role} · ${minutes} dk`,
+    preheader: `${formNo} mesai formu onayı ${minutes} dk içinde verilmediği için size yönlendirildi`,
+    bodyHtml: p(
+      `Aşağıdaki mesai formu <strong>${escapeHtml(role)}</strong> adımında ${minutes} dk içinde onaylanmadığı için ` +
+        `yedek onaycı olarak <strong>size</strong> yönlendirildi.`
+    ),
+    infoRows: [
+      { label: "Form No", value: `<strong>${escapeHtml(formNo)}</strong>` },
+      { label: "Oluşturan", value: escapeHtml(ownerName) },
+      { label: "Mesai Tarihi", value: escapeHtml(dateStr) },
+      { label: "Onay adımı", value: escapeHtml(role) },
+    ],
+    cta: { label: "Forma git", url: link },
+  });
   return { subject, text, html };
 }
 
@@ -229,7 +202,8 @@ export async function POST(req: NextRequest) {
             [{ email: backup.email, name: backup.name ?? backup.email }],
             mail.subject,
             mail.text,
-            mail.html
+            mail.html,
+            logoAttachments()
           ).catch((e) =>
             console.error(`[overtime-escalate] ${form.formNo}: mail hata`, e)
           );
@@ -289,7 +263,7 @@ export async function POST(req: NextRequest) {
         role: pending.role || "Onay",
         link: ileriHubUrl(`/forms/overtime/${form.id}`),
       });
-      const res = await sendEmail(recipients, subject, text, html);
+      const res = await sendEmail(recipients, subject, text, html, logoAttachments());
       if (!res.success) {
         console.error(
           `[overtime-overdue] ${form.formNo}: mail başarısız (${res.error ?? "?"}) — reminderSentAt yazılmadı`

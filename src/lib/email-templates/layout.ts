@@ -25,7 +25,29 @@ const TEXT = "#1f2937";
 const TEXT_DARK = "#111827";
 const MUTED = "#6b7280";
 
-export type EmailModule = "Akademi" | "Destek" | "Envanter" | "Zimmet";
+export type EmailModule =
+  | "Akademi"
+  | "Destek"
+  | "Envanter"
+  | "Zimmet"
+  | "Mesai"
+  | "İnsan Varlıkları"
+  | "Kalibrasyon";
+
+/** Şablonların kendi bloklarını (bar, KPI kutusu…) aynı paletle çizmesi için. */
+export const TOKENS = {
+  font: FONT,
+  line: LINE,
+  lineSoft: LINE_SOFT,
+  text: TEXT,
+  textDark: TEXT_DARK,
+  muted: MUTED,
+  navy: BRAND_NAVY,
+  soft: "#f8fafc",
+  red: "#b91c1c",
+  amber: "#b45309",
+  green: "#15803d",
+} as const;
 
 export type EmailInfoRow = {
   /** Sol sütun — düz metin (escape'lenir). */
@@ -52,6 +74,11 @@ export type EmailLayoutInput = {
   cta?: { label: string; url: string };
   /** Dipnotun ilk cümlesi — düz metin (otomatik gönderim cümlesinden önce). */
   footnote?: string;
+  /**
+   * Kart genişliği (px). Varsayılan 600. Çok sütunlu liste raporları
+   * (kalibrasyon cihaz listesi gibi) için 800'e çıkarılabilir; yerleşim aynı kalır.
+   */
+  width?: 600 | 800;
 };
 
 export function logoAttachments(): EmailAttachment[] | undefined {
@@ -118,6 +145,45 @@ export function dataTable(
             </table>`;
 }
 
+/** Gövde içi bölüm başlığı (küçük, gri, büyük harf) — tablo/blok üstüne. */
+export function sectionTitle(text: string, note?: string): string {
+  return `<div style="margin:18px 0 8px 0;font-family:${FONT};font-size:12px;line-height:16px;font-weight:bold;color:${MUTED};text-transform:uppercase;letter-spacing:0.4px;">${esc(text)}${note ? ` <span style="font-weight:normal;text-transform:none;letter-spacing:0;">(${esc(note)})</span>` : ""}</div>`;
+}
+
+/**
+ * KPI kutuları — tek satırda yan yana (Outlook: tablo hücreleri). value HTML,
+ * label düz metin; accent üst çizgi rengi.
+ */
+export function kpiRow(items: { label: string; value: string; accent?: string }[]): string {
+  const cells = items
+    .map(
+      (k) =>
+        `<td align="center" valign="top" style="padding:12px 6px;background-color:#f8fafc;border-top:3px solid ${k.accent ?? BRAND_NAVY};">
+              <div style="font-family:${FONT};font-size:22px;line-height:26px;font-weight:bold;color:${k.accent ?? BRAND_NAVY};">${k.value}</div>
+              <div style="font-family:${FONT};font-size:11px;line-height:16px;color:${MUTED};padding-top:4px;">${esc(k.label)}</div>
+            </td>`
+    )
+    .join(`<td style="width:6px;font-size:0;line-height:0;">&nbsp;</td>`);
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 14px 0;"><tr>${cells}</tr></table>`;
+}
+
+/**
+ * Yatay çubuk satırı — Outlook için tablo hücresi genişliğiyle çizilir.
+ * percent 0–100; color çubuk rengi; right sağdaki metin (HTML).
+ */
+export function barRow(label: string, percent: number, color: string, right: string): string {
+  const w = Math.min(100, Math.max(0, Math.round(percent)));
+  return `<tr>
+              <td width="34%" style="padding:5px 8px 5px 0;font-family:${FONT};font-size:12px;line-height:16px;color:${TEXT};">${esc(label)}</td>
+              <td style="padding:5px 0;">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#eef0f3;">
+                  <tr><td width="${Math.max(w, 1)}%" style="background-color:${color};height:12px;font-size:0;line-height:0;">&nbsp;</td><td style="font-size:0;line-height:0;">&nbsp;</td></tr>
+                </table>
+              </td>
+              <td width="22%" align="right" style="padding:5px 0 5px 10px;font-family:${FONT};font-size:12px;line-height:16px;color:${MUTED};white-space:nowrap;">${right}</td>
+            </tr>`;
+}
+
 function displayUrl(url: string): string {
   return url.replace(/^https?:\/\//, "");
 }
@@ -125,6 +191,7 @@ function displayUrl(url: string): string {
 export function renderEmail(input: EmailLayoutInput): string {
   const title = esc(input.title);
   const preheader = esc(input.preheader ?? input.title);
+  const W = input.width ?? 600;
   const year = new Date().getFullYear();
 
   const rows = (input.infoRows ?? []).filter((r) => r.value !== "");
@@ -185,7 +252,7 @@ ${rows
   <tr>
     <td align="center" style="padding:32px 16px;">
 
-      <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:600px;background-color:#ffffff;border:1px solid ${LINE};border-collapse:separate;">
+      <table role="presentation" width="${W}" cellpadding="0" cellspacing="0" border="0" style="width:${W}px;max-width:${W}px;background-color:#ffffff;border:1px solid ${LINE};border-collapse:separate;">
 
         <!-- LOGO ŞERİDİ -->
         <tr>

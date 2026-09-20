@@ -10,6 +10,7 @@ import { writeFile, mkdir } from 'fs/promises'
 import path from 'path'
 import { existsSync } from 'fs'
 import { sendEmail } from '@/lib/email'
+import { logoAttachments } from '@/lib/email-templates/layout'
 import { resolveHRRecipients } from '@/lib/hr-notifications'
 import {
   verifyConsentedDraft,
@@ -505,7 +506,8 @@ async function sendJobApplicationEmail(application: {
     recipients.map(r => ({ email: r.email, name: r.name })),
     mail.subject,
     mail.text,
-    mail.html
+    mail.html,
+    logoAttachments()
   )
 }
 

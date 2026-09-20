@@ -6,6 +6,7 @@
 import { prisma } from '@/lib/prisma'
 import { sendEmail } from '@/lib/email'
 import { ileriHubUrl } from '@/lib/email-templates/akademi/_base'
+import { logoAttachments } from '@/lib/email-templates/layout'
 import { formatVardiyaHafta } from '@/lib/vardiya-hafta'
 import {
   approvedDeptResponsibleSubject,
@@ -144,7 +145,8 @@ export async function notifyDeptResponsiblesOnApproval(form: FormForNotify): Pro
         [{ email: r.email, name: r.name }],
         approvedDeptResponsibleSubject(form.formNo, isVardiya),
         buildApprovedDeptResponsibleMailText(input),
-        buildApprovedDeptResponsibleMailHtml(input)
+        buildApprovedDeptResponsibleMailHtml(input),
+        logoAttachments()
       )
     } catch (e) {
       console.error(`[mesai-onay-maili] gönderim hatası (${r.email}):`, e)

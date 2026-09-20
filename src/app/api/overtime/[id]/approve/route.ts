@@ -4,7 +4,8 @@ import { apiSuccess, apiError, apiNotFound, apiBadRequest } from '@/lib/api-resp
 import { sendPushToUser } from '@/lib/push-notifications'
 import { requireUser } from '@/lib/auth/require-user'
 import { sendEmail } from '@/lib/email'
-import { ileriHubUrl } from '@/lib/email-templates/akademi/_base'
+import { ileriHubUrl, escapeHtml } from '@/lib/email-templates/akademi/_base'
+import { renderEmail, logoAttachments, p, quote } from '@/lib/email-templates/layout'
 import { buildVardiyaServiceMailHtml, buildVardiyaServiceMailText } from '@/lib/email-templates/vardiya-service'
 import {
   approvalPendingSubject,
@@ -464,7 +465,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
           const text = buildVardiyaServiceMailText(m.formNo, m.rows, meta)
           const html = buildVardiyaServiceMailHtml(m.formNo, m.rows, meta)
           // İKİ alıcıya (Üretim Planlama + İnsan Varlıkları). m.to zaten dizi.
-          await sendEmail(m.to, m.subject, text, html)
+          await sendEmail(m.to, m.subject, text, html, logoAttachments())
           return apiSuccess(updatedForm.result)
         }
 
@@ -489,7 +490,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
               [recipient],
               approvalPendingSubject(m.formNo, m.isVardiya),
               buildApprovalPendingMailText(mailInput),
-              buildApprovalPendingMailHtml(mailInput)
+              buildApprovalPendingMailHtml(mailInput),
+              logoAttachments()
             )
           }
           return apiSuccess(updatedForm.result)
@@ -502,22 +504,19 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         const aksiyon = iade
           ? 'Formu düzenleyip yeniden onaya gönderebilirsiniz.'
           : 'Form reddedilmiştir. Gerekirse yeni bir form oluşturabilirsiniz.'
-        const navy = '#1B4F72'
         const text = `${baslik}\n\n${m.role} tarafından${m.comment ? `: ${m.comment}` : ''}\n\n${aksiyon}\n${link}`
-        const html = `<!DOCTYPE html><html><body style="margin:0;background:#f4f6f8;font-family:Arial,sans-serif;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:24px 0;"><tr><td align="center">
-    <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:8px;max-width:560px;overflow:hidden;">
-      <tr><td style="background:${iade ? '#c98500' : '#d03b3b'};padding:16px 24px;color:#fff;font-size:17px;font-weight:bold;">${baslik}</td></tr>
-      <tr><td style="padding:20px 24px;color:#333;font-size:14px;line-height:1.6;">
-        <p style="margin:0 0 8px;"><b>${m.role}</b> tarafından${iade ? ' düzeltme için iade edildi' : ' reddedildi'}.</p>
-        ${m.comment ? `<div style="background:#f7f9fb;border-left:4px solid ${iade ? '#c98500' : '#d03b3b'};padding:10px 14px;margin:12px 0;color:#444;"><b>Açıklama:</b> ${m.comment}</div>` : ''}
-        <p style="margin:8px 0 18px;">${aksiyon}</p>
-        <a href="${link}" style="display:inline-block;background:${navy};color:#fff;text-decoration:none;padding:10px 20px;border-radius:6px;font-size:14px;">Formu Görüntüle</a>
-      </td></tr>
-      <tr><td style="padding:12px 24px;background:#f7f9fb;color:#999;font-size:11px;">Otomatik ILERIHub mesai onay bildirimi.</td></tr>
-    </table>
-  </td></tr></table></body></html>`
-        await sendEmail([m.to], m.subject, text, html)
+        const html = renderEmail({
+          module: 'Mesai',
+          title: baslik,
+          subtitle: `${m.role} tarafından${iade ? ' düzeltme için iade edildi' : ' reddedildi'}`,
+          preheader: `${baslik} — ${m.role}`,
+          bodyHtml: p(
+            `<strong>${escapeHtml(m.role)}</strong> tarafından${iade ? ' düzeltme için iade edildi' : ' reddedildi'}.`,
+          ),
+          afterHtml: (m.comment ? quote(escapeHtml(m.comment), 'Açıklama') : '') + p(escapeHtml(aksiyon)),
+          cta: { label: 'Formu Görüntüle', url: link },
+        })
+        await sendEmail([m.to], m.subject, text, html, logoAttachments())
       } catch (e) {
         console.error('[overtime-approve] onay bildirim maili gönderilemedi (akış etkilenmedi):', e)
       }

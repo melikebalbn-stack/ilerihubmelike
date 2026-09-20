@@ -12,6 +12,8 @@ import { resolveApprovers } from "@/lib/personnel-request-chain";
 import { talepAlanlariSchema, tarihDon } from "@/lib/recruitment/personnel-request-alanlar";
 import { sendPushToUser } from "@/lib/push-notifications";
 import { sendEmail } from "@/lib/email";
+import { escapeHtml, ileriHubUrl } from "@/lib/email-templates/akademi/_base";
+import { renderEmail, logoAttachments, p } from "@/lib/email-templates/layout";
 import { resolveHRRecipients } from "@/lib/hr-notifications";
 
 type BildirimTuru = "SIRA" | "ONAYLANDI" | "REDDEDILDI";
@@ -27,7 +29,19 @@ async function notifyHrTeam(requestNumber: string, title: string) {
       alicilar.map((a) => ({ email: a.email ?? "", name: a.name ?? a.email ?? "" })).filter((a) => a.email),
       "Personel Talebi Onaylandı",
       mesaj,
-      `<p>${mesaj}</p>`,
+      renderEmail({
+        module: "İnsan Varlıkları",
+        title: "Personel talebi onaylandı",
+        subtitle: `${requestNumber} · ${title}`,
+        preheader: mesaj,
+        bodyHtml: p(escapeHtml(mesaj)),
+        infoRows: [
+          { label: "Talep No", value: `<strong>${escapeHtml(requestNumber)}</strong>` },
+          { label: "Başlık", value: escapeHtml(title) },
+        ],
+        cta: { label: "Kadro Taleplerine Git", url: ileriHubUrl("/strategic-hr/kadro-talep") },
+      }),
+      logoAttachments(),
     );
     for (const a of alicilar) {
       if (a.id) await sendPushToUser(prisma, a.id, { title: "Personel Talebi Onaylandı", body: mesaj, url: "/strategic-hr/kadro-talep", tag: `pr-approved-${requestNumber}` });
@@ -59,7 +73,26 @@ async function notifyApprover(
     });
     const u = await prisma.user.findUnique({ where: { id: userId }, select: { email: true, name: true } });
     if (u?.email) {
-      await sendEmail([{ email: u.email, name: u.name || "" }], "Personel Talebi Onayı", mesaj, `<p>${mesaj}</p>`);
+      const baslik =
+        tur === "SIRA" ? "Personel talebi onayınızı bekliyor" : tur === "ONAYLANDI" ? "Personel talebiniz onaylandı" : "Personel talebiniz reddedildi";
+      await sendEmail(
+        [{ email: u.email, name: u.name || "" }],
+        "Personel Talebi Onayı",
+        mesaj,
+        renderEmail({
+          module: "İnsan Varlıkları",
+          title: baslik,
+          subtitle: `${requestNumber} · ${title}`,
+          preheader: mesaj,
+          bodyHtml: p(escapeHtml(mesaj)),
+          infoRows: [
+            { label: "Talep No", value: `<strong>${escapeHtml(requestNumber)}</strong>` },
+            { label: "Başlık", value: escapeHtml(title) },
+          ],
+          cta: { label: "Kadro Taleplerine Git", url: ileriHubUrl("/strategic-hr/kadro-talep") },
+        }),
+        logoAttachments(),
+      );
     }
   } catch {
     // bildirim best-effort

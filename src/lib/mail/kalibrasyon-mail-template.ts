@@ -1,5 +1,5 @@
 // ============================================================================
-// İleriHub — Kalibrasyon hatırlatma maili (ERP-stili Excel tablo)
+// İleriHub — Kalibrasyon hatırlatma maili (kurumsal yerleşim, üst şerit "Kalibrasyon")
 // ----------------------------------------------------------------------------
 // Sadece mail GÖVDESİNİ üretir. Alıcı listesi / zamanlama / tetikleme kuralları
 // check-notifications route'unda; bu dosya onlara DOKUNMAZ.
@@ -7,6 +7,8 @@
 // Alan adları Hub şemasına (CalibrationDevice) göre check-notifications
 // route'unda map'lenir; interface'in kendisi tasarım sözleşmesi olarak korunur.
 // ============================================================================
+
+import { renderEmail, p, dataTable, TOKENS } from "@/lib/email-templates/layout";
 
 export interface KalibrasyonDevice {
   cihazId: string;                   // "Kod" — Cihaz ID (örn. "C 1019")
@@ -37,24 +39,30 @@ const fmtDate = (d: Date | string): string => {
 const cihazYeri = (d: KalibrasyonDevice): string =>
   [d.departman, d.uretimBolumu].map((x) => (x ?? "").trim()).filter(Boolean).join(" · ");
 
-function rowHtml(dev: KalibrasyonDevice): string {
+function rowHtml(dev: KalibrasyonDevice): string[] {
   const g = dev.kalanGun;
-  let kalanCls = "kalan";
-  let kalanTxt = `${g} gün`;
-  if (g < 0) { kalanCls = "kalan over"; kalanTxt = `${g} gün <span class="tag">(${Math.abs(g)} gün geçti)</span>`; }
-  else if (g <= 15) { kalanCls = "kalan warn"; }
-
-  return `        <tr>
-          <td class="kod">${esc(dev.cihazId)}</td>
-          <td>${esc(dev.cihazTipi || "—")}</td>
-          <td>${esc(cihazYeri(dev) || "—")}</td>
-          <td class="muted">${esc(dev.seriNo || "—")}</td>
-          <td class="detay">${esc(dev.model)}</td>
-          <td>${esc(dev.sorumluKisi || "—")}</td>
-          <td class="nowrap">${fmtDate(dev.planlananKalibrasyonTarihi)}</td>
-          <td class="${kalanCls}">${kalanTxt}</td>
-          <td>${dev.cihazDurumu ? `<span class="durum">${esc(dev.cihazDurumu)}</span>` : "—"}</td>
-        </tr>`;
+  let kalan = `${g} gün`;
+  if (g < 0) {
+    kalan = `<strong style="color:${TOKENS.red};white-space:nowrap;">${g} gün</strong> <span style="font-size:11px;color:${TOKENS.red};">(${Math.abs(g)} gün geçti)</span>`;
+  } else if (g <= 15) {
+    kalan = `<strong style="color:${TOKENS.amber};white-space:nowrap;">${g} gün</strong>`;
+  } else {
+    kalan = `<strong style="white-space:nowrap;">${g} gün</strong>`;
+  }
+  const durum = dev.cihazDurumu
+    ? `<span style="display:inline-block;font-size:11px;font-weight:bold;color:${TOKENS.amber};background-color:#fef3c7;border:1px solid #fcd34d;padding:1px 6px;white-space:nowrap;">${esc(dev.cihazDurumu)}</span>`
+    : "—";
+  return [
+    `<strong style="font-family:Consolas,Menlo,monospace;white-space:nowrap;">${esc(dev.cihazId)}</strong>`,
+    esc(dev.cihazTipi || "—"),
+    esc(cihazYeri(dev) || "—"),
+    `<span style="color:${TOKENS.muted};">${esc(dev.seriNo || "—")}</span>`,
+    `<strong>${esc(dev.model)}</strong>`,
+    esc(dev.sorumluKisi || "—"),
+    `<span style="white-space:nowrap;">${fmtDate(dev.planlananKalibrasyonTarihi)}</span>`,
+    kalan,
+    durum,
+  ];
 }
 
 export function buildKalibrasyonMailHtml(
@@ -64,63 +72,19 @@ export function buildKalibrasyonMailHtml(
   const baslik = opts.baslik ?? "Kalibrasyon Tarihi Gelen Cihazlar";
   const tarihBaslik = opts.tarihBaslik ?? "Gelecek Kal. Tarihi";
   const bugun = fmtDate(new Date());
-  const yil = new Date().getFullYear();
-  const tbody = devices.map(rowHtml).join("\n");
 
-  return `<!doctype html>
-<html lang="tr"><head><meta charset="utf-8">
-<style>
-  body{margin:0;background:#eef1f7;font-family:-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;color:#1f2733;padding:24px}
-  .wrap{max-width:1000px;margin:0 auto;background:#fff;border:1px solid #cbd5e1;border-radius:12px;overflow:hidden}
-  .bar{height:6px;background:#2f7dc0}
-  .head{padding:22px 26px 6px}
-  .brand{font-size:12px;letter-spacing:.13em;text-transform:uppercase;color:#9aa0ab;font-weight:700;margin:0}
-  h1{font-size:21px;font-weight:800;margin:10px 0 4px}
-  .meta{font-size:13.5px;color:#6b7280;margin:0}
-  .count{display:inline-block;margin-top:10px;font-size:12px;font-weight:700;padding:4px 11px;border-radius:999px;color:#fff;background:#2f7dc0}
-  .tablewrap{padding:18px 26px 8px;overflow-x:auto}
-  table{border-collapse:collapse;width:100%;font-size:13px}
-  thead th{background:#53A0D9;color:#fff;text-align:left;padding:10px 12px;border:1px solid #2f7dc0;font-weight:700;font-size:12px;white-space:nowrap}
-  tbody td{padding:9px 12px;border:1px solid #cbd5e1;vertical-align:middle}
-  tbody tr:nth-child(even) td{background:#eaf4fb}
-  .kod{font-family:ui-monospace,Menlo,Consolas,monospace;font-weight:700;white-space:nowrap}
-  .detay{font-weight:600}
-  .muted{color:#6b7280}
-  .nowrap{white-space:nowrap}
-  .kalan{font-weight:700;white-space:nowrap;text-align:right}
-  .kalan.over{color:#c0392b}
-  .kalan.warn{color:#b45309}
-  .kalan .tag{font-weight:600;font-size:11px}
-  .durum{display:inline-block;font-size:11.5px;font-weight:700;color:#b45309;background:#fef3c7;border:1px solid #fcd34d;padding:2px 8px;border-radius:999px;white-space:nowrap}
-  .total{padding:6px 26px 4px;font-size:14px;font-weight:700}
-  .foot{border-top:1px solid #cbd5e1;padding:14px 26px 20px;background:#fbfbfc;margin-top:12px}
-  .foot p{margin:0 0 5px;font-size:12px;color:#9aa0ab;line-height:1.5}
-</style></head>
-<body>
-  <div class="wrap">
-    <div class="bar"></div>
-    <div class="head">
-      <p class="brand">İLERİ GROUP · KALİBRASYON YÖNETİM SİSTEMİ</p>
-      <h1>${esc(baslik)}</h1>
-      <p class="meta">Otomatik rapor · ${bugun}</p>
-      <span class="count">${devices.length} cihaz</span>
-    </div>
-    <div class="tablewrap">
-      <table>
-        <thead><tr>
-          <th>Kod</th><th>Cihaz Tipi</th><th>Cihaz Yeri</th><th>Seri Numarası</th><th>Cihaz Detayı</th>
-          <th>Zimmet Sorumlusu</th><th>${esc(tarihBaslik)}</th><th>Kalan Gün</th><th>Durum</th>
-        </tr></thead>
-        <tbody>
-${tbody}
-        </tbody>
-      </table>
-    </div>
-    <p class="total">Toplam: ${devices.length} cihaz</p>
-    <div class="foot">
-      <p>Bu e-posta otomatik olarak İleriHub Kalibrasyon Yönetim Sistemi tarafından gönderilmiştir. Lütfen yanıtlamayınız.</p>
-      <p>© ${yil} İleri Group · System Development Team</p>
-    </div>
-  </div>
-</body></html>`;
+  // 9 sütunlu cihaz listesi 600px'e sığmaz → geniş kart (800px); yerleşim aynı.
+  return renderEmail({
+    module: "Kalibrasyon",
+    width: 800,
+    title: baslik,
+    subtitle: `Otomatik rapor · ${bugun} · ${devices.length} cihaz`,
+    preheader: `${baslik} — ${devices.length} cihaz`,
+    afterHtml:
+      dataTable(
+        ["Kod", "Cihaz Tipi", "Cihaz Yeri", "Seri Numarası", "Cihaz Detayı", "Zimmet Sorumlusu", tarihBaslik, "Kalan Gün", "Durum"],
+        devices.map(rowHtml),
+        ["left", "left", "left", "left", "left", "left", "left", "right", "left"]
+      ) + p(`<strong>Toplam: ${devices.length} cihaz</strong>`),
+  });
 }

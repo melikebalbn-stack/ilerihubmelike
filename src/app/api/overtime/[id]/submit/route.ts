@@ -5,6 +5,7 @@ import { sendPushToUser } from '@/lib/push-notifications'
 import { requireUser } from '@/lib/auth/require-user'
 import { sendEmail } from '@/lib/email'
 import { ileriHubUrl } from '@/lib/email-templates/akademi/_base'
+import { logoAttachments } from '@/lib/email-templates/layout'
 import {
   approvalPendingSubject,
   buildApprovalPendingMailText,
@@ -196,7 +197,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
           [recipient],
           approvalPendingSubject(u.formNo, isVardiya),
           buildApprovalPendingMailText(mailInput),
-          buildApprovalPendingMailHtml(mailInput)
+          buildApprovalPendingMailHtml(mailInput),
+          logoAttachments()
         )
       } catch (e) {
         console.error('[overtime-submit] ilk onaycı bildirim maili gönderilemedi (akış etkilenmedi):', e)

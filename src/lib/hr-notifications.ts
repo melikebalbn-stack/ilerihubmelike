@@ -25,6 +25,7 @@ import { STATUS_LABELS_TR } from '@/lib/recruitment/transitions'
 import { mudurKademesiMi } from '@/lib/recruitment/bekleyen'
 import { otomatikAtamaliMi } from '@/lib/recruitment/otomatik-atama'
 import { sendEmail } from '@/lib/email'
+import { logoAttachments } from '@/lib/email-templates/layout'
 import {
   asamaDegisikligiMaili,
   sinavSonucuMaili,
@@ -277,7 +278,7 @@ async function atananaAtamaMaili(
       yeniDurumEtiketi: toLabel,
       aktorAdi: args.actorName,
     })
-    await sendEmail([{ email: u.email, name: ad }], mail.subject, mail.text, mail.html)
+    await sendEmail([{ email: u.email, name: ad }], mail.subject, mail.text, mail.html, logoAttachments())
   } catch (err) {
     console.error('[hr-notify] atama maili gönderilemedi:', err)
   }
@@ -351,6 +352,7 @@ export async function notifyAssessmentCompleted(args: {
         mail.subject,
         mail.text,
         mail.html,
+        logoAttachments(),
       )
     } catch (err) {
       console.error('[hr-notify] sınav sonucu maili gönderilemedi:', err)

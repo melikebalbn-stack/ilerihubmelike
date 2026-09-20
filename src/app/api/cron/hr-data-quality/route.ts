@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { sendEmail } from '@/lib/email'
 import { runHrDataQualityAudit } from '@/lib/hr-data-quality'
 import { buildHrDataQualityMailHtml, buildHrDataQualityMailText } from '@/lib/email-templates/hr-data-quality'
+import { logoAttachments } from '@/lib/email-templates/layout'
 
 export const dynamic = 'force-dynamic'
 
@@ -34,7 +35,7 @@ async function handle(req: NextRequest) {
     const text = buildHrDataQualityMailText(kategoriler)
 
     // sendEmail içinde MAIL_RECIPIENT_OVERRIDE guard'ı var (staging'de override, prod'da gerçek İK).
-    const res = await sendEmail([{ email: HR_ALICI, name: 'İnsan Varlıkları' }], subject, text, html)
+    const res = await sendEmail([{ email: HR_ALICI, name: 'İnsan Varlıkları' }], subject, text, html, logoAttachments())
     if (!res.success) {
       console.error('[hr-data-quality] mail gönderilemedi:', res.error)
       return NextResponse.json({ ok: false, sorun: toplamSorun, kategori: kategoriler.length, mailAtildi: false, error: res.error }, { status: 500 })

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { sendEmail } from '@/lib/email'
 import { ileriHubUrl } from '@/lib/email-templates/akademi/_base'
+import { logoAttachments } from '@/lib/email-templates/layout'
 import { getDailyPerformance, resolveAllowedDepts } from '@/lib/overtime-performance'
 import { buildPerfEmailHtml, buildPerfEmailText } from '@/lib/email-templates/overtime-performance'
 
@@ -60,6 +61,7 @@ export async function POST(req: NextRequest) {
       `Günlük Mesai Performansı — ${tarihMetni}`,
       buildPerfEmailText(data, opts),
       buildPerfEmailHtml(data, opts),
+      logoAttachments(),
     )
     if (res.success) sent++
   }

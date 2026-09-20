@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { sendEmail } from '@/lib/email'
+import { escapeHtml } from '@/lib/email-templates/akademi/_base'
+import { renderEmail, logoAttachments, p, dataTable } from '@/lib/email-templates/layout'
 import {
   DEACTIVATION_ABORT_LIMIT,
   adayOzet,
@@ -64,6 +66,21 @@ export async function POST(req: NextRequest) {
             `kapatmayı iptal etti, hiçbir hesaba dokunulmadı.\n\n` +
             `Hesaplar:\n${sonuc.hedefler.map((a) => `- ${adayOzet(a)}`).join('\n')}\n\n` +
             `Doğruysa elle koşturun: prisma/deaktive-ayrilan-personel.ts --db=ilerihub --apply`,
+          renderEmail({
+            module: 'İnsan Varlıkları',
+            title: 'Hesap kapatma iptal edildi (güvenlik ağı)',
+            subtitle: `${sonuc.hedefler.length} hesap · limit ${DEACTIVATION_ABORT_LIMIT}`,
+            preheader: `Ayrılan personel hesap kapatma İPTAL edildi — ${sonuc.hedefler.length} hesap`,
+            bodyHtml:
+              p(
+                `Gecelik iş bu turda <strong>${sonuc.hedefler.length}</strong> portal hesabını kapatacaktı (limit ${DEACTIVATION_ABORT_LIMIT}). ` +
+                  'Muhtemel hatalı toplu pasifleştirme (Personnel.aktif IFS personel senkronundan geliyor) — güvenlik ağı TÜM kapatmayı iptal etti, hiçbir hesaba dokunulmadı.',
+              ),
+            afterHtml:
+              dataTable(['Hesap'], sonuc.hedefler.map((a) => [escapeHtml(adayOzet(a))])) +
+              p(`Doğruysa elle koşturun: <code>prisma/deaktive-ayrilan-personel.ts --db=ilerihub --apply</code>`),
+          }),
+          logoAttachments(),
         )
       } catch (mailErr) {
         console.error('[deaktive-ayrilan-personel] güvenlik ağı maili gönderilemedi', mailErr)
@@ -81,6 +98,21 @@ export async function POST(req: NextRequest) {
             `Olası sebepler: ayrılma tarihi yanlış girilmiş, kişi hâlâ çalışıyor, ` +
             `ya da hesap başkası tarafından kullanılıyor.\n\n` +
             sonuc.atlananlar.map((a) => `- ${adayOzet(a)}`).join('\n'),
+          renderEmail({
+            module: 'İnsan Varlıkları',
+            title: 'Ayrılan personel hesabı: elle karar bekliyor',
+            subtitle: `${sonuc.atlananlar.length} kayıt`,
+            preheader: `${sonuc.atlananlar.length} ayrılan personel hesabı elle karar bekliyor`,
+            bodyHtml:
+              p(
+                'Aşağıdaki hesaplar ayrılmış personele ait görünüyor ama personel PASİFE alındıktan SONRA giriş yapılmış. Otomatik kapatılmadılar.',
+              ) +
+              p(
+                'Olası sebepler: ayrılma tarihi yanlış girilmiş, kişi hâlâ çalışıyor, ya da hesap başkası tarafından kullanılıyor.',
+              ),
+            afterHtml: dataTable(['Hesap'], sonuc.atlananlar.map((a) => [escapeHtml(adayOzet(a))])),
+          }),
+          logoAttachments(),
         )
       } catch (mailErr) {
         console.error('[deaktive-ayrilan-personel] atlanan listesi maili gönderilemedi', mailErr)

@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { sendEmail } from '@/lib/email'
 import { SISTEM_AKTOR_ID, logAuditEvent } from '@/lib/audit-log'
 import { ileriHubUrl } from '@/lib/email-templates/akademi/_base'
+import { logoAttachments } from '@/lib/email-templates/layout'
 import { getHaftalikPersonelRaporu } from '@/lib/personnel-weekly-report'
 import { buildPersonnelWeeklyHtml, buildPersonnelWeeklyText } from '@/lib/email-templates/personnel-weekly'
 
@@ -136,6 +137,7 @@ async function handle(req: NextRequest) {
       `[TEST] ${konu}`,
       text,
       html,
+      logoAttachments(),
     )
     const durum = sonuc.success ? 'TEST_GONDERIM' : 'TEST_HATA'
     await logAuditEvent({
@@ -172,7 +174,7 @@ async function handle(req: NextRequest) {
     konu,
     text,
     html,
-    undefined,
+    logoAttachments(),
     { cc: CC_ADRESLERI.map((email) => ({ email, name: email })) },
   )
 

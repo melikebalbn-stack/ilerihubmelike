@@ -1,28 +1,18 @@
 /**
  * Haftalık Personel Raporu mail şablonu.
  *
- * Mesai performans mailiyle (overtime-performance.ts) aynı iskelet: 640px
- * role="presentation" tablo, aynı gönderici, aynı sendEmail servisi.
- * Palet hub'ın mail teal'i (#0d9488, bkz. akademi/_base + oneri.ts).
- *
- * Outlook kısıtı: SVG, JS, flex/grid ve <div> genişliği YOK. Barlar iç içe
- * tablo hücresinin yüzde genişliği + arka plan rengi ile çiziliyor.
+ * Kurumsal yerleşim (layout.ts, üst şerit "İnsan Varlıkları"): KPI kutuları kpiRow,
+ * çubuklar barRow (Outlook: tablo hücresi genişliği), listeler dataTable.
  */
 import { escapeHtml } from '@/lib/email-templates/akademi/_base'
 import type { HaftalikPersonelRaporu, HareketSatiri } from '@/lib/personnel-weekly-report'
-
-const TEAL = '#0d9488'
-const TEAL_KOYU = '#0f766e'
-const METIN = '#334155'
-const SOLUK = '#64748b'
-const CIZGI = '#e2e8f0'
-const FONT = 'Arial,Helvetica,sans-serif'
+import { renderEmail, p, dataTable, sectionTitle, kpiRow, barRow, TOKENS } from '@/lib/email-templates/layout'
 
 /** Yaka renkleri ekrandaki YAKA_RENK ile aynı: beyaz→teal, mavi→blue, gri→slate. */
 const YAKA = {
-  beyaz: { ad: 'Beyaz Yaka', renk: '#0d9488', zemin: '#f0fdfa' },
-  mavi: { ad: 'Mavi Yaka', renk: '#2563eb', zemin: '#eff6ff' },
-  gri: { ad: 'Gri Yaka', renk: '#64748b', zemin: '#f8fafc' },
+  beyaz: { ad: 'Beyaz Yaka', renk: '#0d9488' },
+  mavi: { ad: 'Mavi Yaka', renk: '#2563eb' },
+  gri: { ad: 'Gri Yaka', renk: '#64748b' },
 } as const
 
 export interface HaftalikMailOpts {
@@ -54,30 +44,21 @@ export function buildPersonnelWeeklyText(veri: HaftalikPersonelRaporu, opts: Haf
   return satirlar.join('\n')
 }
 
-/** KPI kutusu — tek hücre; kutular tek satırlık bir tabloda yan yana durur. */
-function kpiHucre(etiket: string, deger: string, renk: string, zemin: string): string {
-  return `<td width="19%" align="center" valign="top" style="padding:12px 6px;background-color:${zemin};border-top:3px solid ${renk};">
-    <div style="font-family:${FONT};font-size:22px;font-weight:bold;color:${renk};line-height:26px;">${escapeHtml(deger)}</div>
-    <div style="font-family:${FONT};font-size:11px;color:${SOLUK};padding-top:4px;">${escapeHtml(etiket)}</div>
-  </td>`
-}
-
-function hareketTablosu(baslik: string, satirlar: HareketSatiri[], renk: string): string {
+function hareketTablosu(baslik: string, satirlar: HareketSatiri[]): string {
   if (satirlar.length === 0) return ''
-  const govde = satirlar.map(s => `
-    <tr>
-      <td style="padding:7px 8px;font-family:${FONT};font-size:12px;color:${METIN};border-bottom:1px solid ${CIZGI};">${escapeHtml(s.adSoyad)}</td>
-      <td style="padding:7px 8px;font-family:${FONT};font-size:12px;color:${SOLUK};border-bottom:1px solid ${CIZGI};">${escapeHtml(s.bolum)}</td>
-      <td style="padding:7px 8px;font-family:${FONT};font-size:12px;color:${SOLUK};border-bottom:1px solid ${CIZGI};">${escapeHtml(s.gorev)}</td>
-      <td align="right" style="padding:7px 8px;font-family:${FONT};font-size:12px;color:${SOLUK};white-space:nowrap;border-bottom:1px solid ${CIZGI};">${escapeHtml(s.tarih)}</td>
-    </tr>`).join('')
-  return `
-  <div style="font-family:${FONT};font-size:14px;font-weight:bold;color:${TEAL_KOYU};margin:22px 0 8px 0;">
-    ${escapeHtml(baslik)} <span style="font-weight:normal;color:${SOLUK};font-size:12px;">(${satirlar.length} kişi)</span>
-  </div>
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;border-left:3px solid ${renk};">
-    ${govde}
-  </table>`
+  return (
+    sectionTitle(baslik, `${satirlar.length} kişi`) +
+    dataTable(
+      ['Ad Soyad', 'Bölüm', 'Görev', 'Tarih'],
+      satirlar.map((s) => [
+        escapeHtml(s.adSoyad),
+        `<span style="color:${TOKENS.muted};">${escapeHtml(s.bolum)}</span>`,
+        `<span style="color:${TOKENS.muted};">${escapeHtml(s.gorev)}</span>`,
+        `<span style="white-space:nowrap;color:${TOKENS.muted};">${escapeHtml(s.tarih)}</span>`,
+      ]),
+      ['left', 'left', 'left', 'right'],
+    )
+  )
 }
 
 export function buildPersonnelWeeklyHtml(veri: HaftalikPersonelRaporu, opts: HaftalikMailOpts): string {
@@ -88,115 +69,63 @@ export function buildPersonnelWeeklyHtml(veri: HaftalikPersonelRaporu, opts: Haf
   const yakaSatiri = (anahtar: keyof typeof YAKA) => {
     const y = YAKA[anahtar]
     const s = yakaCinsiyetTablosu[anahtar]
-    return `
-    <tr>
-      <td style="padding:8px 10px;font-family:${FONT};font-size:12px;font-weight:bold;color:${y.renk};border-bottom:1px solid ${CIZGI};">${y.ad}</td>
-      <td align="center" style="padding:8px 10px;font-family:${FONT};font-size:12px;font-weight:bold;color:${METIN};border-bottom:1px solid ${CIZGI};">${s.genel}</td>
-      <td align="center" style="padding:8px 10px;font-family:${FONT};font-size:12px;color:${METIN};border-bottom:1px solid ${CIZGI};">${s.erkek}</td>
-      <td align="center" style="padding:8px 10px;font-family:${FONT};font-size:12px;color:${METIN};border-bottom:1px solid ${CIZGI};">${s.kadin}</td>
-      <td align="center" style="padding:8px 10px;font-family:${FONT};font-size:12px;color:${METIN};border-bottom:1px solid ${CIZGI};">${s.engelli}</td>
-    </tr>`
+    return [
+      `<strong style="color:${y.renk};">${y.ad}</strong>`,
+      `<strong>${s.genel}</strong>`,
+      String(s.erkek),
+      String(s.kadin),
+      String(s.engelli),
+    ]
   }
+  const t = yakaCinsiyetTablosu.toplam
+  const yakaTablosu = dataTable(
+    ['Yaka Tipi', 'Genel', 'Erkek', 'Kadın', 'Engelli'],
+    [
+      yakaSatiri('beyaz'),
+      yakaSatiri('mavi'),
+      yakaSatiri('gri'),
+      ['<strong>TOPLAM</strong>', `<strong>${t.genel}</strong>`, `<strong>${t.erkek}</strong>`, `<strong>${t.kadin}</strong>`, `<strong>${t.engelli}</strong>`],
+    ],
+    ['left', 'right', 'right', 'right', 'right'],
+  )
 
-  // Bar: dış tablo %100, dolu hücre yüzde genişlikli. Outlook'ta div genişliği
-  // çalışmadığı için barlar tablo hücresiyle çiziliyor.
-  const barSatiri = (b: { bolum: string; sayi: number; oran: number }) => {
-    const genislik = enBuyuk > 0 ? Math.max(2, Math.round(b.sayi / enBuyuk * 100)) : 0
-    return `
-    <tr>
-      <td width="34%" style="padding:5px 8px 5px 0;font-family:${FONT};font-size:12px;color:${METIN};">${escapeHtml(b.bolum)}</td>
-      <td style="padding:5px 0;">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;background-color:#f1f5f9;">
-          <tr>
-            <td width="${genislik}%" style="background-color:${TEAL};height:14px;font-size:0;line-height:0;">&nbsp;</td>
-            <td style="font-size:0;line-height:0;">&nbsp;</td>
-          </tr>
-        </table>
-      </td>
-      <td width="14%" align="right" style="padding:5px 0 5px 10px;font-family:${FONT};font-size:12px;color:${SOLUK};white-space:nowrap;">
-        <span style="color:${METIN};font-weight:bold;">${b.sayi}</span> &nbsp;%${b.oran}
-      </td>
-    </tr>`
-  }
+  const bolumSatirlari = bolumler
+    .map((b) =>
+      barRow(
+        b.bolum,
+        enBuyuk > 0 ? (b.sayi / enBuyuk) * 100 : 0,
+        TOKENS.navy,
+        `<span style="color:${TOKENS.textDark};font-weight:bold;">${b.sayi}</span> &nbsp;%${b.oran}`,
+      ),
+    )
+    .join('')
 
-  return `<!DOCTYPE html>
-<html lang="tr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${escapeHtml(opts.baslik)}</title></head>
-<body style="margin:0;padding:0;background-color:#f4f6f8;">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f4f6f8;padding:24px 0;">
-  <tr><td align="center">
-    <table role="presentation" width="640" cellpadding="0" cellspacing="0" border="0" style="width:640px;max-width:640px;background-color:#ffffff;border-radius:8px;overflow:hidden;">
+  const hareketYok =
+    veri.girenler.length === 0 && veri.cikanlar.length === 0
+      ? p(`<span style="color:${TOKENS.muted};">${escapeHtml(veri.tarihMetni)} haftasında işe giren veya işten çıkan personel yok.</span>`)
+      : ''
 
-      <!-- 1) Üst şerit -->
-      <tr><td style="background-color:${TEAL};padding:20px 24px;">
-        <div style="font-family:${FONT};font-size:19px;font-weight:bold;color:#ffffff;">${escapeHtml(opts.baslik)}</div>
-        <div style="font-family:${FONT};font-size:13px;color:#cbfbf1;padding-top:4px;">Hafta: ${escapeHtml(veri.tarihMetni)} &nbsp;·&nbsp; Pazartesi–Pazar, Europe/Istanbul</div>
-      </td></tr>
-
-      <tr><td style="padding:22px 24px;">
-
-        <!-- 2) KPI kutulari -->
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate;border-spacing:5px 0;">
-          <tr>
-            ${kpiHucre('Toplam Çalışan', String(ozet.toplamCalisan), '#334155', '#f8fafc')}
-            ${kpiHucre(YAKA.beyaz.ad, String(ozet.beyazYaka), YAKA.beyaz.renk, YAKA.beyaz.zemin)}
-            ${kpiHucre(YAKA.mavi.ad, String(ozet.maviYaka), YAKA.mavi.renk, YAKA.mavi.zemin)}
-            ${kpiHucre(YAKA.gri.ad, String(ozet.griYaka), YAKA.gri.renk, YAKA.gri.zemin)}
-            ${kpiHucre('Kadın / Erkek', `${cinsiyetDagilimi.kadin} / ${cinsiyetDagilimi.erkek}`, '#e11d48', '#fff1f2')}
-          </tr>
-        </table>
-
-        <!-- 3) Yaka x cinsiyet x engelli -->
-        <div style="font-family:${FONT};font-size:14px;font-weight:bold;color:${TEAL_KOYU};margin:24px 0 8px 0;">Yaka · Cinsiyet · Engelli Dağılımı</div>
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;border:1px solid ${CIZGI};">
-          <tr style="background-color:#f8fafc;">
-            <td style="padding:8px 10px;font-family:${FONT};font-size:11px;font-weight:bold;color:${SOLUK};text-transform:uppercase;">Yaka Tipi</td>
-            <td align="center" style="padding:8px 10px;font-family:${FONT};font-size:11px;font-weight:bold;color:${SOLUK};text-transform:uppercase;">Genel</td>
-            <td align="center" style="padding:8px 10px;font-family:${FONT};font-size:11px;font-weight:bold;color:${SOLUK};text-transform:uppercase;">Erkek</td>
-            <td align="center" style="padding:8px 10px;font-family:${FONT};font-size:11px;font-weight:bold;color:${SOLUK};text-transform:uppercase;">Kadın</td>
-            <td align="center" style="padding:8px 10px;font-family:${FONT};font-size:11px;font-weight:bold;color:${SOLUK};text-transform:uppercase;">Engelli</td>
-          </tr>
-          ${yakaSatiri('beyaz')}
-          ${yakaSatiri('mavi')}
-          ${yakaSatiri('gri')}
-          <tr style="background-color:#f8fafc;">
-            <td style="padding:8px 10px;font-family:${FONT};font-size:12px;font-weight:bold;color:${METIN};">TOPLAM</td>
-            <td align="center" style="padding:8px 10px;font-family:${FONT};font-size:12px;font-weight:bold;color:${METIN};">${yakaCinsiyetTablosu.toplam.genel}</td>
-            <td align="center" style="padding:8px 10px;font-family:${FONT};font-size:12px;font-weight:bold;color:${METIN};">${yakaCinsiyetTablosu.toplam.erkek}</td>
-            <td align="center" style="padding:8px 10px;font-family:${FONT};font-size:12px;font-weight:bold;color:${METIN};">${yakaCinsiyetTablosu.toplam.kadin}</td>
-            <td align="center" style="padding:8px 10px;font-family:${FONT};font-size:12px;font-weight:bold;color:${METIN};">${yakaCinsiyetTablosu.toplam.engelli}</td>
-          </tr>
-        </table>
-
-        <!-- 4) Bolum dagilimi — bar listesi -->
-        <div style="font-family:${FONT};font-size:14px;font-weight:bold;color:${TEAL_KOYU};margin:24px 0 8px 0;">
-          Bölüm Dağılımı
-          <span style="font-weight:normal;color:${SOLUK};font-size:12px;">(en kalabalık ${bolumler.length} bölüm / toplam ${tumBolumler.length})</span>
-        </div>
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
-          ${bolumler.map(barSatiri).join('')}
-        </table>
-
-        <!-- 5) Rapor haftasinda giren / cikan -->
-        ${hareketTablosu('Hafta İçinde İşe Girenler', veri.girenler, '#0d9488')}
-        ${hareketTablosu('Hafta İçinde İşten Çıkanlar', veri.cikanlar, '#e11d48')}
-        ${veri.girenler.length === 0 && veri.cikanlar.length === 0
-          ? `<div style="font-family:${FONT};font-size:12px;color:${SOLUK};margin-top:22px;padding:10px 12px;background-color:#f8fafc;">${escapeHtml(veri.tarihMetni)} haftasında işe giren veya işten çıkan personel yok.</div>`
-          : ''}
-
-        <!-- 6) Canli gorunum -->
-        <div style="margin-top:26px;text-align:center;">
-          <a href="${opts.sayfaUrl}" style="display:inline-block;background-color:${TEAL};color:#ffffff;text-decoration:none;padding:11px 22px;border-radius:6px;font-family:${FONT};font-size:14px;font-weight:bold;">Canlı görünüm</a>
-        </div>
-
-      </td></tr>
-
-      <tr><td style="padding:14px 24px;background-color:#f8fafc;border-top:1px solid ${CIZGI};font-family:${FONT};font-size:11px;color:#94a3b8;">
-        Bu otomatik bir ILERIHub bildirimidir. Haftalık personel raporu — kaynak: aktif personel kayıtları.
-      </td></tr>
-
-    </table>
-  </td></tr>
-</table>
-</body></html>`
+  return renderEmail({
+    module: 'İnsan Varlıkları',
+    title: opts.baslik,
+    subtitle: `Hafta: ${veri.tarihMetni} · Pazartesi–Pazar, Europe/Istanbul`,
+    preheader: `${opts.baslik} — ${veri.tarihMetni} · Toplam çalışan ${ozet.toplamCalisan}`,
+    afterHtml:
+      kpiRow([
+        { label: 'Toplam Çalışan', value: String(ozet.toplamCalisan), accent: TOKENS.textDark },
+        { label: YAKA.beyaz.ad, value: String(ozet.beyazYaka), accent: YAKA.beyaz.renk },
+        { label: YAKA.mavi.ad, value: String(ozet.maviYaka), accent: YAKA.mavi.renk },
+        { label: YAKA.gri.ad, value: String(ozet.griYaka), accent: YAKA.gri.renk },
+        { label: 'Kadın / Erkek', value: `${cinsiyetDagilimi.kadin} / ${cinsiyetDagilimi.erkek}`, accent: '#be123c' },
+      ]) +
+      sectionTitle('Yaka · Cinsiyet · Engelli dağılımı') +
+      yakaTablosu +
+      sectionTitle('Bölüm dağılımı', `en kalabalık ${bolumler.length} bölüm / toplam ${tumBolumler.length}`) +
+      `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 14px 0;">${bolumSatirlari}</table>` +
+      hareketTablosu('Hafta içinde işe girenler', veri.girenler) +
+      hareketTablosu('Hafta içinde işten çıkanlar', veri.cikanlar) +
+      hareketYok,
+    cta: { label: 'Canlı görünüm', url: opts.sayfaUrl },
+    footnote: 'Haftalık personel raporu — kaynak: aktif personel kayıtları.',
+  })
 }

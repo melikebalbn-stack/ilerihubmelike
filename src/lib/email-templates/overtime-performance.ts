@@ -1,15 +1,15 @@
 /**
  * Mesai performans maili HTML şablonu (PR-B).
  * Bölüm bazlı (kişi detayı YOK — link ile sayfaya yönlendirir).
- * Çubuklar <table> ile kurulur (Outlook div-genişlik bug'ına karşı).
+ * Kurumsal yerleşim (layout.ts, üst şerit "Mesai"); çubuklar barRow ile (tablo hücresi).
  */
 import type { PerfResult } from '@/lib/overtime-performance'
+import { renderEmail, kpiRow, barRow, sectionTitle, TOKENS } from '@/lib/email-templates/layout'
 
-const NAVY = '#1B4F72'
 function perfColor(yuzde: number): string {
-  if (yuzde < 70) return '#d03b3b'
-  if (yuzde < 90) return '#c98500'
-  return '#0ca30c'
+  if (yuzde < 70) return TOKENS.red
+  if (yuzde < 90) return TOKENS.amber
+  return TOKENS.green
 }
 
 export interface PerfMailOpts {
@@ -33,59 +33,33 @@ export function buildPerfEmailText(data: PerfResult, opts: PerfMailOpts): string
 
 export function buildPerfEmailHtml(data: PerfResult, opts: PerfMailOpts): string {
   const ozet = data.genel
-  const barRow = (b: { ad: string; hedef: number; gerceklesen: number; yuzde: number }) => {
-    const w = Math.min(100, Math.max(0, b.yuzde))
-    const color = perfColor(b.yuzde)
-    return `
-    <tr>
-      <td style="padding:6px 8px;font-size:13px;color:#333;white-space:nowrap;">${b.ad}</td>
-      <td style="padding:6px 8px;width:60%;">
-        <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse;background:#eee;border-radius:3px;">
-          <tr><td style="background:${color};height:16px;width:${w}%;border-radius:3px;font-size:0;line-height:0;">&nbsp;</td><td style="font-size:0;line-height:0;">&nbsp;</td></tr>
-        </table>
-      </td>
-      <td style="padding:6px 8px;font-size:13px;color:${color};font-weight:bold;text-align:right;white-space:nowrap;">%${b.yuzde}</td>
-      <td style="padding:6px 8px;font-size:12px;color:#777;text-align:right;white-space:nowrap;">${b.gerceklesen}/${b.hedef}</td>
-    </tr>`
-  }
+  const genelRenk = ozet.yuzde != null ? perfColor(ozet.yuzde) : TOKENS.navy
 
-  return `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f4f6f8;font-family:Arial,Helvetica,sans-serif;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6f8;padding:24px 0;">
-    <tr><td align="center">
-      <table role="presentation" width="640" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:8px;overflow:hidden;max-width:640px;">
-        <tr><td style="background:${NAVY};padding:18px 24px;">
-          <span style="color:#fff;font-size:18px;font-weight:bold;">${opts.baslik}</span><br>
-          <span style="color:#cdd9e5;font-size:13px;">${opts.tarihMetni}</span>
-        </td></tr>
-        <tr><td style="padding:20px 24px;">
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:18px;">
-            <tr>
-              <td align="center" style="padding:10px;background:#f7f9fb;border-radius:6px;">
-                <div style="font-size:12px;color:#777;">Toplam Hedef</div>
-                <div style="font-size:22px;font-weight:bold;color:${NAVY};">${ozet.hedef}</div></td>
-              <td style="width:10px;"></td>
-              <td align="center" style="padding:10px;background:#f7f9fb;border-radius:6px;">
-                <div style="font-size:12px;color:#777;">Gerçekleşen</div>
-                <div style="font-size:22px;font-weight:bold;color:${NAVY};">${ozet.gerceklesen}</div></td>
-              <td style="width:10px;"></td>
-              <td align="center" style="padding:10px;background:#f7f9fb;border-radius:6px;">
-                <div style="font-size:12px;color:#777;">Genel %</div>
-                <div style="font-size:22px;font-weight:bold;color:${ozet.yuzde != null ? perfColor(ozet.yuzde) : NAVY};">${ozet.yuzde != null ? '%' + ozet.yuzde : '—'}</div></td>
-            </tr>
-          </table>
-          <div style="font-size:14px;font-weight:bold;color:${NAVY};margin-bottom:6px;">Bölüm Performansı</div>
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border:1px solid #eee;border-radius:6px;">
-            ${data.bolumler.map(barRow).join('')}
-          </table>
-          <div style="margin-top:20px;text-align:center;">
-            <a href="${opts.sayfaUrl}" style="display:inline-block;background:${NAVY};color:#fff;text-decoration:none;padding:10px 20px;border-radius:6px;font-size:14px;">Kişi bazında performansı ILERIHub'da görüntüle</a>
-          </div>
-        </td></tr>
-        <tr><td style="padding:14px 24px;background:#f7f9fb;color:#999;font-size:11px;">
-          Bu otomatik bir ILERIHub bildirimidir. ${opts.haftalikMi ? 'Haftalık' : 'Günlük'} mesai üretim performans raporu.
-        </td></tr>
-      </table>
-    </td></tr>
-  </table>
-  </body></html>`
+  const bolumSatirlari = data.bolumler
+    .map((b) =>
+      barRow(
+        b.ad,
+        b.yuzde,
+        perfColor(b.yuzde),
+        `<span style="color:${perfColor(b.yuzde)};font-weight:bold;">%${b.yuzde}</span> &nbsp;${b.gerceklesen}/${b.hedef}`,
+      ),
+    )
+    .join('')
+
+  return renderEmail({
+    module: 'Mesai',
+    title: opts.baslik,
+    subtitle: opts.tarihMetni,
+    preheader: `${opts.baslik} — ${opts.tarihMetni} · Genel %${ozet.yuzde ?? '—'}`,
+    afterHtml:
+      kpiRow([
+        { label: 'Toplam Hedef', value: String(ozet.hedef) },
+        { label: 'Gerçekleşen', value: String(ozet.gerceklesen) },
+        { label: 'Genel %', value: ozet.yuzde != null ? `%${ozet.yuzde}` : '—', accent: genelRenk },
+      ]) +
+      sectionTitle('Bölüm performansı') +
+      `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 14px 0;">${bolumSatirlari}</table>`,
+    cta: { label: "Kişi bazında performansı ILERIHub'da görüntüle", url: opts.sayfaUrl },
+    footnote: `${opts.haftalikMi ? 'Haftalık' : 'Günlük'} mesai üretim performans raporu.`,
+  })
 }

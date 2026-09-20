@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { CalibrationStatus, CalibrationEmailType, NotificationRuleType } from '@/generated/prisma'
 import { sendEmail } from '@/lib/email'
+import { logoAttachments } from '@/lib/email-templates/layout'
 import { requireUser } from '@/lib/auth/require-user'
 import { buildKalibrasyonMailHtml, KalibrasyonDevice } from '@/lib/mail/kalibrasyon-mail-template'
 
@@ -213,7 +214,7 @@ export async function POST(request: NextRequest) {
         })
 
         try {
-          const result = await sendEmail(ruleRecipients, subject, body, html)
+          const result = await sendEmail(ruleRecipients, subject, body, html, logoAttachments())
           if (result.success) {
             notificationsSent++
             console.log(`✅ Sent calibration ${emailType} notification for ${calAlerts.length} devices`)
@@ -238,7 +239,7 @@ export async function POST(request: NextRequest) {
         })
 
         try {
-          const result = await sendEmail(ruleRecipients, subject, body, html)
+          const result = await sendEmail(ruleRecipients, subject, body, html, logoAttachments())
           if (result.success) {
             notificationsSent++
             console.log(`✅ Sent verification ${emailType} notification for ${verAlerts.length} devices`)

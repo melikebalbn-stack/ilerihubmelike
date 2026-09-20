@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { sendEmail } from '@/lib/email'
 import { sendPushToUser } from '@/lib/push-notifications'
-import { ileriHubUrl } from '@/lib/email-templates/akademi/_base'
+import { ileriHubUrl, escapeHtml } from '@/lib/email-templates/akademi/_base'
+import { renderEmail, logoAttachments, p } from '@/lib/email-templates/layout'
 
 export const dynamic = 'force-dynamic'
 
@@ -131,33 +132,19 @@ export async function POST(req: NextRequest) {
         `${message}\n\n` +
         `Formlar: ${formNos.join(', ')}\n` +
         `Girmek için: ${ileriHubUrl(link)}\n\nİleri Group`
-      const html = `<!doctype html><html lang="tr"><head><meta charset="utf-8"></head>
-<body style="margin:0;background:#f4f6f8;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6f8;">
-    <tr><td align="center" style="padding:24px 12px;">
-      <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="width:560px;max-width:560px;background:#ffffff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
-        <tr><td bgcolor="#1B4F72" style="background:#1B4F72;padding:14px 24px;">
-          <span style="color:#ffffff;font-size:15px;font-weight:700;">ILERIHub · Mesai Üretim</span>
-        </td></tr>
-        <tr><td style="padding:22px 24px;">
-          <h1 style="margin:0 0 12px;font-size:18px;color:#1f2733;">Gerçekleşen üretim adedi bekliyor</h1>
-          <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#475569;">
-            <strong>${tarihMetni}</strong> tarihli aşağıdaki onaylı mesai formlarında gerçekleşen üretim adedi henüz girilmedi.
-            Lütfen sorumlu olduğunuz bölüm(ler) için girişi tamamlayın.
-          </p>
-          <p style="margin:0 0 16px;font-size:14px;color:#334155;"><strong>Formlar:</strong> ${formNos.join(', ')}</p>
-          <div style="margin:20px 0 4px;">
-            <a href="${ileriHubUrl(link)}" style="display:inline-block;background-color:#1B4F72;color:#ffffff;font-size:14px;font-weight:bold;line-height:44px;text-decoration:none;border-radius:6px;padding:0 26px;">&nbsp;Gerçekleşeni gir&nbsp;</a>
-          </div>
-        </td></tr>
-        <tr><td style="border-top:1px solid #e2e8f0;padding:14px 24px;background:#fbfcfd;">
-          <p style="margin:0;font-size:11px;color:#94a3b8;">Bu e-posta İleriHub tarafından otomatik gönderilmiştir.<br>© İleri Group</p>
-        </td></tr>
-      </table>
-    </td></tr>
-  </table>
-</body></html>`
-      const res = await sendEmail([{ email: u.email, name: u.name ?? u.email }], `Gerçekleşen üretim girişi bekliyor — ${tarihMetni}`, text, html)
+      const html = renderEmail({
+        module: 'Mesai',
+        title: 'Gerçekleşen üretim adedi bekliyor',
+        subtitle: `${tarihMetni} · ${formNos.length} form`,
+        preheader: message,
+        bodyHtml: p(
+          `<strong>${escapeHtml(tarihMetni)}</strong> tarihli aşağıdaki onaylı mesai formlarında gerçekleşen üretim adedi henüz girilmedi. ` +
+            'Lütfen sorumlu olduğunuz bölüm(ler) için girişi tamamlayın.',
+        ),
+        infoRows: [{ label: 'Formlar', value: escapeHtml(formNos.join(', ')) }],
+        cta: { label: 'Gerçekleşeni gir', url: ileriHubUrl(link) },
+      })
+      const res = await sendEmail([{ email: u.email, name: u.name ?? u.email }], `Gerçekleşen üretim girişi bekliyor — ${tarihMetni}`, text, html, logoAttachments())
         .catch((e) => { console.error(`[gerceklesen-reminder] ${u.email}: mail hata`, e); return { success: false } })
       if (res.success) gonderilen++
     }

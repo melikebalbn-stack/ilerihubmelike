@@ -11,7 +11,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { Checkbox } from '@/components/ui/checkbox'
 import { NativeSelect } from '@/components/ui/select'
 import { DateField } from '@/components/ui/date-field'
-import { ChevronDown, ChevronRight, Database, Download, Loader2, Play, Plus, Save, Search, Trash2, X } from 'lucide-react'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { ChevronDown, ChevronRight, Database, Download, Loader2, Maximize2, Pencil, Play, Plus, Save, Search, Trash2, X } from 'lucide-react'
 import type { Birlestirme, Kaynak, KaynakIfs, KaynakPostgres, VeriSetiTanim } from '@/lib/rapor/tipler'
 import { GeriRozet } from '../../../_components/rozet-link'
 
@@ -26,10 +27,10 @@ interface Props {
 
 interface Projeksiyon { ad: string; yuklendi: boolean; entitySayisi: number }
 interface Entity { entity: string; alanSayisi: number; entitySetleri: string[] }
-interface KatalogAlan { alan: string; veriTipi: string; anahtarMi: boolean }
+interface KatalogAlan { alan: string; veriTipi: string; anahtarMi: boolean; etiket?: string | null }
 interface HubTablo { ad: string; kolonSayisi: number }
 interface HubKolon { ad: string; veriTipi: string }
-interface AramaSonucu { kaynakAd: string; entity: string; alan: string; veriTipi: string }
+interface AramaSonucu { kaynakAd: string; entity: string; alan: string; veriTipi: string; etiket?: string | null }
 interface AlanEsleme { cikti: string; yol: string }
 type ParamTip = 'metin' | 'sayi' | 'tarih'
 interface Onizleme { satirlar: Record<string, unknown>[]; toplamSatir: number; kaynakIstatistik: { ad: string; satir: number; sureMs: number }[]; toplamSureMs: number; not?: string }
@@ -147,6 +148,9 @@ export default function VeriSetiTasarimClient({ katalogYukleyebilir, mevcut }: P
   const [gelismis, setGelismis] = useState(false)
   const [siteler, setSiteler] = useState<{ varsayilan: string; siteler: { contract: string; aciklama: string }[] }>({ varsayilan: '', siteler: [] })
   const [katalogAlanAra, setKatalogAlanAra] = useState('')
+  /** Etiket düzenleme: hangi alan (sol panel) + geçici metin. */
+  const [etiketDuzenle, setEtiketDuzenle] = useState<{ alan: string; metin: string } | null>(null)
+  const [onizlemeBuyuk, setOnizlemeBuyuk] = useState(false)
 
   // Sol — katalog
   const [arama, setArama] = useState('')
@@ -245,26 +249,60 @@ export default function VeriSetiTasarimClient({ katalogYukleyebilir, mevcut }: P
 
   const kaynakAdlari = useMemo(() => new Set(kaynaklar.map((k) => k.ad)), [kaynaklar])
 
-  function ifsKaynakEkle(entity: Entity, entitySet: string) {
+  function ifsKaynakEkle(entity: Entity, entitySet: string, secenek?: { projeksiyon?: string; ekAlan?: string }) {
     const takma = takmaAdUret(entity.entity, kaynakAdlari)
-    const projeksiyon = seciliProjeksiyon
+    const projeksiyon = secenek?.projeksiyon ?? seciliProjeksiyon
+    const ekAlan = secenek?.ekAlan
     const uygula = (alanlar: KatalogAlan[]) => {
       // Alan listesi henüz yüklenmemişken eklenen kaynak listesiz kalmasın: liste gelince tamamla.
       setKaynakAlanlari((m) => ({ ...m, [takma]: alanlar.map((a) => a.alan) }))
       const contractVar = alanlar.some((a) => a.alan.toLowerCase() === 'contract')
       setKaynaklar((l) => l.map((x) => {
         if (x.ad !== takma || x.tip !== 'ifs-odata') return x
-        const select = x.select?.length ? x.select : alanlar.filter((a) => a.anahtarMi).map((a) => a.alan)
+        const anahtarlar = alanlar.filter((a) => a.anahtarMi).map((a) => a.alan)
+        const select = [...new Set([...anahtarlar, ...(x.select ?? []), ...(ekAlan ? [ekAlan] : [])])] // anahtarlar + varsa aramadan gelen alan
         const filtre = !x.filtre && contractVar && siteler.varsayilan ? `Contract eq '${siteler.varsayilan}'` : x.filtre
         return { ...x, select, filtre }
       }))
     }
-    const k: KaynakIfs = { ad: takma, tip: 'ifs-odata', projeksiyon, entitySet, select: [], top: 500 }
+    const k: KaynakIfs = { ad: takma, tip: 'ifs-odata', projeksiyon, entitySet, select: ekAlan ? [ekAlan] : [], top: 500 }
     setKaynaklar((l) => [...l, k])
     setAcikKaynak(takma)
-    if (katalogAlanlari.length) uygula(katalogAlanlari)
+    if (!secenek?.projeksiyon && katalogAlanlari.length) uygula(katalogAlanlari)
     else getJson<{ alanlar: KatalogAlan[] }>(`/api/raporlar/katalog/alanlar?projeksiyon=${encodeURIComponent(projeksiyon)}&entity=${encodeURIComponent(entity.entity)}`).then((d) => uygula(d.alanlar)).catch((e: Error) => setSolHata(e.message))
   }
+
+  /** Arama sonucundan doğrudan kaynak: EntitySet adı entityler ucundan ($metadata) çözülür, alan seçili gelir. */
+  async function aramaSonucundanEkle(s: AramaSonucu) {
+    setSolHata(null)
+    try {
+      const d = await getJson<{ entityler: Entity[] }>(`/api/raporlar/katalog/entityler?projeksiyon=${encodeURIComponent(s.kaynakAd)}&ara=${encodeURIComponent(s.entity)}`)
+      const e = d.entityler.find((x) => x.entity === s.entity) ?? { entity: s.entity, alanSayisi: 0, entitySetleri: [] }
+      const set = e.entitySetleri.find((x) => !x.startsWith('Reference_')) ?? e.entitySetleri[0] ?? `${s.entity}s`
+      if (!e.entitySetleri.length) setSolHata(`${s.kaynakAd} › ${s.entity}: EntitySet adı $metadata'dan alınamadı; '${set}' varsayıldı — kaynak kartından düzeltin.`)
+      ifsKaynakEkle(e, set, { projeksiyon: s.kaynakAd, ekAlan: s.alan })
+      setKaynakTip('ifs'); setSeciliProjeksiyon(s.kaynakAd); setEntityAra(''); setSeciliEntity(e); setArama('')
+    } catch (e) { setSolHata(e instanceof Error ? e.message : String(e)) }
+  }
+
+  /** Türkçe etiket kaydet (rapor.katalog). Boş → siler. */
+  async function etiketKaydet(alan: string, etiket: string) {
+    setEtiketDuzenle(null)
+    try {
+      const r = await fetch('/api/raporlar/katalog/etiket', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kaynakAd: seciliProjeksiyon, entity: seciliEntity?.entity, alan, etiket: etiket.trim() || null }) })
+      const d = await r.json()
+      if (!r.ok) throw new Error(d.error ?? `HTTP ${r.status}`)
+      setKatalogAlanlari((l) => l.map((a) => (a.alan === alan ? { ...a, etiket: d.etiket } : a)))
+    } catch (e) { setSolHata(e instanceof Error ? e.message : String(e)) }
+  }
+
+  /** Arama sonuçları entity'ye göre gruplu, en çok eşleşen üstte. */
+  const aramaGruplari = useMemo(() => {
+    if (!aramaSonuclari) return null
+    const m = new Map<string, { kaynakAd: string; entity: string; alanlar: AramaSonucu[] }>()
+    for (const s of aramaSonuclari) { const k = `${s.kaynakAd}|${s.entity}`; const g = m.get(k) ?? { kaynakAd: s.kaynakAd, entity: s.entity, alanlar: [] }; g.alanlar.push(s); m.set(k, g) }
+    return [...m.values()].sort((a, b) => b.alanlar.length - a.alanlar.length || a.entity.localeCompare(b.entity))
+  }, [aramaSonuclari])
 
   function hubKaynakEkle(tablo: string) {
     const takma = takmaAdUret(tablo, kaynakAdlari)
@@ -443,16 +481,26 @@ export default function VeriSetiTasarimClient({ katalogYukleyebilir, mevcut }: P
             </div>
             {solHata && <div className="text-xs text-red-700 flex items-start gap-1"><span className="flex-1">{solHata}</span><button onClick={() => setSolHata(null)}><X className="h-3 w-3" /></button></div>}
 
-            {aramaSonuclari ? (
-              <div className="space-y-1">
-                <div className="text-xs text-muted-foreground">{aramaSonuclari.length} sonuç {aramaSonuclari.length >= 50 && '(ilk 50)'}</div>
-                {aramaSonuclari.map((s, i) => (
-                  <button key={i} className="w-full text-left rounded px-2 py-1 hover:bg-muted" title="Projeksiyon ve entity'yi seç"
-                    onClick={() => { setKaynakTip('ifs'); setSeciliProjeksiyon(s.kaynakAd); setEntityAra(''); setSeciliEntity({ entity: s.entity, alanSayisi: 0, entitySetleri: [] }); setArama('') }}>
-                    <div className="font-mono text-xs">{s.alan} <span className="text-muted-foreground">({s.veriTipi})</span></div>
-                    <div className="text-[11px] text-muted-foreground">{s.kaynakAd} › {s.entity}</div>
-                  </button>
+            {aramaGruplari ? (
+              <div className="space-y-2">
+                <div className="text-xs text-muted-foreground">{aramaSonuclari?.length ?? 0} alan · {aramaGruplari.length} entity{(aramaSonuclari?.length ?? 0) >= 200 && ' (ilk 200)'} — alan adı, Türkçe etiket ve entity adında arandı</div>
+                {aramaGruplari.map((g) => (
+                  <div key={`${g.kaynakAd}|${g.entity}`} className="border rounded">
+                    <div className="px-2 py-1 bg-muted/60 text-[11px] flex items-center gap-1">
+                      <span className="text-muted-foreground">{g.kaynakAd} ›</span>
+                      <span className="font-mono font-medium truncate">{g.entity}</span>
+                      <span className="ml-auto text-muted-foreground">{g.alanlar.length}</span>
+                    </div>
+                    {g.alanlar.map((s, i) => (
+                      <button key={i} className="w-full text-left px-2 py-1 hover:bg-muted flex items-center gap-1.5 border-t" title="Bu entity'yi kaynak olarak ekle, alan seçili gelsin" onClick={() => aramaSonucundanEkle(s)}>
+                        <Plus className="h-3 w-3 shrink-0 text-muted-foreground" />
+                        <span className="font-mono text-xs truncate">{s.alan}{s.etiket ? <span className="font-sans text-muted-foreground"> — {s.etiket}</span> : null}</span>
+                        <span className="ml-auto text-[10px] text-muted-foreground">{s.veriTipi}</span>
+                      </button>
+                    ))}
+                  </div>
                 ))}
+                {aramaGruplari.length === 0 && <div className="text-xs text-muted-foreground">Sonuç yok.</div>}
               </div>
             ) : (
               <>
@@ -509,7 +557,19 @@ export default function VeriSetiTasarimClient({ katalogYukleyebilir, mevcut }: P
                                   )}
                                   {katalogAlanlari.length > 12 && <Input className="h-7 text-xs" placeholder={`Alan ara… (${katalogAlanlari.length})`} value={katalogAlanAra} onChange={(ev) => setKatalogAlanAra(ev.target.value)} />}
                                   <div className="max-h-40 overflow-y-auto text-[11px] font-mono text-muted-foreground">
-                                    {katalogAlanlari.filter((a) => !katalogAlanAra.trim() || a.alan.toLocaleLowerCase('tr-TR').includes(katalogAlanAra.trim().toLocaleLowerCase('tr-TR'))).map((a) => <div key={a.alan}>{a.anahtarMi ? '🔑 ' : ''}{a.alan} <span className="opacity-60">{a.veriTipi}</span></div>)}
+                                    {katalogAlanlari.filter((a) => { const q = katalogAlanAra.trim().toLocaleLowerCase('tr-TR'); return !q || a.alan.toLocaleLowerCase('tr-TR').includes(q) || (a.etiket ?? '').toLocaleLowerCase('tr-TR').includes(q) }).map((a) => (
+                                      <div key={a.alan} className="flex items-center gap-1 group/alan">
+                                        {etiketDuzenle?.alan === a.alan ? (
+                                          <input autoFocus className="h-6 flex-1 rounded border px-1 text-[11px] font-sans" value={etiketDuzenle.metin} placeholder="Türkçe etiket" onChange={(ev) => setEtiketDuzenle({ alan: a.alan, metin: ev.target.value })}
+                                            onKeyDown={(ev) => { if (ev.key === 'Enter') etiketKaydet(a.alan, etiketDuzenle.metin); if (ev.key === 'Escape') setEtiketDuzenle(null) }} onBlur={() => etiketKaydet(a.alan, etiketDuzenle.metin)} />
+                                        ) : (
+                                          <span className="truncate flex-1">{a.anahtarMi ? '🔑 ' : ''}{a.alan}{a.etiket ? <span className="font-sans text-slate-600"> — {a.etiket}</span> : null} <span className="opacity-60">{a.veriTipi}</span></span>
+                                        )}
+                                        {katalogYukleyebilir && etiketDuzenle?.alan !== a.alan && (
+                                          <button type="button" className="opacity-0 group-hover/alan:opacity-100 text-muted-foreground hover:text-foreground shrink-0" title="Türkçe etiket" onClick={() => setEtiketDuzenle({ alan: a.alan, metin: a.etiket ?? '' })}><Pencil className="h-3 w-3" /></button>
+                                        )}
+                                      </div>
+                                    ))}
                                   </div>
                                 </div>
                               )}
@@ -729,12 +789,37 @@ export default function VeriSetiTasarimClient({ katalogYukleyebilir, mevcut }: P
                   {onizleme.not && <div className="text-[11px] mt-0.5">{onizleme.not}</div>}
                 </div>
                 {onizleme.satirlar.length === 0 ? <p className="text-xs text-muted-foreground">Satır dönmedi.</p> : (
-                  <div className="overflow-auto border rounded max-h-[50vh]">
-                    <table className="text-[11px] whitespace-nowrap">
-                      <thead className="bg-muted sticky top-0"><tr>{onizlemeKolonlari.map((c) => <th key={c} className="px-2 py-1 text-left font-mono">{c}</th>)}</tr></thead>
-                      <tbody>{onizleme.satirlar.map((s, i) => <tr key={i} className="border-t">{onizlemeKolonlari.map((c) => <td key={c} className="px-2 py-0.5 max-w-[200px] truncate" title={hucreMetni(s[c])}>{hucreMetni(s[c])}</td>)}</tr>)}</tbody>
-                    </table>
-                  </div>
+                  <>
+                    <Button variant="outline" size="sm" className="h-7 text-xs w-full" onClick={() => setOnizlemeBuyuk(true)}><Maximize2 className="h-3.5 w-3.5 mr-1" />Büyüt ({onizleme.satirlar.length} satır · {onizlemeKolonlari.length} kolon)</Button>
+                    <div className="overflow-auto border rounded max-h-[40vh]">
+                      <table className="text-[11px] whitespace-nowrap">
+                        <thead className="bg-muted sticky top-0"><tr>{onizlemeKolonlari.map((c) => <th key={c} className="px-2 py-1 text-left font-mono">{c}</th>)}</tr></thead>
+                        <tbody>{onizleme.satirlar.map((s, i) => <tr key={i} className="border-t">{onizlemeKolonlari.map((c) => <td key={c} className="px-2 py-0.5 max-w-[160px] truncate" title={hucreMetni(s[c])}>{hucreMetni(s[c])}</td>)}</tr>)}</tbody>
+                      </table>
+                    </div>
+                    <Dialog open={onizlemeBuyuk} onOpenChange={setOnizlemeBuyuk}>
+                      <DialogContent className="max-w-[96vw] w-[96vw] h-[92vh] flex flex-col p-4 gap-3">
+                        <DialogHeader className="shrink-0">
+                          <DialogTitle className="text-base">Önizleme — {onizleme.satirlar.length} satır (birleşik {onizleme.toplamSatir}) · {onizlemeKolonlari.length} kolon · {onizleme.toplamSureMs} ms</DialogTitle>
+                        </DialogHeader>
+                        <div className="flex-1 min-h-0 overflow-auto border rounded">
+                          <table className="text-xs whitespace-nowrap min-w-full">
+                            <thead className="bg-muted sticky top-0 z-10">
+                              <tr><th className="px-2 py-1.5 text-right text-muted-foreground w-10 border-b">#</th>{onizlemeKolonlari.map((c) => <th key={c} className="px-3 py-1.5 text-left font-mono border-b">{c}</th>)}</tr>
+                            </thead>
+                            <tbody>
+                              {onizleme.satirlar.map((s, i) => (
+                                <tr key={i} className="border-t hover:bg-muted/40">
+                                  <td className="px-2 py-1 text-right text-muted-foreground tabular-nums">{i + 1}</td>
+                                  {onizlemeKolonlari.map((c) => <td key={c} className="px-3 py-1 max-w-[420px] truncate" title={hucreMetni(s[c])}>{hucreMetni(s[c])}</td>)}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </DialogContent>
+                    </Dialog>
+                  </>
                 )}
               </div>
             )}

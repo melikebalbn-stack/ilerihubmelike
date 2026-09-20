@@ -11,7 +11,8 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { NativeSelect } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { DateField } from '@/components/ui/date-field'
-import { ArrowDown, ArrowUp, Columns3, FileBarChart2, Loader2, Play, Plus, Save, Sigma, Trash2 } from 'lucide-react'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { ArrowDown, ArrowUp, Columns3, FileBarChart2, Loader2, Maximize2, Play, Plus, Save, Sigma, Trash2 } from 'lucide-react'
 import { ifadeDogrula } from '@/lib/rapor/ifade'
 import { BICIMLER, veriSetiParametreleri } from '@/lib/rapor/sablon-dogrula'
 import type { AltToplamFn, Bicim, GrupTanim, HesaplananAlan, Kolon, KosulluBicim, SablonIcerik, SablonParametre, VeriSetiTanim } from '@/lib/rapor/tipler'
@@ -83,6 +84,7 @@ export default function SablonTasarimClient({ veriSetleri, mevcut }: Props) {
   const [onizBilgi, setOnizBilgi] = useState<string | null>(null)
   const [onizHata, setOnizHata] = useState<string | null>(null)
   const [onizleniyor, setOnizleniyor] = useState(false)
+  const [onizBuyuk, setOnizBuyuk] = useState(false)
   const iframeRef = useRef<HTMLIFrameElement>(null)
 
   useEffect(() => {
@@ -392,8 +394,17 @@ export default function SablonTasarimClient({ veriSetleri, mevcut }: Props) {
                 {onizHata && <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 break-words">{onizHata}</div>}
                 {onizHtml && (
                   <div className="space-y-1">
-                    <div className="text-xs text-muted-foreground">{onizBilgi}</div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs text-muted-foreground">{onizBilgi}</span>
+                      <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setOnizBuyuk(true)}><Maximize2 className="h-3.5 w-3.5 mr-1" />Büyüt</Button>
+                    </div>
                     <iframe ref={iframeRef} title="Önizleme" srcDoc={onizHtml} sandbox="allow-same-origin allow-modals" className="w-full bg-white border rounded" style={{ height: '60vh' }} />
+                    <Dialog open={onizBuyuk} onOpenChange={setOnizBuyuk}>
+                      <DialogContent className="max-w-[96vw] w-[96vw] h-[92vh] flex flex-col p-4 gap-3">
+                        <DialogHeader className="shrink-0"><DialogTitle className="text-base">Rapor önizlemesi — {onizBilgi}</DialogTitle></DialogHeader>
+                        <iframe title="Önizleme (büyük)" srcDoc={onizHtml} sandbox="allow-same-origin allow-modals" className="flex-1 min-h-0 w-full bg-white border rounded" />
+                      </DialogContent>
+                    </Dialog>
                   </div>
                 )}
               </TabsContent>

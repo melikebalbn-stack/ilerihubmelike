@@ -5,7 +5,7 @@ import { PERMISSION_KEYS } from '@/lib/auth/permissions'
 
 export const dynamic = 'force-dynamic'
 
-/** GET ?q=metin — tüm katalogda alan VEYA entity adında arama (aktif), en fazla 50. */
+/** GET ?q=metin — alan adı, Türkçe etiket VEYA entity adında arama (aktif); en fazla 200 satır (istemci entity'ye göre gruplar). */
 export async function GET(req: Request) {
   const { error } = await requirePermission(PERMISSION_KEYS.RAPOR_TASARLA)
   if (error) return error
@@ -15,11 +15,11 @@ export async function GET(req: Request) {
   const sonuclar = await prisma.raporKatalog.findMany({
     where: {
       aktif: true,
-      OR: [{ alan: { contains: q, mode: 'insensitive' } }, { entity: { contains: q, mode: 'insensitive' } }],
+      OR: [{ alan: { contains: q, mode: 'insensitive' } }, { etiket: { contains: q, mode: 'insensitive' } }, { entity: { contains: q, mode: 'insensitive' } }],
     },
-    select: { kaynakAd: true, entity: true, alan: true, veriTipi: true, anahtarMi: true },
+    select: { kaynakAd: true, entity: true, alan: true, veriTipi: true, anahtarMi: true, etiket: true },
     orderBy: [{ kaynakAd: 'asc' }, { entity: 'asc' }, { alan: 'asc' }],
-    take: 50,
+    take: 200,
   })
   return NextResponse.json({ sonuclar })
 }

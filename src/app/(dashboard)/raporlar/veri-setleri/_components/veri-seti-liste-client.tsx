@@ -5,7 +5,8 @@ import Link from 'next/link'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { ArrowLeft, Database, Loader2, Plus, Trash2 } from 'lucide-react'
+import { Database, Loader2, Plus, Trash2 } from 'lucide-react'
+import { GeriRozet, RozetLink } from '../../_components/rozet-link'
 
 const NAVY = '#1B4F72'
 
@@ -37,18 +38,14 @@ export default function VeriSetiListeClient() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <Link href="/raporlar" className="text-sm text-muted-foreground hover:underline inline-flex items-center gap-1 mb-1">
-            <ArrowLeft className="h-3.5 w-3.5" /> Raporlar
-          </Link>
+          <GeriRozet href="/raporlar">Raporlar</GeriRozet>
           <h1 className="text-xl lg:text-3xl font-bold tracking-tight flex items-center gap-3">
             <Database className="h-6 w-6 lg:h-7 lg:w-7" style={{ color: NAVY }} />
             Veri Setleri
           </h1>
           <p className="text-sm text-muted-foreground mt-1">Raporların beslendiği IFS / Hub kaynak birleşimleri</p>
         </div>
-        <Button asChild style={{ backgroundColor: NAVY }}>
-          <Link href="/raporlar/veri-setleri/yeni"><Plus className="h-4 w-4 mr-2" />Yeni veri seti</Link>
-        </Button>
+        <RozetLink href="/raporlar/veri-setleri/yeni" icon={<Plus className="h-3.5 w-3.5" />}>Yeni veri seti</RozetLink>
       </div>
 
       {hata && <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{hata}</div>}

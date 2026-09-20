@@ -1,14 +1,14 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import Link from 'next/link'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { DateField } from '@/components/ui/date-field'
-import { ArrowLeft, FileBarChart2, FileSpreadsheet, Loader2, Play, Printer } from 'lucide-react'
+import { FileBarChart2, FileSpreadsheet, Loader2, Play, Printer } from 'lucide-react'
+import { GeriRozet } from '../../_components/rozet-link'
 import type { SablonParametre } from '@/lib/rapor/tipler'
 
 const NAVY = '#1B4F72'
@@ -103,9 +103,7 @@ export default function RaporCalistirClient({ sablon, parametreler }: Props) {
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <Link href="/raporlar" className="text-sm text-muted-foreground hover:underline inline-flex items-center gap-1 mb-1">
-            <ArrowLeft className="h-3.5 w-3.5" /> Raporlar
-          </Link>
+          <GeriRozet href="/raporlar">Raporlar</GeriRozet>
           <h1 className="text-xl lg:text-3xl font-bold tracking-tight flex items-center gap-3">
             <FileBarChart2 className="h-6 w-6 lg:h-7 lg:w-7" style={{ color: NAVY }} />
             {sablon.ad}

@@ -3,9 +3,9 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { Card, CardContent } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Database, FileBarChart2, Loader2, Plus, FileSearch } from 'lucide-react'
+import { RozetLink } from './rozet-link'
 
 const NAVY = '#1B4F72'
 
@@ -54,12 +54,8 @@ export default function RaporListeClient() {
         </div>
         {tasarlayabilir && (
           <div className="flex items-center gap-2">
-            <Button asChild variant="outline">
-              <Link href="/raporlar/veri-setleri"><Database className="h-4 w-4 mr-2" />Veri setleri</Link>
-            </Button>
-            <Button asChild style={{ backgroundColor: NAVY }}>
-              <Link href="/raporlar/tasarim/yeni"><Plus className="h-4 w-4 mr-2" />Yeni rapor</Link>
-            </Button>
+            <RozetLink href="/raporlar/veri-setleri" icon={<Database className="h-3.5 w-3.5" />}>Veri setleri</RozetLink>
+            <RozetLink href="/raporlar/tasarim/yeni" icon={<Plus className="h-3.5 w-3.5" />}>Yeni rapor</RozetLink>
           </div>
         )}
       </div>

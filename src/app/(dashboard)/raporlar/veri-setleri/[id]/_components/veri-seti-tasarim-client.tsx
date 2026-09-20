@@ -1,7 +1,6 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -11,8 +10,9 @@ import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
 import { Checkbox } from '@/components/ui/checkbox'
 import { NativeSelect } from '@/components/ui/select'
-import { ArrowLeft, ChevronDown, ChevronRight, Database, Download, Loader2, Play, Plus, Save, Search, Trash2, X } from 'lucide-react'
+import { ChevronDown, ChevronRight, Database, Download, Loader2, Play, Plus, Save, Search, Trash2, X } from 'lucide-react'
 import type { Birlestirme, Kaynak, KaynakIfs, KaynakPostgres, VeriSetiTanim } from '@/lib/rapor/tipler'
+import { GeriRozet } from '../../../_components/rozet-link'
 
 const NAVY = '#1B4F72'
 
@@ -330,9 +330,7 @@ export default function VeriSetiTasarimClient({ katalogYukleyebilir, mevcut }: P
       {/* ÜST */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <Link href="/raporlar/veri-setleri" className="text-sm text-muted-foreground hover:underline inline-flex items-center gap-1 mb-1">
-            <ArrowLeft className="h-3.5 w-3.5" /> Veri Setleri
-          </Link>
+          <GeriRozet href="/raporlar/veri-setleri">Veri Setleri</GeriRozet>
           <h1 className="text-xl lg:text-2xl font-bold tracking-tight flex items-center gap-3">
             <Database className="h-6 w-6" style={{ color: NAVY }} />
             {mevcut ? 'Veri Seti Düzenle' : 'Yeni Veri Seti'}

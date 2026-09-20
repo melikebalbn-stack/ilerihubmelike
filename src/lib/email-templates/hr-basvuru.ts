@@ -44,12 +44,14 @@ function tarihTR(d: Date | string | null | undefined): string {
   if (!d) return "—";
   const t = typeof d === "string" ? new Date(d) : d;
   if (Number.isNaN(t.getTime())) return "—";
+  // Sunucu UTC → saat Türkiye'ye çevrilmezse mailde 3 saat geri görünüyordu.
   return t.toLocaleString("tr-TR", {
     day: "2-digit",
     month: "long",
     year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
+    timeZone: "Europe/Istanbul",
   });
 }
 

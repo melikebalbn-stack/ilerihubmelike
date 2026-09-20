@@ -960,6 +960,8 @@ export function generateTicketCreatedEmailContent(
       .replace(/'/g, '&#039;')
 
   const subject = `${isCritical ? '🔴 ACİL — ' : ''}[ILERIHub] Yeni IT Talebi: ${ticket.ticketNumber}`
+  // Sunucu UTC; açılış saati Türkiye saatiyle gösterilir.
+  const acilis = new Date(ticket.createdAt).toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul' })
 
   const body = `Merhaba ${recipientName},
 
@@ -970,7 +972,7 @@ Başlık     : ${ticket.subject}
 Açan       : ${ticket.requesterName} (${ticket.requesterDept})
 Kategori   : ${ticket.category}
 Öncelik    : ${priorityLabel[ticket.priority] || ticket.priority}
-Açılış     : ${new Date(ticket.createdAt).toLocaleString('tr-TR')}
+Açılış     : ${acilis}
 
 Açıklama:
 ${ticket.description}
@@ -981,7 +983,6 @@ Talebi görüntülemek için: ${ticketUrl}
 ILERIHub Bildirim Sistemi`
 
   const labelText = isCritical ? 'ACİL — Yeni IT talebi' : 'Yeni IT talebi'
-  const acilis = new Date(ticket.createdAt).toLocaleString('tr-TR')
 
   const html = renderEmail({
     module: 'Destek',

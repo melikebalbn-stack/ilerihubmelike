@@ -15,6 +15,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { ChevronDown, ChevronRight, Database, Download, Loader2, Maximize2, Pencil, Play, Plus, Save, Search, Trash2, X } from 'lucide-react'
 import type { Birlestirme, Kaynak, KaynakIfs, KaynakPostgres, VeriSetiTanim } from '@/lib/rapor/tipler'
 import { GeriRozet } from '../../../_components/rozet-link'
+import { referansMi } from '@/lib/rapor/katalog-siniflama'
 
 const NAVY = '#1B4F72'
 
@@ -26,11 +27,12 @@ interface Props {
 }
 
 interface Projeksiyon { ad: string; yuklendi: boolean; entitySayisi: number }
-interface Entity { entity: string; alanSayisi: number; entitySetleri: string[] }
+interface Entity { entity: string; alanSayisi: number; entitySetleri: string[]; etiket?: string | null }
 interface KatalogAlan { alan: string; veriTipi: string; anahtarMi: boolean; etiket?: string | null }
 interface HubTablo { ad: string; kolonSayisi: number }
 interface HubKolon { ad: string; veriTipi: string }
-interface AramaSonucu { kaynakAd: string; entity: string; alan: string; veriTipi: string; etiket?: string | null }
+interface AramaSonucu { kaynakAd: string; entity: string; alan: string; veriTipi: string; etiket?: string | null; entityEtiket?: string | null; entityAlanSayisi?: number }
+interface AramaEntity { kaynakAd: string; entity: string; etiket: string | null; alanSayisi: number; etiketEslesme: boolean }
 interface AlanEsleme { cikti: string; yol: string }
 type ParamTip = 'metin' | 'sayi' | 'tarih'
 interface Onizleme { satirlar: Record<string, unknown>[]; toplamSatir: number; kaynakIstatistik: { ad: string; satir: number; sureMs: number }[]; toplamSureMs: number; not?: string }
@@ -150,6 +152,10 @@ export default function VeriSetiTasarimClient({ katalogYukleyebilir, mevcut }: P
   const [katalogAlanAra, setKatalogAlanAra] = useState('')
   /** Etiket düzenleme: hangi alan (sol panel) + geçici metin. */
   const [etiketDuzenle, setEtiketDuzenle] = useState<{ alan: string; metin: string } | null>(null)
+  const [entityEtiketDuzenle, setEntityEtiketDuzenle] = useState<{ entity: string; metin: string } | null>(null)
+  const [aramaEntityler, setAramaEntityler] = useState<AramaEntity[]>([])
+  const [referansGoster, setReferansGoster] = useState(false)
+  const [aramaReferansAcik, setAramaReferansAcik] = useState(false)
   const [onizlemeBuyuk, setOnizlemeBuyuk] = useState(false)
 
   // Sol — katalog
@@ -212,7 +218,7 @@ export default function VeriSetiTasarimClient({ katalogYukleyebilir, mevcut }: P
   useEffect(() => {
     if (arama.trim().length < 2) { setAramaSonuclari(null); return }
     const t = setTimeout(() => {
-      getJson<{ sonuclar: AramaSonucu[] }>(`/api/raporlar/katalog/ara?q=${encodeURIComponent(arama.trim())}`).then((d) => setAramaSonuclari(d.sonuclar)).catch((e: Error) => setSolHata(e.message))
+      getJson<{ sonuclar: AramaSonucu[]; entityler: AramaEntity[] }>(`/api/raporlar/katalog/ara?q=${encodeURIComponent(arama.trim())}`).then((d) => { setAramaSonuclari(d.sonuclar); setAramaEntityler(d.entityler ?? []); setAramaReferansAcik(false) }).catch((e: Error) => setSolHata(e.message))
     }, 300)
     return () => clearTimeout(t)
   }, [arama])
@@ -280,7 +286,7 @@ export default function VeriSetiTasarimClient({ katalogYukleyebilir, mevcut }: P
       const e = d.entityler.find((x) => x.entity === s.entity) ?? { entity: s.entity, alanSayisi: 0, entitySetleri: [] }
       const set = e.entitySetleri.find((x) => !x.startsWith('Reference_')) ?? e.entitySetleri[0] ?? `${s.entity}s`
       if (!e.entitySetleri.length) setSolHata(`${s.kaynakAd} › ${s.entity}: EntitySet adı $metadata'dan alınamadı; '${set}' varsayıldı — kaynak kartından düzeltin.`)
-      ifsKaynakEkle(e, set, { projeksiyon: s.kaynakAd, ekAlan: s.alan })
+      ifsKaynakEkle(e, set, { projeksiyon: s.kaynakAd, ekAlan: s.alan || undefined })
       setKaynakTip('ifs'); setSeciliProjeksiyon(s.kaynakAd); setEntityAra(''); setSeciliEntity(e); setArama('')
     } catch (e) { setSolHata(e instanceof Error ? e.message : String(e)) }
   }
@@ -296,13 +302,32 @@ export default function VeriSetiTasarimClient({ katalogYukleyebilir, mevcut }: P
     } catch (e) { setSolHata(e instanceof Error ? e.message : String(e)) }
   }
 
-  /** Arama sonuçları entity'ye göre gruplu, en çok eşleşen üstte. */
+  /** Entity Türkçe etiketi kaydet (rapor.katalog). Boş → siler. */
+  async function entityEtiketKaydet(entity: string, etiket: string) {
+    setEntityEtiketDuzenle(null)
+    try {
+      const r = await fetch('/api/raporlar/katalog/entity-etiket', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kaynakAd: seciliProjeksiyon, entity, etiket: etiket.trim() || null }) })
+      const d = await r.json()
+      if (!r.ok) throw new Error(d.error ?? `HTTP ${r.status}`)
+      setEntityler((l) => l.map((e) => (e.entity === entity ? { ...e, etiket: d.etiket } : e)))
+    } catch (e) { setSolHata(e instanceof Error ? e.message : String(e)) }
+  }
+
+  /** Arama sonuçları entity'ye göre gruplu; sıra: etiket eşleşmesi → ana tablo (referans değil) → alan sayısı. */
   const aramaGruplari = useMemo(() => {
     if (!aramaSonuclari) return null
-    const m = new Map<string, { kaynakAd: string; entity: string; alanlar: AramaSonucu[] }>()
-    for (const s of aramaSonuclari) { const k = `${s.kaynakAd}|${s.entity}`; const g = m.get(k) ?? { kaynakAd: s.kaynakAd, entity: s.entity, alanlar: [] }; g.alanlar.push(s); m.set(k, g) }
-    return [...m.values()].sort((a, b) => b.alanlar.length - a.alanlar.length || a.entity.localeCompare(b.entity))
-  }, [aramaSonuclari])
+    type Grup = { kaynakAd: string; entity: string; etiket: string | null; alanSayisi: number; etiketEslesme: boolean; referans: boolean; alanlar: AramaSonucu[] }
+    const m = new Map<string, Grup>()
+    for (const e of aramaEntityler) m.set(`${e.kaynakAd}|${e.entity}`, { ...e, referans: referansMi(e.entity), alanlar: [] })
+    for (const s of aramaSonuclari) {
+      const k = `${s.kaynakAd}|${s.entity}`
+      const g = m.get(k) ?? { kaynakAd: s.kaynakAd, entity: s.entity, etiket: s.entityEtiket ?? null, alanSayisi: s.entityAlanSayisi ?? 0, etiketEslesme: false, referans: referansMi(s.entity), alanlar: [] }
+      g.alanlar.push(s); m.set(k, g)
+    }
+    const sirala = (a: Grup, b: Grup) => Number(b.etiketEslesme) - Number(a.etiketEslesme) || b.alanlar.length - a.alanlar.length || b.alanSayisi - a.alanSayisi || a.entity.localeCompare(b.entity)
+    const hepsi = [...m.values()]
+    return { ana: hepsi.filter((g) => !g.referans).sort(sirala), referans: hepsi.filter((g) => g.referans).sort(sirala) }
+  }, [aramaSonuclari, aramaEntityler])
 
   function hubKaynakEkle(tablo: string) {
     const takma = takmaAdUret(tablo, kaynakAdlari)
@@ -430,6 +455,27 @@ export default function VeriSetiTasarimClient({ katalogYukleyebilir, mevcut }: P
   const onizlemeKolonlari = useMemo(() => (onizleme?.satirlar.length ? Object.keys(onizleme.satirlar[0]) : []), [onizleme])
   const filtreliTablolar = useMemo(() => hubTablolar.filter((t) => !hubAra || t.ad.toLowerCase().includes(hubAra.toLowerCase())), [hubTablolar, hubAra])
 
+  /** Tek arama grubu: entity başlığı (etiket, alan sayısı, projeksiyon) + eşleşen alanlar. */
+  const aramaGrubu = (g: { kaynakAd: string; entity: string; etiket: string | null; alanSayisi: number; etiketEslesme: boolean; alanlar: AramaSonucu[] }) => (
+    <div key={`${g.kaynakAd}|${g.entity}`} className={`border rounded ${g.etiketEslesme ? 'border-[#1B4F72]/50' : ''}`}>
+      <button type="button" className="w-full text-left px-2 py-1.5 bg-muted/60 hover:bg-muted flex items-center gap-2" title="Entity'yi kaynak olarak ekle (anahtar alanlarla)"
+        onClick={() => aramaSonucundanEkle({ kaynakAd: g.kaynakAd, entity: g.entity, alan: '', veriTipi: '' })}>
+        <Plus className="h-3 w-3 shrink-0 text-muted-foreground" />
+        <span className="font-mono text-xs font-medium">{g.entity}</span>
+        {g.etiket && <span className="text-xs text-[#1B4F72] font-medium">— {g.etiket}</span>}
+        <span className="text-[10px] text-muted-foreground">{g.alanSayisi || g.alanlar.length} alan</span>
+        <span className="ml-auto text-[10px] text-muted-foreground">{g.kaynakAd}</span>
+      </button>
+      {g.alanlar.map((s, i) => (
+        <button key={i} className="w-full text-left px-2 py-1 hover:bg-muted flex items-center gap-1.5 border-t" title="Bu entity'yi kaynak olarak ekle, alan seçili gelsin" onClick={() => aramaSonucundanEkle(s)}>
+          <span className="w-3" />
+          <span className="font-mono text-xs">{s.alan}{s.etiket ? <span className="font-sans text-muted-foreground"> — {s.etiket}</span> : null}</span>
+          <span className="ml-auto text-[10px] text-muted-foreground">{s.veriTipi}</span>
+        </button>
+      ))}
+    </div>
+  )
+
   // ── Görünüm ───────────────────────────────────────────────────────────
 
   return (
@@ -470,7 +516,7 @@ export default function VeriSetiTasarimClient({ katalogYukleyebilir, mevcut }: P
         </div>
       )}
 
-      <div className="grid gap-4 xl:grid-cols-[300px_1fr_380px]">
+      <div className={`grid gap-4 ${aramaGruplari ? 'xl:grid-cols-[640px_1fr_380px]' : 'xl:grid-cols-[300px_1fr_380px]'}`}>
         {/* SOL — Katalog */}
         <Card className="xl:sticky xl:top-4 self-start max-h-[calc(100vh-6rem)] flex flex-col">
           <CardHeader className="pb-2"><CardTitle className="text-base">Veri kataloğu</CardTitle></CardHeader>
@@ -483,24 +529,18 @@ export default function VeriSetiTasarimClient({ katalogYukleyebilir, mevcut }: P
 
             {aramaGruplari ? (
               <div className="space-y-2">
-                <div className="text-xs text-muted-foreground">{aramaSonuclari?.length ?? 0} alan · {aramaGruplari.length} entity{(aramaSonuclari?.length ?? 0) >= 200 && ' (ilk 200)'} — alan adı, Türkçe etiket ve entity adında arandı</div>
-                {aramaGruplari.map((g) => (
-                  <div key={`${g.kaynakAd}|${g.entity}`} className="border rounded">
-                    <div className="px-2 py-1 bg-muted/60 text-[11px] flex items-center gap-1">
-                      <span className="text-muted-foreground">{g.kaynakAd} ›</span>
-                      <span className="font-mono font-medium truncate">{g.entity}</span>
-                      <span className="ml-auto text-muted-foreground">{g.alanlar.length}</span>
-                    </div>
-                    {g.alanlar.map((s, i) => (
-                      <button key={i} className="w-full text-left px-2 py-1 hover:bg-muted flex items-center gap-1.5 border-t" title="Bu entity'yi kaynak olarak ekle, alan seçili gelsin" onClick={() => aramaSonucundanEkle(s)}>
-                        <Plus className="h-3 w-3 shrink-0 text-muted-foreground" />
-                        <span className="font-mono text-xs truncate">{s.alan}{s.etiket ? <span className="font-sans text-muted-foreground"> — {s.etiket}</span> : null}</span>
-                        <span className="ml-auto text-[10px] text-muted-foreground">{s.veriTipi}</span>
-                      </button>
-                    ))}
+                <div className="text-xs text-muted-foreground">{aramaGruplari.ana.length} ana tablo · {aramaGruplari.referans.length} referans · {aramaSonuclari?.length ?? 0} alan{(aramaSonuclari?.length ?? 0) >= 200 && ' (ilk 200)'} — alan adı/etiketi ve entity adı/etiketinde arandı</div>
+                {aramaGruplari.ana.length === 0 && aramaGruplari.referans.length === 0 && <div className="text-xs text-muted-foreground">Sonuç yok.</div>}
+                {aramaGruplari.ana.map((g) => aramaGrubu(g))}
+                {aramaGruplari.referans.length > 0 && (
+                  <div className="border rounded border-dashed">
+                    <button type="button" className="w-full text-left px-2 py-1.5 text-xs flex items-center gap-1 text-muted-foreground hover:bg-muted" onClick={() => setAramaReferansAcik((a) => !a)}>
+                      {aramaReferansAcik ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                      Referans tabloları ({aramaGruplari.referans.length}) — Lov/Virtual/Query, ana veri tablosu değil
+                    </button>
+                    {aramaReferansAcik && <div className="p-2 space-y-2">{aramaGruplari.referans.map((g) => aramaGrubu(g))}</div>}
                   </div>
-                ))}
-                {aramaGruplari.length === 0 && <div className="text-xs text-muted-foreground">Sonuç yok.</div>}
+                )}
               </div>
             ) : (
               <>
@@ -533,16 +573,29 @@ export default function VeriSetiTasarimClient({ katalogYukleyebilir, mevcut }: P
                       <>
                         <Input placeholder="Entity süz…" value={entityAra} onChange={(e) => setEntityAra(e.target.value)} className="h-8" />
                         {entityUyari && <div className="text-[11px] text-amber-700">{entityUyari}</div>}
+                        <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground cursor-pointer">
+                          <Checkbox checked={referansGoster} onCheckedChange={(v) => setReferansGoster(v === true)} />
+                          Referans tablolarını göster ({entityler.filter((e) => referansMi(e.entity, e.entitySetleri)).length})
+                        </label>
                         <div className="max-h-64 overflow-y-auto border rounded">
                           {yukleniyor === 'entity' && <div className="p-2 text-xs text-muted-foreground"><Loader2 className="h-3 w-3 inline animate-spin mr-1" />Yükleniyor…</div>}
-                          {entityler.map((e) => (
-                            <div key={e.entity}>
-                              <button className={`w-full text-left px-2 py-1 flex items-center gap-1 hover:bg-muted ${seciliEntity?.entity === e.entity ? 'bg-muted font-medium' : ''}`}
-                                onClick={() => setSeciliEntity(seciliEntity?.entity === e.entity ? null : e)}>
-                                {seciliEntity?.entity === e.entity ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-                                <span className="flex-1 font-mono text-xs truncate">{e.entity}</span>
-                                <span className="text-[11px] text-muted-foreground">{e.alanSayisi}</span>
-                              </button>
+                          {entityler.filter((e) => referansGoster || !referansMi(e.entity, e.entitySetleri) || seciliEntity?.entity === e.entity).map((e) => (
+                            <div key={e.entity} className="group/entity">
+                              <div className={`flex items-center gap-1 pr-1 hover:bg-muted ${seciliEntity?.entity === e.entity ? 'bg-muted font-medium' : ''}`}>
+                                <button className="flex-1 min-w-0 text-left px-2 py-1 flex items-center gap-1" onClick={() => setSeciliEntity(seciliEntity?.entity === e.entity ? null : e)}>
+                                  {seciliEntity?.entity === e.entity ? <ChevronDown className="h-3 w-3 shrink-0" /> : <ChevronRight className="h-3 w-3 shrink-0" />}
+                                  {entityEtiketDuzenle?.entity === e.entity ? (
+                                    <input autoFocus className="h-6 flex-1 rounded border px-1 text-[11px]" value={entityEtiketDuzenle.metin} placeholder="Türkçe etiket" onClick={(ev) => ev.stopPropagation()} onChange={(ev) => setEntityEtiketDuzenle({ entity: e.entity, metin: ev.target.value })}
+                                      onKeyDown={(ev) => { if (ev.key === 'Enter') entityEtiketKaydet(e.entity, entityEtiketDuzenle.metin); if (ev.key === 'Escape') setEntityEtiketDuzenle(null) }} onBlur={() => entityEtiketKaydet(e.entity, entityEtiketDuzenle.metin)} />
+                                  ) : (
+                                    <span className="flex-1 min-w-0 truncate text-xs"><span className="font-mono">{e.entity}</span>{e.etiket ? <span className="text-[#1B4F72]"> — {e.etiket}</span> : null}</span>
+                                  )}
+                                  <span className="text-[11px] text-muted-foreground">{e.alanSayisi}</span>
+                                </button>
+                                {katalogYukleyebilir && entityEtiketDuzenle?.entity !== e.entity && (
+                                  <button type="button" className="opacity-0 group-hover/entity:opacity-100 text-muted-foreground hover:text-foreground shrink-0" title="Entity Türkçe etiketi" onClick={() => setEntityEtiketDuzenle({ entity: e.entity, metin: e.etiket ?? '' })}><Pencil className="h-3 w-3" /></button>
+                                )}
+                              </div>
                               {seciliEntity?.entity === e.entity && (
                                 <div className="pl-5 pr-2 pb-2 space-y-1">
                                   {e.entitySetleri.length === 0

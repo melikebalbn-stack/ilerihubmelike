@@ -14849,6 +14849,19 @@ model RaporKatalog {
   @@map("rapor_katalog")
 }
 
+/// Katalog entity düzeyi Türkçe etiket/açıklama (alan etiketleri RaporKatalog.etiket'te).
+model RaporKatalogEntity {
+  id          String   @id @default(cuid())
+  kaynakAd    String
+  entity      String
+  etiket      String?
+  aciklama    String?
+  guncellenme DateTime @updatedAt
+
+  @@unique([kaynakAd, entity])
+  @@map("rapor_katalog_entity")
+}
+
 model RaporVeriSeti {
   id          String   @id @default(cuid())
   ad          String   @unique

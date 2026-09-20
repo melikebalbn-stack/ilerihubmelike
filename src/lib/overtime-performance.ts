@@ -576,3 +576,92 @@ export async function getVeriKalitesiEksikSatirlar(from: Date, to: Date, bolum: 
   }
   return out
 }
+
+// ───────────────────────── Hedef uyarısı + şüpheli satır listesi (20.09.2026) ─────────────────────────
+
+/** Şüpheli (>%100) satır — bölüm detayı. */
+export type KpiSupheliSatir = KpiEksikSatir & { gerceklesenAdet: number; yuzde: number }
+
+/**
+ * Bölüm detayı — seçili aralıkta gerçekleşen > hedef olan (hedef>0) satırlar, yüzdeye göre azalan.
+ * Kapsam eksik-satır detayıyla AYNI (uretimYapar=false → boş; allowedDepts dışı → boş).
+ */
+export async function getVeriKalitesiSupheliSatirlar(from: Date, to: Date, bolum: string, allowedDepts?: string[]): Promise<KpiSupheliSatir[]> {
+  const nonUretim = await getNonUretimBolumler()
+  if (nonUretim.has(bolum)) return []
+  if (allowedDepts !== undefined && !allowedDepts.includes(bolum)) return []
+  const forms = await prisma.overtimeForm.findMany({
+    where: { status: 'APPROVED', formTipi: 'MESAI', date: { gte: from, lte: to }, personnel: { some: { workDepartment: bolum } } },
+    select: {
+      id: true,
+      formNo: true,
+      date: true,
+      personnel: {
+        where: { workDepartment: bolum },
+        select: {
+          personnel: { select: { adSoyad: true, sicilNo: true } },
+          uretimSatirlari: { orderBy: { sira: 'asc' }, select: { parcaKodu: true, hedefAdet: true, gerceklesenAdet: true } },
+        },
+      },
+    },
+  })
+  const out: KpiSupheliSatir[] = []
+  for (const f of forms) {
+    for (const op of f.personnel) {
+      for (const u of op.uretimSatirlari) {
+        if (u.hedefAdet == null || u.hedefAdet <= 0 || u.gerceklesenAdet == null || u.gerceklesenAdet <= u.hedefAdet) continue
+        out.push({
+          formId: f.id, formNo: f.formNo, tarih: iso(f.date), personel: op.personnel?.adSoyad ?? '—', sicil: op.personnel?.sicilNo ?? '—',
+          parcaKodu: u.parcaKodu, hedefAdet: u.hedefAdet, gerceklesenAdet: u.gerceklesenAdet,
+          yuzde: Math.round((u.gerceklesenAdet / u.hedefAdet) * 1000) / 10,
+        })
+      }
+    }
+  }
+  return out.sort((a, b) => b.yuzde - a.yuzde)
+}
+
+/**
+ * HEDEF UYARISI — eşik ölçümü (20.09.2026, Temmuz+ 591 sayısal kodlu satır, 329'u geçmişli):
+ *   üst eşik (medyan×k) yalnız yanlış alarm üretiyor (aynı kodun meşru hedefi vardiya
+ *   uzunluğuyla 10-20× oynuyor: 8005 → 55…2000). Tek temiz sinyal yer tutucu KÜÇÜK hedef:
+ *   hedef < medyan/10 ve ≥2 geçmiş kayıt → 6 uyarı, 3'ü hedef=1 şüpheli (>%150), kalan 3'ü de
+ *   sorgulanabilir girişler. Bu yüzden yalnız ALT eşik; ENGELLEMEZ, uyarır.
+ * Parça kodu eşleşmesi: ilk boşluğa kadar olan token, büyük harf, yalnız SAYISAL kod
+ * (^\d{3,}(-\d+)?$). "AYAR", "taşlama" gibi serbest metinde geçmiş aranmaz (uyarı yok).
+ */
+export const HEDEF_UYARI_ORAN = 10
+export const HEDEF_UYARI_MIN_GECMIS = 2
+export type HedefGecmisi = { parcaKodu: string; n: number; min: number; max: number; medyan: number } | null
+
+export function parcaKoduAnahtari(parcaKodu: string): string | null {
+  const tok = (parcaKodu ?? '').trim().split(/\s+/)[0]?.toUpperCase() ?? ''
+  return /^\d{3,}(-\d+)?$/.test(tok) ? tok : null
+}
+
+/** Aynı sayısal parça kodunun APPROVED MESAI formlarındaki (hedef>0) geçmiş hedefleri. */
+export async function getHedefGecmisi(parcaKodu: string): Promise<HedefGecmisi> {
+  const key = parcaKoduAnahtari(parcaKodu)
+  if (!key) return null
+  // İlk token eşleşmesi: kod tek başına VEYA kod + boşluk + açıklama. Büyük/küçük harf duyarsız.
+  const rows = await prisma.overtimePersonnelUretim.findMany({
+    where: {
+      hedefAdet: { gt: 0 },
+      OR: [{ parcaKodu: { equals: key, mode: 'insensitive' } }, { parcaKodu: { startsWith: `${key} `, mode: 'insensitive' } }],
+      overtimePersonnel: { overtimeForm: { status: 'APPROVED', formTipi: 'MESAI' } },
+    },
+    select: { hedefAdet: true },
+  })
+  const h = rows.map((r) => r.hedefAdet as number).filter((v) => v > 0).sort((a, b) => a - b)
+  if (h.length === 0) return null
+  const mid = Math.floor(h.length / 2)
+  const medyan = h.length % 2 ? h[mid] : (h[mid - 1] + h[mid]) / 2
+  return { parcaKodu: key, n: h.length, min: h[0], max: h[h.length - 1], medyan }
+}
+
+/** Uyarı metni (null = uyarı yok). Yalnız alt eşik; kaydetmeyi engellemez. */
+export function hedefUyarisi(g: HedefGecmisi, hedef: number): string | null {
+  if (!g || g.n < HEDEF_UYARI_MIN_GECMIS || !(hedef > 0)) return null
+  if (hedef >= g.medyan / HEDEF_UYARI_ORAN) return null
+  return `Bu parça için geçmiş hedefler ${g.min}–${g.max} arasında (${g.n} kayıt). Girdiğiniz: ${hedef}`
+}

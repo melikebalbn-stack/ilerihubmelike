@@ -23,6 +23,8 @@ type BolumSatir = {
 type Ay = Omit<BolumSatir, "bolum"> & { ay: string; form: number }
 type KpiData = { from: string | null; to: string | null; haricBolumler: string[]; toplam?: Ay; aylar: Ay[]; bolumler: BolumSatir[]; noAccess?: boolean }
 type EksikSatir = { formId: string; formNo: string; tarih: string; personel: string; sicil: string; parcaKodu: string; hedefAdet: number }
+type SupheliSatir = EksikSatir & { gerceklesenAdet: number; yuzde: number }
+type DetayTip = "eksik" | "supheli"
 
 const NAVY = "#1B4F72"
 const AY_KISA = ["Oca", "Şub", "Mar", "Nis", "May", "Haz", "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara"]
@@ -56,13 +58,15 @@ export default function VeriKalitesiKpiPanel() {
   const [data, setData] = useState<KpiData | null>(null)
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState<string | null>(null)
-  // Bölüm detayı — açık bölüm + satırları (bolum → satırlar; null = yükleniyor)
-  const [acik, setAcik] = useState<string | null>(null)
-  const [detay, setDetay] = useState<Record<string, EksikSatir[] | null>>({})
+  // Bölüm detayı — açık paneller (bolum:tip) + satırları (anahtar → satırlar; null = yükleniyor).
+  // Eksik ve şüpheli paneller AYRI açılır/kapanır (20.09.2026).
+  const [acik, setAcik] = useState<Set<string>>(new Set())
+  const [detay, setDetay] = useState<Record<string, (EksikSatir | SupheliSatir)[] | null>>({})
+  const anahtar = (bolum: string, tip: DetayTip) => `${tip}:${bolum}`
 
   useEffect(() => {
     let alive = true
-    setLoading(true); setErr(null); setAcik(null); setDetay({})
+    setLoading(true); setErr(null); setAcik(new Set()); setDetay({})
     apiFetch(`/api/overtime/performans/kpi?from=${from}&to=${to}`).then(async (res) => {
       if (!alive) return
       if (res.__authHandled) return
@@ -72,18 +76,19 @@ export default function VeriKalitesiKpiPanel() {
     return () => { alive = false }
   }, [from, to])
 
-  async function toggleBolum(bolum: string) {
-    if (acik === bolum) { setAcik(null); return }
-    setAcik(bolum)
-    if (detay[bolum] !== undefined) return
-    setDetay((d) => ({ ...d, [bolum]: null }))
+  async function toggleDetay(bolum: string, tip: DetayTip) {
+    const k = anahtar(bolum, tip)
+    if (acik.has(k)) { setAcik((s) => { const n = new Set(s); n.delete(k); return n }); return }
+    setAcik((s) => new Set(s).add(k))
+    if (detay[k] !== undefined) return
+    setDetay((d) => ({ ...d, [k]: null }))
     try {
-      const res = await apiFetch(`/api/overtime/performans/kpi/eksik?bolum=${encodeURIComponent(bolum)}&from=${from}&to=${to}`)
+      const res = await apiFetch(`/api/overtime/performans/kpi/${tip}?bolum=${encodeURIComponent(bolum)}&from=${from}&to=${to}`)
       if (res.__authHandled) return
-      const body = res.ok ? ((await res.json()) as { satirlar: EksikSatir[] }) : { satirlar: [] }
-      setDetay((d) => ({ ...d, [bolum]: body.satirlar }))
+      const body = res.ok ? ((await res.json()) as { satirlar: (EksikSatir | SupheliSatir)[] }) : { satirlar: [] }
+      setDetay((d) => ({ ...d, [k]: body.satirlar }))
     } catch {
-      setDetay((d) => ({ ...d, [bolum]: [] }))
+      setDetay((d) => ({ ...d, [k]: [] }))
     }
   }
 
@@ -139,15 +144,18 @@ export default function VeriKalitesiKpiPanel() {
                     </TableRow></TableHeader>
                     <TableBody>
                       {data.bolumler.map((b, i) => {
-                        const acikMi = acik === b.bolum
-                        const rows = detay[b.bolum]
+                        const kE = anahtar(b.bolum, "eksik"), kS = anahtar(b.bolum, "supheli")
+                        const eksikAcik = acik.has(kE), supheliAcik = acik.has(kS)
+                        const rowsE = detay[kE] as EksikSatir[] | null | undefined
+                        const rowsS = detay[kS] as SupheliSatir[] | null | undefined
                         return (
                           <Fragment key={b.bolum}>
-                            <TableRow className="cursor-pointer hover:bg-muted/50" onClick={() => toggleBolum(b.bolum)} aria-expanded={acikMi}>
+                            <TableRow className="hover:bg-muted/50">
                               <TableCell className="text-muted-foreground">{i + 1}</TableCell>
-                              <TableCell className="font-medium">
+                              {/* Bölüm adı → eksik satırlar */}
+                              <TableCell className="font-medium cursor-pointer" onClick={() => toggleDetay(b.bolum, "eksik")} aria-expanded={eksikAcik} title="Eksik satırları göster/gizle">
                                 <span className="inline-flex items-center gap-1">
-                                  {acikMi ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />}
+                                  {eksikAcik ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />}
                                   {b.bolum}
                                 </span>
                               </TableCell>
@@ -155,34 +163,77 @@ export default function VeriKalitesiKpiPanel() {
                               <TableCell className="text-right">{n(b.eksik)}</TableCell>
                               <TableCell><EksikCubuk p={b.eksikPct} /></TableCell>
                               <TableCell className="text-right font-medium" style={{ color: eksikRenk(b.eksikPct) }}>{pct(b.eksikPct)}</TableCell>
-                              <TableCell className="text-right whitespace-nowrap">{n(b.ustu100)} satır{b.ustu150 > 0 ? ` (${n(b.ustu150)} ağır)` : ""}</TableCell>
+                              {/* Şüpheli hücresi → >%100 satırlar (ayrı panel) */}
+                              <TableCell className={`text-right whitespace-nowrap ${b.ustu100 > 0 ? "cursor-pointer underline decoration-dotted underline-offset-4" : ""}`}
+                                onClick={() => b.ustu100 > 0 && toggleDetay(b.bolum, "supheli")} aria-expanded={supheliAcik} title={b.ustu100 > 0 ? "Şüpheli satırları göster/gizle" : undefined}>
+                                {n(b.ustu100)} satır{b.ustu150 > 0 ? ` (${n(b.ustu150)} ağır)` : ""}
+                              </TableCell>
                               <TableCell className="text-right"><PerfHucre v={b.agirlikliPct} /></TableCell>
                             </TableRow>
-                            {acikMi && (
+                            {eksikAcik && (
                               <TableRow className="bg-muted/30 hover:bg-muted/30">
                                 <TableCell colSpan={8} className="p-0">
                                   <div className="px-6 py-3">
-                                    {rows === null || rows === undefined ? (
+                                    {rowsE === null || rowsE === undefined ? (
                                       <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Eksik satırlar yükleniyor…</div>
-                                    ) : rows.length === 0 ? (
+                                    ) : rowsE.length === 0 ? (
                                       <div className="text-sm text-muted-foreground">Bu bölümde eksik giriş yok.</div>
                                     ) : (
                                       <>
-                                        <div className="text-xs text-muted-foreground mb-2">{b.bolum} — gerçekleşen adedi girilmemiş {n(rows.length)} satır</div>
+                                        <div className="text-xs text-muted-foreground mb-2">{b.bolum} — gerçekleşen adedi girilmemiş {n(rowsE.length)} satır</div>
                                         <Table>
                                           <TableHeader><TableRow>
                                             <TableHead>Form No</TableHead><TableHead>Tarih</TableHead><TableHead>Personel</TableHead><TableHead>Parça Kodu</TableHead><TableHead className="text-right">Hedef Adet</TableHead>
                                           </TableRow></TableHeader>
                                           <TableBody>
-                                            {rows.map((r, k) => (
+                                            {rowsE.map((r, k) => (
                                               <TableRow key={`${r.formId}-${k}`}>
-                                                <TableCell><a href={`/forms/overtime/${r.formId}`} className="underline underline-offset-2" style={{ color: NAVY }} onClick={(e) => e.stopPropagation()}>{r.formNo}</a></TableCell>
+                                                <TableCell><a href={`/forms/overtime/${r.formId}`} className="underline underline-offset-2" style={{ color: NAVY }}>{r.formNo}</a></TableCell>
                                                 <TableCell>{tarihTR(r.tarih)}</TableCell>
                                                 <TableCell>{r.personel} <span className="text-muted-foreground text-xs">{r.sicil}</span></TableCell>
                                                 <TableCell>{r.parcaKodu}</TableCell>
                                                 <TableCell className="text-right">{n(r.hedefAdet)}</TableCell>
                                               </TableRow>
                                             ))}
+                                          </TableBody>
+                                        </Table>
+                                      </>
+                                    )}
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            )}
+                            {supheliAcik && (
+                              <TableRow className="bg-amber-50/60 hover:bg-amber-50/60">
+                                <TableCell colSpan={8} className="p-0">
+                                  <div className="px-6 py-3">
+                                    {rowsS === null || rowsS === undefined ? (
+                                      <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Şüpheli satırlar yükleniyor…</div>
+                                    ) : rowsS.length === 0 ? (
+                                      <div className="text-sm text-muted-foreground">Bu bölümde %100 üstü satır yok.</div>
+                                    ) : (
+                                      <>
+                                        <div className="text-xs text-muted-foreground mb-2">{b.bolum} — gerçekleşen &gt; hedef olan {n(rowsS.length)} satır (yüzdeye göre azalan; &gt;%150 kırmızı)</div>
+                                        <Table>
+                                          <TableHeader><TableRow>
+                                            <TableHead>Form No</TableHead><TableHead>Tarih</TableHead><TableHead>Personel</TableHead><TableHead>Parça Kodu</TableHead>
+                                            <TableHead className="text-right">Hedef</TableHead><TableHead className="text-right">Gerçekleşen</TableHead><TableHead className="text-right">%</TableHead>
+                                          </TableRow></TableHeader>
+                                          <TableBody>
+                                            {rowsS.map((r, k) => {
+                                              const agir = r.yuzde > 150
+                                              return (
+                                                <TableRow key={`${r.formId}-${k}`} className={agir ? "bg-red-50/70" : ""}>
+                                                  <TableCell><a href={`/forms/overtime/${r.formId}`} className="underline underline-offset-2" style={{ color: NAVY }}>{r.formNo}</a></TableCell>
+                                                  <TableCell>{tarihTR(r.tarih)}</TableCell>
+                                                  <TableCell>{r.personel} <span className="text-muted-foreground text-xs">{r.sicil}</span></TableCell>
+                                                  <TableCell>{r.parcaKodu}</TableCell>
+                                                  <TableCell className="text-right">{n(r.hedefAdet)}</TableCell>
+                                                  <TableCell className="text-right">{n(r.gerceklesenAdet)}</TableCell>
+                                                  <TableCell className={`text-right font-medium ${agir ? "text-red-600" : "text-amber-600"}`}>{pct(r.yuzde)}</TableCell>
+                                                </TableRow>
+                                              )
+                                            })}
                                           </TableBody>
                                         </Table>
                                       </>

@@ -4,9 +4,44 @@
 // Her satır: "Mesai Nedeni"/"Vardiya Sebebi" = parça kodu (text) + "Hedef Adet" (number).
 // Faz 1 API sözleşmesi: submit'te uretimSatirlari: [{ parcaKodu, hedefAdet }].
 
+import { useEffect, useState } from "react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { Plus, Trash2 } from "lucide-react"
+import { Plus, Trash2, AlertTriangle } from "lucide-react"
+import { apiFetch } from "@/lib/api-fetch"
+
+/**
+ * HEDEF UYARISI (20.09.2026): parça kodu + hedef girilince aynı sayısal parça kodunun geçmiş
+ * hedef aralığıyla karşılaştırır (sunucu: /api/overtime/hedef-gecmis, kural lib
+ * hedefUyarisi — hedef < geçmiş medyanın 1/10'u, ≥2 kayıt). ENGELLEMEZ, sadece uyarır.
+ * Serbest metin kodda (AYAR, taşlama) sunucu geçmiş aramaz → uyarı yok. 500 ms debounce.
+ */
+function HedefUyari({ parcaKodu, hedefAdet, aktif }: { parcaKodu: string; hedefAdet: string; aktif: boolean }) {
+  const [uyari, setUyari] = useState<string | null>(null)
+  useEffect(() => {
+    const kod = parcaKodu.trim()
+    const h = hedefAdet.trim()
+    // Yalnız sayısal parça kodu (ilk token) + geçerli hedef>0 için sor; aksi halde uyarıyı sil.
+    if (!aktif || !/^\d{3,}(-\d+)?$/.test(kod.split(/\s+/)[0] ?? "") || h === "" || !(Number(h) > 0)) { setUyari(null); return }
+    let alive = true
+    const t = setTimeout(async () => {
+      try {
+        const res = await apiFetch(`/api/overtime/hedef-gecmis?parcaKodu=${encodeURIComponent(kod)}&hedef=${encodeURIComponent(h)}`)
+        if (!alive || res.__authHandled || !res.ok) return
+        const data = (await res.json()) as { uyari: string | null }
+        if (alive) setUyari(data.uyari ?? null)
+      } catch { /* uyarı bilgi amaçlı — sessiz geç */ }
+    }, 500)
+    return () => { alive = false; clearTimeout(t) }
+  }, [parcaKodu, hedefAdet, aktif])
+  if (!uyari) return null
+  return (
+    <div className="flex items-start gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+      <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+      <span>{uyari} — kaydetmeye devam edebilirsiniz.</span>
+    </div>
+  )
+}
 
 export interface UretimSatirInput {
   parcaKodu: string
@@ -116,7 +151,8 @@ export default function UretimSatirlariEditor({ rows, onChange, isVardiya = fals
         const showParcaErr = (dokunulmus || mesaiIlkSatirZorunlu) && parcaBos
         const showHedefErr = (dokunulmus || mesaiIlkSatirZorunlu) && hedefGecersiz
         return (
-          <div key={i} className="flex gap-2 items-start">
+          <div key={i} className="space-y-1">
+          <div className="flex gap-2 items-start">
             <div className="flex-1">
               <Input
                 placeholder={isVardiya ? "Parça kodu / sebep (opsiyonel)" : "Parça kodu (zorunlu)"}
@@ -160,6 +196,9 @@ export default function UretimSatirlariEditor({ rows, onChange, isVardiya = fals
             >
               <Trash2 className="h-3.5 w-3.5" />
             </Button>
+          </div>
+          {/* Hedef uyarısı — engellemez; sayılamayan iş (kutucuk) işaretliyse sorulmaz */}
+          <HedefUyari parcaKodu={row.parcaKodu} hedefAdet={row.hedefAdet} aktif={!disabled && !row.sayilamayan} />
           </div>
         )
       })}

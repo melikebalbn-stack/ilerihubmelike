@@ -30,6 +30,7 @@ import {
   MessageSquare,
   BarChart3,
   Activity,
+  FileBarChart2,
   Radio,
   Factory,
   Map,
@@ -422,6 +423,11 @@ const yonetimMenuItems = [
   { name: "KPI Özet", icon: Activity, href: "/yonetim/kpi-ozet", roles: [] as string[], permission: "kpi.view" },
 ]
 
+// Rapor tasarımcısı. Görünürlük permission ile (Yönetim deseni).
+const raporMenuItems = [
+  { name: "Raporlar", icon: FileBarChart2, href: "/raporlar", roles: [] as string[], permission: "rapor.view" },
+]
+
 // Alt menü öğeleri
 const bottomMenuItems = [
   { name: "Ayarlar", icon: Settings, href: "/settings", roles: ["ADMIN", "SUPER_ADMIN", "QUALITY_MANAGER"], departments: ["Kalite", "Laboratuvar"] },
@@ -800,6 +806,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const filteredEntegrasyonItems = filterItems(entegrasyonMenuItems as unknown as typeof mainMenuItems)
   // Yönetim öğeleri de permission alanını string tutuyor; aynı cast.
   const filteredYonetimItems = filterItems(yonetimMenuItems as unknown as typeof mainMenuItems)
+  const filteredRaporItems = filterItems(raporMenuItems as unknown as typeof mainMenuItems)
   const filteredBottomItems = filterItems(bottomMenuItems)
 
   // Sandbox: SUPER_ADMIN tümünü görür, diğerleri sadece kendi sandbox'ını
@@ -835,6 +842,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     { group: "Sistem Geliştirme", items: filteredSistemGelistirmeItems },
     { group: "Entegrasyon", items: filteredEntegrasyonItems },
     { group: "Yönetim", items: filteredYonetimItems },
+    { group: "Raporlar", items: filteredRaporItems },
     { group: "Diğer", items: filteredBottomItems },
     { group: "Sandbox", items: filteredSandboxItems },
   ])
@@ -1561,6 +1569,9 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
             )}
           </>
         )}
+
+        {/* Raporlar (rapor.view) */}
+        {filteredRaporItems.map(item => renderMenuItem(item))}
 
         {/* Diğer Menü Öğeleri */}
         {filteredBottomItems.map(item => renderMenuItem(item))}

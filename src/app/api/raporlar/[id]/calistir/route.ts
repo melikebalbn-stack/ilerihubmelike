@@ -9,6 +9,7 @@ import { veriSetiCalistir } from '@/lib/rapor/veri-seti'
 import { raporRender } from '@/lib/rapor/render'
 import { ifadeCalistir, ifadeDerle } from '@/lib/rapor/ifade'
 import type { SablonIcerik, VeriSetiTanim } from '@/lib/rapor/tipler'
+import { parametreleriHazirla } from '@/lib/rapor/sablon-parametre'
 
 export const dynamic = 'force-dynamic'
 
@@ -16,37 +17,6 @@ const GovdeSchema = z.object({
   parametreler: z.record(z.string(), z.unknown()).default({}),
   cikti: z.enum(['EKRAN', 'XLSX']).default('EKRAN'),
 })
-
-/** Şablon parametre tipine göre ham değeri çevirir; zorunlu eksikse hata mesajı döner. */
-function parametreleriHazirla(icerik: SablonIcerik, ham: Record<string, unknown>): { degerler: Record<string, unknown>; hatalar: string[] } {
-  const degerler: Record<string, unknown> = {}
-  const hatalar: string[] = []
-  for (const p of icerik.parametreler ?? []) {
-    const v = ham[p.ad]
-    const bos = v === undefined || v === null || (typeof v === 'string' && v.trim() === '')
-    if (bos) {
-      if (p.zorunlu) hatalar.push(`'${p.etiket}' zorunludur`)
-      continue
-    }
-    switch (p.tip) {
-      case 'sayi': {
-        const n = typeof v === 'number' ? v : Number(String(v).replace(',', '.'))
-        if (!Number.isFinite(n)) { hatalar.push(`'${p.etiket}' sayı olmalı`); continue }
-        degerler[p.ad] = n
-        break
-      }
-      case 'tarih': {
-        const d = v instanceof Date ? v : new Date(String(v))
-        if (Number.isNaN(d.getTime())) { hatalar.push(`'${p.etiket}' geçerli bir tarih olmalı`); continue }
-        degerler[p.ad] = d
-        break
-      }
-      default:
-        degerler[p.ad] = typeof v === 'string' ? v.trim() : String(v)
-    }
-  }
-  return { degerler, hatalar }
-}
 
 /** Satırlara hesaplanan alanları ekler (XLSX yolu; EKRAN'da render bunu kendisi yapar). */
 function hesaplananlariUygula(icerik: SablonIcerik, satirlar: Record<string, unknown>[]): Record<string, unknown>[] {

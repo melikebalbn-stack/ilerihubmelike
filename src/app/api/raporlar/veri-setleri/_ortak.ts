@@ -33,4 +33,5 @@ export function tanimHatalari(tanim: VeriSetiTanim): string[] {
 
 export const json = (v: unknown): Prisma.InputJsonValue => JSON.parse(JSON.stringify(v)) as Prisma.InputJsonValue
 
-export const uniqueIhlali = (e: unknown) => e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002'
+// instanceof yerine kod denetimi: $transaction içinden gelen hata farklı runtime örneğinden olabiliyor.
+export const uniqueIhlali = (e: unknown) => typeof e === 'object' && e !== null && (e as { code?: string }).code === 'P2002'

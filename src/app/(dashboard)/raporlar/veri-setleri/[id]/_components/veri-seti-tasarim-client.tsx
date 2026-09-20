@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
 import { Checkbox } from '@/components/ui/checkbox'
 import { NativeSelect } from '@/components/ui/select'
+import { DateField } from '@/components/ui/date-field'
 import { ChevronDown, ChevronRight, Database, Download, Loader2, Play, Plus, Save, Search, Trash2, X } from 'lucide-react'
 import type { Birlestirme, Kaynak, KaynakIfs, KaynakPostgres, VeriSetiTanim } from '@/lib/rapor/tipler'
 import { GeriRozet } from '../../../_components/rozet-link'
@@ -620,7 +621,9 @@ export default function VeriSetiTasarimClient({ katalogYukleyebilir, mevcut }: P
                     <div key={p} className="grid grid-cols-[1fr_auto] gap-1 items-end">
                       <div className="space-y-1">
                         <Label className="text-xs font-mono">{'{p.' + p + '}'}</Label>
-                        <Input className="h-8" type={v.tip === 'tarih' ? 'date' : v.tip === 'sayi' ? 'number' : 'text'} value={v.deger} onChange={(e) => set({ deger: e.target.value })} />
+                        {v.tip === 'tarih'
+                          ? <DateField id={`vs-p-${p}`} value={v.deger} onChange={(deger) => set({ deger })} takvim />
+                          : <Input className="h-8" type={v.tip === 'sayi' ? 'number' : 'text'} value={v.deger} onChange={(e) => set({ deger: e.target.value })} />}
                       </div>
                       <NativeSelect className="h-8 w-24 text-xs" value={v.tip} onChange={(e) => set({ tip: e.target.value as ParamTip })}>
                         <option value="metin">metin</option><option value="sayi">sayı</option><option value="tarih">tarih</option>

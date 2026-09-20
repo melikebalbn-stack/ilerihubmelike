@@ -32,10 +32,12 @@ export default async function RaporCalistirPage({ params }: { params: Promise<{ 
   }
 
   const icerik = sablon.icerik as unknown as SablonIcerik
+  const tasarlayabilir = await hasPermission(PERMISSION_KEYS.RAPOR_TASARLA)
   return (
     <RaporCalistirClient
       sablon={{ id: sablon.id, kod: sablon.kod, ad: sablon.ad, aciklama: sablon.aciklama, durum: sablon.durum }}
       parametreler={icerik.parametreler ?? []}
+      tasarlayabilir={tasarlayabilir}
     />
   )
 }

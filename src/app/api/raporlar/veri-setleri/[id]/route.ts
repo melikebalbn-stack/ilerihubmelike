@@ -17,7 +17,27 @@ export async function GET(_req: Request, { params }: Ctx) {
     include: { sablonlar: { select: { id: true, kod: true, ad: true, durum: true } }, olusturan: { select: { name: true } } },
   })
   if (!v) return NextResponse.json({ error: 'Veri seti bulunamadı' }, { status: 404 })
-  return NextResponse.json({ veriSeti: v })
+  return NextResponse.json({ veriSeti: v, alanlar: await alanTipleri(v.tanim as unknown as VeriSetiTanim) })
+}
+
+const PG_TIP: Array<[RegExp, string]> = [[/int|numeric|decimal|real|double|money/i, 'sayi'], [/date|time/i, 'tarih'], [/bool/i, 'mantiksal']]
+
+/**
+ * Çıktı alanları + veri tipi (tasarım ekranı için). IFS: rapor_katalog (kaynakAd=projeksiyon, alan adı);
+ * Hub: information_schema (tasarim.tablo). Bulunamazsa 'metin'.
+ */
+async function alanTipleri(tanim: VeriSetiTanim): Promise<Array<{ ad: string; yol: string; veriTipi: string }>> {
+  const tipByYol = new Map<string, string>()
+  for (const k of tanim.kaynaklar ?? []) {
+    if (k.tip === 'ifs-odata') {
+      const satirlar = await prisma.raporKatalog.findMany({ where: { kaynakTipi: 'IFS_ODATA', kaynakAd: k.projeksiyon }, select: { alan: true, veriTipi: true }, distinct: ['alan'] })
+      for (const s of satirlar) tipByYol.set(`${k.ad}.${s.alan}`, s.veriTipi)
+    } else if (k.tasarim?.tablo && /^[A-Za-z_][A-Za-z0-9_]*$/.test(k.tasarim.tablo)) {
+      const kolonlar = await prisma.$queryRaw<{ ad: string; tip: string }[]>`SELECT column_name AS "ad", data_type AS "tip" FROM information_schema.columns WHERE table_schema = 'public' AND table_name = ${k.tasarim.tablo}`
+      for (const c of kolonlar) tipByYol.set(`${k.ad}.${c.ad}`, PG_TIP.find(([re]) => re.test(c.tip))?.[1] ?? 'metin')
+    }
+  }
+  return Object.entries(tanim.alanlar ?? {}).map(([ad, yol]) => ({ ad, yol, veriTipi: tipByYol.get(yol) ?? 'metin' }))
 }
 
 export async function PUT(req: Request, { params }: Ctx) {

@@ -24,9 +24,14 @@
 // Bu turda YALNIZ popover ÇAĞRILMIYOR — kod SİLİNMEDİ, aşağıda `TAKVIM_POPOVER_AKTIF`
 // bayrağıyla kapalı duruyor. Kalıcı çözümde (Radix sürümü / Popover'sız takvim) bayrak
 // true yapılıp bu blok geri açılacak. Elle GG.AA.YYYY girişi etkilenmedi.
+//
+// 2026-09-20 — POPOVER'SIZ TAKVİM (opt-in): `takvim` prop'u ile Radix'e hiç dokunmadan
+// (FocusScope yok) düz konumlu bir <div> içinde aynı ızgara açılır; dışarı tıklama / Esc
+// kapatır. Varsayılan KAPALI → başvuru formu (HealthStep/FormDateInput) davranışı değişmedi.
+// Rapor ekranları `takvim` geçer. Radix popover bloğu yine bayrağın arkasında duruyor.
 const TAKVIM_POPOVER_AKTIF = false
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { addDays, format, isValid, parse, startOfMonth, startOfWeek } from 'date-fns'
 import { tr } from 'date-fns/locale'
 import { CalendarDays } from 'lucide-react'
@@ -88,6 +93,8 @@ interface Props {
   acilisYili?: number
   id?: string
   className?: string
+  /** Popover'sız (Radix'siz) takvim düğmesi. Varsayılan false — elle giriş tek başına kalır. */
+  takvim?: boolean
 }
 
 export function DateField({
@@ -99,6 +106,7 @@ export function DateField({
   acilisYili,
   id,
   className,
+  takvim = false,
 }: Props) {
   const secili = isoToDate(value)
   const [metin, setMetin] = useState(secili ? format(secili, GOSTERIM) : '')
@@ -145,6 +153,17 @@ export function DateField({
   )
 
   const sinirDisi = (d: Date): boolean => !!(minD && d < minD) || !!(maxD && d > maxD)
+
+  // Popover'sız takvim: dışarı tıklama ve Esc ile kapanır (Radix yok → FocusScope döngüsü yok).
+  const kapRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!takvim || !acik) return
+    const disari = (e: MouseEvent) => { if (kapRef.current && !kapRef.current.contains(e.target as Node)) setAcik(false) }
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setAcik(false) }
+    document.addEventListener('mousedown', disari)
+    document.addEventListener('keydown', esc)
+    return () => { document.removeEventListener('mousedown', disari); document.removeEventListener('keydown', esc) }
+  }, [takvim, acik])
 
   function metinDegisti(raw: string) {
     const m = maskele(raw)
@@ -200,38 +219,9 @@ export function DateField({
     return Array.from({ length: 7 }, (_, i) => format(addDays(ilk, i), 'EEEEEE', { locale: tr }))
   }, [])
 
-  return (
-    <div className={className}>
-      <div className="flex items-stretch gap-2">
-        <input
-          id={id}
-          type="text"
-          inputMode="numeric"
-          autoComplete="off"
-          placeholder="GG.AA.YYYY"
-          value={metin}
-          disabled={disabled}
-          onChange={(e) => metinDegisti(e.target.value)}
-          onBlur={metinBitti}
-          className={cn(
-            'w-full rounded-lg border bg-white px-3 py-2.5 text-sm outline-none transition-colors focus:ring-0 disabled:bg-slate-100',
-            hata ? 'border-red-400 focus:border-red-500' : 'border-slate-200 focus:border-[#1B4F72]'
-          )}
-        />
-        {TAKVIM_POPOVER_AKTIF && (
-        <Popover open={acik} onOpenChange={setAcik}>
-          <PopoverTrigger asChild>
-            <button
-              type="button"
-              disabled={disabled}
-              aria-label="Takvimi aç"
-              className="shrink-0 rounded-lg border border-slate-200 bg-white px-3 text-slate-600 transition-colors hover:bg-slate-50 disabled:bg-slate-100"
-            >
-              <CalendarDays className="h-4 w-4" />
-            </button>
-          </PopoverTrigger>
-          <PopoverContent align="start" className="w-auto p-3">
-            {/* Yıl + ay AÇILIR LİSTE — tek tek ileri/geri tıklama yok. */}
+  const takvimGovdesi = (
+    <>
+      {/* Yıl + ay AÇILIR LİSTE — tek tek ileri/geri tıklama yok. */}
             <div className="mb-2 flex gap-2">
               <select
                 aria-label="Yıl"
@@ -284,12 +274,64 @@ export function DateField({
                 )
               })}
             </div>
+    </>
+  )
+
+  return (
+    <div ref={kapRef} className={cn('relative', className)}>
+      <div className="flex items-stretch gap-2">
+        <input
+          id={id}
+          type="text"
+          inputMode="numeric"
+          autoComplete="off"
+          placeholder="GG.AA.YYYY"
+          value={metin}
+          disabled={disabled}
+          onChange={(e) => metinDegisti(e.target.value)}
+          onBlur={metinBitti}
+          className={cn(
+            'w-full rounded-lg border bg-white px-3 py-2.5 text-sm outline-none transition-colors focus:ring-0 disabled:bg-slate-100',
+            hata ? 'border-red-400 focus:border-red-500' : 'border-slate-200 focus:border-[#1B4F72]'
+          )}
+        />
+        {takvim && !TAKVIM_POPOVER_AKTIF && (
+          <button
+            type="button"
+            disabled={disabled}
+            aria-label="Takvimi aç"
+            aria-expanded={acik}
+            onClick={() => setAcik((a) => !a)}
+            className="shrink-0 rounded-lg border border-slate-200 bg-white px-3 text-slate-600 transition-colors hover:bg-slate-50 disabled:bg-slate-100"
+          >
+            <CalendarDays className="h-4 w-4" />
+          </button>
+        )}
+        {TAKVIM_POPOVER_AKTIF && (
+        <Popover open={acik} onOpenChange={setAcik}>
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              disabled={disabled}
+              aria-label="Takvimi aç"
+              className="shrink-0 rounded-lg border border-slate-200 bg-white px-3 text-slate-600 transition-colors hover:bg-slate-50 disabled:bg-slate-100"
+            >
+              <CalendarDays className="h-4 w-4" />
+            </button>
+          </PopoverTrigger>
+          <PopoverContent align="start" className="w-auto p-3">
+            {takvimGovdesi}
           </PopoverContent>
         </Popover>
         )}
       </div>
+      {takvim && !TAKVIM_POPOVER_AKTIF && acik && (
+        <div className="absolute left-0 top-full z-50 mt-1 w-auto rounded-md border bg-white p-3 shadow-md">
+          {takvimGovdesi}
+        </div>
+      )}
       {/* Takvim kapalıyken kullanıcı ne yapacağını bilsin. */}
-      {!TAKVIM_POPOVER_AKTIF && !hata && (
+      {!TAKVIM_POPOVER_AKTIF && !takvim && !hata && (
         <p className="mt-1 text-xs text-slate-500">
           Tarihi GG.AA.YYYY biçimiyle yazın (ör. 15.03.1990)
         </p>

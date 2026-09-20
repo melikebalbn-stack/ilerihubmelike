@@ -7,8 +7,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { DateField } from '@/components/ui/date-field'
-import { FileBarChart2, FileSpreadsheet, Loader2, Play, Printer } from 'lucide-react'
-import { GeriRozet } from '../../_components/rozet-link'
+import { FileBarChart2, FileSpreadsheet, Loader2, PencilRuler, Play, Printer } from 'lucide-react'
+import { GeriRozet, RozetLink } from '../../_components/rozet-link'
 import type { SablonParametre } from '@/lib/rapor/tipler'
 
 const NAVY = '#1B4F72'
@@ -16,11 +16,12 @@ const NAVY = '#1B4F72'
 interface Props {
   sablon: { id: string; kod: string; ad: string; aciklama: string | null; durum: 'TASLAK' | 'YAYINDA' | 'ARSIV' }
   parametreler: SablonParametre[]
+  tasarlayabilir?: boolean
 }
 
 interface Sonuc { html: string; satirSayisi: number; sureMs: number }
 
-export default function RaporCalistirClient({ sablon, parametreler }: Props) {
+export default function RaporCalistirClient({ sablon, parametreler, tasarlayabilir }: Props) {
   const [degerler, setDegerler] = useState<Record<string, string>>({})
   const [sonuc, setSonuc] = useState<Sonuc | null>(null)
   const [hata, setHata] = useState<string | null>(null)
@@ -90,7 +91,7 @@ export default function RaporCalistirClient({ sablon, parametreler }: Props) {
     const set = (deger: string) => setDegerler((d) => ({ ...d, [p.ad]: deger }))
     switch (p.tip) {
       case 'tarih':
-        return <DateField id={`p-${p.ad}`} value={v} onChange={set} />
+        return <DateField id={`p-${p.ad}`} value={v} onChange={set} takvim />
       case 'sayi':
         return <Input id={`p-${p.ad}`} type="number" inputMode="decimal" value={v} onChange={(e) => set(e.target.value)} />
       case 'liste': // Faz 1: liste kaynağı tanımlı değil — serbest metin (virgülle ayrılmış)
@@ -113,6 +114,9 @@ export default function RaporCalistirClient({ sablon, parametreler }: Props) {
             <span className="font-mono">{sablon.kod}</span>{sablon.aciklama ? ` · ${sablon.aciklama}` : ''}
           </p>
         </div>
+        {tasarlayabilir && (
+          <RozetLink href={`/raporlar/tasarim/${sablon.id}`} icon={<PencilRuler className="h-3.5 w-3.5" />}>Tasarımı düzenle</RozetLink>
+        )}
       </div>
 
       <Card>

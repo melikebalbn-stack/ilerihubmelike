@@ -70,6 +70,57 @@ async function getJson<T>(url: string): Promise<T> {
   return d as T
 }
 
+/** "Contract eq 'X'" veya "Contract eq {p.x}" — parametreli hâl de site koşulu sayılır (mükerrer eklenmesin). */
+const CONTRACT_RE = /(?:^|\s+and\s+)?\bContract\s+eq\s+('[^']*'|\{p\.[A-Za-z_][A-Za-z0-9_]*\})(?:\s+and\s+)?/i
+
+/** Filtredeki "Contract eq '…'" koşulunu okur. */
+function filtredekiSite(filtre: string | undefined): string {
+  const v = CONTRACT_RE.exec(filtre ?? '')?.[1] ?? ''
+  return v.startsWith("'") ? v.slice(1, -1) : v // '{p.x}' ham döner
+}
+
+/** Filtreden Contract koşulunu söküp (varsa) yeni site koşulunu başa "and" ile ekler; elle yazılanı korur. */
+function filtreyeSiteUygula(filtre: string | undefined, site: string): string {
+  let kalan = (filtre ?? '').replace(CONTRACT_RE, (m) => (/^\s+and\s+.*\s+and\s+$/i.test(m) ? ' and ' : '')).trim()
+  kalan = kalan.replace(/^and\s+/i, '').replace(/\s+and$/i, '').trim()
+  if (!site) return kalan
+  return kalan ? `Contract eq '${site}' and ${kalan}` : `Contract eq '${site}'`
+}
+
+const FILTRE_ORNEKLERI = ["ObjState eq 'Released'", 'RevisedDueDate ge 2026-01-01', "PartNo eq 'X'"]
+
+/** Alan seçim listesi: arama kutusu, seçililer daima üstte, sayaç + temizle. */
+function AlanSecici({ secenekler, secili, onToggle, onTemizle }: { secenekler: string[]; secili: string[]; onToggle: (alan: string, secili: boolean) => void; onTemizle: () => void }) {
+  const [ara, setAra] = useState('')
+  const seciliSet = new Set(secili)
+  const q = ara.trim().toLocaleLowerCase('tr-TR')
+  const seciliListe = secenekler.filter((a) => seciliSet.has(a))
+  const digerleri = secenekler.filter((a) => !seciliSet.has(a) && (!q || a.toLocaleLowerCase('tr-TR').includes(q)))
+  const satir = (a: string) => (
+    <label key={a} className="flex items-center gap-1.5 font-mono text-xs cursor-pointer">
+      <Checkbox checked={seciliSet.has(a)} onCheckedChange={(v) => onToggle(a, v === true)} />{a}
+    </label>
+  )
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center gap-2">
+        <Input className="h-8 text-xs" placeholder={`Alan ara… (${secenekler.length})`} value={ara} onChange={(e) => setAra(e.target.value)} />
+        <span className="text-xs text-muted-foreground whitespace-nowrap">Seçili: {secili.length}</span>
+        {secili.length > 0 && <button type="button" className="text-xs text-red-600 hover:underline whitespace-nowrap" onClick={onTemizle}>Seçimi temizle</button>}
+      </div>
+      <div className="max-h-56 overflow-y-auto border rounded p-2 space-y-2">
+        {seciliListe.length > 0 && (
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-x-3 gap-y-1 pb-2 border-b">{seciliListe.map(satir)}</div>
+        )}
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-x-3 gap-y-1">
+          {digerleri.map(satir)}
+          {digerleri.length === 0 && <span className="text-xs text-muted-foreground col-span-3">{q ? 'Eşleşen alan yok' : 'Tüm alanlar seçili'}</span>}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 const hucreMetni = (v: unknown): string => (v === null || v === undefined ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v))
 
 // ── Bileşen ─────────────────────────────────────────────────────────────
@@ -92,6 +143,10 @@ export default function VeriSetiTasarimClient({ katalogYukleyebilir, mevcut }: P
   /** kaynak takma adı → seçilebilir alan listesi (IFS katalog / Hub kolon). */
   const [kaynakAlanlari, setKaynakAlanlari] = useState<Record<string, string[]>>({})
   const [acikKaynak, setAcikKaynak] = useState<string | null>(null)
+  /** Tek kaynakta takma ad kutusu gizli; "Gelişmiş" ile açılır. ≥2 kaynakta hep görünür. */
+  const [gelismis, setGelismis] = useState(false)
+  const [siteler, setSiteler] = useState<{ varsayilan: string; siteler: { contract: string; aciklama: string }[] }>({ varsayilan: '', siteler: [] })
+  const [katalogAlanAra, setKatalogAlanAra] = useState('')
 
   // Sol — katalog
   const [arama, setArama] = useState('')
@@ -125,6 +180,7 @@ export default function VeriSetiTasarimClient({ katalogYukleyebilir, mevcut }: P
   useEffect(projeksiyonlariYukle, [projeksiyonlariYukle])
   useEffect(() => {
     getJson<{ tablolar: HubTablo[] }>('/api/raporlar/hub-tablolar').then((d) => setHubTablolar(d.tablolar)).catch((e: Error) => setSolHata(e.message))
+    getJson<{ varsayilan: string; siteler: { contract: string; aciklama: string }[] }>('/api/raporlar/katalog/siteler').then((d) => setSiteler({ varsayilan: d.varsayilan, siteler: d.siteler })).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -191,11 +247,23 @@ export default function VeriSetiTasarimClient({ katalogYukleyebilir, mevcut }: P
 
   function ifsKaynakEkle(entity: Entity, entitySet: string) {
     const takma = takmaAdUret(entity.entity, kaynakAdlari)
-    const anahtarlar = katalogAlanlari.filter((a) => a.anahtarMi).map((a) => a.alan)
-    const k: KaynakIfs = { ad: takma, tip: 'ifs-odata', projeksiyon: seciliProjeksiyon, entitySet, select: anahtarlar, top: 500 }
+    const projeksiyon = seciliProjeksiyon
+    const uygula = (alanlar: KatalogAlan[]) => {
+      // Alan listesi henüz yüklenmemişken eklenen kaynak listesiz kalmasın: liste gelince tamamla.
+      setKaynakAlanlari((m) => ({ ...m, [takma]: alanlar.map((a) => a.alan) }))
+      const contractVar = alanlar.some((a) => a.alan.toLowerCase() === 'contract')
+      setKaynaklar((l) => l.map((x) => {
+        if (x.ad !== takma || x.tip !== 'ifs-odata') return x
+        const select = x.select?.length ? x.select : alanlar.filter((a) => a.anahtarMi).map((a) => a.alan)
+        const filtre = !x.filtre && contractVar && siteler.varsayilan ? `Contract eq '${siteler.varsayilan}'` : x.filtre
+        return { ...x, select, filtre }
+      }))
+    }
+    const k: KaynakIfs = { ad: takma, tip: 'ifs-odata', projeksiyon, entitySet, select: [], top: 500 }
     setKaynaklar((l) => [...l, k])
-    setKaynakAlanlari((m) => ({ ...m, [takma]: katalogAlanlari.map((a) => a.alan) }))
     setAcikKaynak(takma)
+    if (katalogAlanlari.length) uygula(katalogAlanlari)
+    else getJson<{ alanlar: KatalogAlan[] }>(`/api/raporlar/katalog/alanlar?projeksiyon=${encodeURIComponent(projeksiyon)}&entity=${encodeURIComponent(entity.entity)}`).then((d) => uygula(d.alanlar)).catch((e: Error) => setSolHata(e.message))
   }
 
   function hubKaynakEkle(tablo: string) {
@@ -439,8 +507,9 @@ export default function VeriSetiTasarimClient({ katalogYukleyebilir, mevcut }: P
                                   {e.entitySetleri.length === 0 && (
                                     <Button size="sm" variant="outline" className="h-7 w-full justify-start text-xs" onClick={() => ifsKaynakEkle(e, e.entity + 's')}><Plus className="h-3 w-3 mr-1" />Kaynak olarak ekle</Button>
                                   )}
+                                  {katalogAlanlari.length > 12 && <Input className="h-7 text-xs" placeholder={`Alan ara… (${katalogAlanlari.length})`} value={katalogAlanAra} onChange={(ev) => setKatalogAlanAra(ev.target.value)} />}
                                   <div className="max-h-40 overflow-y-auto text-[11px] font-mono text-muted-foreground">
-                                    {katalogAlanlari.map((a) => <div key={a.alan}>{a.anahtarMi ? '🔑 ' : ''}{a.alan} <span className="opacity-60">{a.veriTipi}</span></div>)}
+                                    {katalogAlanlari.filter((a) => !katalogAlanAra.trim() || a.alan.toLocaleLowerCase('tr-TR').includes(katalogAlanAra.trim().toLocaleLowerCase('tr-TR'))).map((a) => <div key={a.alan}>{a.anahtarMi ? '🔑 ' : ''}{a.alan} <span className="opacity-60">{a.veriTipi}</span></div>)}
                                   </div>
                                 </div>
                               )}
@@ -493,7 +562,15 @@ export default function VeriSetiTasarimClient({ katalogYukleyebilir, mevcut }: P
                   <div key={i} className="border rounded-md">
                     <div className="flex items-center gap-2 px-3 py-2">
                       <button onClick={() => setAcikKaynak(acik ? null : k.ad)} className="text-muted-foreground">{acik ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}</button>
-                      <Input className="h-8 w-40 font-mono text-xs" value={k.ad} onChange={(e) => kaynakAdDegistir(i, e.target.value.replace(/[^A-Za-z0-9_]/g, ''))} title="Takma ad" />
+                      {(kaynaklar.length > 1 || gelismis) ? (
+                        <div className="flex items-center gap-1.5">
+                          <Label className="text-xs whitespace-nowrap" htmlFor={`takma-${i}`}>Takma ad</Label>
+                          <Input id={`takma-${i}`} className="h-8 w-36 font-mono text-xs" value={k.ad} onChange={(e) => kaynakAdDegistir(i, e.target.value.replace(/[^A-Za-z0-9_]/g, ''))} title="Birleştirmede bu kaynağa verilen kısa isim" />
+                          <span className="text-[11px] text-muted-foreground hidden lg:inline">Birleştirmede bu kaynağa verilen kısa isim</span>
+                        </div>
+                      ) : (
+                        <button type="button" className="text-[11px] text-muted-foreground hover:underline whitespace-nowrap" onClick={() => setGelismis(true)} title={`Takma ad: ${k.ad}`}>Gelişmiş</button>
+                      )}
                       <Badge variant="outline" className="font-normal">{k.tip === 'ifs-odata' ? 'IFS' : 'Hub'}</Badge>
                       <span className="font-mono text-xs truncate flex-1 text-muted-foreground">
                         {k.tip === 'ifs-odata' ? `${k.projeksiyon} › ${k.entitySet}` : (k.tasarim?.tablo ?? 'SQL')}
@@ -516,31 +593,38 @@ export default function VeriSetiTasarimClient({ katalogYukleyebilir, mevcut }: P
                               {secenekler.length === 0 ? (
                                 <Textarea className="font-mono text-xs" rows={2} value={(k.select ?? []).join(', ')} onChange={(e) => kaynakGuncelle(i, (x) => ({ ...x, select: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) } as Kaynak))} placeholder="Katalog alan listesi yok — virgülle yazın" />
                               ) : (
-                                <div className="max-h-44 overflow-y-auto border rounded p-2 grid grid-cols-2 lg:grid-cols-3 gap-x-3 gap-y-1">
-                                  {secenekler.map((a) => (
-                                    <label key={a} className="flex items-center gap-1.5 font-mono text-xs cursor-pointer">
-                                      <Checkbox checked={(k.select ?? []).includes(a)} onCheckedChange={(v) => ifsAlanToggle(i, a, v === true)} />{a}
-                                    </label>
-                                  ))}
-                                </div>
+                                <AlanSecici secenekler={secenekler} secili={k.select ?? []} onToggle={(a, v) => ifsAlanToggle(i, a, v)} onTemizle={() => kaynakGuncelle(i, (x) => ({ ...x, select: [] } as Kaynak))} />
                               )}
                             </div>
+                            {(secenekler.length === 0 || secenekler.some((a) => a.toLowerCase() === 'contract')) && (
+                              <div className="space-y-1">
+                                <Label className="text-xs">IFS Site (Contract)</Label>
+                                <NativeSelect className="h-8 text-xs w-64" value={filtredekiSite(k.filtre)} onChange={(e) => kaynakGuncelle(i, (x) => ({ ...x, filtre: filtreyeSiteUygula((x as KaynakIfs).filtre, e.target.value) } as Kaynak))}>
+                                  <option value="">Tümü (site filtresi yok)</option>
+                                  {siteler.siteler.map((st) => <option key={st.contract} value={st.contract}>{st.contract}{st.aciklama ? ` — ${st.aciklama}` : ''}{st.contract === siteler.varsayilan ? ' (varsayılan)' : ''}</option>)}
+                                  {filtredekiSite(k.filtre) && !siteler.siteler.some((st) => st.contract === filtredekiSite(k.filtre)) && <option value={filtredekiSite(k.filtre)}>{filtredekiSite(k.filtre).startsWith('{') ? `Parametre: ${filtredekiSite(k.filtre)}` : filtredekiSite(k.filtre)}</option>}
+                                </NativeSelect>
+                              </div>
+                            )}
                             <div className="space-y-1">
-                              <Label className="text-xs">Filtre (OData $filter, {'{p.ad}'} yer tutucusu)</Label>
+                              <div className="flex items-baseline justify-between gap-2">
+                                <Label className="text-xs">Filtre ($filter, {'{p.ad}'} yer tutucusu)</Label>
+                                <span className="text-[11px] text-amber-700">OData sözdizimi (SQL değil)</span>
+                              </div>
                               <Textarea className="font-mono text-xs" rows={2} value={k.filtre ?? ''} onChange={(e) => kaynakGuncelle(i, (x) => ({ ...x, filtre: e.target.value } as Kaynak))} placeholder="Contract eq {p.contract} and RevisedDueDate ge {p.baslangic}" />
+                              <div className="text-[11px] text-muted-foreground flex flex-wrap items-center gap-x-1">
+                                Örnek (tıklayınca eklenir):
+                                {FILTRE_ORNEKLERI.map((o, oi) => (
+                                  <span key={o}>{oi > 0 && ' · '}<button type="button" className="font-mono hover:underline" onClick={() => kaynakGuncelle(i, (x) => { const f = ((x as KaynakIfs).filtre ?? '').trim(); return { ...x, filtre: f ? `${f} and ${o}` : o } as Kaynak })}>{o}</button></span>
+                                ))}
+                              </div>
                             </div>
                           </>
                         ) : k.tasarim ? (
                           <>
                             <div className="space-y-1">
                               <Label className="text-xs">Kolonlar — {k.tasarim.alanlar.length || 'tümü'}</Label>
-                              <div className="max-h-44 overflow-y-auto border rounded p-2 grid grid-cols-2 lg:grid-cols-3 gap-x-3 gap-y-1">
-                                {secenekler.map((a) => (
-                                  <label key={a} className="flex items-center gap-1.5 font-mono text-xs cursor-pointer">
-                                    <Checkbox checked={k.tasarim!.alanlar.includes(a)} onCheckedChange={(v) => hubTasarimGuncelle(i, (t) => ({ ...t, alanlar: v === true ? [...t.alanlar, a] : t.alanlar.filter((x) => x !== a) }))} />{a}
-                                  </label>
-                                ))}
-                              </div>
+                              <AlanSecici secenekler={secenekler} secili={k.tasarim.alanlar} onToggle={(a, v) => hubTasarimGuncelle(i, (t) => ({ ...t, alanlar: v ? [...t.alanlar, a] : t.alanlar.filter((x) => x !== a) }))} onTemizle={() => hubTasarimGuncelle(i, (t) => ({ ...t, alanlar: [] }))} />
                             </div>
                             <div className="space-y-1">
                               <Label className="text-xs">WHERE (SQL, {'{p.ad}'} yer tutucusu → $n)</Label>

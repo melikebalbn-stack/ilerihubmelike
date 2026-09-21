@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireUser } from '@/lib/auth/require-user'
 import { prisma } from '@/lib/prisma'
-import { donemAcikMi, donemKilidiKontrol } from '@/lib/avans/donem-kilidi'
+import { donemAcikMi, donemGeriCekilebilirMi, donemKilidiKontrol } from '@/lib/avans/donem-kilidi'
 import { bulSorumluVeEkibi, sonucHataMesaji, sonucHataStatus } from './_lib/avans-formu-helpers'
 
 export const dynamic = 'force-dynamic'
@@ -28,9 +28,9 @@ export async function GET(request: NextRequest) {
   const donemYil = now.getFullYear()
   const donemAy = now.getMonth() + 1
 
-  // PROTOTİP: bu sorumlunun bu dönem için zaten girdiği talepler (bölüm
-  // bazında, bir sorumlu birden fazla bölümden sorumlu olabilir) — UI'da
-  // "Geri Çek" butonunu göstermek için.
+  // Bu sorumlunun bu dönem için zaten girdiği talepler (bölüm bazında, bir
+  // sorumlu birden fazla bölümden sorumlu olabilir) — UI'da "Geri Çek"
+  // butonunu göstermek için.
   const mevcutTalepKayitlari = await prisma.avansTalebi.findMany({
     where: { sorumluId: sonuc.sorumlu.id, donemYil, donemAy },
     select: { id: true, bolum: true },
@@ -41,7 +41,10 @@ export async function GET(request: NextRequest) {
     donemYil,
     donemAy,
     mevcutTalepler: mevcutTalepKayitlari.map((t) => ({ avansTalebiId: t.id, bolum: t.bolum })),
+    // donemAcik: yeni talep girme/düzenleme (Gönder butonu) için.
     donemAcik: await donemAcikMi(donemYil, donemAy),
+    // geriCekilebilir: Geri Çek butonu için — SADECE manuel duruma bakar.
+    geriCekilebilir: await donemGeriCekilebilirMi(donemYil, donemAy),
   })
 }
 

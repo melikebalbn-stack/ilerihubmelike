@@ -4,13 +4,14 @@ import { prisma } from '@/lib/prisma'
 /**
  * Avans dönem kilidi — TEK DOĞRULUK KAYNAĞI.
  *
- * "Bu (yil, ay) dönemi kapatılmış mı?" sorusunun cevabı yalnızca
- * AvansDonemKapanis tablosunda bir satır olup olmamasıdır. Talebin ait olduğu
- * dönem (AvansTalebi.donemYil / donemAy) üzerinden bakılır — kaydın oluşturulma
- * tarihi (createdAt) DEĞİL. Böylece "Ocak'ta girilen Aralık avansı" gibi
- * durumlarda doğru dönem kilitlenir.
+ * Öncelik sırası: MANUEL DURUM > OTOMATİK VARSAYILAN.
+ * - Manuel durum, İK'nın donem-kapat/route.ts üzerinden yaptığı en son
+ *   KAPAT/AÇ işlemidir — bkz. `donemManuelDurum`. İK ne derse o olur,
+ *   otomatik kural sadece manuel müdahale YOKSA devreye girer.
+ * - Otomatik varsayılan (bkz. `donemOtomatikDurum`) sadece bir öneridir;
+ *   İK'nın yetkisini hiçbir koşulda ezmez (Melih Bey'in tasarım düzeltmesi).
  *
- * Kilit UI'da değil, ENDPOINT'te uygulanır: kapalı bir döneme yazma/silme
+ * Kilit UI'da değil, ENDPOINT'te uygulanır: kilitli bir döneme yazma/silme
  * denemesi 409 döner. Her uç bu dosyadaki `donemKilidiKontrol`'den geçsin,
  * uç içinde ayrı kontrol YAZILMASIN — kural tek yerde dursun.
  */
@@ -27,21 +28,18 @@ export function donemKapaliMesaji(yil: number, ay: number): string {
   return `${yil}/${ay} dönemi kapatılmış, değişiklik yapılamaz.`
 }
 
-export type DonemOtomatikDurum = 'ACIK' | 'OTOMATIK_KILITLI' | 'KALICI_KAPALI'
+export type DonemOtomatikDurum = 'ACIK' | 'KILITLI'
 
 /**
- * PROTOTİP — otomatik dönem durumu, manuel kapanıştan (AvansDonemKapanis)
- * BAĞIMSIZ, saf fonksiyon. `bugun` enjekte edilebilir (test için); vermezsen
- * gerçek sistem saati kullanılır.
+ * Otomatik dönem durumu — sadece bir VARSAYILAN/ÖNERİ, manuel durumdan
+ * BAĞIMSIZ hesaplanan saf fonksiyon. `bugun` enjekte edilebilir (test
+ * için); vermezsen gerçek sistem saati kullanılır.
  *
  * Kural (donemYil/donemAy'ın kendi ayı baz alınarak, `bugun`ün ayı ile
  * karşılaştırılır):
- * - Dönem bugünün ayından ÖNCEyse (yıl/ay sırası küçükse)  → KALICI_KAPALI
+ * - Dönem bugünün ayından ÖNCEyse (yıl/ay sırası küçükse)  → KILITLI
  * - Dönem bugünün ayından SONRAysa (yıl/ay sırası büyükse) → ACIK
- * - Dönem TAM bugünün ayıysa, günün kaçı olduğuna bakılır:
- *     1-15  → ACIK
- *     16-21 → OTOMATIK_KILITLI (geçici — düzenleme/geri çekme yok)
- *     22+   → KALICI_KAPALI
+ * - Dönem TAM bugünün ayıysa: günü 1-15 → ACIK, günü 16+ → KILITLI
  */
 export function donemOtomatikDurum(
   donemYil: number,
@@ -51,33 +49,56 @@ export function donemOtomatikDurum(
   const donemSirasi = donemYil * 12 + donemAy
   const cariSirasi = bugun.getFullYear() * 12 + (bugun.getMonth() + 1)
 
-  if (donemSirasi < cariSirasi) return 'KALICI_KAPALI'
+  if (donemSirasi < cariSirasi) return 'KILITLI'
   if (donemSirasi > cariSirasi) return 'ACIK'
 
-  const gun = bugun.getDate()
-  if (gun <= 15) return 'ACIK'
-  if (gun <= 21) return 'OTOMATIK_KILITLI'
-  return 'KALICI_KAPALI'
+  return bugun.getDate() <= 15 ? 'ACIK' : 'KILITLI'
 }
 
-export type DonemKilitSebebi = 'MANUEL' | DonemOtomatikDurum
+export type DonemManuelDurum = 'ACIK' | 'KAPALI' | null
 
 /**
- * Birleşik kilit durumu: manuel kapanış (AvansDonemKapanis) VEYA otomatik
- * durum (OTOMATIK_KILITLI/KALICI_KAPALI) — ikisinden biri kilitliyse kilitli.
- * Manuel kapanış her zaman önce kontrol edilir (sebep önceliği: MANUEL).
+ * İK'nın bu dönem için en son yaptığı manuel işlem. `null` = hiç manuel
+ * müdahale yok, otomatik varsayılan uygulanır.
+ * - AvansDonemKapanis'ta satır varsa → 'KAPALI' (tek doğruluk kaynağı).
+ * - Satır yoksa ama AvansDonemKapanisLog'daki en son kayıt 'AC' ise →
+ *   'ACIK' (İK otomatik kilidi ezerek açmış, kalıcı override).
+ * - Hiç log da yoksa → null.
+ */
+export async function donemManuelDurum(yil: number, ay: number): Promise<DonemManuelDurum> {
+  const kapaliKayit = await prisma.avansDonemKapanis.findUnique({
+    where: { yil_ay: { yil, ay } },
+    select: { id: true },
+  })
+  if (kapaliKayit) return 'KAPALI'
+
+  const sonLog = await prisma.avansDonemKapanisLog.findFirst({
+    where: { yil, ay },
+    orderBy: { tarih: 'desc' },
+    select: { islem: true },
+  })
+  return sonLog?.islem === 'AC' ? 'ACIK' : null
+}
+
+export type DonemKilitSebebi = 'MANUEL' | 'OTOMATIK'
+
+/**
+ * Birleşik kilit durumu — YENİ TALEP GİRME/DÜZENLEME kontrolleri için.
+ * Öncelik: manuel durum varsa o kazanır (ACIK→açık, KAPALI→kilitli).
+ * Manuel müdahale YOKSA otomatik varsayılan uygulanır.
  */
 export async function donemKilitliMi(
   yil: number,
   ay: number,
   bugun?: Date
 ): Promise<{ kilitli: boolean; sebep: DonemKilitSebebi | null }> {
-  if (await donemKapaliMi(yil, ay)) {
-    return { kilitli: true, sebep: 'MANUEL' }
-  }
-  const otomatik = donemOtomatikDurum(yil, ay, bugun)
-  if (otomatik === 'ACIK') return { kilitli: false, sebep: null }
-  return { kilitli: true, sebep: otomatik }
+  const manuel = await donemManuelDurum(yil, ay)
+  if (manuel === 'KAPALI') return { kilitli: true, sebep: 'MANUEL' }
+  if (manuel === 'ACIK') return { kilitli: false, sebep: null }
+
+  // manuel === null: manuel müdahale yok, otomatik varsayılan uygulanır.
+  if (donemOtomatikDurum(yil, ay, bugun) === 'ACIK') return { kilitli: false, sebep: null }
+  return { kilitli: true, sebep: 'OTOMATIK' }
 }
 
 export async function donemAcikMi(yil: number, ay: number, bugun?: Date): Promise<boolean> {
@@ -86,19 +107,17 @@ export async function donemAcikMi(yil: number, ay: number, bugun?: Date): Promis
 
 export function donemKilitliMesaji(yil: number, ay: number, sebep: DonemKilitSebebi): string {
   if (sebep === 'MANUEL') return donemKapaliMesaji(yil, ay)
-  if (sebep === 'OTOMATIK_KILITLI') {
-    return `${yil}/${ay} dönemi otomatik olarak kilitlenmiştir (ayın 16-21'i arası) — düzenleme/geri çekme yapılamaz.`
-  }
-  return `${yil}/${ay} dönemi kalıcı olarak kapanmıştır, değişiklik yapılamaz.`
+  return `${yil}/${ay} dönemi otomatik olarak kilitlenmiştir (ayın 16'sından itibaren) — düzenleme/geri çekme yapılamaz. İK gerekirse elle açabilir.`
 }
 
 /**
- * Dönem kilitliyse (manuel VEYA otomatik) hazır 409 yanıtı, açıksa null döner.
+ * Dönem kilitliyse (manuel VEYA — manuel müdahale yoksa — otomatik
+ * varsayılan) hazır 409 yanıtı, açıksa null döner. YENİ TALEP GİRME /
+ * DÜZENLEME uçlarında kullanılır.
  * Kullanım:
  *   const kilit = await donemKilidiKontrol(yil, ay)
  *   if (kilit) return kilit
- * `bugun` opsiyoneldir, test için enjekte edilebilir — verilmezse gerçek
- * sistem saati kullanılır (mevcut çağıranların davranışı DEĞİŞMEZ).
+ * `bugun` opsiyoneldir, test için enjekte edilebilir.
  */
 export async function donemKilidiKontrol(
   yil: number,
@@ -110,4 +129,22 @@ export async function donemKilidiKontrol(
     return NextResponse.json({ error: donemKilitliMesaji(yil, ay, durum.sebep) }, { status: 409 })
   }
   return null
+}
+
+/**
+ * GERİ ÇEK kontrolü — otomatik gün kilidinden TAMAMEN BAĞIMSIZ, SADECE
+ * manuel duruma bakar (bkz. `donemManuelDurum`). Manuel kayıt yok VEYA
+ * manuel 'ACIK' → geri çekilebilir, günün kaçı olduğu önemli değil.
+ * Manuel 'KAPALI' → geri çekilemez.
+ */
+export async function donemGeriCekilebilirMi(yil: number, ay: number): Promise<boolean> {
+  return (await donemManuelDurum(yil, ay)) !== 'KAPALI'
+}
+
+export async function donemGeriCekKilidiKontrol(
+  yil: number,
+  ay: number
+): Promise<NextResponse | null> {
+  if (await donemGeriCekilebilirMi(yil, ay)) return null
+  return NextResponse.json({ error: donemKapaliMesaji(yil, ay) }, { status: 409 })
 }

@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireUser } from '@/lib/auth/require-user'
 import { prisma } from '@/lib/prisma'
-import { donemOtomatikDurum } from '@/lib/avans/donem-kilidi'
 
 export const dynamic = 'force-dynamic'
 
@@ -9,7 +8,10 @@ export const dynamic = 'force-dynamic'
  * Avans dönem kapatma/açma — SADECE İK.
  *
  * POST   { yil, ay, aciklama? }  → dönemi kapatır (AvansDonemKapanis satırı).
- * DELETE { yil, ay }             → dönemi yeniden açar (satırı siler).
+ * DELETE { yil, ay }             → dönemi açar (satır varsa siler, yoksa
+ *                                   sadece log'a 'AC' düşer) — HİÇBİR
+ *                                   KOŞULDA reddedilmez, otomatik dönem
+ *                                   kilidini (bkz. donem-kilidi.ts) ezer.
  * GET                            → kapalı dönem listesi (yönetim ekranı için).
  *
  * Kapatma bilgisi AvansDonemKapanis satırında (kapatanId, kapatmaTarihi),
@@ -125,25 +127,18 @@ export async function DELETE(request: NextRequest) {
     where: { yil_ay: { yil: body.yil, ay: body.ay } },
     select: { id: true },
   })
-  if (!mevcut) {
-    return NextResponse.json(
-      { error: `${body.yil}/${body.ay} dönemi zaten açık.` },
-      { status: 409 }
-    )
-  }
 
-  // PROTOTİP: otomatik dönem durumu KALICI_KAPALI ise (dönem geçmiş bir ay,
-  // ya da cari ayda ayın 22'sinden sonrası) İK'nın manuel "aç" işlemi bile
-  // bunu aşamaz — otomatik kural manuel açmadan daha güçlü.
-  if (donemOtomatikDurum(body.yil, body.ay) === 'KALICI_KAPALI') {
-    return NextResponse.json(
-      { error: 'Bu dönem kalıcı olarak kapanmıştır, tekrar açılamaz.' },
-      { status: 403 }
-    )
-  }
-
+  // İK'nın "aç" işlemi ARTIK HİÇBİR KOŞULDA reddedilmez — otomatik dönem
+  // durumu (bkz. donem-kilidi.ts) ne olursa olsun (geçmiş dönem dahil),
+  // İK manuel yetkisiyle her zaman açabilir; bu tercih Melih Bey'in kararı
+  // (bordro geç kapanırsa İK'nın düzeltme yapabilmesi gerekiyor). Kapalı
+  // satır yoksa (zaten manuel kapatılmamışsa) sadece log'a 'AC' düşülür —
+  // bu, otomatik kilidi ezen kalıcı bir override kaydı olarak iş görür
+  // (bkz. donemManuelDurum).
   await prisma.$transaction(async (tx) => {
-    await tx.avansDonemKapanis.delete({ where: { id: mevcut.id } })
+    if (mevcut) {
+      await tx.avansDonemKapanis.delete({ where: { id: mevcut.id } })
+    }
     await tx.avansDonemKapanisLog.create({
       data: {
         yil: body.yil,

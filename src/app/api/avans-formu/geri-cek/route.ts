@@ -1,18 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireUser } from '@/lib/auth/require-user'
 import { prisma } from '@/lib/prisma'
-import { donemKilidiKontrol } from '@/lib/avans/donem-kilidi'
+import { donemGeriCekKilidiKontrol } from '@/lib/avans/donem-kilidi'
 
 export const dynamic = 'force-dynamic'
 
 /**
- * PROTOTİP — DELETE: Kişinin KENDİ girdiği bir avans talebini geri çeker.
+ * DELETE: Kişinin KENDİ girdiği bir avans talebini geri çeker.
  * Hem kendim formu hem sorumlu formu kayıtları için AYNI uç: ikisinde de
  * AvansTalebi.sorumluId, formu gönderen kişinin kendi Personnel id'si (bkz.
  * kendi/route.ts POST ve route.ts POST) — tek bir sahiplik kontrolü yeterli.
  * AvansTalebi silinince satırlar cascade ile silinir (bkz. schema.prisma).
- * Dönem kilitliyse (manuel VEYA otomatik — bkz. donem-kilidi.ts) geri çekme
- * reddedilir.
+ *
+ * Kilit kontrolü SADECE manuel duruma bakar (donemGeriCekKilidiKontrol) —
+ * otomatik gün kilidine (donemOtomatikDurum) HİÇ bakmaz: İK elle
+ * kapatmadığı sürece, günün kaçı olursa olsun geri çekilebilir.
  */
 
 type DeleteBody = { avansTalebiId: string }
@@ -53,7 +55,7 @@ export async function DELETE(request: NextRequest) {
     )
   }
 
-  const kilit = await donemKilidiKontrol(talep.donemYil, talep.donemAy)
+  const kilit = await donemGeriCekKilidiKontrol(talep.donemYil, talep.donemAy)
   if (kilit) return kilit
 
   await prisma.avansTalebi.delete({ where: { id: talep.id } })

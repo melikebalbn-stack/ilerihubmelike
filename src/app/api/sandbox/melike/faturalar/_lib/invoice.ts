@@ -2,6 +2,11 @@ import { prisma } from '@/lib/prisma'
 import { InvoiceCurrency } from '@/generated/prisma'
 import { getRateForDate } from './tcmb'
 
+// Bölüm kaynağı: Personnel.bolum (serbest metin, personel listesinde de kullanılan gerçek değerler).
+// Ayrı bir "master" tablo (DepartmentDefinition/OrgUnit) YOK — o tablolar personel kayıtlarındaki
+// gerçek bölüm değerleriyle senkron kalmıyor (ör. "Yönetim" personelde var ama master listede yoktu).
+// departmentOrgUnitId ismi tarihsel; artık gerçekte bölüm ADI'nın kendisini tutuyor (id = name).
+
 export interface AllocationInput {
   departmentOrgUnitId: string
   percentage: number
@@ -32,24 +37,27 @@ export async function resolveDepartments(
     if (pctSum > 100.5) return 'Bölüm yüzdeleri toplamı %100\'ü geçemez'
     if (pctSum <= 0) return 'Geçerli bir yüzde gir'
 
-    const depts = await prisma.departmentDefinition.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } })
+    const depts = await prisma.personnel.findMany({
+      where: { bolum: { in: ids }, aktif: true },
+      select: { bolum: true },
+      distinct: ['bolum'],
+    })
     if (depts.length !== ids.length) return 'Geçersiz bölüm seçimi'
-    const nameById = new Map(depts.map((d) => [d.id, d.name]))
     return {
       departmentOrgUnitId: null,
       departmentName: null,
       allocations: allocations!.map((a) => ({
         departmentOrgUnitId: a.departmentOrgUnitId,
-        departmentName: nameById.get(a.departmentOrgUnitId)!,
+        departmentName: a.departmentOrgUnitId,
         percentage: Number(a.percentage),
       })),
     }
   }
 
   if (departmentOrgUnitId) {
-    const dept = await prisma.departmentDefinition.findUnique({ where: { id: departmentOrgUnitId }, select: { name: true } })
+    const dept = await prisma.personnel.findFirst({ where: { bolum: departmentOrgUnitId, aktif: true }, select: { bolum: true } })
     if (!dept) return 'Geçersiz bölüm'
-    return { departmentOrgUnitId, departmentName: dept.name, allocations: [] }
+    return { departmentOrgUnitId, departmentName: dept.bolum, allocations: [] }
   }
 
   return { departmentOrgUnitId: null, departmentName: null, allocations: [] }

@@ -39,10 +39,12 @@ export async function POST(request: NextRequest) {
     const existingNumbers = new Set(
       (await prisma.invoice.findMany({ select: { invoiceNumber: true } })).map((i) => i.invoiceNumber)
     )
-    const departments = await prisma.departmentDefinition.findMany({
-      where: { isActive: true },
-      select: { id: true, name: true },
+    const deptRows = await prisma.personnel.findMany({
+      where: { aktif: true, bolum: { not: '' } },
+      select: { bolum: true },
+      distinct: ['bolum'],
     })
+    const departments = deptRows.map((r) => ({ id: r.bolum, name: r.bolum }))
 
     const results: RowResult[] = []
     let created = 0

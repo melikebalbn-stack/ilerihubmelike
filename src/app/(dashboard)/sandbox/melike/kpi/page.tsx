@@ -547,9 +547,20 @@ function sayiFormat(n: number | null): string {
   return n.toLocaleString('tr-TR', { maximumFractionDigits: 2 })
 }
 
+// Bazı birimler kelime yerine sembol olarak gösterilir (€186.655 gibi, sonuna değil önüne).
+const PARA_SEMBOLLERI: Record<string, string> = {
+  EURO: '€', EUR: '€', '€': '€',
+  DOLAR: '$', USD: '$', '$': '$',
+  TL: '₺', TRY: '₺', LİRA: '₺', LIRA: '₺', '₺': '₺',
+}
+
 function sayiFormatBirimli(n: number | null, unit?: string | null): string {
   const s = sayiFormat(n)
   if (!s || !unit) return s
+  const normalize = unit.trim().toLocaleUpperCase('tr')
+  const sembol = PARA_SEMBOLLERI[normalize]
+  if (sembol) return `${sembol}${s}`
+  if (unit.trim() === '%') return `${s}%`
   return `${s} ${unit}`
 }
 
@@ -581,8 +592,8 @@ function GrafikTooltip({ active, payload, label, unit }: {
 }
 
 function DuzenlenebilirHucre({
-  deger, onKaydet, className, style,
-}: { deger: number | null; onKaydet: (v: number | null) => void; className?: string; style?: React.CSSProperties }) {
+  deger, onKaydet, className, style, unit,
+}: { deger: number | null; onKaydet: (v: number | null) => void; className?: string; style?: React.CSSProperties; unit?: string | null }) {
   const [duzenleniyor, setDuzenleniyor] = useState(false)
   const [taslak, setTaslak] = useState(deger == null ? '' : String(deger))
 
@@ -614,7 +625,7 @@ function DuzenlenebilirHucre({
       style={style}
       onClick={() => setDuzenleniyor(true)}
     >
-      {sayiFormat(deger) || <span className="text-muted-foreground">·</span>}
+      {sayiFormatBirimli(deger, unit) || <span className="text-muted-foreground">·</span>}
     </td>
   )
 }
@@ -747,13 +758,14 @@ function KpiVeriTablosu({
                     {ilkYil
                       ? ortYillar.map(([y, ort]) =>
                           yillarIleOlcum.has(y) ? (
-                            <td key={y} className="p-2 text-center font-medium bg-sky-100 text-sky-900 border-l border-slate-200">{sayiFormat(ort)}</td>
+                            <td key={y} className="p-2 text-center font-medium bg-sky-100 text-sky-900 border-l border-slate-200">{sayiFormatBirimli(ort, kpi.unit)}</td>
                           ) : (
                             <DuzenlenebilirHucre
                               key={y}
                               deger={ort}
                               onKaydet={(d) => ortalamaKaydet(y, d)}
                               className="p-2 text-center font-medium bg-sky-100 text-sky-900 border-l border-slate-200"
+                              unit={kpi.unit}
                             />
                           ),
                         )
@@ -770,6 +782,7 @@ function KpiVeriTablosu({
                             backgroundColor: tutuldu == null ? '#f8fafc' : tutuldu ? '#bbf7d0' : '#fecaca',
                             color: tutuldu == null ? '#475569' : tutuldu ? '#14532d' : '#7f1d1d',
                           }}
+                          unit={kpi.unit}
                         />
                       )
                     })}
@@ -783,6 +796,7 @@ function KpiVeriTablosu({
                         deger={v.target}
                         onKaydet={(d) => hucreKaydet(yil, i + 1, 'target', d)}
                         className="p-2 text-center font-medium bg-slate-200 text-slate-800 border-l border-slate-300"
+                        unit={kpi.unit}
                       />
                     ))}
                   </tr>

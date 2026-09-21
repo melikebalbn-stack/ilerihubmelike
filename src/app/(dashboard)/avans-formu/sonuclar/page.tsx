@@ -22,7 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Users, Building2, Download, Search, Clock } from 'lucide-react'
+import { Users, Building2, Download, Search, Clock, Lock, LockOpen } from 'lucide-react'
 
 type Satir = {
   avansTalebiId: string
@@ -42,6 +42,14 @@ type Satir = {
 }
 
 type AramaSonucu = { id: string; adSoyad: string; bolum: string | null; sicilNo: string | null }
+
+type DonemDurumu = {
+  yil: number
+  ay: number
+  manuelDurum: 'ACIK' | 'KAPALI' | null
+  otomatikDurum: 'ACIK' | 'KILITLI'
+  donemAcik: boolean
+}
 
 const AYLAR = [
   'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran',
@@ -75,6 +83,30 @@ export default function AvansSonuclarPage() {
   const [kisiFiltreOdakta, setKisiFiltreOdakta] = useState(false)
   const [siralama, setSiralama] = useState<'ad' | 'tarih' | 'bolum'>('bolum')
 
+  const [donemDurumu, setDonemDurumu] = useState<DonemDurumu | null>(null)
+  const [donemIslemYapiliyor, setDonemIslemYapiliyor] = useState(false)
+
+  // Filtre "tümü" ise cari ay/yıl varsayılan alınır — dönem kapatma
+  // butonu/rozeti hep TEK bir somut döneme bakar.
+  function hedefDonem(): { yil: number; ay: number } {
+    if (donemYilFiltre !== 'tumu' && donemAyFiltre !== 'tumu') {
+      return { yil: Number(donemYilFiltre), ay: Number(donemAyFiltre) }
+    }
+    const now = new Date()
+    return { yil: now.getFullYear(), ay: now.getMonth() + 1 }
+  }
+
+  function donemDurumuYukle() {
+    const { yil, ay } = hedefDonem()
+    fetch(`/api/avans-formu/donem-kapat?yil=${yil}&ay=${ay}`)
+      .then(async (res) => {
+        if (!res.ok) return null
+        return (await res.json()) as DonemDurumu
+      })
+      .then((json) => setDonemDurumu(json))
+      .catch(() => setDonemDurumu(null))
+  }
+
   function veriYukle() {
     setLoading(true)
     const params = new URLSearchParams()
@@ -99,7 +131,54 @@ export default function AvansSonuclarPage() {
 
   useEffect(() => {
     veriYukle()
+    donemDurumuYukle()
   }, [donemYilFiltre, donemAyFiltre])
+
+  async function handleDonemKapat() {
+    const { yil, ay } = hedefDonem()
+    const onay = window.confirm(
+      `${AYLAR[ay - 1]} ${yil} dönemini kapatmak istediğinize emin misiniz? Kapalı dönemde yeni talep girilemez, geri çekilemez.`
+    )
+    if (!onay) return
+    setDonemIslemYapiliyor(true)
+    try {
+      const res = await fetch('/api/avans-formu/donem-kapat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ yil, ay }),
+      })
+      const sonucBody = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(sonucBody?.error ?? 'Dönem kapatılamadı')
+      toast.success(`${AYLAR[ay - 1]} ${yil} dönemi kapatıldı`)
+      donemDurumuYukle()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Dönem kapatılamadı')
+    } finally {
+      setDonemIslemYapiliyor(false)
+    }
+  }
+
+  async function handleDonemAc() {
+    const { yil, ay } = hedefDonem()
+    const onay = window.confirm(`${AYLAR[ay - 1]} ${yil} dönemini açmak istediğinize emin misiniz?`)
+    if (!onay) return
+    setDonemIslemYapiliyor(true)
+    try {
+      const res = await fetch('/api/avans-formu/donem-kapat', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ yil, ay }),
+      })
+      const sonucBody = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(sonucBody?.error ?? 'Dönem açılamadı')
+      toast.success(`${AYLAR[ay - 1]} ${yil} dönemi açıldı`)
+      donemDurumuYukle()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Dönem açılamadı')
+    } finally {
+      setDonemIslemYapiliyor(false)
+    }
+  }
 
   useEffect(() => {
     if (arama.trim().length < 2) {
@@ -329,6 +408,49 @@ export default function AvansSonuclarPage() {
             Excel&apos;e Aktar
           </Button>
         </div>
+
+        {donemDurumu && (
+          <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3">
+            <div className="flex items-center gap-2">
+              {donemDurumu.donemAcik ? (
+                <LockOpen className="h-4 w-4 text-emerald-600" />
+              ) : (
+                <Lock className="h-4 w-4 text-rose-600" />
+              )}
+              <span className="text-sm text-slate-700">
+                {AYLAR[donemDurumu.ay - 1]} {donemDurumu.yil} —{' '}
+                <span className={donemDurumu.donemAcik ? 'text-emerald-700 font-medium' : 'text-rose-700 font-medium'}>
+                  Dönem: {donemDurumu.donemAcik ? 'Açık' : 'Kapalı'}
+                </span>
+              </span>
+              {donemDurumu.manuelDurum === null && (
+                <span className="text-xs text-slate-400">
+                  (otomatik {donemDurumu.otomatikDurum === 'ACIK' ? 'açık' : 'kilitli'})
+                </span>
+              )}
+              {donemDurumu.manuelDurum !== null && (
+                <span className="text-xs text-slate-400">(İK elle {donemDurumu.manuelDurum === 'ACIK' ? 'açtı' : 'kapattı'})</span>
+              )}
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={donemIslemYapiliyor}
+              onClick={donemDurumu.donemAcik ? handleDonemKapat : handleDonemAc}
+              className={
+                donemDurumu.donemAcik
+                  ? 'text-rose-600 hover:text-rose-700 hover:bg-rose-50'
+                  : 'text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50'
+              }
+            >
+              {donemIslemYapiliyor
+                ? 'İşleniyor…'
+                : donemDurumu.donemAcik
+                  ? 'Dönemi Kapat'
+                  : 'Dönemi Aç'}
+            </Button>
+          </div>
+        )}
 
         {!loading && !hataMesaji && (
           <div className="grid grid-cols-2 gap-3">

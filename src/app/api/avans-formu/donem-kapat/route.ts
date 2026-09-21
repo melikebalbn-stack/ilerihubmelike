@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireUser } from '@/lib/auth/require-user'
 import { prisma } from '@/lib/prisma'
+import { donemAcikMi, donemManuelDurum, donemOtomatikDurum } from '@/lib/avans/donem-kilidi'
 
 export const dynamic = 'force-dynamic'
 
@@ -12,7 +13,9 @@ export const dynamic = 'force-dynamic'
  *                                   sadece log'a 'AC' düşer) — HİÇBİR
  *                                   KOŞULDA reddedilmez, otomatik dönem
  *                                   kilidini (bkz. donem-kilidi.ts) ezer.
- * GET                            → kapalı dönem listesi (yönetim ekranı için).
+ * GET ?yil=&ay=                  → TEK bir dönemin birleşik kilit durumu
+ *                                   (sonuclar/page.tsx'teki rozet/buton için).
+ * GET (parametresiz)             → kapalı dönem listesi (yönetim ekranı için).
  *
  * Kapatma bilgisi AvansDonemKapanis satırında (kapatanId, kapatmaTarihi),
  * kapatma+açma geçmişi ise AvansDonemKapanisLog'da kalıcı tutulur — açılışta
@@ -41,12 +44,31 @@ function gecerliDonem(body: unknown): body is { yil: number; ay: number; aciklam
   return true
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const { user, error } = await requireUser()
   if (error) return error
 
   if (!ikYetkisiVar(user.role)) {
     return NextResponse.json({ error: 'Bu ekrana sadece İK erişebilir.' }, { status: 403 })
+  }
+
+  const searchParams = new URL(request.url).searchParams
+  const yilParam = searchParams.get('yil')
+  const ayParam = searchParams.get('ay')
+
+  if (yilParam !== null && ayParam !== null) {
+    const yil = Number(yilParam)
+    const ay = Number(ayParam)
+    if (!Number.isInteger(yil) || !Number.isInteger(ay) || ay < 1 || ay > 12) {
+      return NextResponse.json({ error: 'Geçersiz yil/ay.' }, { status: 400 })
+    }
+    return NextResponse.json({
+      yil,
+      ay,
+      manuelDurum: await donemManuelDurum(yil, ay),
+      otomatikDurum: donemOtomatikDurum(yil, ay),
+      donemAcik: await donemAcikMi(yil, ay),
+    })
   }
 
   const kapaliDonemler = await prisma.avansDonemKapanis.findMany({

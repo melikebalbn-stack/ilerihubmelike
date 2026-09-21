@@ -1,7 +1,7 @@
 /**
  * Avans Formu Hatırlatma Bildirimi.
  *
- * Her ayın 10'unda birim sorumlularına "avans formunu 15'ine kadar
+ * Her ayın 12'sinde birim sorumlularına "avans formunu 15'ine kadar
  * doldurun" hatırlatması 3 kanaldan gönderilir:
  *   1. Email (bu dosyadaki küçük template + sendEmail)
  *   2. In-app Notification (prisma.notification.create, "link" alanı)

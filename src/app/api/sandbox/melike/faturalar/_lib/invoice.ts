@@ -26,7 +26,7 @@ export async function resolveDepartments(
     const pctSum = allocations!.reduce((s, a) => s + Number(a.percentage), 0)
     if (Math.abs(pctSum - 100) > 0.5) return 'Bölüm yüzdeleri toplamı %100 olmalı'
 
-    const depts = await prisma.orgUnit.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } })
+    const depts = await prisma.departmentDefinition.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } })
     if (depts.length !== ids.length) return 'Geçersiz bölüm seçimi'
     const nameById = new Map(depts.map((d) => [d.id, d.name]))
     return {
@@ -41,7 +41,7 @@ export async function resolveDepartments(
   }
 
   if (departmentOrgUnitId) {
-    const dept = await prisma.orgUnit.findUnique({ where: { id: departmentOrgUnitId }, select: { name: true } })
+    const dept = await prisma.departmentDefinition.findUnique({ where: { id: departmentOrgUnitId }, select: { name: true } })
     if (!dept) return 'Geçersiz bölüm'
     return { departmentOrgUnitId, departmentName: dept.name, allocations: [] }
   }

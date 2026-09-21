@@ -17,7 +17,7 @@ interface RowResult {
 
 // POST — multipart/form-data, field: file (.xlsx/.xls/.csv)
 // Beklenen sütunlar: Tarih, Firma, Fatura No, Tutar, Para Birimi (ops., vars.TRY), Bölüm (ops., vars.Genel), Not (ops.)
-// Bölüm hücresi çoklu bölüm formatını da kabul eder: "Kalite Müdürlüğü %60, Sistem Geliştirme Müdürlüğü %40"
+// Bölüm hücresi çoklu bölüm formatını da kabul eder: "KALİTE MÜDÜRLÜĞÜ %60, SİSTEM GELİŞTİRME MÜDÜRLÜĞÜ %40"
 export async function POST(request: NextRequest) {
   try {
     const { user, error } = await requireUser()
@@ -39,8 +39,8 @@ export async function POST(request: NextRequest) {
     const existingNumbers = new Set(
       (await prisma.invoice.findMany({ select: { invoiceNumber: true } })).map((i) => i.invoiceNumber)
     )
-    const departments = await prisma.orgUnit.findMany({
-      where: { unitType: 'DEPARTMENT', level: 3 },
+    const departments = await prisma.departmentDefinition.findMany({
+      where: { isActive: true },
       select: { id: true, name: true },
     })
 

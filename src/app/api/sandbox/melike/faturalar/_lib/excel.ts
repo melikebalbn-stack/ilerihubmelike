@@ -57,7 +57,7 @@ export interface ParsedDepartmentCell {
 /**
  * "Bölüm" hücresini ayrıştırır. İki format desteklenir:
  * - Tek bölüm: "Kalite Müdürlüğü" (veya boş/"Genel")
- * - Çoklu bölüm (export'un ürettiği format): "Kalite Müdürlüğü %60, Sistem Geliştirme Müdürlüğü %40"
+ * - Çoklu bölüm (export'un ürettiği format): "KALİTE MÜDÜRLÜĞÜ %60, SİSTEM GELİŞTİRME MÜDÜRLÜĞÜ %40"
  * Çoklu formatta bir token eşleşmezse veya yüzde okunamazsa tek-bölüm eşleştirmesine düşer.
  */
 export function parseDepartmentCell(

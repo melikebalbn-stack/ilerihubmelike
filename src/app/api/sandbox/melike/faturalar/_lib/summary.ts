@@ -1,4 +1,4 @@
-const SISTEM_GELISTIRME_LABEL = 'Sistem Geliştirme Müdürlüğü'
+const SISTEM_GELISTIRME_LABEL = 'SİSTEM GELİŞTİRME MÜDÜRLÜĞÜ'
 
 export interface InvoiceForSummary {
   invoiceDate: Date

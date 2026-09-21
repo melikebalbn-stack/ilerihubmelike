@@ -362,7 +362,7 @@ export default function FaturaTakipPage() {
                   const deptCiroOran = totalCiro > 0 ? (d.eur / totalCiro) * 100 : null
                   return (
                     <TableRow key={d.label}>
-                      <TableCell style={{ color: d.label === 'Sistem Geliştirme Müdürlüğü' ? NAVY : undefined }}>
+                      <TableCell style={{ color: d.label === 'SİSTEM GELİŞTİRME MÜDÜRLÜĞÜ' ? NAVY : undefined }}>
                         {d.label}
                       </TableCell>
                       <TableCell className="text-right">{formatTL(d.tl)}</TableCell>

@@ -69,7 +69,7 @@ export async function GET(request: NextRequest) {
           'Para Birimi': 'TRY',
           'TL Karşılığı': '',
           '€ Karşılığı': '',
-          Bölüm: 'Kalite Müdürlüğü %60, Sistem Geliştirme Müdürlüğü %40',
+          Bölüm: 'KALİTE MÜDÜRLÜĞÜ %60, SİSTEM GELİŞTİRME MÜDÜRLÜĞÜ %40',
           Not: 'Birden fazla bölüme bölünmüş fatura örneği — yüzdeler %100 etmeli',
         },
       ]

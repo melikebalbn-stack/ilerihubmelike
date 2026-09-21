@@ -88,8 +88,12 @@ export type BolumEslesmesi = { bolum: string; vekaletenMi: boolean }
  * ise (asıl sorumlu işaretsiz bir alanla da eşleşiyorsa false kalır).
  */
 export async function bulSorumluBolumleri(adSoyad: string): Promise<BolumEslesmesi[]> {
+  // Yalnız AKTİF kayıtlar: ayrılmış bir personelin eski sorumlu alanı, o bölümü
+  // bugünkü sorumluya açmamalı (21.09.2026: pasif ILR kaydı üzerinden Preshane'nin
+  // Talaşlı İmalat sorumlusuna açılması).
   const adaylar = await prisma.personnel.findMany({
     where: {
+      aktif: true,
       OR: [
         { birimSorumlusu: { not: null } },
         { sorumlu2: { not: null } },

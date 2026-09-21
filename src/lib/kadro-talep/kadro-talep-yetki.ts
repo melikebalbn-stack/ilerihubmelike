@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth/require-session";
 import { prisma } from "@/lib/prisma";
+import { resolveMudurKoltukDepts } from "@/lib/overtime-performance";
 
 // Kadro (personel) talep açma yetkisi — TEK KAYNAK.
 // Kim talep açabilir:
@@ -130,4 +131,43 @@ export function kadroTalepYetkisiz() {
     { error: "Personel kadro talebi açma yetkiniz yok." },
     { status: 403 }
   );
+}
+
+/**
+ * OKUMA KAPSAMI (21.09.2026 — koltuk kapsamı): "kendi departmanı" artık LDAP User.department
+ * serbest metniyle DEĞİL, DepartmentDefinition koltuğuyla çözülür (resolveMudurKoltukDepts:
+ * YALNIZ müdür/müdür yrd. koltuğu + alt ağaç; sorumlu1-4 ve gorunurBolumler SAYILMAZ; mesai
+ * izinleri forms.admin/overtime.report.all BURADA GEÇERSİZ — yalnız recruitment.admin "tümü").
+ * kadro.talep.ac (ör. Muharrem) → koltuksuz → yalnız kendi talepleri + onaycısı oldukları. Talebin bölümü = talep sahibinin Personnel FK'sı →
+ * Personnel.departmentId → DepartmentDefinition; LDAP metni HİÇ kullanılmaz.
+ * Sorgu tarafında çözüm (migration yok): kapsamdaki bölümlerin personeline bağlı User id'leri
+ * → PersonnelRequest.requesterId IN (...). Talep sahibinin FK'sı yoksa talebi yalnız
+ * admin / sahibi / atanmış onaycı görür (bölüm kapsamına GİRMEZ — fail-closed).
+ *   requesterIdler: null = tümü (admin); [] = bölüm kapsamı yok (yalnız kendi + onaycı)
+ */
+export interface KadroTalepKapsamCozumu {
+  userId: string;
+  userEmail: string;
+  hasFullAccess: boolean;
+  /** Kapsamdaki bölüm adları (bilgi/hata mesajı); null = tümü */
+  bolumler: string[] | null;
+  /** Kapsamdaki bölümlerin personeline bağlı User id'leri; null = tümü */
+  requesterIdler: string[] | null;
+}
+
+export async function kadroTalepKapsamCoz(userId: string, userEmail: string, perms: string[]): Promise<KadroTalepKapsamCozumu> {
+  const hasFullAccess = perms.includes("recruitment.admin");
+  const base = { userId, userEmail: (userEmail || "").toLowerCase(), hasFullAccess };
+  if (hasFullAccess) return { ...base, bolumler: null, requesterIdler: null };
+  // Müdür/müdür yrd. koltuğu + alt ağaç (sorumlu koltukları ve mesai izin kısa devreleri YOK).
+  // recruitment.view TEK BAŞINA kapsam vermez — kapsam koltuktan gelir.
+  const allowed = await resolveMudurKoltukDepts(userId);
+  if (allowed.length === 0) return { ...base, bolumler: [], requesterIdler: [] };
+  const depts = await prisma.departmentDefinition.findMany({ where: { name: { in: allowed } }, select: { id: true } });
+  if (depts.length === 0) return { ...base, bolumler: allowed, requesterIdler: [] };
+  const users = await prisma.user.findMany({
+    where: { personnel: { departmentId: { in: depts.map((d) => d.id) } } },
+    select: { id: true },
+  });
+  return { ...base, bolumler: allowed, requesterIdler: users.map((u) => u.id) };
 }

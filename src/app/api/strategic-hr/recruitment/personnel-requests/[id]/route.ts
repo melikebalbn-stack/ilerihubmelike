@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { PersonnelRequestStatus } from "@/generated/prisma";
 import { requireSession } from "@/lib/auth/require-session";
-import { kadroTalepErisimiCore, kadroTalepErisimYok } from "@/lib/kadro-talep/kadro-talep-yetki";
+import { kadroTalepErisimiCore, kadroTalepErisimYok, kadroTalepKapsamCoz } from "@/lib/kadro-talep/kadro-talep-yetki";
 import {
   kadroTalepGorunurluk,
   kadroTalepGorebilirMi,
@@ -65,12 +65,22 @@ async function notifyApprover(
         : tur === "ONAYLANDI"
           ? `${requestNumber} numaralı "${title}" personel talebiniz onaylandı.`
           : `${requestNumber} numaralı "${title}" personel talebiniz reddedildi.`;
-    await sendPushToUser(prisma, userId, {
-      title: "Personel Talebi Onayı",
-      body: mesaj,
-      url: "/strategic-hr/kadro-talep",
-      tag: `personnel-request-${requestNumber}`,
-    });
+    // 21.09.2026: in-app Notification + push (eskiden yalnız push → çan'da görünmüyordu).
+    // Mesai emsali (gerceklesen-reminder): prisma.notification.create + sendPushToUser.
+    // Ayrı try: bildirim yazılamazsa e-posta yine gitsin.
+    try {
+      await prisma.notification.create({
+        data: { userId, title: "Personel Talebi Onayı", message: mesaj, type: tur === "SIRA" ? "REMINDER" : "INFO", link: "/strategic-hr/kadro-talep" },
+      });
+      await sendPushToUser(prisma, userId, {
+        title: "Personel Talebi Onayı",
+        body: mesaj,
+        url: "/strategic-hr/kadro-talep",
+        tag: `personnel-request-${requestNumber}`,
+      });
+    } catch (err) {
+      console.error(`[kadro-talep] in-app/push bildirimi yazılamadı userId=${userId} ${requestNumber}:`, err instanceof Error ? err.message : err);
+    }
     const u = await prisma.user.findUnique({ where: { id: userId }, select: { email: true, name: true } });
     if (u?.email) {
       const baslik =
@@ -94,8 +104,9 @@ async function notifyApprover(
         logoAttachments(),
       );
     }
-  } catch {
-    // bildirim best-effort
+  } catch (err) {
+    // bildirim best-effort — ama sessiz kalmasın (e-posta/push hatası izlenebilsin)
+    console.error(`[kadro-talep] e-posta gönderilemedi (${tur}) userId=${userId} ${requestNumber}:`, err instanceof Error ? err.message : err);
   }
 }
 
@@ -113,7 +124,8 @@ export async function GET(
     const erisim = await kadroTalepErisimiCore(session.user.id, session.user.permissions ?? []);
     if (!erisim.erisebilir) return kadroTalepErisimYok();
     // Kapsam TEK KAYNAK — liste/export ile aynı modül (kadro-talep-gorunurluk.ts).
-    const kapsam = kadroTalepGorunurluk(session, undefined, erisim);
+    const kapsamCoz = await kadroTalepKapsamCoz(session.user.id, session.user.email || "", session.user.permissions ?? []);
+    const kapsam = kadroTalepGorunurluk(session, undefined, { erisebilir: erisim.erisebilir, requesterIdler: kapsamCoz.requesterIdler });
 
     const personnelRequest = await prisma.personnelRequest.findUnique({
       where: { id },
@@ -139,9 +151,8 @@ export async function GET(
       return NextResponse.json({ error: "Talep bulunamadı" }, { status: 404 });
     }
 
-    // PR-RECRUIT-RBAC: admin herşeyi; departman müdürü kendi dept VEYA owner;
-    // hiçbir yetkisi yoksa sadece kendi açtığı talep. Kural liste `where`'inin
-    // kayıt bazlı karşılığı — TEK KAYNAK (kadroTalepGorebilirMi).
+    // Kural liste `where`'inin kayıt bazlı karşılığı — TEK KAYNAK (kadroTalepGorebilirMi):
+    // admin / sahibi / atanmış onaycı (herhangi adım) / talep sahibi koltuk kapsamında.
     if (!kadroTalepGorebilirMi(kapsam, personnelRequest)) {
       return NextResponse.json({ error: "Bu talebi görüntüleme yetkiniz yok" }, { status: 403 });
     }

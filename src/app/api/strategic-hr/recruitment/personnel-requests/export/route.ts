@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { PersonnelRequestStatus } from "@/generated/prisma";
 import { requireSession } from "@/lib/auth/require-session";
-import { kadroTalepErisimiCore, kadroTalepErisimYok } from "@/lib/kadro-talep/kadro-talep-yetki";
+import { kadroTalepErisimiCore, kadroTalepErisimYok, kadroTalepKapsamCoz } from "@/lib/kadro-talep/kadro-talep-yetki";
 import { kadroTalepGorunurluk } from "@/lib/kadro-talep/kadro-talep-gorunurluk";
 import * as XLSX from "xlsx";
 import { logAuditEvent } from "@/lib/audit-log";
@@ -45,7 +45,8 @@ export async function GET(request: NextRequest) {
     // Kapsam TEK KAYNAK: liste ucuyla AYNI fonksiyon (kadro-talep-gorunurluk.ts).
     // Eskiden bu zincir elle kopyalanmıştı; iki uç ıraksamasın diye çıkarıldı.
     const { searchParams } = new URL(request.url);
-    const { hasFullAccess, canViewByDept, where } = kadroTalepGorunurluk(session, searchParams, erisim);
+    const kapsamCoz = await kadroTalepKapsamCoz(session.user.id, session.user.email || "", session.user.permissions ?? []);
+    const { hasFullAccess, canViewByDept, where } = kadroTalepGorunurluk(session, searchParams, { erisebilir: erisim.erisebilir, requesterIdler: kapsamCoz.requesterIdler });
     const status = searchParams.get("status");
     const department = searchParams.get("department");
     const myRequests = searchParams.get("myRequests") === "true";

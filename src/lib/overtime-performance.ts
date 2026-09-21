@@ -392,6 +392,25 @@ async function getDeptSubtreeNames(seedIds: string[]): Promise<string[]> {
  *   d) personele bağlı değil / omurgada görevi yok → [] (HİÇBİRİ — "tümü" DEĞİL)
  * Dönüş: undefined = tümü, [] = hiçbiri, [adlar] = sadece o bölümler.
  */
+/**
+ * YALNIZ koltuk kapsamı (21.09.2026, kadro talep için) — resolveAllowedDepts'ten AYRI:
+ * izin kısa devreleri (forms.admin/report.all → tümü) YOK, gorunurBolumler override YOK,
+ * sorumlu1-4 koltukları SAYILMAZ. Yalnız MÜDÜR / MÜDÜR YARDIMCISI koltuğu → kendi + alt
+ * ağaç; bağsız/koltuksuz → [] (hiçbiri). undefined DÖNMEZ. Mesai davranışı DEĞİŞMEZ
+ * (resolveAllowedDepts dokunulmadı).
+ */
+export async function resolveMudurKoltukDepts(userId: string): Promise<string[]> {
+  const u = await prisma.user.findUnique({ where: { id: userId }, select: { personnelId: true } })
+  const personnelId = u?.personnelId
+  if (!personnelId) return []
+  const gorevli = await prisma.departmentDefinition.findMany({
+    where: { OR: [{ mudurId: personnelId }, { mudurYardimcisiId: personnelId }] },
+    select: { id: true },
+  })
+  if (gorevli.length === 0) return []
+  return getDeptSubtreeNames(gorevli.map((d) => d.id))
+}
+
 export async function resolveAllowedDepts(userId: string): Promise<string[] | undefined> {
   const perms = await getUserPermissions(userId)
   if (perms.has('overtime.report.all')) return undefined // (a) yönetim raporu → tümü (kapsam sınırsız)

@@ -3,64 +3,69 @@
  *
  * Liste ucu (GET /api/strategic-hr/recruitment/personnel-requests), Excel export ucu
  * (.../export) ve detay ucu (.../[id]) AYNI kapsam kuralını kullansın diye buraya
- * çıkarıldı; iki uç ıraksamasın. (rma-query.ts'teki `buildRmaWhere` ile aynı gerekçe —
- * orada liste ve export filtresi elle kopyalanmıştı ve sapma riski taşıyordu.)
+ * çıkarıldı; iki uç ıraksamasın.
  *
- * KURAL (19.09.2026 erişim daraltma — ÖN KAPI kadro-talep-yetki.ts kadroTalepErisimi):
- *   · admin (recruitment.admin)      → hepsi
- *   · view (recruitment.view)        → OR [ kendi departmanı, kendi açtığı ]
- *   · koltuk / kadro.talep.ac        → yalnız kendi açtığı
- *   · hiç yetkisi yok                → ERİŞİM YOK (uçlar ön kapıda 403; buraya gelmez.
- *                                      Gelirse de `erisebilir=false` → hiçbir kayıt)
- *   · ?myRequests=true               → yalnız kendi açtığı (admin dahil, en öncelikli)
- *   · ?department=                   → YALNIZ admin'de dikkate alınır
- * Departman eşleşmesi TAM (contains değil) ve iki taraf da `session.user.department`
- * LDAP string'ini kullanır (POST kaydı da onunla yazıyor) → kendi içinde tutarlı.
+ * KURAL (21.09.2026 — koltuk kapsamı; LDAP User.department metin eşleşmesi KALDIRILDI):
+ *   · admin (recruitment.admin)              → hepsi
+ *   · koltuk kapsamı (kadroTalepKapsamCoz)  → talep sahibi kapsamdaki bölümün personeli olan
+ *                                              talepler (Personnel FK → DepartmentDefinition)
+ *   · kendi açtığı (requesterEmail)          → her zaman
+ *   · ATANMIŞ ONAYCI (PersonnelRequestApproval.approverId = ben, herhangi adım) → her zaman
+ *   · erişim yok (ön kapı)                   → hiçbir kayıt
+ *   · ?myRequests=true                       → yalnız kendi açtığı (admin dahil, en öncelikli)
+ *   · ?department=                           → YALNIZ admin'de (PersonnelRequest.department
+ *                                              serbest filtre; kapsam değil)
  *
- * YAZMA yetkisi burada DEĞİL: talep açma `kadroTalepYetkisi()` (kadro-talep-yetki.ts),
- * onay/red per-step guard'ı [id]/route.ts içinde. Bu modül yalnız OKUMA kapsamıdır.
+ * YAZMA yetkisi burada DEĞİL: talep açma `kadroTalepYetkisi()`, onay/red per-step guard
+ * [id]/route.ts içinde. Bu modül yalnız OKUMA kapsamıdır.
  */
 import type { Prisma, PersonnelRequestStatus } from "@/generated/prisma";
 
 export type KadroTalepKapsam = {
   /** recruitment.admin — tüm talepleri görür, ?department= filtresini kullanabilir. */
   hasFullAccess: boolean;
-  /** recruitment.view — kendi departmanı + kendi açtıkları. */
+  /** (geri uyum) eskiden recruitment.view; artık kapsam koltuktan gelir — bilgi amaçlı */
   canViewByDept: boolean;
+  userId: string;
   userEmail: string;
-  userDepartment: string;
+  /** Koltuk kapsamındaki talep sahipleri (User id); null = tümü */
+  requesterIdler: string[] | null;
   /** Liste/export sorgusu için hazır `where` (status + department filtreleri dahil). */
   where: Prisma.PersonnelRequestWhereInput;
-  /** Ön kapı kararı (admin ∨ view ∨ koltuk ∨ kadro.talep.ac). false → hiçbir kayıt. */
+  /** Ön kapı kararı. false → hiçbir kayıt. */
   erisebilir: boolean;
 };
 
 type OturumParcasi = {
-  user: { email?: string | null; department?: string | null; permissions?: string[] };
+  user: { id?: string; email?: string | null; permissions?: string[] };
 };
 
+/** Ön kapı + koltuk kapsamı (kadroTalepKapsamCoz çıktısı). */
+export type KapsamGirdisi = { erisebilir: boolean; requesterIdler: string[] | null };
+
 /**
- * Oturum + query string'ten okuma kapsamını çözer.
- * `searchParams` verilmezse (detay ucu) yalnız yetki bayrakları anlamlıdır; `where` boş kalır.
+ * Oturum + kapsam + query string'ten okuma `where`'ini kurar (saf; DB'ye gitmez —
+ * kapsam çözümü kadroTalepKapsamCoz ile önceden yapılır).
+ * `searchParams` verilmezse (detay ucu) yalnız bayraklar anlamlıdır; `where` boş kalır.
  */
 export function kadroTalepGorunurluk(
   session: OturumParcasi,
-  searchParams?: URLSearchParams,
-  /** Ön kapı kararı (kadroTalepErisimi). Verilmezse eski davranış (yalnız izin bayrakları). */
-  erisim?: { erisebilir: boolean },
+  searchParams: URLSearchParams | undefined,
+  kapsam: KapsamGirdisi,
 ): KadroTalepKapsam {
+  const userId = session.user.id ?? "";
   const userEmail = (session.user.email || "").toLowerCase();
-  const userDepartment = session.user.department || "";
   const perms = session.user.permissions ?? [];
   const hasFullAccess = perms.includes("recruitment.admin");
   const canViewByDept = perms.includes("recruitment.view");
-  const erisebilir = erisim ? erisim.erisebilir : true;
+  const requesterIdler = hasFullAccess ? null : kapsam.requesterIdler;
 
   const where: Prisma.PersonnelRequestWhereInput = {};
+  const out = { hasFullAccess, canViewByDept, userId, userEmail, requesterIdler, where, erisebilir: kapsam.erisebilir };
 
   // Savunma: ön kapıyı geçmemiş çağrı → hiçbir kayıt (id eşleşmez). Uçlar zaten 403 döner.
-  if (!erisebilir) {
-    return { hasFullAccess: false, canViewByDept: false, userEmail, userDepartment, where: { id: "__erisim_yok__" }, erisebilir };
+  if (!kapsam.erisebilir) {
+    return { ...out, hasFullAccess: false, canViewByDept: false, requesterIdler: [], where: { id: "__erisim_yok__" } };
   }
 
   if (searchParams) {
@@ -68,38 +73,40 @@ export function kadroTalepGorunurluk(
     const department = searchParams.get("department");
     const myRequests = searchParams.get("myRequests") === "true";
 
-    // Kapsam zinciri — SIRA ÖNEMLİ (myRequests admin'i de kapsar; mevcut davranış).
     if (myRequests) {
       where.requesterEmail = userEmail;
-    } else if (!hasFullAccess && canViewByDept) {
-      where.OR = [{ department: userDepartment }, { requesterEmail: userEmail }];
     } else if (!hasFullAccess) {
-      // Koltuk (müdür/müdür yrd.) veya kadro.talep.ac: yalnız kendi açtığı talepler.
-      // (Yetkisiz kişi buraya GELMEZ — ön kapı 403.)
-      where.requesterEmail = userEmail;
+      // Koltuk kapsamı ∪ kendi açtıkları ∪ atanmış onaycı olduğu (herhangi adım)
+      where.OR = [
+        ...(requesterIdler && requesterIdler.length > 0 ? [{ requesterId: { in: requesterIdler } }] : []),
+        { requesterEmail: userEmail },
+        { approvals: { some: { approverId: userId } } },
+      ];
     }
 
     if (status) where.status = status;
-    // Serbest departman filtresi YALNIZ admin'de — non-admin geçerse yok sayılır
-    // (yoksa yukarıdaki kapsam kısıtı gevşerdi).
+    // Serbest departman filtresi YALNIZ admin'de (kapsam değil, kullanıcı süzgeci).
     if (department && hasFullAccess) where.department = department;
   }
 
-  return { hasFullAccess, canViewByDept, userEmail, userDepartment, where, erisebilir };
+  return out;
 }
 
 /**
  * Tek kaydın detayını görebilir mi? (Liste `where`'inin kayıt bazlı karşılığı.)
- * erişim yok → hayır; admin → evet; sahibi → evet; view + aynı departman → evet; diğerleri → hayır (403).
+ * erişim yok → hayır; admin → evet; sahibi → evet; atanmış onaycı → evet;
+ * talep sahibi koltuk kapsamında → evet; diğerleri → hayır (403).
  */
 export function kadroTalepGorebilirMi(
-  kapsam: Pick<KadroTalepKapsam, "hasFullAccess" | "canViewByDept" | "userEmail" | "userDepartment"> & { erisebilir?: boolean },
-  talep: { requesterEmail: string; department: string },
+  kapsam: Pick<KadroTalepKapsam, "hasFullAccess" | "userId" | "userEmail" | "requesterIdler"> & { erisebilir?: boolean },
+  talep: { requesterEmail: string; requesterId: string; approvals?: { approverId: string | null }[] },
 ): boolean {
   if (kapsam.erisebilir === false) return false;
   if (kapsam.hasFullAccess) return true;
   if (talep.requesterEmail.toLowerCase() === kapsam.userEmail) return true;
-  return kapsam.canViewByDept && talep.department === kapsam.userDepartment;
+  if (talep.approvals?.some((a) => a.approverId === kapsam.userId)) return true;
+  if (kapsam.requesterIdler === null) return true;
+  return kapsam.requesterIdler.includes(talep.requesterId);
 }
 
 /**

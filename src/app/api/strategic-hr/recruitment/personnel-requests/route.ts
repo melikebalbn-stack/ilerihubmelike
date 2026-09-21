@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { PersonnelRequestStatus, PersonnelRequestType, EmploymentType, JobPriority } from "@/generated/prisma";
 import { requireSession } from "@/lib/auth/require-session";
 import { talepAlanlariSchema, tarihDon } from "@/lib/recruitment/personnel-request-alanlar";
-import { kadroTalepYetkisi, kadroTalepYetkisiz, kadroTalepErisimiCore, kadroTalepErisimYok } from "@/lib/kadro-talep/kadro-talep-yetki";
+import { kadroTalepYetkisi, kadroTalepYetkisiz, kadroTalepErisimiCore, kadroTalepErisimYok, kadroTalepKapsamCoz } from "@/lib/kadro-talep/kadro-talep-yetki";
 import { kadroTalepGorunurluk, maasKapisi } from "@/lib/kadro-talep/kadro-talep-gorunurluk";
 
 // Talep numarası oluştur
@@ -40,7 +40,8 @@ export async function GET(request: NextRequest) {
     // PR-RECRUIT-RBAC kapsamı TEK KAYNAK: kadro-talep-gorunurluk.ts.
     // (Kural burada tekrarlanmaz — export ucu da aynı yerden besleniyor, ıraksamasınlar.)
     const { searchParams } = new URL(request.url);
-    const { hasFullAccess, where } = kadroTalepGorunurluk(session, searchParams, erisim);
+    const kapsamCoz = await kadroTalepKapsamCoz(session.user.id, session.user.email || "", session.user.permissions ?? []);
+    const { hasFullAccess, where } = kadroTalepGorunurluk(session, searchParams, { erisebilir: erisim.erisebilir, requesterIdler: kapsamCoz.requesterIdler });
 
     const requests = await prisma.personnelRequest.findMany({
       where,

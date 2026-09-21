@@ -3,9 +3,10 @@ import * as XLSX from 'xlsx'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
 import { apiSuccess, apiBadRequest, apiForbidden, apiError } from '@/lib/api-response'
-import { matchDepartment, labelToCurrency, parseExcelDate, parseExcelAmount } from '../_lib/excel'
+import { parseDepartmentCell, labelToCurrency, parseExcelDate, parseExcelAmount } from '../_lib/excel'
 import { getRateForDate } from '../_lib/tcmb'
 import { canAccessFaturaTakip } from '../_lib/access'
+import { resolveDepartments } from '../_lib/invoice'
 
 interface RowResult {
   row: number
@@ -16,6 +17,7 @@ interface RowResult {
 
 // POST — multipart/form-data, field: file (.xlsx/.xls/.csv)
 // Beklenen sütunlar: Tarih, Firma, Fatura No, Tutar, Para Birimi (ops., vars.TRY), Bölüm (ops., vars.Genel), Not (ops.)
+// Bölüm hücresi çoklu bölüm formatını da kabul eder: "Kalite Müdürlüğü %60, Sistem Geliştirme Müdürlüğü %40"
 export async function POST(request: NextRequest) {
   try {
     const { user, error } = await requireUser()
@@ -54,7 +56,7 @@ export async function POST(request: NextRequest) {
       const dateStr = parseExcelDate(row['Tarih'])
       const amount = parseExcelAmount(row['Tutar'])
       const currency = labelToCurrency(row['Para Birimi'])
-      const department = matchDepartment(row['Bölüm'] ?? row['Kategori'], departments)
+      const parsedDept = parseDepartmentCell(row['Bölüm'] ?? row['Kategori'], departments)
       const note = (row['Not'] ?? '').toString().trim() || null
 
       if (!invoiceNumber) {
@@ -79,6 +81,12 @@ export async function POST(request: NextRequest) {
       }
 
       try {
+        const resolved = await resolveDepartments(parsedDept.departmentOrgUnitId, parsedDept.allocations)
+        if (typeof resolved === 'string') {
+          results.push({ row: rowNum, invoiceNumber, status: 'error', message: resolved })
+          continue
+        }
+
         const tryRate = currency === 'TRY' ? 1 : (await getRateForDate(dateStr, currency)).rate
         const eurRate = currency === 'EUR' ? tryRate : (await getRateForDate(dateStr, 'EUR')).rate
         const amountTRY = currency === 'TRY' ? amount : amount * tryRate
@@ -94,10 +102,21 @@ export async function POST(request: NextRequest) {
             exchangeRate: eurRate,
             amountTRY,
             amountEUR,
-            departmentOrgUnitId: department.id,
-            departmentName: department.name,
+            departmentOrgUnitId: resolved.departmentOrgUnitId,
+            departmentName: resolved.departmentName,
             note,
             createdById: user.id,
+            ...(resolved.allocations.length > 0 && {
+              allocations: {
+                create: resolved.allocations.map((d) => ({
+                  departmentOrgUnitId: d.departmentOrgUnitId,
+                  departmentName: d.departmentName,
+                  percentage: d.percentage,
+                  amountTRY: (amountTRY * d.percentage) / 100,
+                  amountEUR: (amountEUR * d.percentage) / 100,
+                })),
+              },
+            }),
           },
         })
 

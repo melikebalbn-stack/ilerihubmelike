@@ -19,6 +19,17 @@ interface ImportResult {
   results: { row: number; invoiceNumber?: string; status: string; message?: string }[]
 }
 
+export function downloadFile(url: string) {
+  // Sayfa içi <a> yerine programatik indirme — Dialog açıkken bazı tarayıcılarda
+  // <a><Button></a> iç içelemesi (geçersiz HTML) tıklamayı/odak yönetimini kilitleyebiliyordu.
+  const link = document.createElement('a')
+  link.href = url
+  link.rel = 'noopener'
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+}
+
 export function ImportDialog({ open, onOpenChange, onImported }: Props) {
   const [uploading, setUploading] = useState(false)
   const [result, setResult] = useState<ImportResult | null>(null)
@@ -57,32 +68,25 @@ export function ImportDialog({ open, onOpenChange, onImported }: Props) {
 
         <div className="space-y-4 text-sm">
           <div className="flex flex-wrap gap-2">
-            <a href="/api/sandbox/melike/faturalar/export">
-              <Button variant="outline" size="sm">
-                <Download className="mr-1.5 h-3.5 w-3.5" /> Tüm Faturaları İndir
-              </Button>
-            </a>
-            <a href="/api/sandbox/melike/faturalar/export?template=1">
-              <Button variant="outline" size="sm">
-                <Download className="mr-1.5 h-3.5 w-3.5" /> Boş Şablon İndir
-              </Button>
-            </a>
-            <a href="/api/sandbox/melike/faturalar/export?type=summary">
-              <Button variant="outline" size="sm">
-                <Download className="mr-1.5 h-3.5 w-3.5" /> KPI Özet İndir
-              </Button>
-            </a>
+            <Button variant="outline" size="sm" onClick={() => downloadFile('/api/sandbox/melike/faturalar/export')}>
+              <Download className="mr-1.5 h-3.5 w-3.5" /> Tüm Faturaları İndir
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => downloadFile('/api/sandbox/melike/faturalar/export?template=1')}
+            >
+              <Download className="mr-1.5 h-3.5 w-3.5" /> Boş Şablon İndir
+            </Button>
           </div>
-          <p className="text-xs text-muted-foreground/80">
-            "KPI Özet" her bölüm için ayrı satır verir: € tutar, ₺ tutar, ciro (€) ve cironun oranı — sayısal,
-            yuvarlanmamış. KPI dosyana çekmek için bunu kullan.
-          </p>
 
           <div>
             <p className="mb-2 text-xs text-muted-foreground">
               Şablondaki (veya indirdiğin fatura listesindeki) başlıkları koru: <strong>Tarih, Firma, Fatura No,
-              Tutar</strong> zorunlu; Para Birimi (varsayılan TRY) ve Bölüm (varsayılan Genel) opsiyonel. €
-              karşılığı içe aktarımda otomatik yeniden hesaplanır.
+              Tutar</strong> zorunlu; Para Birimi (varsayılan TRY) ve Bölüm (varsayılan Genel) opsiyonel. Birden
+              fazla bölüme bölünecek faturalar için Bölüm hücresine <strong>"Kalite Müdürlüğü %60, Sistem
+              Geliştirme Müdürlüğü %40"</strong> gibi yazabilirsin (yüzdeler %100 etmeli) — örneği boş şablonda
+              görebilirsin. € karşılığı içe aktarımda otomatik yeniden hesaplanır.
             </p>
             <input
               ref={fileInputRef}

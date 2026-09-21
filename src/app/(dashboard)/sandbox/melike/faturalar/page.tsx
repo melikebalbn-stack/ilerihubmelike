@@ -22,7 +22,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Plus, Search, AlertCircle, Trash2, Pencil, FileSpreadsheet } from 'lucide-react'
+import { Plus, Search, AlertCircle, Trash2, Pencil, FileSpreadsheet, Download } from 'lucide-react'
 import {
   Bar,
   BarChart,
@@ -34,7 +34,7 @@ import {
   YAxis,
 } from 'recharts'
 import { InvoiceFormDialog, type EditableInvoice } from './_components/InvoiceFormDialog'
-import { ImportDialog } from './_components/ImportDialog'
+import { ImportDialog, downloadFile } from './_components/ImportDialog'
 
 const NAVY = '#1B4F72'
 
@@ -318,7 +318,16 @@ export default function FaturaTakipPage() {
         <CardContent className="pt-6">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <div className="text-sm font-semibold text-muted-foreground">Bölüme göre dağılım</div>
+              <div className="flex items-center gap-2">
+                <div className="text-sm font-semibold text-muted-foreground">Bölüme göre dağılım</div>
+                <button
+                  onClick={() => downloadFile('/api/sandbox/melike/faturalar/export?type=summary')}
+                  className="flex items-center gap-1 text-xs font-medium text-[#1B4F72] hover:underline"
+                  title="Bu tablonun sayısal, yuvarlanmamış Excel çıktısı — KPI dosyana çekmek için"
+                >
+                  <Download className="h-3 w-3" /> KPI Özet İndir
+                </button>
+              </div>
               <p className="mb-3 text-xs text-muted-foreground/80">
                 Tüm zamanlar toplamı, bölüm bazında (organizasyon şemasındaki Müdürlükler + Genel). Cironun Oranı,
                 aşağıya girdiğin ciroya göre.

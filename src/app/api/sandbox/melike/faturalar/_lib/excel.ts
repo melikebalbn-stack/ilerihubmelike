@@ -49,6 +49,48 @@ export function matchDepartment(
   return { id: null, name: null }
 }
 
+export interface ParsedDepartmentCell {
+  departmentOrgUnitId: string | null
+  allocations: { departmentOrgUnitId: string; percentage: number }[]
+}
+
+/**
+ * "Bölüm" hücresini ayrıştırır. İki format desteklenir:
+ * - Tek bölüm: "Kalite Müdürlüğü" (veya boş/"Genel")
+ * - Çoklu bölüm (export'un ürettiği format): "Kalite Müdürlüğü %60, Sistem Geliştirme Müdürlüğü %40"
+ * Çoklu formatta bir token eşleşmezse veya yüzde okunamazsa tek-bölüm eşleştirmesine düşer.
+ */
+export function parseDepartmentCell(
+  value: unknown,
+  departments: { id: string; name: string }[]
+): ParsedDepartmentCell {
+  const raw = (value ?? '').toString().trim()
+  if (!raw) return { departmentOrgUnitId: null, allocations: [] }
+
+  if (raw.includes(',') || /%\s*\d/.test(raw)) {
+    const tokens = raw.split(',').map((t) => t.trim()).filter(Boolean)
+    const allocations: { departmentOrgUnitId: string; percentage: number }[] = []
+    let allMatched = tokens.length > 1
+
+    for (const token of tokens) {
+      const m = token.match(/^(.*?)\s*%\s*([\d.,]+)\s*$/)
+      const namePart = m ? m[1].trim() : token
+      const pct = m ? parseFloat(m[2].replace(',', '.')) : NaN
+      const match = matchDepartment(namePart, departments)
+      if (!match.id || isNaN(pct)) {
+        allMatched = false
+        break
+      }
+      allocations.push({ departmentOrgUnitId: match.id, percentage: pct })
+    }
+
+    if (allMatched) return { departmentOrgUnitId: null, allocations }
+  }
+
+  const single = matchDepartment(raw, departments)
+  return { departmentOrgUnitId: single.id, allocations: [] }
+}
+
 export function labelToCurrency(value: unknown): 'TRY' | 'USD' | 'EUR' {
   const v = (value ?? '').toString().trim().toUpperCase()
   if (v === 'USD' || v === '$') return 'USD'

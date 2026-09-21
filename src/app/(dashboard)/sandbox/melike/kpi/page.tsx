@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -231,6 +231,59 @@ function YeniKpiDialog({ orgUnitId, onCreated }: { orgUnitId: string; onCreated:
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  )
+}
+
+function ExcelIslemleri({ orgUnitId, onImported }: { orgUnitId: string; onImported: () => void }) {
+  const [yukleniyor, setYukleniyor] = useState(false)
+  const dosyaInputRef = useRef<HTMLInputElement>(null)
+
+  async function dosyaSecildi(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setYukleniyor(true)
+    try {
+      const form = new FormData()
+      form.append('file', file)
+      form.append('orgUnitId', orgUnitId)
+      const res = await fetch('/api/sandbox/melike/kpi/import', { method: 'POST', body: form })
+      const d = await res.json()
+      if (!res.ok) {
+        alert(d.error ?? 'İçeri alma başarısız')
+        return
+      }
+      let mesaj = `İçeri alındı: ${d.kpiSayisi} KPI, ${d.olcumSayisi} ölçüm, ${d.aksiyonSayisi} aksiyon.`
+      if (d.eslesmeyenSorumlular?.length > 0) {
+        mesaj += `\n\nEşleşmeyen sorumlu isimleri (personel listesinde bulunamadı): ${d.eslesmeyenSorumlular.join(', ')}`
+      }
+      alert(mesaj)
+      onImported()
+    } finally {
+      setYukleniyor(false)
+    }
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 -mt-2">
+      <a href="/api/sandbox/melike/kpi/sablon">
+        <Button size="sm" variant="outline">Şablon İndir</Button>
+      </a>
+      <a href={`/api/sandbox/melike/kpi/export?orgUnitId=${orgUnitId}`}>
+        <Button size="sm" variant="outline">Excel'e Aktar</Button>
+      </a>
+      <Button size="sm" variant="outline" disabled={yukleniyor} onClick={() => dosyaInputRef.current?.click()}>
+        {yukleniyor ? 'İçeri alınıyor...' : "Excel'den İçeri Al"}
+      </Button>
+      <input
+        ref={dosyaInputRef}
+        type="file"
+        accept=".xlsx,.xls"
+        className="hidden"
+        onChange={dosyaSecildi}
+        disabled={yukleniyor}
+      />
+    </div>
   )
 }
 
@@ -494,12 +547,19 @@ function sayiFormat(n: number | null): string {
   return n.toLocaleString('tr-TR', { maximumFractionDigits: 2 })
 }
 
+function sayiFormatBirimli(n: number | null, unit?: string | null): string {
+  const s = sayiFormat(n)
+  if (!s || !unit) return s
+  return `${s} ${unit}`
+}
+
 // Sütun ve üstündeki çizgi aynı yılın aynı değerini taşıyor — tooltip'te iki kere
 // yazmasın diye aynı dataKey'e sahip girdilerden sadece ilkini gösteriyoruz.
-function GrafikTooltip({ active, payload, label }: {
+function GrafikTooltip({ active, payload, label, unit }: {
   active?: boolean
   payload?: { dataKey?: string | number; name?: string; value?: number; color?: string }[]
   label?: string
+  unit?: string | null
 }) {
   if (!active || !payload || payload.length === 0) return null
   const gorulen = new Set<string | number | undefined>()
@@ -513,7 +573,7 @@ function GrafikTooltip({ active, payload, label }: {
       <p className="font-semibold mb-1">{label}</p>
       {satirlar.map(p => (
         <div key={String(p.dataKey)} style={{ color: p.color }}>
-          {p.name}: {sayiFormat(p.value ?? null)}
+          {p.name}: {sayiFormatBirimli(p.value ?? null, unit)}
         </div>
       ))}
     </div>
@@ -884,6 +944,8 @@ export default function MelikeKpiPage() {
         </div>
       </div>
 
+      <ExcelIslemleri orgUnitId={secilenDepartmanId} onImported={yukle} />
+
       {hata ? (
         <p className="text-sm text-muted-foreground">{hata}</p>
       ) : !kpiler ? (
@@ -962,7 +1024,7 @@ export default function MelikeKpiPage() {
                       {guncelYilOrtalamasi != null && birlesikGrafikVerisi.yilA != null && (
                         <div className="absolute top-0 right-0 text-right z-10">
                           <div className="text-[11px] text-muted-foreground">{birlesikGrafikVerisi.yilA} Ortalaması</div>
-                          <div className="text-lg font-bold" style={{ color: NAVY }}>{sayiFormat(guncelYilOrtalamasi)}</div>
+                          <div className="text-lg font-bold" style={{ color: NAVY }}>{sayiFormatBirimli(guncelYilOrtalamasi, secili.unit)}</div>
                         </div>
                       )}
                       <ResponsiveContainer width="100%" height={320}>
@@ -970,19 +1032,19 @@ export default function MelikeKpiPage() {
                           <CartesianGrid strokeDasharray="3 3" />
                           <XAxis dataKey="ad" tick={{ fontSize: 11 }} interval={0} angle={-20} textAnchor="end" height={50} />
                           <YAxis tick={{ fontSize: 11 }} />
-                          <Tooltip content={<GrafikTooltip />} />
+                          <Tooltip content={<GrafikTooltip unit={secili.unit} />} />
                           <Legend wrapperStyle={{ fontSize: 11 }} />
                           <Bar dataKey="Ortalama" fill="#f0a875" radius={[3, 3, 0, 0]}>
-                            <LabelList dataKey="Ortalama" position="top" style={{ fontSize: 10, fill: '#78350f' }} formatter={(v: number) => sayiFormat(v)} />
+                            <LabelList dataKey="Ortalama" position="top" style={{ fontSize: 10, fill: '#78350f' }} formatter={(v: number) => sayiFormatBirimli(v, secili.unit)} />
                           </Bar>
                           {birlesikGrafikVerisi.yilB != null && (
                             <Bar dataKey={String(birlesikGrafikVerisi.yilB)} fill="#94a3b8" radius={[3, 3, 0, 0]}>
-                              <LabelList dataKey={String(birlesikGrafikVerisi.yilB)} position="top" style={{ fontSize: 10, fill: '#475569' }} formatter={(v: number) => sayiFormat(v)} />
+                              <LabelList dataKey={String(birlesikGrafikVerisi.yilB)} position="top" style={{ fontSize: 10, fill: '#475569' }} formatter={(v: number) => sayiFormatBirimli(v, secili.unit)} />
                             </Bar>
                           )}
                           {birlesikGrafikVerisi.yilA != null && (
                             <Bar dataKey={String(birlesikGrafikVerisi.yilA)} fill={NAVY} radius={[3, 3, 0, 0]}>
-                              <LabelList dataKey={String(birlesikGrafikVerisi.yilA)} position="top" style={{ fontSize: 10, fill: NAVY }} formatter={(v: number) => sayiFormat(v)} />
+                              <LabelList dataKey={String(birlesikGrafikVerisi.yilA)} position="top" style={{ fontSize: 10, fill: NAVY }} formatter={(v: number) => sayiFormatBirimli(v, secili.unit)} />
                             </Bar>
                           )}
                           <Line type="monotone" dataKey="Hedef" stroke={KIRMIZI} strokeDasharray="4 4" dot={false} connectNulls />

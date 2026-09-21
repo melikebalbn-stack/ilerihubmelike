@@ -58,6 +58,8 @@ export interface ParsedDepartmentCell {
  * "Bölüm" hücresini ayrıştırır. İki format desteklenir:
  * - Tek bölüm: "Kalite Müdürlüğü" (veya boş/"Genel")
  * - Çoklu bölüm (export'un ürettiği format): "KALİTE MÜDÜRLÜĞÜ %60, SİSTEM GELİŞTİRME MÜDÜRLÜĞÜ %40"
+ *   "Genel %X" token'ı da yazılabilir (ör. "SİSTEM GELİŞTİRME MÜDÜRLÜĞÜ %70, Genel %30") — Genel örtük
+ *   kalan olduğu için allocations'a eklenmez, sadece yüzdesi toplama dahil edilip atlanır.
  * Çoklu formatta bir token eşleşmezse veya yüzde okunamazsa tek-bölüm eşleştirmesine düşer.
  */
 export function parseDepartmentCell(
@@ -76,8 +78,13 @@ export function parseDepartmentCell(
       const m = token.match(/^(.*?)\s*%\s*([\d.,]+)\s*$/)
       const namePart = m ? m[1].trim() : token
       const pct = m ? parseFloat(m[2].replace(',', '.')) : NaN
+      if (isNaN(pct)) {
+        allMatched = false
+        break
+      }
+      if (normalize(namePart) === 'genel') continue // örtük kalan — allocations'a eklenmiyor
       const match = matchDepartment(namePart, departments)
-      if (!match.id || isNaN(pct)) {
+      if (!match.id) {
         allMatched = false
         break
       }

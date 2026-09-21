@@ -39,12 +39,21 @@ export interface Summary {
 export function computeSummary(invoices: InvoiceForSummary[]): Summary {
   const parts = invoices.flatMap((inv) => {
     if (inv.allocations.length > 0) {
-      return inv.allocations.map((a) => ({
+      const allocParts = inv.allocations.map((a) => ({
         invoiceDate: inv.invoiceDate,
         label: a.departmentName,
         eur: Number(a.amountEUR),
         tl: Number(a.amountTRY),
       }))
+      // Bölümlerin yüzdesi %100'ü bulmuyorsa kalan kısım örtük "Genel"dir (ayrı satır olarak saklanmaz)
+      const allocEur = allocParts.reduce((s, p) => s + p.eur, 0)
+      const allocTl = allocParts.reduce((s, p) => s + p.tl, 0)
+      const remainderEur = Number(inv.amountEUR) - allocEur
+      const remainderTl = Number(inv.amountTRY) - allocTl
+      if (remainderEur > 0.005) {
+        allocParts.push({ invoiceDate: inv.invoiceDate, label: 'Genel', eur: remainderEur, tl: remainderTl })
+      }
+      return allocParts
     }
     return [
       {

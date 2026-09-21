@@ -13,18 +13,24 @@ export interface ResolvedDepartments {
   allocations: { departmentOrgUnitId: string; departmentName: string; percentage: number }[]
 }
 
-/** Tek bölüm ya da yüzdeyle bölünmüş çoklu bölüm girdisini doğrular ve isimleri çözer. Hata varsa string mesaj döner. */
+/**
+ * Tek bölüm ya da yüzdeyle bölünmüş çoklu bölüm girdisini doğrular ve isimleri çözer. Hata varsa string mesaj döner.
+ * Çoklu bölümde yüzdeler toplamı %100'ü GEÇEMEZ ama altında kalabilir — kalan kısım örtük "Genel" sayılır
+ * (ayrı bir allocation satırı olarak saklanmaz; computeSummary tüm bölümlerin toplamı faturanın tam tutarını
+ * tutturmadığında farkı otomatik "Genel" olarak ekler).
+ */
 export async function resolveDepartments(
   departmentOrgUnitId: string | null | undefined,
   allocations: AllocationInput[] | undefined
 ): Promise<ResolvedDepartments | string> {
-  const hasAllocations = Array.isArray(allocations) && allocations.length > 1
+  const hasAllocations = Array.isArray(allocations) && allocations.length >= 1
 
   if (hasAllocations) {
     const ids = allocations!.map((a) => a.departmentOrgUnitId)
     if (new Set(ids).size !== ids.length) return 'Aynı bölümü birden fazla kez seçemezsin'
     const pctSum = allocations!.reduce((s, a) => s + Number(a.percentage), 0)
-    if (Math.abs(pctSum - 100) > 0.5) return 'Bölüm yüzdeleri toplamı %100 olmalı'
+    if (pctSum > 100.5) return 'Bölüm yüzdeleri toplamı %100\'ü geçemez'
+    if (pctSum <= 0) return 'Geçerli bir yüzde gir'
 
     const depts = await prisma.departmentDefinition.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } })
     if (depts.length !== ids.length) return 'Geçersiz bölüm seçimi'

@@ -416,13 +416,13 @@ describe('Sidebar — "Servis: Bu Ay Ne Değişti?" menü öğesi (FAZ 1B-EK Mad
 })
 
 describe('Sidebar — Stratejik İK "Servis" alt-başlığı (Formlar deseninin uygulanması, 2026-09-18)', () => {
-  it('servis.view izinli kullanıcıda "Servis" başlığı görünür ve altında YALNIZ 2 öğe vardır', () => {
+  it('servis.view izinli kullanıcıda "Servis" başlığı görünür ve altında YALNIZ 3 öğe vardır', () => {
     mockSession({ role: 'KULLANICI', department: 'Üretim', permissions: ['servis.view'] })
     renderSidebar()
     acIvGrubunu()
     const servisKutu = screen.getByTestId('strategic-hr-subgroup-servis').parentElement as HTMLElement
     const linkler = Array.from(servisKutu.querySelectorAll('a')).map((a) => a.textContent?.trim())
-    expect(linkler).toEqual(['Servis Yönetimi', 'Servis: Bu Ay Ne Değişti?'])
+    expect(linkler).toEqual(['Servis Yönetimi', 'Servis: Bu Ay Ne Değişti?', 'Veri Kalite Merkezi'])
   })
 
   it('servis.view izni yoksa "Servis" başlığı hiç render edilmez (boş alt grup çizilmez)', () => {
@@ -457,7 +457,10 @@ describe('Sidebar — Stratejik İK "Servis" alt-başlığı (Formlar deseninin 
     const stratejikIkKutu = screen.getByText('Yetenek Yönetimi').closest('div.space-y-1.ml-4') as HTMLElement
     const duzAdlar = Array.from(stratejikIkKutu.querySelectorAll('a'))
       .map((a) => a.textContent?.trim())
-      .filter((ad): ad is string => !!ad && !['Servis Yönetimi', 'Servis: Bu Ay Ne Değişti?'].includes(ad))
+      .filter(
+        (ad): ad is string =>
+          !!ad && !['Servis Yönetimi', 'Servis: Bu Ay Ne Değişti?', 'Veri Kalite Merkezi'].includes(ad),
+      )
     expect(duzAdlar).toEqual(digerOgeler)
   })
 
@@ -469,5 +472,23 @@ describe('Sidebar — Stratejik İK "Servis" alt-başlığı (Formlar deseninin 
       el.getAttribute('data-testid'),
     )
     expect(testIdler).toEqual(['strategic-hr-subgroup-servis'])
+  })
+})
+
+describe('Sidebar — "Veri Kalite Merkezi" menü öğesi için permission testi (madde 43)', () => {
+  it('servis.view izni OLMAYAN kullanıcı "Veri Kalite Merkezi" satırını GÖRMEZ (İV/Stratejik İK grubu başka bir izinle açık, spesifik öğe yine de gizli)', () => {
+    // Grup görünürlüğünü sağlamak için ilgisiz bir izin veriliyor (yilliktakvim.view) —
+    // amaç, "grup zaten kapalı olduğu için görünmüyor" yanlış-negatifini önlemek.
+    mockSession({ role: 'KULLANICI', department: 'Üretim', permissions: ['yilliktakvim.view'] })
+    renderSidebar()
+    acIvGrubunu()
+    expect(screen.queryByText('Veri Kalite Merkezi')).not.toBeInTheDocument()
+  })
+
+  it('servis.view izni OLAN kullanıcı "Veri Kalite Merkezi" satırını GÖRÜR', () => {
+    mockSession({ role: 'KULLANICI', department: 'Üretim', permissions: ['servis.view'] })
+    renderSidebar()
+    acIvGrubunu()
+    expect(screen.getByText('Veri Kalite Merkezi')).toBeInTheDocument()
   })
 })

@@ -2,6 +2,13 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { toast } from 'sonner'
+import {
+  DndContext, DragOverlay, KeyboardSensor, PointerSensor, TouchSensor, closestCenter, pointerWithin, useDraggable, useDroppable, useSensor, useSensors,
+  type CollisionDetection, type DragEndEvent, type DragStartEvent,
+} from '@dnd-kit/core'
+import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -12,7 +19,7 @@ import { NativeSelect } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { DateField } from '@/components/ui/date-field'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { ArrowDown, ArrowUp, Columns3, FileBarChart2, Loader2, Maximize2, Play, Plus, Save, Sigma, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, Columns3, FileBarChart2, GripVertical, Loader2, Maximize2, Play, Plus, Save, Sigma, Trash2 } from 'lucide-react'
 import { ifadeDogrula } from '@/lib/rapor/ifade'
 import { BICIMLER, veriSetiParametreleri } from '@/lib/rapor/sablon-dogrula'
 import type { AltToplamFn, Bicim, GrupTanim, HesaplananAlan, Kolon, KosulluBicim, SablonIcerik, SablonParametre, VeriSetiTanim } from '@/lib/rapor/tipler'
@@ -34,6 +41,51 @@ const ALT_TOPLAMLAR: { v: AltToplamFn; e: string }[] = [
 const TIP_BICIM: Record<string, Bicim | undefined> = { sayi: '#.##0', tarih: 'gg.aa.yyyy' }
 
 const hataSinifi = (d: ReturnType<typeof ifadeDogrula> | null) => !d ? '' : !d.gecerli ? 'text-red-700' : d.hata ? 'text-amber-700' : 'text-green-700'
+
+// ── Sürükle-bırak yardımcıları (desen: akademi AdminPackageCoursesPicker — dnd-kit core/sortable/utilities) ──
+// Kaynaklar: sol panel alanları (id "alan:<ad>"). Hedefler: "drop:kolonlar", "drop:gruplar".
+// Sıralama: kolon satırları "kolon:<alan>", grup satırları "grup:<index>".
+
+type SurukleVeri = { tip: 'alan'; alan: string } | { tip: 'kolon'; alan: string } | { tip: 'grup'; index: number }
+
+/** Sol panel alan satırı — hem tıklanır hem sürüklenir (PointerSensor distance:6 ile tıklama bozulmaz). */
+function SurukleAlan({ alan, children, className }: { alan: string; children: React.ReactNode; className?: string }) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: `alan:${alan}`, data: { tip: 'alan', alan } satisfies SurukleVeri })
+  return (
+    <div ref={setNodeRef} {...attributes} {...listeners} className={`touch-manipulation ${isDragging ? 'opacity-40' : ''} ${className ?? ''}`}>
+      {children}
+    </div>
+  )
+}
+
+/** Bırakma alanı: geçerli → mavi çerçeve, geçersiz → kırmızı. */
+function BirakmaAlani({ id, gecerlilik, children, className }: { id: string; gecerlilik: (alan: string) => string | null; children: React.ReactNode; className?: string }) {
+  const { setNodeRef, isOver, active } = useDroppable({ id })
+  const veri = active?.data.current as SurukleVeri | undefined
+  const uzerinde = isOver && veri?.tip === 'alan'
+  const hata = uzerinde && veri?.tip === 'alan' ? gecerlilik(veri.alan) : null
+  return (
+    <div ref={setNodeRef} data-birak={id} className={`rounded-md transition-shadow ${uzerinde ? (hata ? 'ring-2 ring-red-500 bg-red-50/40' : 'ring-2 ring-[#1B4F72] bg-blue-50/40') : ''} ${className ?? ''}`}>
+      {children}
+      {uzerinde && <div className={`px-2 pb-1 text-[11px] ${hata ? 'text-red-700' : 'text-[#1B4F72]'}`}>{hata ?? 'Bırakın'}</div>}
+    </div>
+  )
+}
+
+/** Sıralanabilir satır sarmalayıcı — tutamaç (GripVertical) ile sürüklenir. */
+function SiralanabilirSatir({ id, veri, className, children, onClick }: { id: string; veri: SurukleVeri; className?: string; children: (tutamac: React.ReactNode) => React.ReactNode; onClick?: () => void }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id, data: veri })
+  const tutamac = (
+    <button type="button" {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground touch-manipulation px-0.5" title="Sürükleyerek sırala" onClick={(e) => e.stopPropagation()}>
+      <GripVertical className="h-4 w-4" />
+    </button>
+  )
+  return (
+    <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }} className={className} onClick={onClick}>
+      {children(tutamac)}
+    </div>
+  )
+}
 
 /** İfade kutusu + altında canlı doğrulama (ifadeDogrula). */
 function IfadeKutusu({ deger, onChange, alanlar, placeholder, rows = 2 }: { deger: string; onChange: (v: string) => void; alanlar: string[]; placeholder?: string; rows?: number }) {
@@ -165,6 +217,48 @@ export default function SablonTasarimClient({ veriSetleri, mevcut }: Props) {
 
   const sk = seciliKolon !== null ? kolonlar[seciliKolon] : null
 
+  // ── Sürükle-bırak ─────────────────────────────────────────────────────
+  const [surukleAktif, setSurukleAktif] = useState<SurukleVeri | null>(null)
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), // tıklama korunur
+    useSensor(TouchSensor, { activationConstraint: { delay: 180, tolerance: 6 } }), // tablet: basılı tut
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  )
+  /** Alan sürüklenirken bırakma alanlarına, sıralama sürüklenirken satırlara göre çarpışma. */
+  const carpisma: CollisionDetection = (args) => {
+    const veri = args.active.data.current as SurukleVeri | undefined
+    if (veri?.tip === 'alan') return pointerWithin({ ...args, droppableContainers: args.droppableContainers.filter((c) => String(c.id).startsWith('drop:')) })
+    const onek = veri?.tip === 'kolon' ? 'kolon:' : 'grup:'
+    return closestCenter({ ...args, droppableContainers: args.droppableContainers.filter((c) => String(c.id).startsWith(onek)) })
+  }
+  const kolonGecerlilik = (alan: string) => (kolonlar.some((k) => k.alan === alan) ? `'${alan}' zaten kolon` : null)
+  const grupGecerlilik = (alan: string) => (gruplar.length >= 3 ? 'En fazla 3 grup seviyesi' : gruplar.some((g) => g.alan === alan) ? `'${alan}' zaten grup` : null)
+  function grupEkle(alan: string) { setGruplar((l) => [...l, { alan }]) }
+  const onDragStart = (e: DragStartEvent) => setSurukleAktif((e.active.data.current as SurukleVeri) ?? null)
+  const onDragEnd = (e: DragEndEvent) => {
+    setSurukleAktif(null)
+    const { active, over } = e
+    if (!over) return
+    const veri = active.data.current as SurukleVeri | undefined
+    if (!veri) return
+    if (veri.tip === 'alan') {
+      if (over.id === 'drop:kolonlar') { const h = kolonGecerlilik(veri.alan); if (h) toast.warning(h); else kolonEkle(veri.alan) }
+      else if (over.id === 'drop:gruplar') { const h = grupGecerlilik(veri.alan); if (h) toast.warning(h); else grupEkle(veri.alan) }
+      return
+    }
+    if (active.id === over.id) return
+    if (veri.tip === 'kolon') {
+      const eski = kolonlar.findIndex((k) => `kolon:${k.alan}` === active.id), yeni = kolonlar.findIndex((k) => `kolon:${k.alan}` === over.id)
+      if (eski < 0 || yeni < 0) return
+      setKolonlar((l) => arrayMove(l, eski, yeni))
+      setSeciliKolon((sc) => (sc === null ? null : sc === eski ? yeni : sc > eski && sc <= yeni ? sc - 1 : sc < eski && sc >= yeni ? sc + 1 : sc))
+    } else if (veri.tip === 'grup') {
+      const eski = Number(String(active.id).slice(5)), yeni = Number(String(over.id).slice(5))
+      if (Number.isNaN(eski) || Number.isNaN(yeni)) return
+      setGruplar((l) => arrayMove(l, eski, yeni))
+    }
+  }
+
   return (
     <div className="space-y-4">
       {/* ÜST */}
@@ -207,6 +301,7 @@ export default function SablonTasarimClient({ veriSetleri, mevcut }: Props) {
         </div>
       )}
 
+      <DndContext sensors={sensors} collisionDetection={carpisma} onDragStart={onDragStart} onDragEnd={onDragEnd} onDragCancel={() => setSurukleAktif(null)}>
       <div className="grid gap-4 xl:grid-cols-[280px_1fr_400px]">
         {/* SOL — Kullanılabilir alanlar */}
         <Card className="xl:sticky xl:top-4 self-start max-h-[calc(100vh-6rem)] flex flex-col">
@@ -215,11 +310,14 @@ export default function SablonTasarimClient({ veriSetleri, mevcut }: Props) {
             {!veriSetiId ? <p className="text-xs text-muted-foreground">Önce veri seti seçin.</p> : vsHata ? <p className="text-xs text-red-700">{vsHata}</p> : (
               <div className="border rounded">
                 {vsAlanlar.map((a) => (
-                  <button key={a.ad} className="w-full text-left px-2 py-1 flex items-center gap-2 hover:bg-muted border-b last:border-b-0" onClick={() => kolonEkle(a.ad)} title={`${a.yol} — kolon olarak ekle`}>
-                    <span className="flex-1 font-mono text-xs truncate">{a.ad}</span>
-                    <span className="text-[10px] text-muted-foreground">{a.veriTipi}</span>
-                    {kolonlar.some((k) => k.alan === a.ad) && <Columns3 className="h-3 w-3 text-muted-foreground" />}
-                  </button>
+                  <SurukleAlan key={a.ad} alan={a.ad} className="border-b last:border-b-0">
+                    <button className="w-full text-left px-2 py-1 flex items-center gap-2 hover:bg-muted cursor-grab active:cursor-grabbing" onClick={() => kolonEkle(a.ad)} title={`${a.yol} — tıkla: kolon ekle · sürükle: Kolonlar/Gruplar`}>
+                      <GripVertical className="h-3 w-3 shrink-0 text-muted-foreground/60" />
+                      <span className="flex-1 font-mono text-xs truncate">{a.ad}</span>
+                      <span className="text-[10px] text-muted-foreground">{a.veriTipi}</span>
+                      {kolonlar.some((k) => k.alan === a.ad) && <Columns3 className="h-3 w-3 text-muted-foreground" />}
+                    </button>
+                  </SurukleAlan>
                 ))}
                 {vsAlanlar.length === 0 && <div className="p-2 text-xs text-muted-foreground">Veri setinde çıktı alanı yok.</div>}
               </div>
@@ -232,6 +330,7 @@ export default function SablonTasarimClient({ veriSetleri, mevcut }: Props) {
             {hesaplananlar.map((h, i) => (
               <div key={i} className="border rounded p-2 space-y-1.5">
                 <div className="flex items-center gap-1">
+                  {h.ad && <SurukleAlan alan={h.ad} className="shrink-0 cursor-grab active:cursor-grabbing text-muted-foreground/60 hover:text-foreground" ><span title="Sürükle: Kolonlar/Gruplar"><GripVertical className="h-4 w-4" /></span></SurukleAlan>}
                   <Input className="h-7 font-mono text-xs" value={h.ad} onChange={(e) => setHesaplananlar((l) => l.map((x, j) => (j === i ? { ...x, ad: e.target.value.replace(/[^A-Za-z0-9_]/g, '') } : x)))} placeholder="ad" />
                   <NativeSelect className="h-7 w-28 text-xs" value={h.bicim ?? ''} onChange={(e) => setHesaplananlar((l) => l.map((x, j) => (j === i ? { ...x, bicim: (e.target.value || undefined) as Bicim | undefined } : x)))}>
                     <option value="">biçim</option>{BICIMLER.map((b) => <option key={b} value={b}>{b}</option>)}
@@ -281,11 +380,15 @@ export default function SablonTasarimClient({ veriSetleri, mevcut }: Props) {
               <CardTitle className="text-base">Gruplar <span className="text-muted-foreground font-normal text-sm">({gruplar.length}/3)</span></CardTitle>
               <Button size="sm" variant="outline" className="h-7 text-xs" disabled={gruplar.length >= 3} onClick={() => setGruplar((l) => [...l, { alan: '' }])}><Plus className="h-3 w-3 mr-1" />Seviye</Button>
             </CardHeader>
-            <CardContent className="space-y-2">
-              {gruplar.length === 0 && <p className="text-sm text-muted-foreground">Gruplama yok — satırlar düz listelenir.</p>}
+            <BirakmaAlani id="drop:gruplar" gecerlilik={grupGecerlilik}>
+            <CardContent className="space-y-2 min-h-[3.5rem]">
+              {gruplar.length === 0 && <p className="text-sm text-muted-foreground">Gruplama yok — satırlar düz listelenir. Sol panelden alan sürükleyip bırakabilirsiniz.</p>}
+              <SortableContext items={gruplar.map((_, i) => `grup:${i}`)} strategy={verticalListSortingStrategy}>
               {gruplar.map((g, i) => (
-                <div key={i} className="border rounded p-2 space-y-1.5">
-                  <div className="grid grid-cols-[auto_1fr_auto_auto] gap-2 items-center">
+                <SiralanabilirSatir key={i} id={`grup:${i}`} veri={{ tip: 'grup', index: i }} className="border rounded p-2 space-y-1.5 bg-background">
+                  {(tutamac) => (<>
+                  <div className="grid grid-cols-[auto_auto_1fr_auto_auto] gap-2 items-center">
+                    {tutamac}
                     <span className="text-xs text-muted-foreground">Seviye {i + 1}</span>
                     <NativeSelect className="h-8 text-xs font-mono" value={g.alan} onChange={(e) => setGruplar((l) => l.map((x, j) => (j === i ? { ...x, alan: e.target.value } : x)))}>
                       <option value="">alan…</option>{tumAlanlar.map((a) => <option key={a} value={a}>{a}</option>)}
@@ -295,18 +398,25 @@ export default function SablonTasarimClient({ veriSetleri, mevcut }: Props) {
                   </div>
                   <Label className="text-[11px]">Başlık ifadesi (opsiyonel; boşsa alanın değeri)</Label>
                   <IfadeKutusu deger={g.baslik ?? ''} onChange={(v) => setGruplar((l) => l.map((x, j) => (j === i ? { ...x, baslik: v || undefined } : x)))} alanlar={tumAlanlar} rows={1} placeholder={`birlestir('Tezgah ', {${g.alan || 'alan'}})`} />
-                </div>
+                  </>)}
+                </SiralanabilirSatir>
               ))}
+              </SortableContext>
             </CardContent>
+            </BirakmaAlani>
           </Card>
 
           <Card>
             <CardHeader className="pb-2"><CardTitle className="text-base">Kolonlar <span className="text-muted-foreground font-normal text-sm">({kolonlar.length})</span></CardTitle></CardHeader>
-            <CardContent className="space-y-1">
-              {kolonlar.length === 0 && <p className="text-sm text-muted-foreground">Sol panelden alana tıklayarak kolon ekleyin.</p>}
+            <BirakmaAlani id="drop:kolonlar" gecerlilik={kolonGecerlilik}>
+            <CardContent className="space-y-1 min-h-[3.5rem]">
+              {kolonlar.length === 0 && <p className="text-sm text-muted-foreground">Sol panelden alana tıklayın ya da buraya sürükleyip bırakın.</p>}
+              <SortableContext items={kolonlar.map((k) => `kolon:${k.alan}`)} strategy={verticalListSortingStrategy}>
               {kolonlar.map((k, i) => (
-                <div key={i} className={`rounded px-2 py-1.5 border cursor-pointer space-y-1 ${seciliKolon === i ? 'border-[#1B4F72] bg-blue-50/50' : 'border-transparent hover:bg-muted'}`} onClick={() => { setSeciliKolon(i); setSagSekme('kolon') }}>
-                  <div className="grid grid-cols-[130px_1fr_auto] gap-2 items-center">
+                <SiralanabilirSatir key={k.alan} id={`kolon:${k.alan}`} veri={{ tip: 'kolon', alan: k.alan }} className={`rounded px-2 py-1.5 border cursor-pointer space-y-1 bg-background ${seciliKolon === i ? 'border-[#1B4F72] bg-blue-50/50' : 'border-transparent hover:bg-muted'}`} onClick={() => { setSeciliKolon(i); setSagSekme('kolon') }}>
+                  {(tutamac) => (<>
+                  <div className="grid grid-cols-[auto_130px_1fr_auto] gap-2 items-center">
+                    {tutamac}
                     <span className="font-mono text-xs truncate" title={k.alan}>{i + 1}. {k.alan}</span>
                     <Input className="h-7 text-xs" value={k.baslik} onClick={(e) => e.stopPropagation()} onChange={(e) => kolonGuncelle(i, { baslik: e.target.value })} placeholder="Başlık" />
                     <div className="flex items-center" onClick={(e) => e.stopPropagation()}>
@@ -321,9 +431,12 @@ export default function SablonTasarimClient({ veriSetleri, mevcut }: Props) {
                     <NativeSelect className="h-7 text-xs" value={k.bicim ?? ''} onChange={(e) => kolonGuncelle(i, { bicim: (e.target.value || undefined) as Bicim | undefined })} title="Biçim"><option value="">biçim: oto</option>{BICIMLER.map((b) => <option key={b} value={b}>{b}</option>)}</NativeSelect>
                     <NativeSelect className="h-7 text-xs" value={k.altToplam ?? 'yok'} onChange={(e) => kolonGuncelle(i, { altToplam: e.target.value as AltToplamFn })} title="Alt toplam">{ALT_TOPLAMLAR.map((a) => <option key={a.v} value={a.v}>{a.v === 'yok' ? 'alt toplam: yok' : a.e}</option>)}</NativeSelect>
                   </div>
-                </div>
+                  </>)}
+                </SiralanabilirSatir>
               ))}
+              </SortableContext>
             </CardContent>
+            </BirakmaAlani>
           </Card>
 
           <Card>
@@ -412,6 +525,12 @@ export default function SablonTasarimClient({ veriSetleri, mevcut }: Props) {
           </Tabs>
         </Card>
       </div>
+      <DragOverlay dropAnimation={null}>
+        {surukleAktif?.tip === 'alan' && (
+          <div className="rounded border bg-white/90 px-2 py-1 font-mono text-xs shadow-lg opacity-80 flex items-center gap-1"><GripVertical className="h-3 w-3 text-muted-foreground" />{surukleAktif.alan}</div>
+        )}
+      </DragOverlay>
+      </DndContext>
     </div>
   )
 }

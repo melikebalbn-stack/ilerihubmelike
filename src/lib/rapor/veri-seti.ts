@@ -58,9 +58,43 @@ function odataAlanlariAt(ham: Satir): Satir {
   return s
 }
 
+// ── Postgres güvenli çalıştırma ─────────────────────────────────────────
+
+const SQL_ZAMAN_ASIMI = '30s'
+
+/**
+ * Sorgu metni denetimi (kayıt + çalıştırma öncesi): yalnız SELECT/WITH, tek ifade (noktalı virgül yok).
+ * Hata mesajı döner; geçerliyse null. Sondaki tek ';' tolere edilir.
+ */
+export function sqlDenetle(sorgu: string): string | null {
+  const s = sorgu.trim().replace(/;\s*$/, '')
+  if (!s) return 'SQL sorgusu boş'
+  if (!/^(select|with)\b/i.test(s)) return 'yalnız SELECT/WITH sorgusu kabul edilir'
+  // Yorum/dize içindeki ';' ayırt edilmez — bilinçli: birden çok ifade riskine karşı tamamı reddedilir.
+  if (s.includes(';')) return 'noktalı virgülle birden fazla ifade kabul edilmez'
+  return null
+}
+
+/**
+ * Sorguyu READ ONLY + statement_timeout'lu bir işlem içinde koşturur — önizleme, rapor çalıştırma ve
+ * şablon önizleme aynı yoldan geçer. Salt okuma işlemi CTE içine gömülü UPDATE/DELETE'i de keser
+ * ("cannot execute … in a read-only transaction"); zaman aşımı pg_sleep gibi uzun sorguları 30 sn'de öldürür.
+ * Değerler DAİMA $n parametresiyle bağlanır.
+ */
+export async function postgresSorguCalistir(sorgu: string, degerler: unknown[]): Promise<Satir[]> {
+  const hata = sqlDenetle(sorgu)
+  if (hata) throw new VeriSetiHatasi(`SQL: ${hata}`)
+  const temiz = sorgu.trim().replace(/;\s*$/, '')
+  return prisma.$transaction(async (tx) => {
+    await tx.$executeRawUnsafe('SET TRANSACTION READ ONLY')
+    await tx.$executeRawUnsafe(`SET LOCAL statement_timeout = '${SQL_ZAMAN_ASIMI}'`)
+    return tx.$queryRawUnsafe<Satir[]>(temiz, ...degerler)
+  }, { timeout: 35_000 })
+}
+
 async function postgresCek(k: KaynakPostgres, p: RaporParametreler): Promise<Satir[]> {
   const degerler = postgresParametreleri(k.parametreler, p)
-  return prisma.$queryRawUnsafe<Satir[]>(k.sorgu, ...degerler)
+  return postgresSorguCalistir(k.sorgu, degerler)
 }
 
 async function kaynakCek(k: Kaynak, p: RaporParametreler, sec: CalistirmaSecenekleri): Promise<{ ad: string; satirlar: Satir[]; sureMs: number }> {
@@ -153,8 +187,8 @@ export function tanimDogrula(tanim: VeriSetiTanim): string[] {
       if (!/^[A-Za-z0-9_]+$/.test(k.projeksiyon ?? '')) h.push(`${k.ad}: projeksiyon adı geçersiz`)
       if (!/^[A-Za-z0-9_]+$/.test(k.entitySet ?? '')) h.push(`${k.ad}: entity set adı geçersiz`)
     } else if (k.tip === 'postgres') {
-      if (!k.sorgu?.trim()) h.push(`${k.ad}: SQL sorgusu boş`)
-      else if (!/^\s*(select|with)\b/i.test(k.sorgu)) h.push(`${k.ad}: yalnız SELECT/WITH sorgusu kabul edilir`)
+      const sqlHata = sqlDenetle(k.sorgu ?? '')
+      if (sqlHata) h.push(`${k.ad}: ${sqlHata}`)
       const n = (k.parametreler ?? []).length
       const enBuyuk = Math.max(0, ...[...(k.sorgu ?? '').matchAll(/\$(\d+)/g)].map((m) => Number(m[1])))
       if (enBuyuk > n) h.push(`${k.ad}: sorguda $${enBuyuk} var ama ${n} parametre tanımlı`)

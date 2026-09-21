@@ -27,6 +27,8 @@ export interface KaynakPostgres {
   parametreler?: string[]
   /** Tasarım ekranı meta verisi (motor kullanmaz): tablo + seçili kolonlar + WHERE metni ({p.x} ile). */
   tasarim?: { tablo: string; alanlar: string[]; where?: string }
+  /** Serbest SQL kaynağı meta'sı (motor kullanmaz): {p.x} yer tutuculu ham metin; sorgu/parametreler bundan türetilir. */
+  sqlMetin?: string
 }
 
 export type Kaynak = KaynakIfs | KaynakPostgres

@@ -12,6 +12,7 @@ export const TanimSchema = z.object({
     z.object({
       ad: z.string(), tip: z.literal('postgres'), sorgu: z.string(), parametreler: z.array(z.string()).optional(),
       tasarim: z.object({ tablo: z.string(), alanlar: z.array(z.string()), where: z.string().optional() }).optional(),
+      sqlMetin: z.string().optional(),
     }),
   ])),
   birlestir: z.array(z.object({ sol: z.string(), sag: z.string(), tip: z.enum(['inner', 'left']) })).default([]),

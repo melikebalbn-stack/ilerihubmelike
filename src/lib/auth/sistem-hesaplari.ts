@@ -7,11 +7,13 @@
 // Ayırt etme YALNIZ e-postayla yapılır. User.id deseni işe yaramaz: bu hesaplar
 // da giriş yolundan doğduğu için `ad_*` id taşıyor, gerçek kişilerle aynı.
 // (11.09.2026 ölçümü: 7 rolsüz hesabın 6'sı ad_*, 1'i kiosk cuid'i.)
+// 21.09.2026: bakimhane@ilerigroup.com listeden ÇIKTI — Rahim Erol'un (ILR-00879) kişisel
+// hesabı olduğu anlaşıldı ve User.personnelId ile bağlandı; artık LDAP senkronu, varsayılan
+// rol ve ayrılan giriş kapısı onu normal kişisel hesap gibi işler.
 export const SYSTEM_ACCOUNTS = [
   '1.toplantiodasi@ilerigroup.com',
   '2.kattoplantiodasi@ilerigroup.com',
   '2.toplantiodasi@ilerigroup.com',
-  'bakimhane@ilerigroup.com',
   'depomail@ilerigroup.com',
   'kaliphane@ilerigroup.com',
   'final.kalite@ilerigroup.com',

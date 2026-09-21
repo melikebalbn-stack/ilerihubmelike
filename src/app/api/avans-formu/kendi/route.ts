@@ -117,6 +117,21 @@ export async function POST(request: NextRequest) {
     )
   }
 
+  // Upsert'ten ONCE mevcut durumu oku: update dalinda geriCekildiMi
+  // sifirlaniyor, bu yuzden "reaktivasyon oldu mu" ancak upsert'ten once
+  // bakilarak anlasilabilir (bkz. asagidaki AvansTalebiGeriCekmeLog).
+  const oncekiTalep = await prisma.avansTalebi.findUnique({
+    where: {
+      sorumluId_bolum_donemYil_donemAy: {
+        sorumluId: personel.id,
+        bolum: personel.bolum,
+        donemYil: body.donemYil,
+        donemAy: body.donemAy,
+      },
+    },
+    select: { geriCekildiMi: true },
+  })
+
   const avansTalebi = await prisma.avansTalebi.upsert({
     where: {
       sorumluId_bolum_donemYil_donemAy: {
@@ -149,6 +164,18 @@ export async function POST(request: NextRequest) {
       geriCekmeTarihi: null,
     },
   })
+
+  // Reaktivasyon: kayit daha once geri cekilmisti, bu gonderim onu geri
+  // getirdi — izi AvansTalebiGeriCekmeLog'a dusur (bkz. geri-cek/route.ts).
+  if (oncekiTalep?.geriCekildiMi) {
+    await prisma.avansTalebiGeriCekmeLog.create({
+      data: {
+        avansTalebiId: avansTalebi.id,
+        islem: 'REAKTIVASYON',
+        kullaniciId: user.id,
+      },
+    })
+  }
 
   await prisma.avansTalebiSatiri.deleteMany({
     where: { avansTalebiId: avansTalebi.id },

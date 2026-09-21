@@ -128,6 +128,21 @@ export async function POST(request: NextRequest) {
       // eşleşiyorsa vekaletenBolumler'de bu bölüm YOKTUR → false kalır.
       const vekaletenMi = sonuc.vekaletenBolumler.includes(bolum)
 
+      // Upsert'ten ONCE mevcut durumu oku: update dalinda geriCekildiMi
+      // sifirlaniyor, bu yuzden "reaktivasyon oldu mu" ancak upsert'ten
+      // once bakilarak anlasilabilir (bkz. asagidaki AvansTalebiGeriCekmeLog).
+      const oncekiTalep = await tx.avansTalebi.findUnique({
+        where: {
+          sorumluId_bolum_donemYil_donemAy: {
+            sorumluId: sonuc.sorumlu.id,
+            bolum,
+            donemYil: body.donemYil,
+            donemAy: body.donemAy,
+          },
+        },
+        select: { geriCekildiMi: true },
+      })
+
       const avansTalebi = await tx.avansTalebi.upsert({
         where: {
           sorumluId_bolum_donemYil_donemAy: {
@@ -157,6 +172,19 @@ export async function POST(request: NextRequest) {
           geriCekmeTarihi: null,
         },
       })
+
+      // Reaktivasyon: kayit daha once geri cekilmisti, bu gonderim onu
+      // geri getirdi — izi AvansTalebiGeriCekmeLog'a dusur (bkz.
+      // geri-cek/route.ts).
+      if (oncekiTalep?.geriCekildiMi) {
+        await tx.avansTalebiGeriCekmeLog.create({
+          data: {
+            avansTalebiId: avansTalebi.id,
+            islem: 'REAKTIVASYON',
+            kullaniciId: user.id,
+          },
+        })
+      }
 
       await tx.avansTalebiSatiri.deleteMany({
         where: { avansTalebiId: avansTalebi.id },

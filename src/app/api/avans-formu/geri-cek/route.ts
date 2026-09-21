@@ -16,7 +16,12 @@ export const dynamic = 'force-dynamic'
  * kalır. Kim/ne zaman geri çektiği izi kalıcı tutulur; sonuclar ekranı
  * kaydı "Geri Çekildi" rozetiyle göstermeye devam eder. Aynı dönem için
  * tekrar talep girilirse (upsert), bu üç alan kendi/route.ts ve route.ts
- * tarafından sıfırlanarak kayıt "reaktive" edilir.
+ * tarafından sıfırlanarak kayıt "reaktive" edilir — o an ayrıca bir
+ * AvansTalebiGeriCekmeLog(REAKTIVASYON) satırı düşer, çünkü bu üç alan
+ * sıfırlanınca "daha önce geri çekilmişti" izi kaybolur.
+ *
+ * DENETIM LOG: burada (soft delete anında) bir AvansTalebiGeriCekmeLog
+ * (GERI_CEKME) satırı, update ile AYNI transaction içinde eklenir.
  *
  * SİMETRİK: kilit kontrolü, yeni talep girme/düzenleme ile AYNI
  * `donemKilidiKontrol`'ü kullanır (manuel > otomatik varsayılan). Ayrı,
@@ -68,14 +73,23 @@ export async function DELETE(request: NextRequest) {
   const kilit = await donemKilidiKontrol(talep.donemYil, talep.donemAy)
   if (kilit) return kilit
 
-  await prisma.avansTalebi.update({
-    where: { id: talep.id },
-    data: {
-      geriCekildiMi: true,
-      geriCekenId: dbUser.personnelId,
-      geriCekmeTarihi: new Date(),
-    },
-  })
+  await prisma.$transaction([
+    prisma.avansTalebi.update({
+      where: { id: talep.id },
+      data: {
+        geriCekildiMi: true,
+        geriCekenId: dbUser.personnelId,
+        geriCekmeTarihi: new Date(),
+      },
+    }),
+    prisma.avansTalebiGeriCekmeLog.create({
+      data: {
+        avansTalebiId: talep.id,
+        islem: 'GERI_CEKME',
+        kullaniciId: user.id,
+      },
+    }),
+  ])
 
   return NextResponse.json({ success: true })
 }

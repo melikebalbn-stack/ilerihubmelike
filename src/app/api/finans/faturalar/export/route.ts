@@ -61,6 +61,17 @@ export async function GET(request: NextRequest) {
           Bölüm: 'Genel',
           Not: '',
         },
+        {
+          Tarih: '2026-01-16',
+          Firma: 'Örnek Firma B Ltd.',
+          'Fatura No': 'ABC2026000000002',
+          Tutar: 8000,
+          'Para Birimi': 'TRY',
+          'TL Karşılığı': '',
+          '€ Karşılığı': '',
+          Bölüm: 'Kalite Müdürlüğü %60, Sistem Geliştirme Müdürlüğü %40',
+          Not: 'Birden fazla bölüme bölünmüş fatura örneği — yüzdeler %100 etmeli',
+        },
       ]
     } else {
       const invoices = await prisma.invoice.findMany({

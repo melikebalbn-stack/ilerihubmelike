@@ -2,19 +2,14 @@
  * Avans Formu Hatırlatma Bildirimi.
  *
  * Her ayın 12'sinde birim sorumlularına "avans formunu 15'ine kadar
- * doldurun" hatırlatması 3 kanaldan gönderilir:
- *   1. Email (bu dosyadaki küçük template + sendEmail)
- *   2. In-app Notification (prisma.notification.create, "link" alanı)
- *   3. Push (sendPushToUser)
- *
- * zimmet-notifications.ts ile AYNI kanal deseni. Farkla: cron endpoint'i
- * (generate-notifications) çağıranın toplu sonuç sayısına ihtiyacı olduğu
- * için burada fire-and-forget DEĞİL — dispatchAvansHatirlatma await edilip
- * { ok, errors } döndürülür.
+ * doldurun" hatırlatması SADECE push ile gönderilir (bkz. Melih Bey talebi:
+ * email ve in-app kanalları kaldırıldı, gürültü/tekrar bildirim şikayeti).
+ * cron endpoint'i (generate-notifications) çağıranın toplu sonuç sayısına
+ * ihtiyacı olduğu için burada fire-and-forget DEĞİL — dispatchAvansHatirlatma
+ * await edilip { ok, errors } döndürülür.
  */
 
 import { prisma } from '@/lib/prisma'
-import { sendEmail } from '@/lib/email'
 import { sendPushToUser } from '@/lib/push-notifications'
 
 export type AvansHatirlatmaRecipient = {
@@ -24,57 +19,6 @@ export type AvansHatirlatmaRecipient = {
 }
 
 const AVANS_FORMU_LINK = '/avans-formu'
-
-function esc(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;')
-}
-
-function buildHatirlatmaEmailContent(
-  recipientName: string
-): { subject: string; body: string; html: string } {
-  const subject = "[ILERIHub] Avans formunu 15'ine kadar doldurun"
-
-  const body = `Merhaba ${recipientName},
-
-Bu ayki avans formunu, sorumlusu olduğunuz mavi yaka personel için doldurmanız gerekiyor.
-
-Son tarih: bu ayın 15'i.
-
-Formu doldurmak için ILERIHub'a giriş yapabilirsiniz.`
-
-  const html = `
-    <p>Merhaba ${esc(recipientName)},</p>
-    <p>Bu ayki avans formunu, sorumlusu olduğunuz mavi yaka personel için doldurmanız gerekiyor.</p>
-    <p><strong>Son tarih:</strong> bu ayın 15'i.</p>
-    <p>Formu doldurmak için ILERIHub'a giriş yapabilirsiniz.</p>
-  `
-
-  return { subject, body, html }
-}
-
-async function sendHatirlatmaEmail(recipient: AvansHatirlatmaRecipient): Promise<void> {
-  const { subject, body, html } = buildHatirlatmaEmailContent(recipient.name)
-  await sendEmail([{ name: recipient.name, email: recipient.email }], subject, body, html)
-}
-
-async function createHatirlatmaInAppNotification(
-  recipient: AvansHatirlatmaRecipient
-): Promise<void> {
-  await prisma.notification.create({
-    data: {
-      userId: recipient.id,
-      title: 'Avans formunu doldurun',
-      message: "Bu ayki avans formunu ekibiniz için doldurmanız gerekiyor. Son tarih: ayın 15'i.",
-      type: 'REMINDER',
-      link: AVANS_FORMU_LINK,
-    },
-  })
-}
 
 async function sendHatirlatmaPush(recipient: AvansHatirlatmaRecipient): Promise<void> {
   const subCount = await prisma.pushSubscription.count({ where: { userId: recipient.id } })
@@ -93,7 +37,7 @@ async function sendHatirlatmaPush(recipient: AvansHatirlatmaRecipient): Promise<
 }
 
 /**
- * Bir birim sorumlusuna avans formu hatırlatmasını 3 kanaldan gönderir.
+ * Bir birim sorumlusuna avans formu hatırlatmasını push ile gönderir.
  * generate-notifications route'u tarafından await edilir (toplu sonuç
  * sayısı response'a yansıtılmak zorunda olduğu için fire-and-forget değil).
  */
@@ -103,13 +47,9 @@ export async function dispatchAvansHatirlatma(
   const startedAt = Date.now()
   console.log(`[avans-notify] dispatch started → ${recipient.email}`)
 
-  const results = await Promise.allSettled([
-    sendHatirlatmaEmail(recipient),
-    createHatirlatmaInAppNotification(recipient),
-    sendHatirlatmaPush(recipient),
-  ])
+  const results = await Promise.allSettled([sendHatirlatmaPush(recipient)])
 
-  const channelNames = ['email', 'in-app', 'push'] as const
+  const channelNames = ['push'] as const
   const errors: string[] = []
   results.forEach((r, i) => {
     if (r.status === 'rejected') {
@@ -122,48 +62,6 @@ export async function dispatchAvansHatirlatma(
     `[avans-notify] dispatch finished → ${recipient.email} in ${Date.now() - startedAt}ms`
   )
   return { ok: errors.length === 0, errors }
-}
-
-function buildKendiHatirlatmaEmailContent(
-  recipientName: string
-): { subject: string; body: string; html: string } {
-  const subject = "[ILERIHub] Avans talebinizi 15'ine kadar girin"
-
-  const body = `Merhaba ${recipientName},
-
-Bu ayki avans talebinizi kendi hesabınızdan girmeniz gerekiyor.
-
-Son tarih: bu ayın 15'i.
-
-Talebi girmek için ILERIHub'a giriş yapabilirsiniz.`
-
-  const html = `
-    <p>Merhaba ${esc(recipientName)},</p>
-    <p>Bu ayki avans talebinizi kendi hesabınızdan girmeniz gerekiyor.</p>
-    <p><strong>Son tarih:</strong> bu ayın 15'i.</p>
-    <p>Talebi girmek için ILERIHub'a giriş yapabilirsiniz.</p>
-  `
-
-  return { subject, body, html }
-}
-
-async function sendKendiHatirlatmaEmail(recipient: AvansHatirlatmaRecipient): Promise<void> {
-  const { subject, body, html } = buildKendiHatirlatmaEmailContent(recipient.name)
-  await sendEmail([{ name: recipient.name, email: recipient.email }], subject, body, html)
-}
-
-async function createKendiHatirlatmaInAppNotification(
-  recipient: AvansHatirlatmaRecipient
-): Promise<void> {
-  await prisma.notification.create({
-    data: {
-      userId: recipient.id,
-      title: 'Avans talebinizi girin',
-      message: "Bu ayki avans talebinizi kendi hesabınızdan girmeniz gerekiyor. Son tarih: ayın 15'i.",
-      type: 'REMINDER',
-      link: AVANS_FORMU_LINK,
-    },
-  })
 }
 
 async function sendKendiHatirlatmaPush(recipient: AvansHatirlatmaRecipient): Promise<void> {
@@ -184,7 +82,7 @@ async function sendKendiHatirlatmaPush(recipient: AvansHatirlatmaRecipient): Pro
 
 /**
  * Sorumlu olmayan BEYAZ yaka personele "kendi talebini gir" hatırlatmasını
- * 3 kanaldan gönderir. dispatchAvansHatirlatma ile aynı desen, farklı metin.
+ * push ile gönderir. dispatchAvansHatirlatma ile aynı desen, farklı metin.
  */
 export async function dispatchAvansKendiHatirlatma(
   recipient: AvansHatirlatmaRecipient
@@ -192,13 +90,9 @@ export async function dispatchAvansKendiHatirlatma(
   const startedAt = Date.now()
   console.log(`[avans-notify][kendi] dispatch started → ${recipient.email}`)
 
-  const results = await Promise.allSettled([
-    sendKendiHatirlatmaEmail(recipient),
-    createKendiHatirlatmaInAppNotification(recipient),
-    sendKendiHatirlatmaPush(recipient),
-  ])
+  const results = await Promise.allSettled([sendKendiHatirlatmaPush(recipient)])
 
-  const channelNames = ['email', 'in-app', 'push'] as const
+  const channelNames = ['push'] as const
   const errors: string[] = []
   results.forEach((r, i) => {
     if (r.status === 'rejected') {

@@ -15,7 +15,6 @@ type ApiResponse = {
   mevcutSecim: boolean | null
   avansTalebiId: string | null
   donemAcik: boolean
-  geriCekilebilir: boolean
 }
 
 function baslar(adSoyad: string) {
@@ -189,12 +188,12 @@ export default function AvansFormuKendiPage() {
 
             {!data.donemAcik && (
               <p className="text-xs text-amber-600">
-                Bu dönem kilitli — form gönderilemez.
+                Bu dönem kilitli — form gönderilemez, geri çekilemez.
               </p>
             )}
 
             <div className="flex justify-end gap-2 pt-2">
-              {data.avansTalebiId && data.geriCekilebilir && (
+              {data.avansTalebiId && data.donemAcik && (
                 <Button
                   type="button"
                   variant="outline"

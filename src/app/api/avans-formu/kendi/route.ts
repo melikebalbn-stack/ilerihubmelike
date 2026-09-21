@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireUser } from '@/lib/auth/require-user'
 import { prisma } from '@/lib/prisma'
-import { donemAcikMi, donemGeriCekilebilirMi, donemKilidiKontrol } from '@/lib/avans/donem-kilidi'
+import { donemAcikMi, donemKilidiKontrol } from '@/lib/avans/donem-kilidi'
 
 export const dynamic = 'force-dynamic'
 
@@ -69,12 +69,9 @@ export async function GET() {
     donemAy,
     mevcutSecim: mevcutTalep?.satirlar[0]?.avansIstiyorMu ?? null,
     avansTalebiId: mevcutTalep?.id ?? null,
-    // donemAcik: yeni talep girme/düzenleme (Gönder butonu) için — manuel
-    // durum > otomatik varsayılan.
+    // donemAcik: hem Gönder hem Geri Çek butonu için — SİMETRİK, aynı
+    // birleşik kontrol (manuel > otomatik varsayılan).
     donemAcik: await donemAcikMi(donemYil, donemAy),
-    // geriCekilebilir: Geri Çek butonu için — SADECE manuel duruma bakar,
-    // otomatik gün kilidine bakmaz (bkz. donem-kilidi.ts).
-    geriCekilebilir: await donemGeriCekilebilirMi(donemYil, donemAy),
   })
 }
 

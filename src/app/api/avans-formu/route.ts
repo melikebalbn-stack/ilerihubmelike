@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireUser } from '@/lib/auth/require-user'
 import { prisma } from '@/lib/prisma'
-import { donemAcikMi, donemGeriCekilebilirMi, donemKilidiKontrol } from '@/lib/avans/donem-kilidi'
+import { donemAcikMi, donemKilidiKontrol } from '@/lib/avans/donem-kilidi'
 import { bulSorumluVeEkibi, sonucHataMesaji, sonucHataStatus } from './_lib/avans-formu-helpers'
 
 export const dynamic = 'force-dynamic'
@@ -41,10 +41,9 @@ export async function GET(request: NextRequest) {
     donemYil,
     donemAy,
     mevcutTalepler: mevcutTalepKayitlari.map((t) => ({ avansTalebiId: t.id, bolum: t.bolum })),
-    // donemAcik: yeni talep girme/düzenleme (Gönder butonu) için.
+    // donemAcik: hem Gönder hem Geri Çek butonu için — SİMETRİK, aynı
+    // birleşik kontrol (manuel > otomatik varsayılan).
     donemAcik: await donemAcikMi(donemYil, donemAy),
-    // geriCekilebilir: Geri Çek butonu için — SADECE manuel duruma bakar.
-    geriCekilebilir: await donemGeriCekilebilirMi(donemYil, donemAy),
   })
 }
 

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireUser } from '@/lib/auth/require-user'
 import { prisma } from '@/lib/prisma'
-import { donemGeriCekKilidiKontrol } from '@/lib/avans/donem-kilidi'
+import { donemKilidiKontrol } from '@/lib/avans/donem-kilidi'
 
 export const dynamic = 'force-dynamic'
 
@@ -12,9 +12,10 @@ export const dynamic = 'force-dynamic'
  * kendi/route.ts POST ve route.ts POST) — tek bir sahiplik kontrolü yeterli.
  * AvansTalebi silinince satırlar cascade ile silinir (bkz. schema.prisma).
  *
- * Kilit kontrolü SADECE manuel duruma bakar (donemGeriCekKilidiKontrol) —
- * otomatik gün kilidine (donemOtomatikDurum) HİÇ bakmaz: İK elle
- * kapatmadığı sürece, günün kaçı olursa olsun geri çekilebilir.
+ * SİMETRİK: kilit kontrolü, yeni talep girme/düzenleme ile AYNI
+ * `donemKilidiKontrol`'ü kullanır (manuel > otomatik varsayılan). Ayrı,
+ * sadece manuel duruma bakan bir kural YOKTUR (Melih Bey'in geri aldığı
+ * önceki karar) — örn. gün 25 + manuel müdahale yoksa geri çekilemez.
  */
 
 type DeleteBody = { avansTalebiId: string }
@@ -55,7 +56,7 @@ export async function DELETE(request: NextRequest) {
     )
   }
 
-  const kilit = await donemGeriCekKilidiKontrol(talep.donemYil, talep.donemAy)
+  const kilit = await donemKilidiKontrol(talep.donemYil, talep.donemAy)
   if (kilit) return kilit
 
   await prisma.avansTalebi.delete({ where: { id: talep.id } })

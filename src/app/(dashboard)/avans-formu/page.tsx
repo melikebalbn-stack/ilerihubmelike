@@ -25,7 +25,6 @@ type ApiResponse = {
   donemAy: number
   mevcutTalepler: MevcutTalep[]
   donemAcik: boolean
-  geriCekilebilir: boolean
 }
 
 function baslar(adSoyad: string) {
@@ -170,7 +169,7 @@ export default function AvansFormuPage() {
             {data.mevcutTalepler.map((t) => (
               <div key={t.avansTalebiId} className="flex items-center justify-between">
                 <span className="text-sm text-slate-700">{t.bolum}</span>
-                {data.geriCekilebilir ? (
+                {data.donemAcik ? (
                   <Button
                     type="button"
                     variant="outline"
@@ -182,7 +181,7 @@ export default function AvansFormuPage() {
                     {geriCekilenId === t.avansTalebiId ? 'Geri çekiliyor…' : 'Geri Çek'}
                   </Button>
                 ) : (
-                  <span className="text-xs text-slate-400">Dönem manuel kapalı</span>
+                  <span className="text-xs text-slate-400">Dönem kilitli</span>
                 )}
               </div>
             ))}

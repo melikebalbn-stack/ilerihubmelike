@@ -14,6 +14,10 @@ import { prisma } from '@/lib/prisma'
  * Kilit UI'da değil, ENDPOINT'te uygulanır: kilitli bir döneme yazma/silme
  * denemesi 409 döner. Her uç bu dosyadaki `donemKilidiKontrol`'den geçsin,
  * uç içinde ayrı kontrol YAZILMASIN — kural tek yerde dursun.
+ *
+ * SİMETRİK: yeni talep girme/düzenleme VE Geri Çek AYNI kontrolü
+ * (`donemKilidiKontrol`) kullanır — Geri Çek için ayrı, sadece manuel
+ * duruma bakan bir kural YOKTUR (Melih Bey'in geri aldığı önceki karar).
  */
 
 export async function donemKapaliMi(yil: number, ay: number): Promise<boolean> {
@@ -129,22 +133,4 @@ export async function donemKilidiKontrol(
     return NextResponse.json({ error: donemKilitliMesaji(yil, ay, durum.sebep) }, { status: 409 })
   }
   return null
-}
-
-/**
- * GERİ ÇEK kontrolü — otomatik gün kilidinden TAMAMEN BAĞIMSIZ, SADECE
- * manuel duruma bakar (bkz. `donemManuelDurum`). Manuel kayıt yok VEYA
- * manuel 'ACIK' → geri çekilebilir, günün kaçı olduğu önemli değil.
- * Manuel 'KAPALI' → geri çekilemez.
- */
-export async function donemGeriCekilebilirMi(yil: number, ay: number): Promise<boolean> {
-  return (await donemManuelDurum(yil, ay)) !== 'KAPALI'
-}
-
-export async function donemGeriCekKilidiKontrol(
-  yil: number,
-  ay: number
-): Promise<NextResponse | null> {
-  if (await donemGeriCekilebilirMi(yil, ay)) return null
-  return NextResponse.json({ error: donemKapaliMesaji(yil, ay) }, { status: 409 })
 }

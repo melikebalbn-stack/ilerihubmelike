@@ -31,8 +31,10 @@ export async function GET(request: NextRequest) {
   // Bu sorumlunun bu dönem için zaten girdiği talepler (bölüm bazında, bir
   // sorumlu birden fazla bölümden sorumlu olabilir) — UI'da "Geri Çek"
   // butonunu göstermek için.
+  // geriCekildiMi:false — geri çekilmiş bölümler bu listede görünmesin
+  // (tekrar geri çekilecek bir şey yok, aynı bölüm için yeniden girilebilir).
   const mevcutTalepKayitlari = await prisma.avansTalebi.findMany({
-    where: { sorumluId: sonuc.sorumlu.id, donemYil, donemAy },
+    where: { sorumluId: sonuc.sorumlu.id, donemYil, donemAy, geriCekildiMi: false },
     select: { id: true, bolum: true },
   })
 
@@ -145,7 +147,15 @@ export async function POST(request: NextRequest) {
         // Bos update: {} Prisma'da hicbir UPDATE sorgusu tetiklemez, @updatedAt
         // bump olmaz - duzeltme izinin kaybolmamasi icin aciktan set ediliyor.
         // vekaletenMi de güncel eşleşme durumuna göre tazelenir.
-        update: { updatedAt: new Date(), vekaletenMi },
+        // geriCekildiMi/geriCekenId/geriCekmeTarihi sifirlanir: daha once
+        // geri cekilmis bir kayit varsa, yeniden gonderim onu "reaktive" eder.
+        update: {
+          updatedAt: new Date(),
+          vekaletenMi,
+          geriCekildiMi: false,
+          geriCekenId: null,
+          geriCekmeTarihi: null,
+        },
       })
 
       await tx.avansTalebiSatiri.deleteMany({

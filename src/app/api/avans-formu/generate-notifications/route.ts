@@ -68,14 +68,19 @@ async function bulDigerBeyazYakalar(sorumluIdSeti: Set<string>): Promise<Sorumlu
   return beyazYakalar.map((p) => ({ personnelId: p.id, adSoyad: p.adSoyad }))
 }
 
-/** Bu dönem (sorumluId + donemYil + donemAy) için zaten bir AvansTalebi girilmiş mi? */
+/**
+ * Bu dönem (sorumluId + donemYil + donemAy) için zaten bir AvansTalebi
+ * girilmiş mi? geriCekildiMi:false — geri çekilmiş bir talep "girilmemiş"
+ * sayılır, aksi halde geri çeken kişi bir daha hatırlatma almazdı (bkz.
+ * geri-cek/route.ts soft delete).
+ */
 async function buDonemGirmisMi(
   personnelId: string,
   donemYil: number,
   donemAy: number
 ): Promise<boolean> {
   const mevcut = await prisma.avansTalebi.findFirst({
-    where: { sorumluId: personnelId, donemYil, donemAy },
+    where: { sorumluId: personnelId, donemYil, donemAy, geriCekildiMi: false },
     select: { id: true },
   })
   return !!mevcut

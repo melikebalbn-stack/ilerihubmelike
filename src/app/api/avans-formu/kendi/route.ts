@@ -46,7 +46,7 @@ export async function GET() {
   const donemYil = now.getFullYear()
   const donemAy = now.getMonth() + 1
 
-  const mevcutTalep = await prisma.avansTalebi.findUnique({
+  const mevcutTalepHam = await prisma.avansTalebi.findUnique({
     where: {
       sorumluId_bolum_donemYil_donemAy: {
         sorumluId: personel.id,
@@ -57,6 +57,9 @@ export async function GET() {
     },
     include: { satirlar: true },
   })
+  // Geri çekilmiş kayıt "yok" gibi davranır — yeniden girilebilsin, Geri
+  // Çek butonu tekrar görünmesin (bkz. geri-cek/route.ts soft delete).
+  const mevcutTalep = mevcutTalepHam?.geriCekildiMi ? null : mevcutTalepHam
 
   return NextResponse.json({
     personel: {
@@ -135,7 +138,16 @@ export async function POST(request: NextRequest) {
     // kendiFormuMu da aciktan set edilir: bu talebi ilk kez sorumlu formu
     // olusturmus olsa bile (ayni sorumluId+bolum kombinasyonu), kendi formu
     // uzerinden ikinci gonderimde olgu dogru sekilde true'ya duzeltilir.
-    update: { updatedAt: new Date(), kendiFormuMu: true },
+    // geriCekildiMi/geriCekenId/geriCekmeTarihi sifirlanir: daha once geri
+    // cekilmis bir kayit varsa (ayni unique key), yeniden gonderim onu
+    // "reaktive" eder (bkz. schema.prisma AvansTalebi yorumu).
+    update: {
+      updatedAt: new Date(),
+      kendiFormuMu: true,
+      geriCekildiMi: false,
+      geriCekenId: null,
+      geriCekmeTarihi: null,
+    },
   })
 
   await prisma.avansTalebiSatiri.deleteMany({

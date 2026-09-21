@@ -10,7 +10,13 @@ export const dynamic = 'force-dynamic'
  * Hem kendim formu hem sorumlu formu kayıtları için AYNI uç: ikisinde de
  * AvansTalebi.sorumluId, formu gönderen kişinin kendi Personnel id'si (bkz.
  * kendi/route.ts POST ve route.ts POST) — tek bir sahiplik kontrolü yeterli.
- * AvansTalebi silinince satırlar cascade ile silinir (bkz. schema.prisma).
+ *
+ * SOFT DELETE: AvansTalebi fiziksel SİLİNMEZ — geriCekildiMi/geriCekenId/
+ * geriCekmeTarihi set edilir. Satırlar da (AvansTalebiSatiri) yerinde
+ * kalır. Kim/ne zaman geri çektiği izi kalıcı tutulur; sonuclar ekranı
+ * kaydı "Geri Çekildi" rozetiyle göstermeye devam eder. Aynı dönem için
+ * tekrar talep girilirse (upsert), bu üç alan kendi/route.ts ve route.ts
+ * tarafından sıfırlanarak kayıt "reaktive" edilir.
  *
  * SİMETRİK: kilit kontrolü, yeni talep girme/düzenleme ile AYNI
  * `donemKilidiKontrol`'ü kullanır (manuel > otomatik varsayılan). Ayrı,
@@ -55,11 +61,21 @@ export async function DELETE(request: NextRequest) {
       { status: 403 }
     )
   }
+  if (talep.geriCekildiMi) {
+    return NextResponse.json({ error: 'Bu talep zaten geri çekilmiş.' }, { status: 409 })
+  }
 
   const kilit = await donemKilidiKontrol(talep.donemYil, talep.donemAy)
   if (kilit) return kilit
 
-  await prisma.avansTalebi.delete({ where: { id: talep.id } })
+  await prisma.avansTalebi.update({
+    where: { id: talep.id },
+    data: {
+      geriCekildiMi: true,
+      geriCekenId: dbUser.personnelId,
+      geriCekmeTarihi: new Date(),
+    },
+  })
 
   return NextResponse.json({ success: true })
 }

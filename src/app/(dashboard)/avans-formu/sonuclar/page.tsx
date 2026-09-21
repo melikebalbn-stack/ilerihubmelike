@@ -38,6 +38,7 @@ type Satir = {
   gonderimTarihi: string
   vekaletenMi: boolean
   kendiFormuMu: boolean
+  geriCekildiMi: boolean
 }
 
 type AramaSonucu = { id: string; adSoyad: string; bolum: string | null; sicilNo: string | null }
@@ -222,7 +223,7 @@ export default function AvansSonuclarPage() {
   }, [filtrelenmisSatirlar, siralama])
 
   function excelAktar() {
-    const basliklar = ['Dönem', 'Bölüm', 'Talep Eden', 'Personel', 'Gönderim Tarihi']
+    const basliklar = ['Dönem', 'Bölüm', 'Talep Eden', 'Personel', 'Gönderim Tarihi', 'Durum']
     const satirMetinleri = filtrelenmisSatirlar.map((s) =>
       [
         `${s.donemAy}/${s.donemYil}`,
@@ -230,6 +231,7 @@ export default function AvansSonuclarPage() {
         s.sorumluAdSoyad === 'IK_MANUEL' ? 'İK tarafından eklendi' : s.sorumluAdSoyad,
         s.calisanAdSoyad,
         new Date(s.gonderimTarihi).toLocaleDateString('tr-TR'),
+        s.geriCekildiMi ? 'Geri Çekildi' : '',
       ]
         .map((deger) => `"${String(deger).replace(/"/g, '""')}"`)
         .join(';')
@@ -271,6 +273,11 @@ export default function AvansSonuclarPage() {
               {s.vekaletenMi && (
                 <Badge variant="outline" className="text-xs">
                   Vekaleten girildi
+                </Badge>
+              )}
+              {s.geriCekildiMi && (
+                <Badge variant="outline" className="text-xs">
+                  Geri Çekildi
                 </Badge>
               )}
             </div>

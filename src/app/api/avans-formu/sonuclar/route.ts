@@ -58,6 +58,9 @@ export async function GET(request: NextRequest) {
       // Kayıt anında yazılan olgu — bkz. AvansTalebi.kendiFormuMu (kendi/route.ts
       // POST). Personnel'in güncel sorumluluk durumundan çıkarım YAPILMAZ.
       kendiFormuMu: t.kendiFormuMu,
+      // Soft delete — bkz. geri-cek/route.ts. Kayıt silinmez, sonuçlar
+      // ekranında "Geri Çekildi" rozetiyle gösterilmeye devam eder.
+      geriCekildiMi: t.geriCekildiMi,
       bolum: t.bolum,
       donemYil: t.donemYil,
       donemAy: t.donemAy,
@@ -121,11 +124,14 @@ export async function POST(request: NextRequest) {
   const kilit = await donemKilidiKontrol(donemYil, donemAy)
   if (kilit) return kilit
 
+  // geriCekildiMi:false — geri çekilmiş bir talebin satırı "listede" sayılmaz,
+  // aksi halde İK geri çekilmiş birini tekrar eklemeye çalıştığında yanlış
+  // yere "zaten listede" uyarısı alırdı.
   const mevcutKayit = await prisma.avansTalebiSatiri.findFirst({
     where: {
       calisanId: personel.id,
       avansIstiyorMu: true,
-      avansTalebi: { donemYil, donemAy },
+      avansTalebi: { donemYil, donemAy, geriCekildiMi: false },
     },
     include: { avansTalebi: true },
   })

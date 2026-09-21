@@ -54,6 +54,8 @@ export async function POST(request: Request) {
   }
   const direction = body.direction === 'lower_is_better' ? 'lower_is_better' : 'higher_is_better'
   const orgUnitId = typeof body.orgUnitId === 'string' && body.orgUnitId ? body.orgUnitId : ORG_UNIT_ID_IK
+  const frequency = body.frequency === 'quarterly' ? 'quarterly' : 'monthly'
+  const oranYonu = body.oranYonu === 'H_G' ? 'H_G' : 'G_H'
 
   const kpi = await prisma.kPIDefinition.create({
     data: {
@@ -61,7 +63,10 @@ export async function POST(request: Request) {
       name,
       unit: typeof body.unit === 'string' && body.unit.trim() ? body.unit.trim() : null,
       direction,
-      frequency: 'monthly',
+      frequency,
+      gerceklesenEtiketi: typeof body.gerceklesenEtiketi === 'string' && body.gerceklesenEtiketi.trim() ? body.gerceklesenEtiketi.trim() : 'Gerçekleşen',
+      hedefEtiketi: typeof body.hedefEtiketi === 'string' && body.hedefEtiketi.trim() ? body.hedefEtiketi.trim() : 'Hedef',
+      oranYonu,
     },
   })
 

@@ -62,9 +62,26 @@ interface Kpi {
   name: string
   unit: string | null
   direction: string
+  frequency: string
+  gerceklesenEtiketi: string
+  hedefEtiketi: string
+  oranYonu: string
   measurements: Olcum[]
   baselines: Baseline[]
   actions: Aksiyon[]
+}
+
+const CEYREK_ADI = ['Ç1', 'Ç2', 'Ç3', 'Ç4']
+const CEYREK_ADI_UZUN = ['1. Çeyrek', '2. Çeyrek', '3. Çeyrek', '4. Çeyrek']
+
+function donemKisaEtiketleri(kpi: Kpi): string[] {
+  return kpi.frequency === 'quarterly' ? CEYREK_ADI : AY_KISA
+}
+function donemUzunEtiketleri(kpi: Kpi): string[] {
+  return kpi.frequency === 'quarterly' ? CEYREK_ADI_UZUN : AY_ADI
+}
+function donemSayisi(kpi: Kpi): number {
+  return kpi.frequency === 'quarterly' ? 4 : 12
 }
 
 // Yıl → ortalama haritası. Aylık ölçümü olan yıllarda KENDİSİ hesaplanır;
@@ -89,6 +106,10 @@ function YeniKpiDialog({ orgUnitId, onCreated }: { orgUnitId: string; onCreated:
   const [name, setName] = useState('')
   const [unit, setUnit] = useState('')
   const [direction, setDirection] = useState('higher_is_better')
+  const [frequency, setFrequency] = useState('monthly')
+  const [gerceklesenEtiketi, setGerceklesenEtiketi] = useState('Gerçekleşen')
+  const [hedefEtiketi, setHedefEtiketi] = useState('Hedef')
+  const [oranYonu, setOranYonu] = useState('G_H')
   const [hedef, setHedef] = useState('')
   const [kaydediliyor, setKaydediliyor] = useState(false)
 
@@ -99,15 +120,21 @@ function YeniKpiDialog({ orgUnitId, onCreated }: { orgUnitId: string; onCreated:
       const res = await fetch('/api/sandbox/melike/kpi', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, unit, direction, orgUnitId }),
+        body: JSON.stringify({
+          name, unit, direction, orgUnitId, frequency,
+          gerceklesenEtiketi: gerceklesenEtiketi.trim() || 'Gerçekleşen',
+          hedefEtiketi: hedefEtiketi.trim() || 'Hedef',
+          oranYonu,
+        }),
       })
       if (res.ok) {
         const { kpi } = await res.json()
-        // Hedef girildiyse bu yılın 12 ayına tek seferde uygula — tek tek girmeye gerek kalmasın.
+        // Hedef girildiyse bu yılın tüm dönemlerine (aylık: 12, çeyreklik: 4) tek seferde uygula.
         if (hedef.trim() && !Number.isNaN(Number(hedef))) {
           const yil = new Date().getFullYear()
+          const donemSayisi = frequency === 'quarterly' ? 4 : 12
           await Promise.all(
-            Array.from({ length: 12 }, (_, i) =>
+            Array.from({ length: donemSayisi }, (_, i) =>
               fetch(`/api/sandbox/melike/kpi/${kpi.id}/olcum`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -116,7 +143,8 @@ function YeniKpiDialog({ orgUnitId, onCreated }: { orgUnitId: string; onCreated:
             ),
           )
         }
-        setName(''); setUnit(''); setDirection('higher_is_better'); setHedef('')
+        setName(''); setUnit(''); setDirection('higher_is_better'); setFrequency('monthly')
+        setGerceklesenEtiketi('Gerçekleşen'); setHedefEtiketi('Hedef'); setOranYonu('G_H'); setHedef('')
         setAcik(false)
         onCreated()
       }
@@ -157,13 +185,154 @@ function YeniKpiDialog({ orgUnitId, onCreated }: { orgUnitId: string; onCreated:
             </Select>
           </div>
           <div>
+            <Label>Periyot</Label>
+            <Select value={frequency} onValueChange={setFrequency}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="monthly">Aylık</SelectItem>
+                <SelectItem value="quarterly">Çeyreklik</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex gap-3">
+            <div className="flex-1">
+              <Label>Gerçekleşen etiketi</Label>
+              <Input value={gerceklesenEtiketi} onChange={e => setGerceklesenEtiketi(e.target.value)} placeholder="Gerçekleşen, Gelen..." />
+            </div>
+            <div className="flex-1">
+              <Label>Hedef etiketi</Label>
+              <Input value={hedefEtiketi} onChange={e => setHedefEtiketi(e.target.value)} placeholder="Hedef..." />
+            </div>
+          </div>
+          <div>
+            <Label>Oran yönü</Label>
+            <Select value={oranYonu} onValueChange={setOranYonu}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="G_H">G/H (gerçekleşen ÷ hedef)</SelectItem>
+                <SelectItem value="H_G">H/G (hedef ÷ gerçekleşen)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
             <Label>Hedef (opsiyonel)</Label>
             <Input
               type="number"
               value={hedef}
               onChange={e => setHedef(e.target.value)}
-              placeholder="Girilirse bu yılın 12 ayına otomatik uygulanır"
+              placeholder="Girilirse bu yılın tüm dönemlerine otomatik uygulanır"
             />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button onClick={kaydet} disabled={kaydediliyor || !name.trim()} style={{ backgroundColor: NAVY }}>
+            {kaydediliyor ? 'Kaydediliyor...' : 'Kaydet'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function KpiDuzenleDialog({ kpi, onSaved }: { kpi: Kpi; onSaved: () => void }) {
+  const [acik, setAcik] = useState(false)
+  const [name, setName] = useState(kpi.name)
+  const [unit, setUnit] = useState(kpi.unit ?? '')
+  const [direction, setDirection] = useState(kpi.direction)
+  const [frequency, setFrequency] = useState(kpi.frequency)
+  const [gerceklesenEtiketi, setGerceklesenEtiketi] = useState(kpi.gerceklesenEtiketi)
+  const [hedefEtiketi, setHedefEtiketi] = useState(kpi.hedefEtiketi)
+  const [oranYonu, setOranYonu] = useState(kpi.oranYonu)
+  const [kaydediliyor, setKaydediliyor] = useState(false)
+
+  useEffect(() => {
+    if (!acik) return
+    setName(kpi.name); setUnit(kpi.unit ?? ''); setDirection(kpi.direction); setFrequency(kpi.frequency)
+    setGerceklesenEtiketi(kpi.gerceklesenEtiketi); setHedefEtiketi(kpi.hedefEtiketi); setOranYonu(kpi.oranYonu)
+  }, [acik, kpi])
+
+  async function kaydet() {
+    if (!name.trim()) return
+    setKaydediliyor(true)
+    try {
+      const res = await fetch(`/api/sandbox/melike/kpi/${kpi.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name, unit, direction, frequency,
+          gerceklesenEtiketi: gerceklesenEtiketi.trim() || 'Gerçekleşen',
+          hedefEtiketi: hedefEtiketi.trim() || 'Hedef',
+          oranYonu,
+        }),
+      })
+      if (res.ok) {
+        setAcik(false)
+        onSaved()
+      }
+    } finally {
+      setKaydediliyor(false)
+    }
+  }
+
+  return (
+    <Dialog open={acik} onOpenChange={setAcik}>
+      <DialogTrigger asChild>
+        <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-slate-900">
+          <Pencil className="h-4 w-4" />
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>KPI'yı Düzenle</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3 py-2">
+          <div>
+            <Label>KPI Adı</Label>
+            <Input value={name} onChange={e => setName(e.target.value)} />
+          </div>
+          <div>
+            <Label>Birim (opsiyonel)</Label>
+            <Input value={unit} onChange={e => setUnit(e.target.value)} />
+          </div>
+          <div>
+            <Label>Yön</Label>
+            <Select value={direction} onValueChange={setDirection}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="higher_is_better">Yüksek değer iyi</SelectItem>
+                <SelectItem value="lower_is_better">Düşük değer iyi</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label>Periyot</Label>
+            <Select value={frequency} onValueChange={setFrequency}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="monthly">Aylık</SelectItem>
+                <SelectItem value="quarterly">Çeyreklik</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex gap-3">
+            <div className="flex-1">
+              <Label>Gerçekleşen etiketi</Label>
+              <Input value={gerceklesenEtiketi} onChange={e => setGerceklesenEtiketi(e.target.value)} />
+            </div>
+            <div className="flex-1">
+              <Label>Hedef etiketi</Label>
+              <Input value={hedefEtiketi} onChange={e => setHedefEtiketi(e.target.value)} />
+            </div>
+          </div>
+          <div>
+            <Label>Oran yönü</Label>
+            <Select value={oranYonu} onValueChange={setOranYonu}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="G_H">G/H (gerçekleşen ÷ hedef)</SelectItem>
+                <SelectItem value="H_G">H/G (hedef ÷ gerçekleşen)</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
         <DialogFooter>
@@ -499,7 +668,7 @@ function KpiVeriTablosu({
               {ortYillar.map(([y]) => (
                 <th key={y} className="p-2 text-center font-semibold whitespace-nowrap border-l border-white/20" style={{ backgroundColor: NAVY, color: 'white' }}>{y} Ort.</th>
               ))}
-              {AY_ADI.map(ad => (
+              {donemUzunEtiketleri(kpi).map(ad => (
                 <th key={ad} className="p-2 text-center font-semibold whitespace-nowrap border-l border-white/20" style={{ backgroundColor: NAVY, color: 'white' }}>{ad}</th>
               ))}
             </tr>
@@ -507,14 +676,14 @@ function KpiVeriTablosu({
           <tbody>
             {gosterilenYillar.map((yil, yilIdx) => {
               const ilkYil = yilIdx === 0
-              const aylikVeri = Array.from({ length: 12 }, (_, i) => {
+              const aylikVeri = Array.from({ length: donemSayisi(kpi) }, (_, i) => {
                 const m = kpi.measurements.find(x => x.year === yil && x.month === i + 1)
                 return { target: m?.target ?? null, actual: m?.actual ?? null }
               })
               return (
                 <Fragment key={yil}>
                   <tr className="border-t-2 border-slate-400">
-                    <td className="p-2 font-semibold whitespace-nowrap bg-slate-50 sticky left-0 border-r border-slate-300">{yil} · Gerçekleşen</td>
+                    <td className="p-2 font-semibold whitespace-nowrap bg-slate-50 sticky left-0 border-r border-slate-300">{yil} · {kpi.gerceklesenEtiketi}</td>
                     {ilkYil
                       ? ortYillar.map(([y, ort]) =>
                           yillarIleOlcum.has(y) ? (
@@ -546,7 +715,7 @@ function KpiVeriTablosu({
                     })}
                   </tr>
                   <tr>
-                    <td className="p-2 text-slate-600 font-medium whitespace-nowrap bg-slate-50 sticky left-0 border-r border-slate-300">Hedef</td>
+                    <td className="p-2 text-slate-600 font-medium whitespace-nowrap bg-slate-50 sticky left-0 border-r border-slate-300">{kpi.hedefEtiketi}</td>
                     {ortYillar.map(([y]) => <td key={y} className="p-2 bg-slate-50 border-l border-slate-200" />)}
                     {aylikVeri.map((v, i) => (
                       <DuzenlenebilirHucre
@@ -558,10 +727,14 @@ function KpiVeriTablosu({
                     ))}
                   </tr>
                   <tr className="border-b-2 border-slate-400">
-                    <td className="p-2 text-slate-600 font-medium whitespace-nowrap bg-slate-50 sticky left-0 border-r border-slate-300">G/H Oran</td>
+                    <td className="p-2 text-slate-600 font-medium whitespace-nowrap bg-slate-50 sticky left-0 border-r border-slate-300">
+                      {kpi.oranYonu === 'H_G' ? 'H/G Oran' : 'G/H Oran'}
+                    </td>
                     {ortYillar.map(([y]) => <td key={y} className="p-2 bg-slate-50 border-l border-slate-200" />)}
                     {aylikVeri.map((v, i) => {
-                      const oran = v.target && v.actual != null ? Math.round((v.actual / v.target) * 100) : null
+                      const oran = v.target && v.actual != null
+                        ? Math.round((kpi.oranYonu === 'H_G' ? v.target / v.actual : v.actual / v.target) * 100)
+                        : null
                       return (
                         <td key={i} className="p-2 text-center font-semibold bg-sky-50 text-sky-900 border-l border-slate-200">
                           {oran == null ? '' : `%${oran}`}
@@ -665,7 +838,7 @@ export default function MelikeKpiPage() {
     const ortalamaSatirlari = hesaplaOrtYillar(secili)
       .filter(([, ort]) => ort != null)
       .map(([y, ort]) => ({ ad: `${y} Ort.`, Ortalama: ort as number }))
-    const aySatirlari = AY_KISA.map((ad, i) => ({
+    const aySatirlari = donemKisaEtiketleri(secili).map((ad, i) => ({
       ad,
       [String(yilA)]: bul(yilA, i + 1),
       [String(yilB)]: bul(yilB, i + 1),
@@ -749,34 +922,37 @@ export default function MelikeKpiPage() {
                       Solda geçmiş yılların ortalaması, sağda {birlesikGrafikVerisi.yilB ?? '—'} vs {birlesikGrafikVerisi.yilA ?? '—'} aylık karşılaştırma — tek grafikte
                     </p>
                   </div>
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-red-600">
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>&quot;{secili.name}&quot; KPI&apos;sı silinsin mi?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          Bu KPI'a ait tüm ölçümler, yıllık ortalamalar ve aksiyonlar birlikte silinir. Bu işlem geri alınamaz.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>İptal</AlertDialogCancel>
-                        <AlertDialogAction
-                          className="bg-red-600 hover:bg-red-700"
-                          onClick={async () => {
-                            await fetch(`/api/sandbox/melike/kpi/${secili.id}`, { method: 'DELETE' })
-                            setSeciliId(null)
-                            yukle()
-                          }}
-                        >
-                          Sil
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
+                  <div className="flex items-center gap-1">
+                    <KpiDuzenleDialog kpi={secili} onSaved={yukle} />
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-red-600">
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>&quot;{secili.name}&quot; KPI&apos;sı silinsin mi?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Bu KPI'a ait tüm ölçümler, yıllık ortalamalar ve aksiyonlar birlikte silinir. Bu işlem geri alınamaz.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>İptal</AlertDialogCancel>
+                          <AlertDialogAction
+                            className="bg-red-600 hover:bg-red-700"
+                            onClick={async () => {
+                              await fetch(`/api/sandbox/melike/kpi/${secili.id}`, { method: 'DELETE' })
+                              setSeciliId(null)
+                              yukle()
+                            }}
+                          >
+                            Sil
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </div>
                 </CardHeader>
                 <CardContent>
                   {birlesikGrafikVerisi.veri.length === 0 ? (

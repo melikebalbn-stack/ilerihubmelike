@@ -10089,6 +10089,12 @@ model KPIDefinition {
   unit         String?
   direction    String
   frequency    String              @default("monthly")
+  // KPI-ETIKET: bazı departmanlar "Gerçekleşen/Hedef" yerine farklı isim/yön kullanıyor
+  // (örn. "Gelen", ya da oranı H/G — Hedef/Gerçekleşen — hesaplıyor). Additive, varsayılanlar
+  // mevcut davranışı korur.
+  gerceklesenEtiketi String         @default("Gerçekleşen")
+  hedefEtiketi       String         @default("Hedef")
+  oranYonu           String         @default("G_H") // "G_H" (gerçekleşen/hedef) | "H_G" (hedef/gerçekleşen)
   active       Boolean             @default(true)
   createdAt    DateTime            @default(now())
   updatedAt    DateTime            @updatedAt

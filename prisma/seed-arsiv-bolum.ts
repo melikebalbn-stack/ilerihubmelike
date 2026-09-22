@@ -46,7 +46,7 @@ const BOLUM_META: Record<string, BolumMeta> = {
   'LAZER & DAİRE TESTERE':       { kod: 'LZR', renkHex: '#888780' },
   'İDARİ İŞLER':                 { kod: 'IDR', renkHex: '#888780' },
   'PROTOTİP ATÖLYE':             { kod: 'PRT', renkHex: '#888780' },
-  'YATIRIM VE TEŞVİK':           { kod: 'YAT', renkHex: '#888780' },
+  'STRATEJİK SEKTÖRLER':         { kod: 'YAT', renkHex: '#888780' }, // 22.09.2026: eski ad 'YATIRIM VE TEŞVİK'; kod YAT korundu
   'GENEL MÜDÜRLÜK':              { kod: 'GMD', renkHex: '#888780' },
   'YENİ İŞ GELİŞTİRME':          { kod: 'YIG', renkHex: '#888780' },
   'ASANSÖR SATIŞ PAZARLAMA':     { kod: 'ASP', renkHex: '#888780' },

@@ -90,9 +90,9 @@ const SATIRLAR: Array<{ tip: IproIfsEslesmeTipi; ilerihubDeger: string; ifsKod: 
   },
   {
     tip: 'ORG',
-    ilerihubDeger: 'YATIRIM VE TEŞVİK',
+    ilerihubDeger: 'STRATEJİK SEKTÖRLER',
     ifsKod: '114',
-    aciklama: 'IFS 114 = Yatırım ve Teşvik Müdürlüğü. "Müdürlüğü" soneki düşmüş (2 kişi).',
+    aciklama: 'IFS 114 = Stratejik Sektörler (eski ad: Yatırım ve Teşvik Müdürlüğü). Müdürlüğü soneki yok (2 kişi).',
   },
   {
     tip: 'ORG',

@@ -522,3 +522,21 @@ describe('Sidebar — "Servis Şikâyetleri" menü girdisi (madde 46)', () => {
     expect(screen.getByText('Servis Şikâyetleri')).toBeInTheDocument()
   })
 })
+
+describe('Sidebar — "Operasyonel Servis Listesi" menü öğesi için permission testi (madde 29)', () => {
+  it('servis.view izni OLMAYAN kullanıcı satırı GÖRMEZ (İV/Stratejik İK grubu başka bir izinle açık, spesifik öğe yine de gizli)', () => {
+    // Grup görünürlüğünü sağlamak için ilgisiz bir izin veriliyor —
+    // "grup zaten kapalı olduğu için görünmüyor" yanlış-negatifini önler.
+    mockSession({ role: 'KULLANICI', department: 'Üretim', permissions: ['yilliktakvim.view'] })
+    renderSidebar()
+    acIvGrubunu()
+    expect(screen.queryByText('Operasyonel Servis Listesi')).not.toBeInTheDocument()
+  })
+
+  it('servis.view izni OLAN kullanıcı satırı GÖRÜR', () => {
+    mockSession({ role: 'KULLANICI', department: 'Üretim', permissions: ['servis.view'] })
+    renderSidebar()
+    acIvGrubunu()
+    expect(screen.getByText('Operasyonel Servis Listesi')).toBeInTheDocument()
+  })
+})

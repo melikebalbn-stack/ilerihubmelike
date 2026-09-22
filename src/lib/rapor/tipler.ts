@@ -119,3 +119,62 @@ export interface SablonIcerik {
   genelToplam?: boolean
   sayfaAlti?: { sol?: string; sag?: string }
 }
+
+// ── Etkileşimli rapor görünümü (RaporSablon.icerik.tur = 'etkilesimli') ──
+//
+// Şablon içeriği iki türde olabilir:
+//   { tur: 'etkilesimli', gorunum }  → ekranda kurgulanan, kullanıcı anında değiştirebilen görünüm
+//   { tur: 'belge', ...SablonIcerik } → A4 basılı belge (raporRender)
+// `tur` alanı OLMAYAN eski kayıtlar 'belge' sayılır (URT-001 gibi).
+
+export type GorunumToplamFn = 'topla' | 'ortalama' | 'say' | 'enkucuk' | 'enbuyuk'
+
+export interface GorunumKolon {
+  alan: string
+  /** Başlık; verilmezse alan adı (ya da katalog etiketi) kullanılır. */
+  baslik?: string
+  gorunur: boolean
+  /** Grup/genel toplam satırında bu kolonda gösterilecek özet. */
+  toplam?: GorunumToplamFn
+  bicim?: Bicim
+}
+
+export interface GorunumGrafik {
+  /** Kırılım alanı (metin kolonu). */
+  grupla: string
+  /** Ölçülen sayısal alan. */
+  deger: string
+  fn: 'topla' | 'ortalama'
+}
+
+export interface Gorunum {
+  kolonlar: GorunumKolon[]
+  /** Sıralı grup alanları — en fazla 2 seviye. */
+  gruplar: string[]
+  siralama?: { alan: string; yon: 1 | -1 } | null
+  /** alan → süzgeç metni. Metin: içerir. Sayı: "< 90", ">= 10", "= 5", "90". */
+  filtreler: Record<string, string>
+  grafik?: GorunumGrafik | null
+  /** Mevcut ifade motoru (ifade.ts) ile hesaplanan alanlar. */
+  hesaplananAlanlar?: HesaplananAlan[]
+}
+
+export interface EtkilesimliIcerik {
+  tur: 'etkilesimli'
+  baslik: string
+  altBaslik?: string
+  parametreler?: SablonParametre[]
+  gorunum: Gorunum
+}
+
+export type BelgeIcerik = SablonIcerik & { tur?: 'belge' }
+export type SablonIcerikHer = EtkilesimliIcerik | BelgeIcerik
+
+/** `tur` yoksa 'belge' — eski kayıtlar bozulmasın. */
+export function icerikTuru(icerik: unknown): 'etkilesimli' | 'belge' {
+  return (icerik as { tur?: string } | null)?.tur === 'etkilesimli' ? 'etkilesimli' : 'belge'
+}
+
+export function etkilesimliMi(icerik: unknown): icerik is EtkilesimliIcerik {
+  return icerikTuru(icerik) === 'etkilesimli'
+}

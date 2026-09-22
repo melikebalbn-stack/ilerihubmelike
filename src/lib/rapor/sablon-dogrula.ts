@@ -4,13 +4,61 @@
  * geçmeli; grup ≤ 3; kod/ad/biçim değerleri makul.
  */
 import { ifadeDogrula } from './ifade'
-import type { Bicim, SablonIcerik } from './tipler'
+import { etkilesimliMi, type Bicim, type EtkilesimliIcerik, type SablonIcerik, type SablonIcerikHer } from './tipler'
 
 export const BICIMLER: Bicim[] = ['#.##0', '#.##0,00', '%0,0', '%0,00', 'gg.aa.yyyy', 'gg.aa.yyyy ss:dd', 'metin']
 const AD_DESENI = /^[A-Za-z_][A-Za-z0-9_]*$/
 const MAX_GRUP = 3
 
-export function sablonDogrula(icerik: SablonIcerik, veriSetiAlanlari: string[]): string[] {
+/** Etkileşimli görünüm: kolon/grup/sıralama/filtre/grafik alanları veri seti ∪ hesaplananlarda; grup ≤ 2; ifadeler geçerli. */
+export function gorunumDogrula(icerik: EtkilesimliIcerik, veriSetiAlanlari: string[]): string[] {
+  const h: string[] = []
+  if (!icerik.baslik?.trim()) h.push('Rapor başlığı boş')
+  const g = icerik.gorunum
+  if (!g) return ['Görünüm tanımı yok']
+  const gorunur = [...veriSetiAlanlari]
+  const hesaplananAdlari = new Set<string>()
+  for (const ha of g.hesaplananAlanlar ?? []) {
+    if (!AD_DESENI.test(ha.ad ?? '')) h.push(`Hesaplanan alan adı geçersiz: '${ha.ad ?? ''}'`)
+    else if (hesaplananAdlari.has(ha.ad) || veriSetiAlanlari.includes(ha.ad)) h.push(`Hesaplanan alan adı çakışıyor: '${ha.ad}'`)
+    hesaplananAdlari.add(ha.ad)
+    const d = ifadeDogrula(ha.ifade ?? '', gorunur)
+    if (!d.gecerli || d.hata) h.push(`Hesaplanan '${ha.ad}': ${d.hata}`)
+    gorunur.push(ha.ad)
+  }
+  const tum = new Set(gorunur)
+  if (!g.kolonlar?.length) h.push('Görünümde kolon yok')
+  const kolonAlanlari = new Set<string>()
+  for (const k of g.kolonlar ?? []) {
+    if (!k.alan || !tum.has(k.alan)) h.push(`Kolon '${k.alan}': veri setinde/hesaplananlarda yok`)
+    if (kolonAlanlari.has(k.alan)) h.push(`Kolon '${k.alan}' iki kez tanımlı`)
+    kolonAlanlari.add(k.alan)
+    if (k.bicim && !BICIMLER.includes(k.bicim)) h.push(`Kolon '${k.alan}': bilinmeyen biçim '${k.bicim}'`)
+  }
+  if ((g.gruplar ?? []).length > 2) h.push(`En fazla 2 grup seviyesi (${g.gruplar.length} verildi)`)
+  for (const ga of g.gruplar ?? []) if (!tum.has(ga)) h.push(`Grup alanı geçersiz: '${ga}'`)
+  if (g.siralama?.alan && !tum.has(g.siralama.alan)) h.push(`Sıralama alanı geçersiz: '${g.siralama.alan}'`)
+  for (const fa of Object.keys(g.filtreler ?? {})) if (!tum.has(fa)) h.push(`Filtre alanı geçersiz: '${fa}'`)
+  if (g.grafik) {
+    if (!tum.has(g.grafik.grupla)) h.push(`Grafik kırılım alanı geçersiz: '${g.grafik.grupla}'`)
+    if (!tum.has(g.grafik.deger)) h.push(`Grafik değer alanı geçersiz: '${g.grafik.deger}'`)
+  }
+  const pAdlari = new Set<string>()
+  for (const p of icerik.parametreler ?? []) {
+    if (!AD_DESENI.test(p.ad ?? '')) h.push(`Parametre adı geçersiz: '${p.ad ?? ''}'`)
+    else if (pAdlari.has(p.ad)) h.push(`Parametre adı mükerrer: '${p.ad}'`)
+    pAdlari.add(p.ad)
+    if (!p.etiket?.trim()) h.push(`Parametre '${p.ad}': etiket boş`)
+  }
+  return h
+}
+
+/** Türe göre dağıtır: etkileşimli → gorunumDogrula, belge → belgeDogrula. */
+export function sablonDogrula(icerik: SablonIcerikHer, veriSetiAlanlari: string[]): string[] {
+  return etkilesimliMi(icerik) ? gorunumDogrula(icerik, veriSetiAlanlari) : belgeDogrula(icerik, veriSetiAlanlari)
+}
+
+export function belgeDogrula(icerik: SablonIcerik, veriSetiAlanlari: string[]): string[] {
   const h: string[] = []
   if (!icerik.baslik?.trim()) h.push('Rapor başlığı boş')
   const hesaplanan = icerik.hesaplananAlanlar ?? []

@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/auth/require-permission'
 import { PERMISSION_KEYS } from '@/lib/auth/permissions'
 import { sablonDogrula } from '@/lib/rapor/sablon-dogrula'
-import type { SablonIcerik, VeriSetiTanim } from '@/lib/rapor/tipler'
+import type { SablonIcerikHer, VeriSetiTanim } from '@/lib/rapor/tipler'
 import { SablonGovde, json, uniqueIhlali, zodMesaj } from '../_ortak'
 
 export const dynamic = 'force-dynamic'
@@ -32,7 +32,7 @@ export async function PUT(req: Request, { params }: Ctx) {
   if (!mevcut) return NextResponse.json({ error: 'Şablon bulunamadı' }, { status: 404 })
   const veriSeti = await prisma.raporVeriSeti.findUnique({ where: { id: govde.data.veriSetiId }, select: { tanim: true } })
   if (!veriSeti) return NextResponse.json({ error: 'Veri seti bulunamadı' }, { status: 400 })
-  const hatalar = sablonDogrula(govde.data.icerik as SablonIcerik, Object.keys((veriSeti.tanim as unknown as VeriSetiTanim).alanlar ?? {}))
+  const hatalar = sablonDogrula(govde.data.icerik as SablonIcerikHer, Object.keys((veriSeti.tanim as unknown as VeriSetiTanim).alanlar ?? {}))
   if (hatalar.length) return NextResponse.json({ error: 'Şablon geçersiz', hatalar }, { status: 400 })
   try {
     const s = await prisma.$transaction(async (tx) => {

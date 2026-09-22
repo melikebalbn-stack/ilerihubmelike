@@ -3,11 +3,33 @@ import { Prisma } from '@/generated/prisma'
 
 const BicimSchema = z.enum(['#.##0', '#.##0,00', '%0,0', '%0,00', 'gg.aa.yyyy', 'gg.aa.yyyy ss:dd', 'metin'])
 
-export const IcerikSchema = z.object({
+const ParametreSchema = z.object({ ad: z.string(), tip: z.enum(['metin', 'sayi', 'tarih', 'liste']), etiket: z.string(), zorunlu: z.boolean().optional() })
+const HesaplananSchema = z.object({ ad: z.string(), ifade: z.string(), bicim: BicimSchema.optional() })
+
+/** Etkileşimli görünüm (tipler.ts → Gorunum). */
+export const GorunumSchema = z.object({
+  kolonlar: z.array(z.object({ alan: z.string(), baslik: z.string().optional(), gorunur: z.boolean(), toplam: z.enum(['topla', 'ortalama', 'say', 'enkucuk', 'enbuyuk']).optional(), bicim: BicimSchema.optional() })),
+  gruplar: z.array(z.string()).max(2, 'En fazla 2 grup seviyesi'),
+  siralama: z.object({ alan: z.string(), yon: z.union([z.literal(1), z.literal(-1)]) }).nullable().optional(),
+  filtreler: z.record(z.string(), z.string()).default({}),
+  grafik: z.object({ grupla: z.string(), deger: z.string(), fn: z.enum(['topla', 'ortalama']) }).nullable().optional(),
+  hesaplananAlanlar: z.array(HesaplananSchema).optional(),
+})
+
+export const EtkilesimliIcerikSchema = z.object({
+  tur: z.literal('etkilesimli'),
   baslik: z.string(),
   altBaslik: z.string().optional(),
-  parametreler: z.array(z.object({ ad: z.string(), tip: z.enum(['metin', 'sayi', 'tarih', 'liste']), etiket: z.string(), zorunlu: z.boolean().optional() })).optional(),
-  hesaplananAlanlar: z.array(z.object({ ad: z.string(), ifade: z.string(), bicim: BicimSchema.optional() })).optional(),
+  parametreler: z.array(ParametreSchema).optional(),
+  gorunum: GorunumSchema,
+})
+
+export const BelgeIcerikSchema = z.object({
+  tur: z.literal('belge').optional(),
+  baslik: z.string(),
+  altBaslik: z.string().optional(),
+  parametreler: z.array(ParametreSchema).optional(),
+  hesaplananAlanlar: z.array(HesaplananSchema).optional(),
   gruplar: z.array(z.object({ alan: z.string(), baslik: z.string().optional(), yeniSayfa: z.boolean().optional() })).optional(),
   kolonlar: z.array(z.object({
     alan: z.string(), baslik: z.string(), genislik: z.number().optional(), hiza: z.enum(['sol', 'sag', 'orta']).optional(), bicim: BicimSchema.optional(),
@@ -18,6 +40,9 @@ export const IcerikSchema = z.object({
   genelToplam: z.boolean().optional(),
   sayfaAlti: z.object({ sol: z.string().optional(), sag: z.string().optional() }).optional(),
 })
+
+/** `tur` alanına göre ayrışır; tur yoksa belge. */
+export const IcerikSchema = z.union([EtkilesimliIcerikSchema, BelgeIcerikSchema])
 
 export const SablonGovde = z.object({
   kod: z.string().trim().min(2, 'Kod en az 2 karakter').max(40).regex(/^[A-Za-z0-9_-]+$/, 'Kod yalnız harf/rakam/-/_ içerebilir'),

@@ -1,15 +1,13 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import ExcelJS from 'exceljs'
-import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/auth/require-permission'
-import { getUserPermissions } from '@/lib/auth/get-user-permissions'
 import { PERMISSION_KEYS } from '@/lib/auth/permissions'
 import { veriSetiCalistir } from '@/lib/rapor/veri-seti'
 import { raporRender } from '@/lib/rapor/render'
 import { ifadeCalistir, ifadeDerle } from '@/lib/rapor/ifade'
-import type { SablonIcerik, VeriSetiTanim } from '@/lib/rapor/tipler'
-import { parametreleriHazirla } from '@/lib/rapor/sablon-parametre'
+import { etkilesimliMi, type SablonIcerik } from '@/lib/rapor/tipler'
+import { calistirmaHatasiKaydet, calistirmaKaydet, raporBaglami } from '@/lib/rapor/sunucu-calistirma'
 
 export const dynamic = 'force-dynamic'
 
@@ -68,45 +66,31 @@ async function xlsxUret(icerik: SablonIcerik, satirlar: Record<string, unknown>[
 }
 
 /**
- * POST /api/raporlar/[id]/calistir — şablonu çalıştırır (EKRAN: HTML JSON, XLSX: dosya).
- * rapor.view + şablonun izinAnahtari doluysa o izin. Her çalıştırma rapor_calistirma'ya yazılır.
+ * POST /api/raporlar/[id]/calistir — BELGE şablonunu çalıştırır (EKRAN: HTML JSON, XLSX: dosya).
+ * Yetki/parametre/kayıt: sunucu-calistirma. Etkileşimli şablon için /veri ve /excel uçları kullanılır.
  */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { userId, error } = await requirePermission(PERMISSION_KEYS.RAPOR_VIEW)
   if (error) return error
   const { id } = await params
 
-  const sablon = await prisma.raporSablon.findUnique({ where: { id }, include: { veriSeti: true } })
-  if (!sablon) return NextResponse.json({ error: 'Rapor bulunamadı' }, { status: 404 })
-
-  const perms = await getUserPermissions(userId)
-  if (sablon.durum === 'ARSIV') return NextResponse.json({ error: 'Bu rapor arşivlenmiş' }, { status: 410 })
-  if (sablon.durum === 'TASLAK' && !perms.has(PERMISSION_KEYS.RAPOR_TASARLA)) {
-    return NextResponse.json({ error: 'Taslak raporu yalnız tasarımcılar çalıştırabilir' }, { status: 403 })
-  }
-  if (sablon.izinAnahtari && !perms.has(sablon.izinAnahtari)) {
-    return NextResponse.json({ error: 'Bu rapor için ek yetki gerekiyor', required: [sablon.izinAnahtari] }, { status: 403 })
-  }
-
   let govdeHam: unknown
   try { govdeHam = await req.json() } catch { govdeHam = {} }
   const govde = GovdeSchema.safeParse(govdeHam ?? {})
   if (!govde.success) return NextResponse.json({ error: 'Geçersiz istek gövdesi' }, { status: 400 })
 
-  const icerik = sablon.icerik as unknown as SablonIcerik
-  const tanim = sablon.veriSeti.tanim as unknown as VeriSetiTanim
-  const { degerler, hatalar } = parametreleriHazirla(icerik, govde.data.parametreler)
-  if (hatalar.length) return NextResponse.json({ error: `Eksik/geçersiz parametre: ${hatalar.join('; ')}` }, { status: 400 })
+  const b = await raporBaglami(id, userId, govde.data.parametreler, govde.data.cikti)
+  if (b.hata) return b.hata
+  const { sablon, icerik, tanim, degerler, kayit, calistiranAd } = b.baglam
+  if (etkilesimliMi(icerik)) return NextResponse.json({ error: 'Etkileşimli rapor: /veri veya /excel ucunu kullanın' }, { status: 400 })
 
   const t0 = Date.now()
-  const kayit = { sablonId: sablon.id, calistiranId: userId, parametreler: JSON.parse(JSON.stringify(degerler)), cikti: govde.data.cikti }
-
   try {
     const veri = await veriSetiCalistir(tanim, degerler)
 
     if (govde.data.cikti === 'XLSX') {
       const buffer = await xlsxUret(icerik, veri.satirlar)
-      await prisma.raporCalistirma.create({ data: { ...kayit, satirSayisi: veri.satirlar.length, sureMs: Date.now() - t0 } })
+      await calistirmaKaydet(kayit, veri.satirlar.length, Date.now() - t0)
       return new NextResponse(new Uint8Array(buffer), {
         status: 200,
         headers: {
@@ -117,18 +101,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       })
     }
 
-    const render = raporRender(icerik, veri.satirlar, {
-      parametreler: degerler,
-      calistiran: (await prisma.user.findUnique({ where: { id: userId }, select: { name: true } }))?.name ?? undefined,
-      raporKodu: sablon.kod,
-    })
+    const render = raporRender(icerik, veri.satirlar, { parametreler: degerler, calistiran: calistiranAd, raporKodu: sablon.kod })
     const sureMs = Date.now() - t0
-    await prisma.raporCalistirma.create({ data: { ...kayit, satirSayisi: render.satirSayisi, sureMs } })
+    await calistirmaKaydet(kayit, render.satirSayisi, sureMs)
     return NextResponse.json({ html: render.html, satirSayisi: render.satirSayisi, sureMs, kaynakIstatistik: veri.kaynakIstatistik })
   } catch (e) {
-    const mesaj = e instanceof Error ? e.message : String(e)
-    await prisma.raporCalistirma.create({ data: { ...kayit, sureMs: Date.now() - t0, hata: mesaj.slice(0, 2000) } }).catch(() => {})
-    console.error(`[rapor] ${sablon.kod} çalıştırma hatası:`, e)
+    const mesaj = await calistirmaHatasiKaydet(kayit, sablon.kod, Date.now() - t0, e)
     return NextResponse.json({ error: `Rapor çalıştırılamadı: ${mesaj}` }, { status: 500 })
   }
 }

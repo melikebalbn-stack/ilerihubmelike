@@ -15,6 +15,7 @@ interface Sablon {
   ad: string
   aciklama: string | null
   durum: 'TASLAK' | 'YAYINDA' | 'ARSIV'
+  tur: 'etkilesimli' | 'belge'
   guncellenme: string
 }
 
@@ -90,7 +91,10 @@ export default function RaporListeClient() {
                   <CardContent className="p-5 flex flex-col gap-3 h-full">
                     <div className="flex items-start justify-between gap-2">
                       <span className="font-mono text-xs text-muted-foreground">{s.kod}</span>
-                      <Badge className={durum.sinif}>{durum.metin}</Badge>
+                      <span className="flex items-center gap-1">
+                        <Badge className={s.tur === 'etkilesimli' ? 'bg-[#DCEDF5] text-[#1B4F72] hover:bg-[#DCEDF5]' : 'bg-slate-100 text-slate-700 hover:bg-slate-100'}>{s.tur === 'etkilesimli' ? 'Etkileşimli' : 'Belge'}</Badge>
+                        <Badge className={durum.sinif}>{durum.metin}</Badge>
+                      </span>
                     </div>
                     <div className="flex-1">
                       <h2 className="font-semibold leading-snug" style={{ color: NAVY }}>{s.ad}</h2>

@@ -2,9 +2,9 @@
  * Şablon parametrelerini (SablonIcerik.parametreler) ham istek değerlerinden tipli değerlere çevirir.
  * calistir ve onizle uçları ortak kullanır. Zorunlu eksik / geçersiz → Türkçe hata listesi.
  */
-import type { SablonIcerik } from './tipler'
+import type { SablonParametre } from './tipler'
 
-export function parametreleriHazirla(icerik: SablonIcerik, ham: Record<string, unknown>): { degerler: Record<string, unknown>; hatalar: string[] } {
+export function parametreleriHazirla(icerik: { parametreler?: SablonParametre[] }, ham: Record<string, unknown>): { degerler: Record<string, unknown>; hatalar: string[] } {
   const degerler: Record<string, unknown> = {}
   const hatalar: string[] = []
   for (const p of icerik.parametreler ?? []) {

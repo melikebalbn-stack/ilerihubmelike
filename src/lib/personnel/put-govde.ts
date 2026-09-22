@@ -84,6 +84,24 @@ export async function personelPutGovdesiniHazirla(
     if (body[key] === '') body[key] = null
   }
 
+  // İkamet adresi değişim tarihi (Melih kararı, 22.09.2026) — yalnız GERÇEK
+  // değişiklikte now() yazılır (trim sonrası eski !== yeni); değişmeyen/no-op
+  // PUT'ta alana DOKUNULMAZ. Client bu tarihi DOĞRUDAN gönderemez —
+  // ikametAdresiDegisimTarihi IZINLI_ALANLAR'da yok, yalnız burada sistem
+  // tarafından hesaplanır. NOT (bilinen sınır — bkz. rapor): bu alanı yalnız
+  // bu yazma noktası (PUT /api/personnel/[id]) besler; toplu Excel import
+  // (personnel/import/route.ts) ve yeniden-işe-alım (personele-donustur.ts,
+  // MEVCUDA_BAGLA) da ikametAdresi'ni update edebiliyor ama bu yardımcıdan
+  // geçmiyor — o iki yolla değişen adresler damgayı GÜNCELLEMEZ.
+  if (Object.prototype.hasOwnProperty.call(body, 'ikametAdresi')) {
+    const yeniAdres = typeof body.ikametAdresi === 'string' ? body.ikametAdresi.trim() : null
+    const mevcut = await db.personnel.findUnique({ where: { id: personnelId }, select: { ikametAdresi: true } })
+    const eskiAdres = mevcut?.ikametAdresi?.trim() ?? null
+    if (eskiAdres !== yeniAdres) {
+      body.ikametAdresiDegisimTarihi = new Date()
+    }
+  }
+
   // Tarih alanları (null atlanır)
   for (const field of TARIH_ALANLARI) {
     if (body[field]) body[field] = new Date(body[field] as string)

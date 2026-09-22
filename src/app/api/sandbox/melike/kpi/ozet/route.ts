@@ -59,5 +59,12 @@ export async function GET(request: Request) {
     }
   })
 
-  return NextResponse.json({ ozet, mevcutYillar, aktifYil })
+  // Şirket geneli tek rakam — tüm departmanların tüm KPI oranları eşit ağırlıkla havuzlanır
+  // (departman ortalamalarının ortalaması değil; büyük/küçük departman ayrımı yapmadan tüm KPI'lar eşit sayılır).
+  const tumKpiOranlari = ozet.flatMap(d => d.kpiler.map(k => k.oran))
+  const genelToplam = tumKpiOranlari.length > 0
+    ? Math.round(tumKpiOranlari.reduce((t, o) => t + o, 0) / tumKpiOranlari.length)
+    : null
+
+  return NextResponse.json({ ozet, mevcutYillar, aktifYil, genelToplam })
 }

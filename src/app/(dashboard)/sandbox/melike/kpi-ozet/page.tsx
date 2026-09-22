@@ -27,6 +27,11 @@ interface DepartmanCeyrekTrendi {
   ceyrekler: { ceyrek: number; oran: number | null }[]
 }
 
+interface GenelCeyrekTrendi {
+  name: string
+  ceyrekler: { ceyrek: number; oran: number | null }[]
+}
+
 interface OzetKpiSirasi {
   id: string
   name: string
@@ -60,6 +65,8 @@ export default function KpiOzetPage() {
   const [mevcutYillar, setMevcutYillar] = useState<number[]>([])
   const [secilenYil, setSecilenYil] = useState<number | null>(null)
   const [ceyrekTrend, setCeyrekTrend] = useState<DepartmanCeyrekTrendi[] | null>(null)
+  const [genelCeyrekTrend, setGenelCeyrekTrend] = useState<GenelCeyrekTrendi | null>(null)
+  const [genelToplam, setGenelToplam] = useState<number | null>(null)
 
   useEffect(() => {
     fetch('/api/sandbox/melike/kpi/departmanlar')
@@ -77,6 +84,7 @@ export default function KpiOzetPage() {
       .then(d => {
         setOzet(d.ozet ?? [])
         setMevcutYillar(d.mevcutYillar ?? [])
+        setGenelToplam(d.genelToplam ?? null)
         if (secilenYil == null && d.aktifYil != null) setSecilenYil(d.aktifYil)
       })
       .catch(() => setOzet([]))
@@ -86,8 +94,14 @@ export default function KpiOzetPage() {
     if (secilenYil == null) return
     fetch(`/api/sandbox/melike/kpi/ceyrek-trend?yil=${secilenYil}`)
       .then(res => res.json())
-      .then(d => setCeyrekTrend(d.trend ?? []))
-      .catch(() => setCeyrekTrend([]))
+      .then(d => {
+        setCeyrekTrend(d.trend ?? [])
+        setGenelCeyrekTrend(d.genel ?? null)
+      })
+      .catch(() => {
+        setCeyrekTrend([])
+        setGenelCeyrekTrend(null)
+      })
   }, [secilenYil])
 
   const secilenOzet = useMemo(
@@ -138,56 +152,39 @@ export default function KpiOzetPage() {
         )}
       </div>
 
-      {/* Genel özet — departman seçimine bağlı değil, her zaman görünür */}
-      {ceyrekTrend && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">Tüm Departmanlar — Genel Özet</CardTitle>
-            <p className="text-xs text-muted-foreground">{secilenYil} yılı, çeyreklere göre — her departman kendi küçük grafiğinde. Birine tıklayınca altta detayı açılır.</p>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-              {ceyrekTrend.map(d => {
-                const veri = d.ceyrekler.map(c => ({ ad: `Ç${c.ceyrek}`, Oran: c.oran }))
-                const sonDegerler = d.ceyrekler.filter(c => c.oran != null)
-                const sonOran = sonDegerler.length > 0 ? sonDegerler[sonDegerler.length - 1].oran : null
-                const secili = d.orgUnitId === secilenDepartmanId
-                return (
-                  <button
-                    key={d.orgUnitId}
-                    onClick={() => setSecilenDepartmanId(d.orgUnitId)}
-                    className="text-left rounded-md border p-2 transition-colors"
-                    style={{
-                      borderColor: secili ? NAVY : '#e2e8f0',
-                      backgroundColor: secili ? '#eff6ff' : 'white',
-                    }}
-                  >
-                    <p className="text-xs font-medium truncate mb-1" title={d.name}>{d.name}</p>
-                    <ResponsiveContainer width="100%" height={50}>
-                      <LineChart data={veri} margin={{ left: 0, right: 4, top: 4, bottom: 0 }}>
-                        <YAxis hide domain={[0, 100]} />
-                        <Tooltip formatter={(v: number) => `%${v}`} labelFormatter={(l) => l} />
-                        <Line
-                          type="monotone"
-                          dataKey="Oran"
-                          stroke={secili ? NAVY : '#94a3b8'}
-                          strokeWidth={2}
-                          dot={{ r: 2 }}
-                          connectNulls
-                          isAnimationActive={false}
-                        />
-                      </LineChart>
-                    </ResponsiveContainer>
-                    <p className="text-sm font-bold" style={{ color: sonOran == null ? '#94a3b8' : NAVY }}>
-                      {sonOran == null ? 'Veri yok' : `%${sonOran}`}
-                    </p>
-                  </button>
-                )
-              })}
+      {/* Genel özet — şirket geneli TEK rakam/grafik, departman seçimine bağlı değil, her zaman görünür */}
+      <Card>
+        <CardHeader className="pb-2 flex flex-row items-center justify-between">
+          <div>
+            <CardTitle className="text-base">Genel Özet — Şirket Geneli</CardTitle>
+            <p className="text-xs text-muted-foreground">{secilenYil} yılı, tüm departmanların tüm KPI'ları — çeyrek çeyrek gidişat</p>
+          </div>
+          {genelToplam != null && (
+            <div className="text-right">
+              <p className="text-xs text-muted-foreground">Genel başarı</p>
+              <p className="text-3xl font-bold" style={{ color: oranRengi(genelToplam) }}>%{genelToplam}</p>
             </div>
-          </CardContent>
-        </Card>
-      )}
+          )}
+        </CardHeader>
+        <CardContent>
+          {!genelCeyrekTrend ? (
+            <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+          ) : (
+            <ResponsiveContainer width="100%" height={220}>
+              <LineChart
+                data={genelCeyrekTrend.ceyrekler.map(c => ({ ad: `Ç${c.ceyrek}`, Oran: c.oran }))}
+                margin={{ left: 4, right: 8, top: 4, bottom: 4 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="ad" tick={{ fontSize: 12 }} />
+                <YAxis tick={{ fontSize: 12 }} domain={[0, 100]} />
+                <Tooltip formatter={(v: number) => `%${v}`} />
+                <Line type="monotone" dataKey="Oran" stroke={NAVY} strokeWidth={2} dot={{ r: 4 }} connectNulls />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Departmana özel detay — seçime göre değişir */}
       {!ozet ? (

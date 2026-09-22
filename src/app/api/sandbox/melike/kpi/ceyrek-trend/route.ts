@@ -53,5 +53,22 @@ export async function GET(request: Request) {
     return { orgUnitId: dept.id, name: dept.name, ceyrekler }
   })
 
-  return NextResponse.json({ trend, mevcutYillar, aktifYil })
+  // Şirket geneli çeyreklik gidişat — tüm departmanların tüm KPI'ları çeyrek bazında havuzlanır.
+  const genelCeyrekler = [1, 2, 3, 4].map(ceyrek => {
+    const kpiOranlari: number[] = []
+    for (const k of kpiler) {
+      const gecerliOlcumler = k.measurements.filter(
+        m => m.target != null && m.actual != null && m.year === aktifYil && ceyrekNo(k.frequency, m.month) === ceyrek,
+      )
+      if (gecerliOlcumler.length === 0) continue
+      const tutulan = gecerliOlcumler.filter(m => tutuldu(k.direction, m.target as number, m.actual as number)).length
+      kpiOranlari.push(Math.round((tutulan / gecerliOlcumler.length) * 100))
+    }
+    const oran = kpiOranlari.length > 0
+      ? Math.round(kpiOranlari.reduce((t, o) => t + o, 0) / kpiOranlari.length)
+      : null
+    return { ceyrek, oran }
+  })
+
+  return NextResponse.json({ trend, genel: { name: 'Şirket Geneli', ceyrekler: genelCeyrekler }, mevcutYillar, aktifYil })
 }

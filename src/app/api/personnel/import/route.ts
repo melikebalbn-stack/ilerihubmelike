@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { personelFkAlanlari } from '@/lib/personnel/fk-cozum'
+import { adresDegisimDamgasi } from '@/lib/personnel/adres-damgasi'
 import { prisma } from '@/lib/prisma'
 import { personelEklendiginde } from '@/lib/org/personel-koltuk-senkron'
 import * as XLSX from 'xlsx'
@@ -494,6 +495,9 @@ export async function POST(request: NextRequest) {
           const degisenAlanlar = Object.keys(personnelData).filter(
             (k) => k !== 'updatedBy' && !ayniMi((existing as Record<string, unknown>)[k], personnelData[k]),
           )
+          // İkamet adresi değişim damgası — TEK KAYNAK adresDegisimDamgasi()
+          // (bkz. adres-damgasi.ts, put-govde.ts ile aynı yardımcı).
+          Object.assign(personnelData, adresDegisimDamgasi(existing.ikametAdresi, personnelData.ikametAdresi))
           const updatedRecord = await prisma.personnel.update({
             where: { sicilNo },
             data: personnelData,

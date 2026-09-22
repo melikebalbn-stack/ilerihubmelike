@@ -1,6 +1,7 @@
 // Faz 6 — Başvuru → Personel kaydı dönüşümü. TEK KAYNAK.
 import { personelFkAlanlari } from '@/lib/personnel/fk-cozum';
 import { degerlendirmeTarihleri } from '@/lib/personnel/degerlendirme-tarihleri';
+import { adresDegisimDamgasi } from '@/lib/personnel/adres-damgasi';
 //
 // Tasarım §G: işbaşı, başvuru kaydının personel kartına dönüştürülmesiyle olur. Dönüşüm
 // ATOMİKTİR: Personnel + PersonnelSensitive + (varsa) beden profili + EmploymentPeriod +
@@ -513,7 +514,7 @@ export async function personeleDonustur(opts: {
         // Yeniden işe alım: KART KORUNUR (geçmiş dönemler, zimmet, beden profili duruyor).
         const mevcut = await tx.personnel.findUnique({
           where: { id: karar.personnelId },
-          select: { id: true, aktif: true },
+          select: { id: true, aktif: true, ikametAdresi: true },
         });
         if (!mevcut) throw new DonusumError("Bağlanacak personel kaydı bulunamadı.", 404, "PERSONEL_YOK");
         if (mevcut.aktif) {
@@ -521,7 +522,9 @@ export async function personeleDonustur(opts: {
         }
         await tx.personnel.update({
           where: { id: mevcut.id },
-          data: { ...ortakVeri, aktif: true },
+          // İkamet adresi değişim damgası — TEK KAYNAK adresDegisimDamgasi()
+          // (bkz. adres-damgasi.ts, put-govde.ts/import ile aynı yardımcı).
+          data: { ...ortakVeri, aktif: true, ...adresDegisimDamgasi(mevcut.ikametAdresi, ortakVeri.ikametAdresi) },
         });
         personnelId = mevcut.id;
         yenidenIseAlim = true;

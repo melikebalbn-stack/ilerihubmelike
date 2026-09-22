@@ -13,10 +13,11 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { NativeSelect } from '@/components/ui/select'
-import { FileBarChart2, FileText, Loader2, MousePointerClick, Plus } from 'lucide-react'
+import { FileBarChart2, FileText, LayoutTemplate, List, Loader2, MousePointerClick, Plus } from 'lucide-react'
 import { varsayilanGorunum } from '@/lib/rapor/gorunum'
+import { listedenTuval } from '@/lib/rapor/tuval-render'
 import { veriSetiParametreleri } from '@/lib/rapor/sablon-dogrula'
-import type { EtkilesimliIcerik, SablonParametre, VeriSetiTanim } from '@/lib/rapor/tipler'
+import type { EtkilesimliIcerik, SablonIcerik, SablonParametre, VeriSetiTanim } from '@/lib/rapor/tipler'
 import { GeriRozet } from '../../../_components/rozet-link'
 import { TUR_ACIKLAMA, TUR_ADI } from '@/lib/rapor/tur-adlari'
 
@@ -27,6 +28,8 @@ interface Props { veriSetleri: { id: string; ad: string }[]; kategoriler: string
 export default function YeniSablonSecim({ veriSetleri, kategoriler, belgeTasarim }: Props) {
   const router = useRouter()
   const [tur, setTur] = useState<'etkilesimli' | 'belge' | null>(null)
+  /** Hazır Rapor için yerleşim: serbest tuval (varsayılan) ya da basit liste (eski form ekranı). */
+  const [belgeYerlesim, setBelgeYerlesim] = useState<'tuval' | 'liste' | null>(null)
   const [kod, setKod] = useState('')
   const [ad, setAd] = useState('')
   const [kategori, setKategori] = useState('')
@@ -56,7 +59,35 @@ export default function YeniSablonSecim({ veriSetleri, kategoriler, belgeTasarim
     } catch (e) { setHata(e instanceof Error ? e.message : String(e)); setOlusturuluyor(false) }
   }
 
-  if (tur === 'belge') return <>{belgeTasarim}</>
+  /** Tuval yerleşimli Hazır Rapor: ilk 5 alan Detay bandına, başlıklar Sayfa Başlığına. */
+  async function tuvalOlustur() {
+    if (!alanlar) return
+    setOlusturuluyor(true); setHata(null)
+    try {
+      const parametreler: SablonParametre[] = veriSetiParametreleri(tanim).map((p) => ({ ad: p, tip: /tarih|baslangic|bitis|date/i.test(p) ? 'tarih' : 'metin', etiket: p, zorunlu: true }))
+      const secilen = alanlar.slice(0, 5)
+      const tuval = listedenTuval({
+        baslik: ad.trim(),
+        kolonlar: secilen.map((a) => ({
+          alan: a.ad, baslik: a.etiket ?? a.ad, genislik: Math.floor(100 / secilen.length),
+          bicim: a.veriTipi === 'sayi' ? ('#.##0' as const) : a.veriTipi === 'tarih' ? ('gg.aa.yyyy' as const) : undefined,
+          altToplam: a.veriTipi === 'sayi' ? ('topla' as const) : undefined,
+        })),
+        genelToplam: true,
+      })
+      const icerik: SablonIcerik & { tur: 'belge' } = {
+        tur: 'belge', baslik: ad.trim(), kategori: kategori.trim() || undefined, parametreler,
+        kolonlar: secilen.map((a) => ({ alan: a.ad, baslik: a.etiket ?? a.ad })), // liste görünümü de geçerli kalsın
+        yerlesim: 'tuval', tuval,
+      }
+      const r = await fetch('/api/raporlar/sablonlar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kod, ad, aciklama: '', veriSetiId, icerik, durum: 'TASLAK' }) })
+      const d = await r.json()
+      if (!r.ok) throw new Error([d.error, ...(d.hatalar ?? [])].filter(Boolean).join(' · '))
+      window.location.href = `/raporlar/tasarim/${d.sablon.id}`
+    } catch (e) { setHata(e instanceof Error ? e.message : String(e)); setOlusturuluyor(false) }
+  }
+
+  if (tur === 'belge' && belgeYerlesim === 'liste') return <>{belgeTasarim}</>
 
   return (
     <div className="space-y-4">
@@ -70,11 +101,46 @@ export default function YeniSablonSecim({ veriSetleri, kategoriler, belgeTasarim
           <div className="flex items-center gap-2 font-semibold" style={{ color: NAVY }}><MousePointerClick className="h-5 w-5" />{TUR_ADI.etkilesimli} <span className="text-[10px] font-semibold uppercase tracking-wide rounded-full px-2 py-0.5 bg-[#2AA5C7] text-[#06222C]">önerilen</span></div>
           <p className="text-sm text-muted-foreground mt-1.5">{TUR_ACIKLAMA.etkilesimli}</p>
         </button>
-        <button type="button" onClick={() => setTur('belge')} className="text-left rounded-lg border-2 border-slate-200 bg-white p-4 transition-colors hover:bg-slate-50">
+        <button type="button" onClick={() => setTur('belge')} className={`text-left rounded-lg border-2 p-4 transition-colors hover:bg-slate-50 ${tur === 'belge' ? 'border-[#1B4F72] bg-slate-50' : 'border-slate-200 bg-white'}`}>
           <div className="flex items-center gap-2 font-semibold" style={{ color: NAVY }}><FileText className="h-5 w-5" />{TUR_ADI.belge}</div>
           <p className="text-sm text-muted-foreground mt-1.5">{TUR_ACIKLAMA.belge}</p>
         </button>
       </div>
+
+      {tur === 'belge' && (
+        <Card className="max-w-3xl">
+          <CardContent className="p-4 space-y-3">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <button type="button" onClick={() => setBelgeYerlesim('tuval')} className={`text-left rounded-lg border-2 p-3 transition-colors hover:bg-[#DCEDF5]/40 ${belgeYerlesim === 'tuval' ? 'border-[#1B4F72] bg-[#DCEDF5]/40' : 'border-slate-200 bg-white'}`}>
+                <div className="flex items-center gap-2 font-semibold text-sm" style={{ color: NAVY }}><LayoutTemplate className="h-4 w-4" />Serbest tasarım (tuval) <span className="text-[10px] font-semibold uppercase tracking-wide rounded-full px-2 py-0.5 bg-[#2AA5C7] text-[#06222C]">önerilen</span></div>
+                <p className="text-xs text-muted-foreground mt-1">A4 sayfa + bantlar: öğeleri sürükleyerek yerleştir — föy, form, etiket, faturalı düzenler.</p>
+              </button>
+              <button type="button" onClick={() => setBelgeYerlesim('liste')} className={`text-left rounded-lg border-2 p-3 transition-colors hover:bg-slate-50 ${belgeYerlesim === 'liste' ? 'border-[#1B4F72] bg-slate-50' : 'border-slate-200 bg-white'}`}>
+                <div className="flex items-center gap-2 font-semibold text-sm" style={{ color: NAVY }}><List className="h-4 w-4" />Basit liste</div>
+                <p className="text-xs text-muted-foreground mt-1">Kolon listesi + gruplar; hızlı dökümler için form tabanlı ekran.</p>
+              </button>
+            </div>
+            {belgeYerlesim === 'tuval' && (
+              <>
+                <div className="grid gap-3 sm:grid-cols-[160px_1fr_1fr_1fr]">
+                  <div className="space-y-1.5"><Label htmlFor="b-kod">Kod <span className="text-red-600">*</span></Label><Input id="b-kod" className="font-mono" value={kod} onChange={(e) => setKod(e.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, ''))} placeholder="URT-020" /></div>
+                  <div className="space-y-1.5"><Label htmlFor="b-ad">Ad <span className="text-red-600">*</span></Label><Input id="b-ad" value={ad} onChange={(e) => setAd(e.target.value)} placeholder="İş Emri Föyü" /></div>
+                  <div className="space-y-1.5"><Label htmlFor="b-kat">Kategori</Label><Input id="b-kat" list="kategori-onerileri" value={kategori} onChange={(e) => setKategori(e.target.value)} placeholder="Üretim" /></div>
+                  <div className="space-y-1.5"><Label htmlFor="b-vs">Veri seti <span className="text-red-600">*</span></Label>
+                    <NativeSelect id="b-vs" value={veriSetiId} onChange={(e) => setVeriSetiId(e.target.value)}><option value="">Seçin…</option>{veriSetleri.map((v) => <option key={v.id} value={v.id}>{v.ad}</option>)}</NativeSelect>
+                  </div>
+                </div>
+                {alanlar && <p className="text-xs text-muted-foreground">İlk {Math.min(5, alanlar.length)} alan Detay bandına yerleştirilir; tuvalde serbestçe düzenlersiniz.</p>}
+                {hata && <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{hata}</div>}
+                <div className="flex items-center gap-2">
+                  <Button onClick={tuvalOlustur} disabled={olusturuluyor || kod.length < 2 || ad.trim().length < 2 || !veriSetiId || !alanlar} style={{ backgroundColor: NAVY }}>{olusturuluyor ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Plus className="h-4 w-4 mr-2" />}Oluştur ve tuvali aç</Button>
+                  <span className="text-xs text-muted-foreground">Taslak olarak kaydedilir; tasarımı tuvalde tamamlayıp Yayında yapın.</span>
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {tur === 'etkilesimli' && (
         <Card className="max-w-3xl">

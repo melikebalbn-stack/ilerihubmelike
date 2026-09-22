@@ -107,9 +107,72 @@ export interface SablonParametre {
   zorunlu?: boolean
 }
 
+// ── Tuval (serbest yerleşim) belge tasarımı ──────────────────────────────
+//
+// Crystal tarzı bant modeli. `yerlesim` yoksa 'liste' sayılır → mevcut kolon/grup tabanlı
+// belge şablonları (URT-001) aynen çalışır.
+
+export type TuvalBantId = 'rb' | 'sb' | 'gb' | 'dt' | 'gs' | 'rs' | 'sa'
+
+export const BANT_ADI: Record<TuvalBantId, string> = {
+  rb: 'Rapor Başlığı', sb: 'Sayfa Başlığı', gb: 'Grup Başı', dt: 'Detay (her satır)',
+  gs: 'Grup Sonu', rs: 'Rapor Sonu', sa: 'Sayfa Altı',
+}
+
+export interface TuvalBant {
+  id: TuvalBantId
+  /** px (tuval birimi); 640px = sayfa içi genişlik. */
+  yukseklik: number
+  /** Bant basılırken yeni sayfada başlasın (gb için tipik). */
+  yeniSayfa?: boolean
+}
+
+export type TuvalHiza = 'sol' | 'orta' | 'sag'
+
+/** Tüm öğelerin ortak alanları. Konum/boyut px (640 = sayfa içi genişlik). */
+export interface TuvalOgeOrtak {
+  id: string
+  bant: TuvalBantId
+  x: number
+  y: number
+  w: number
+  h: number
+  /** Yazı boyutu (px, tuval ölçeğinde). */
+  size?: number
+  kalin?: boolean
+  hiza?: TuvalHiza
+  /** CSS rengi (#1B4F72 gibi). */
+  renk?: string
+}
+
+export type TuvalOge =
+  /** metin: {alan}, {p.param}, {sayfa}, {toplamSayfa}, {bugun}, {calistiran}, {rapor.ad} yer tutucuları. */
+  | (TuvalOgeOrtak & { tip: 'metin'; metin: string })
+  | (TuvalOgeOrtak & { tip: 'alan'; alan: string; bicim?: Bicim; kosulluBicim?: KosulluBicim[] })
+  | (TuvalOgeOrtak & { tip: 'toplam'; fn: AltToplamFn; alan: string; oraniPay?: string; oraniPayda?: string; bicim?: Bicim; kosulluBicim?: KosulluBicim[] })
+  | (TuvalOgeOrtak & { tip: 'gorsel'; kaynak: 'logo' })
+  | (TuvalOgeOrtak & { tip: 'cizgi'; kalinlik?: number })
+  | (TuvalOgeOrtak & { tip: 'kutu'; kalinlik?: number })
+  | (TuvalOgeOrtak & { tip: 'tablo'; kolonlar: { alan: string; baslik: string; genislik: number }[] })
+  | (TuvalOgeOrtak & { tip: 'grafik'; grafikTipi: 'sutun'; grupla: string; deger: string; fn: 'topla' | 'ortalama' })
+
+export interface TuvalTasarim {
+  sayfa: { boyut: 'A4'; yon: 'dikey' | 'yatay'; kenar: [number, number, number, number] }
+  bantlar: TuvalBant[]
+  ogeler: TuvalOge[]
+  /** Tek seviye gruplama (gb/gs bantları için); 2. seviye sonraki faz. */
+  grup?: { alan: string; baslik?: string }
+}
+
+/** Tuval birimi: sayfa içi genişlik bu kadar px sayılır (referans tasarımla aynı). */
+export const TUVAL_GENISLIK = 640
+
 export interface SablonIcerik {
   baslik: string
   altBaslik?: string
+  /** 'liste' (varsayılan, mevcut kolon tabanlı) | 'tuval' (serbest yerleşim). */
+  yerlesim?: 'liste' | 'tuval'
+  tuval?: TuvalTasarim
   /** Liste sayfasında gruplama/filtre için serbest kategori (ör. 'Üretim'). Migration yok — JSON'da. */
   kategori?: string
   parametreler?: SablonParametre[]

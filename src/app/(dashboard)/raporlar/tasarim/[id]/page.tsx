@@ -4,8 +4,10 @@ import { requireUser } from '@/lib/auth/require-user'
 import { hasPermission } from '@/lib/auth/has-permission'
 import { PERMISSION_KEYS } from '@/lib/auth/permissions'
 import { YetkisizErisim } from '@/components/YetkisizErisim'
-import { etkilesimliMi, type SablonIcerik } from '@/lib/rapor/tipler'
+import { etkilesimliMi, type SablonIcerik, type VeriSetiTanim } from '@/lib/rapor/tipler'
+import { veriSetiAlanlari } from '@/lib/rapor/veri-seti-alanlar'
 import SablonTasarimClient from './_components/sablon-tasarim-client'
+import TuvalTasarimci from './_components/tuval-tasarimci'
 import YeniSablonSecim from './_components/yeni-sablon-secim'
 
 export const dynamic = 'force-dynamic'
@@ -23,9 +25,23 @@ export default async function SablonTasarimPage({ params }: { params: Promise<{ 
   const { id } = await params
   if (id === 'yeni') return <YeniSablonSecim veriSetleri={veriSetleri} kategoriler={kategoriler} belgeTasarim={<SablonTasarimClient veriSetleri={veriSetleri} kategoriler={kategoriler} />} />
 
-  const s = await prisma.raporSablon.findUnique({ where: { id }, select: { id: true, kod: true, ad: true, aciklama: true, veriSetiId: true, durum: true, surum: true, izinAnahtari: true, icerik: true } })
+  const s = await prisma.raporSablon.findUnique({ where: { id }, select: { id: true, kod: true, ad: true, aciklama: true, veriSetiId: true, durum: true, surum: true, izinAnahtari: true, icerik: true, veriSeti: { select: { ad: true, tanim: true } } } })
   if (!s) notFound()
-  if (etkilesimliMi(s.icerik)) redirect(`/raporlar/${s.id}`) // etkileşimli şablon ekranda kurgulanır
+  if (etkilesimliMi(s.icerik)) redirect(`/raporlar/${s.id}`) // AI Rapor ekranda kurgulanır
+  const belge = s.icerik as unknown as SablonIcerik
+
+  // Tuval yerleşimi → serbest tasarım ekranı; 'liste' (veya yok) → mevcut form tabanlı ekran.
+  if (belge.yerlesim === 'tuval' && belge.tuval) {
+    const alanlar = await veriSetiAlanlari(s.veriSeti.tanim as unknown as VeriSetiTanim)
+    return (
+      <TuvalTasarimci
+        sablon={{ id: s.id, kod: s.kod, ad: s.ad, aciklama: s.aciklama ?? '', veriSetiId: s.veriSetiId, veriSetiAd: s.veriSeti.ad, durum: s.durum, surum: s.surum, izinAnahtari: s.izinAnahtari ?? '' }}
+        icerik={belge}
+        alanlar={alanlar}
+        tuval={belge.tuval}
+      />
+    )
+  }
   return (
     <SablonTasarimClient
       veriSetleri={veriSetleri}

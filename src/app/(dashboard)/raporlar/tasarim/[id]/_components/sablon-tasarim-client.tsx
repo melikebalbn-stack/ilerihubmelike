@@ -19,9 +19,10 @@ import { NativeSelect } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { DateField } from '@/components/ui/date-field'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { ArrowDown, ArrowUp, Columns3, FileBarChart2, GripVertical, Loader2, Maximize2, Play, Plus, Save, Sigma, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, Columns3, FileBarChart2, GripVertical, LayoutTemplate, Loader2, Maximize2, Play, Plus, Save, Sigma, Trash2 } from 'lucide-react'
 import { ifadeDogrula } from '@/lib/rapor/ifade'
 import { BICIMLER, veriSetiParametreleri } from '@/lib/rapor/sablon-dogrula'
+import { listedenTuval } from '@/lib/rapor/tuval-render'
 import type { AltToplamFn, Bicim, GrupTanim, HesaplananAlan, Kolon, KosulluBicim, SablonIcerik, SablonParametre, VeriSetiTanim } from '@/lib/rapor/tipler'
 import { GeriRozet } from '../../../_components/rozet-link'
 
@@ -187,6 +188,29 @@ export default function SablonTasarimClient({ veriSetleri, kategoriler = [], mev
     setSeciliKolon((s) => (s === null ? null : s === i ? null : s > i ? s - 1 : s))
   }
 
+  // ── Tuvale çevir (tek yönlü) ──────────────────────────────────────────
+  const [cevriliyor, setCevriliyor] = useState(false)
+  /**
+   * Liste yerleşimini tuvale taşır: kolonlar dt, başlıklar sb, grup alanı gb, alt toplamlar gs/rs.
+   * TEK YÖNLÜ — kaydedildikten sonra bu ekran yerine tuval tasarımcısı açılır.
+   */
+  async function tuvaleCevir() {
+    if (!mevcut) return
+    if (!confirm('Bu şablon A4 tuvaline çevrilecek: kolonlar Detay bandına, başlıklar Sayfa Başlığına, toplamlar Grup/Rapor Sonuna yerleşir.\n\nGERİ DÖNÜŞÜ YOKTUR — bundan sonra bu form ekranı yerine tuval tasarımcısı açılır. Devam edilsin mi?')) return
+    setCevriliyor(true)
+    try {
+      const tuval = listedenTuval(icerik)
+      const r = await fetch(`/api/raporlar/sablonlar/${mevcut.id}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kod, ad, aciklama, veriSetiId, durum, izinAnahtari: mevcut.izinAnahtari || null, icerik: { ...icerik, yerlesim: 'tuval', tuval } }),
+      })
+      const d = await r.json()
+      if (!r.ok) throw new Error([d.error, ...(d.hatalar ?? [])].filter(Boolean).join(' · '))
+      toast.success(`Tuvale çevrildi (sürüm ${d.sablon.surum})`)
+      window.location.href = `/raporlar/tasarim/${mevcut.id}`
+    } catch (e) { toast.error(e instanceof Error ? e.message : String(e)); setCevriliyor(false) }
+  }
+
   // ── Kaydet / önizle ───────────────────────────────────────────────────
   async function kaydet() {
     setKaydediliyor(true); setKayitHata(null); setKayitHatalari([]); setKayitMesaj(null)
@@ -276,6 +300,11 @@ export default function SablonTasarimClient({ veriSetleri, kategoriler = [], mev
         </div>
         <div className="flex items-center gap-2">
           {kayitMesaj && <span className="text-sm text-green-700">{kayitMesaj}</span>}
+          {mevcut && (
+            <Button variant="outline" size="sm" disabled={cevriliyor || !kolonlar.length} title="Kolonları/grupları A4 tuvaline taşı — geri dönüşü yok" onClick={tuvaleCevir}>
+              {cevriliyor ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <LayoutTemplate className="h-4 w-4 mr-1.5" />}Tuvale çevir
+            </Button>
+          )}
           <Button onClick={kaydet} disabled={kaydediliyor || !kod.trim() || !ad.trim() || !veriSetiId || kolonlar.length === 0} style={{ backgroundColor: NAVY }}>
             {kaydediliyor ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}Kaydet
           </Button>

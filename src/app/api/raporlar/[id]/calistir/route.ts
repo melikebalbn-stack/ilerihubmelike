@@ -5,6 +5,8 @@ import { requirePermission } from '@/lib/auth/require-permission'
 import { PERMISSION_KEYS } from '@/lib/auth/permissions'
 import { veriSetiCalistir } from '@/lib/rapor/veri-seti'
 import { raporRender } from '@/lib/rapor/render'
+import { tuvalRender } from '@/lib/rapor/tuval-render'
+import { veriSetiAlanlari } from '@/lib/rapor/veri-seti-alanlar'
 import { ifadeCalistir, ifadeDerle } from '@/lib/rapor/ifade'
 import { etkilesimliMi, type SablonIcerik } from '@/lib/rapor/tipler'
 import { calistirmaHatasiKaydet, calistirmaKaydet, raporBaglami } from '@/lib/rapor/sunucu-calistirma'
@@ -99,6 +101,18 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           'Cache-Control': 'no-store',
         },
       })
+    }
+
+    // Tuval yerleşimi → serbest yerleşim motoru; 'liste' (veya yok) → mevcut bantlı tablo motoru.
+    if (icerik.yerlesim === 'tuval' && icerik.tuval) {
+      const degerEtiketleri = Object.fromEntries((await veriSetiAlanlari(tanim)).filter((a) => a.degerEtiketleri).map((a) => [a.ad, a.degerEtiketleri!]))
+      const t = tuvalRender(icerik.tuval, veri.satirlar, {
+        hesaplananAlanlar: icerik.hesaplananAlanlar, parametreler: degerler, parametreTanimlari: icerik.parametreler,
+        degerEtiketleri, raporAdi: icerik.baslik, raporKodu: sablon.kod, calistiran: calistiranAd,
+      })
+      const sureMs = Date.now() - t0
+      await calistirmaKaydet(kayit, t.satirSayisi, sureMs)
+      return NextResponse.json({ html: t.html, satirSayisi: t.satirSayisi, sayfaSayisi: t.sayfaSayisi, sureMs, kaynakIstatistik: veri.kaynakIstatistik })
     }
 
     const render = raporRender(icerik, veri.satirlar, { parametreler: degerler, calistiran: calistiranAd, raporKodu: sablon.kod })

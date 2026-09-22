@@ -4,7 +4,7 @@
  * geçmeli; grup ≤ 3; kod/ad/biçim değerleri makul.
  */
 import { ifadeDogrula } from './ifade'
-import { etkilesimliMi, type Bicim, type EtkilesimliIcerik, type SablonIcerik, type SablonIcerikHer } from './tipler'
+import { BANT_ADI, etkilesimliMi, TUVAL_GENISLIK, type Bicim, type EtkilesimliIcerik, type SablonIcerik, type SablonIcerikHer, type TuvalTasarim } from './tipler'
 
 export const BICIMLER: Bicim[] = ['#.##0', '#.##0,00', '%0,0', '%0,00', 'gg.aa.yyyy', 'gg.aa.yyyy ss:dd', 'metin']
 const AD_DESENI = /^[A-Za-z_][A-Za-z0-9_]*$/
@@ -58,6 +58,73 @@ export function sablonDogrula(icerik: SablonIcerikHer, veriSetiAlanlari: string[
   return etkilesimliMi(icerik) ? gorunumDogrula(icerik, veriSetiAlanlari) : belgeDogrula(icerik, veriSetiAlanlari)
 }
 
+/**
+ * Tuval tasarımı: öğe alanları veri seti ∪ hesaplananlarda mı, ifadeler geçerli mi, tablo kolonları
+ * ve grafik alanları doğru mu. Bandın dışına taşan öğe UYARI'dır (kayıt engellenmez, "Uyarı:" ile başlar).
+ */
+export function tuvalDogrula(t: TuvalTasarim | undefined, tumAlanlar: Set<string>): string[] {
+  const h: string[] = []
+  if (!t) return ['Tuval tasarımı yok']
+  if (!t.bantlar?.length) h.push('Tuval: bant tanımı yok')
+  for (const b of t.bantlar ?? []) {
+    if (!(b.id in BANT_ADI)) h.push(`Tuval: bilinmeyen bant '${b.id}'`)
+    if (!(b.yukseklik >= 0) || b.yukseklik > 2000) h.push(`Tuval: '${b.id}' bant yüksekliği geçersiz`)
+  }
+  const bantlar = new Map((t.bantlar ?? []).map((b) => [b.id, b]))
+  if (t.grup?.alan && !tumAlanlar.has(t.grup.alan)) h.push(`Tuval grup alanı geçersiz: '${t.grup.alan}'`)
+  const kimlikler = new Set<string>()
+  for (const e of t.ogeler ?? []) {
+    const ad = `Tuval öğesi ${e.id ?? '?'} (${BANT_ADI[e.bant] ?? e.bant})`
+    if (!e.id) h.push('Tuval: kimliksiz öğe var')
+    else if (kimlikler.has(e.id)) h.push(`Tuval: mükerrer öğe kimliği '${e.id}'`)
+    kimlikler.add(e.id)
+    if (!bantlar.has(e.bant)) { h.push(`${ad}: bilinmeyen bant`); continue }
+    if (e.x < 0 || e.y < 0 || e.w <= 0 || e.h < 0) h.push(`${ad}: konum/boyut geçersiz`)
+    if (e.x + e.w > TUVAL_GENISLIK + 1) h.push(`Uyarı: ${ad} sayfa genişliğini aşıyor (${e.x + e.w} > ${TUVAL_GENISLIK})`)
+    const bant = bantlar.get(e.bant)!
+    if (e.y + e.h > bant.yukseklik + 1) h.push(`Uyarı: ${ad} bandın dışına taşıyor (${e.y + e.h} > ${bant.yukseklik})`)
+    switch (e.tip) {
+      case 'alan':
+        if (!tumAlanlar.has(e.alan)) h.push(`${ad}: '${e.alan}' veri setinde/hesaplananlarda yok`)
+        if (e.bicim && !BICIMLER.includes(e.bicim)) h.push(`${ad}: bilinmeyen biçim '${e.bicim}'`)
+        break
+      case 'toplam':
+        if (!tumAlanlar.has(e.alan)) h.push(`${ad}: '${e.alan}' veri setinde/hesaplananlarda yok`)
+        if (e.fn === 'orani') {
+          if (!e.oraniPay || !tumAlanlar.has(e.oraniPay)) h.push(`${ad}: oran payı geçersiz`)
+          if (!e.oraniPayda || !tumAlanlar.has(e.oraniPayda)) h.push(`${ad}: oran paydası geçersiz`)
+        }
+        break
+      case 'tablo':
+        if (!e.kolonlar?.length) h.push(`${ad}: tablo kolonu yok`)
+        for (const k of e.kolonlar ?? []) {
+          if (!tumAlanlar.has(k.alan)) h.push(`${ad}: tablo kolonu '${k.alan}' veri setinde yok`)
+          if (!(k.genislik > 0)) h.push(`${ad}: '${k.alan}' kolon genişliği geçersiz`)
+        }
+        break
+      case 'grafik':
+        if (!tumAlanlar.has(e.grupla)) h.push(`${ad}: grafik kırılım alanı '${e.grupla}' yok`)
+        if (!tumAlanlar.has(e.deger)) h.push(`${ad}: grafik değer alanı '${e.deger}' yok`)
+        break
+      case 'metin':
+        // {alan} yer tutucuları: özel adlar dışındakiler veri setinde olmalı.
+        for (const m of (e.metin ?? '').matchAll(/\{([^}]+)\}/g)) {
+          const ad2 = m[1].trim()
+          if (/^(sayfa|toplamSayfa|bugun|calistiran|grup)$/.test(ad2) || ad2.startsWith('p.') || ad2.startsWith('rapor.')) continue
+          if (!tumAlanlar.has(ad2)) h.push(`${ad}: metindeki '{${ad2}}' veri setinde yok`)
+        }
+        break
+    }
+    if (e.tip === 'alan' || e.tip === 'toplam') {
+      for (const k of e.kosulluBicim ?? []) {
+        const d = ifadeDogrula(k.kosul ?? '', [...tumAlanlar])
+        if (!d.gecerli || d.hata) h.push(`${ad} koşulu '${k.kosul}': ${d.hata}`)
+      }
+    }
+  }
+  return h
+}
+
 export function belgeDogrula(icerik: SablonIcerik, veriSetiAlanlari: string[]): string[] {
   const h: string[] = []
   if (!icerik.baslik?.trim()) h.push('Rapor başlığı boş')
@@ -95,6 +162,7 @@ export function belgeDogrula(icerik: SablonIcerik, veriSetiAlanlari: string[]): 
       if (!d.gecerli || d.hata) h.push(`Kolon '${k.alan}' koşul '${kb.kosul}': ${d.hata}`)
     }
   }
+  if (icerik.yerlesim === 'tuval') h.push(...tuvalDogrula(icerik.tuval, tumAlanlar))
   const gruplar = icerik.gruplar ?? []
   if (gruplar.length > MAX_GRUP) h.push(`En fazla ${MAX_GRUP} grup seviyesi (${gruplar.length} verildi)`)
   for (const g of gruplar) {

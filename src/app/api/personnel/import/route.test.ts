@@ -137,3 +137,78 @@ describe('POST /api/personnel/import — ikametAdresi değişim damgası (mevcut
     expect(gonderilenVeri.ikametAdresiDegisimTarihi).toBeUndefined()
   })
 })
+
+// ----------------------------------------------------------------------------
+// Melih kararı (22.09.2026): "Boş hücre = dokunma" — genel semantik, yalnız
+// ikametAdresi'ne özgü değil. Farklı TİPTEN birkaç alan için ayrı ayrı
+// kanıtlanıyor: opsiyonel metin, boolean, ve FK-besleyen metin alanı.
+// ----------------------------------------------------------------------------
+describe('POST /api/personnel/import — boş hücre = dokunma (Melih kararı, genel semantik)', () => {
+  it('METİN alan (MASRAF MERKEZİ) satırda hiç yoksa: mevcut değer SİLİNMEZ (anahtar update verisinde yok)', async () => {
+    mocks.personnelFindUnique.mockResolvedValue({ id: 'p1', sicilNo: '1001', masrafMerkezi: 'MRK-100', ikametAdresi: null })
+    xlsxOkumasiniKur({}) // MASRAF MERKEZİ sütunu yok
+
+    const res = await POST(istekOlustur())
+    expect(res.status).toBe(200)
+
+    const gonderilenVeri = mocks.personnelUpdate.mock.calls[0][0].data
+    expect(Object.prototype.hasOwnProperty.call(gonderilenVeri, 'masrafMerkezi')).toBe(false)
+  })
+
+  it('BOOLEAN alan (EMEKLİ) satırda hiç yoksa: mevcut true değeri false\'a SIFIRLANMAZ (anahtar update verisinde yok)', async () => {
+    mocks.personnelFindUnique.mockResolvedValue({ id: 'p1', sicilNo: '1001', emekli: true, ikametAdresi: null })
+    xlsxOkumasiniKur({}) // EMEKLİ sütunu yok
+
+    const res = await POST(istekOlustur())
+    expect(res.status).toBe(200)
+
+    const gonderilenVeri = mocks.personnelUpdate.mock.calls[0][0].data
+    expect(Object.prototype.hasOwnProperty.call(gonderilenVeri, 'emekli')).toBe(false)
+  })
+
+  it('BOOLEAN alan gerçekten "EVET" ile gelirse yine set edilir (regresyon yok — pozitif senaryo)', async () => {
+    mocks.personnelFindUnique.mockResolvedValue({ id: 'p1', sicilNo: '1001', emekli: false, ikametAdresi: null })
+    xlsxOkumasiniKur({ 'EMEKLİ': 'EVET' })
+
+    const res = await POST(istekOlustur())
+    expect(res.status).toBe(200)
+
+    const gonderilenVeri = mocks.personnelUpdate.mock.calls[0][0].data
+    expect(gonderilenVeri.emekli).toBe(true)
+  })
+
+  it('YENİ kayıt oluşturmada BOOLEAN alan boşsa anahtar hiç eklenmez — CREATE\'te şema varsayılanı (false) bugünkü davranışla AYNI (regresyon yok)', async () => {
+    mocks.personnelFindUnique.mockResolvedValue(null)
+    xlsxOkumasiniKur({})
+
+    const res = await POST(istekOlustur())
+    expect(res.status).toBe(200)
+
+    const gonderilenVeri = mocks.personnelCreate.mock.calls[0][0].data
+    expect(Object.prototype.hasOwnProperty.call(gonderilenVeri, 'emekli')).toBe(false)
+  })
+
+  it('FK besleyen metin alanı (BİRİM SORUMLUSU) satırda hiç yoksa personelFkAlanlari\'ye undefined iletilir (sorumlu1Id\'ye dokunulmaz)', async () => {
+    mocks.personnelFindUnique.mockResolvedValue({ id: 'p1', sicilNo: '1001', birimSorumlusu: 'Ayşe Kaya', ikametAdresi: null })
+    xlsxOkumasiniKur({}) // BİRİM SORUMLUSU sütunu yok
+
+    const res = await POST(istekOlustur())
+    expect(res.status).toBe(200)
+
+    const fkCagriArg = mocks.personelFkAlanlari.mock.calls[0][1]
+    expect(fkCagriArg.birimSorumlusu).toBeUndefined()
+
+    const gonderilenVeri = mocks.personnelUpdate.mock.calls[0][0].data
+    expect(Object.prototype.hasOwnProperty.call(gonderilenVeri, 'birimSorumlusu')).toBe(false)
+  })
+
+  it('yanıt kullanıcıya "boş hücreler güncellenmedi" bilgisini içerir', async () => {
+    mocks.personnelFindUnique.mockResolvedValue({ id: 'p1', sicilNo: '1001', ikametAdresi: null })
+    xlsxOkumasiniKur({})
+
+    const res = await POST(istekOlustur())
+    const json = await res.json()
+    expect(json.bilgi).toContain('Boş bırakılan hücreler')
+    expect(json.bilgi).toContain('mevcut kayıtlardaki değerleri değiştirmez')
+  })
+})

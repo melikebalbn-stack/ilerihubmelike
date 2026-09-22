@@ -146,6 +146,25 @@ function parseBoolean(value: any): boolean {
   return ['E', 'EVET', '1', 'TRUE', 'VAR', 'X'].includes(v)
 }
 
+// Melih'in istediği, kullanıcıya import sonucu yanıtında gösterilecek bilgi
+// (Adım: personnel/import boş hücre semantiği, 22.09.2026).
+const BOS_HUCRE_BILGISI =
+  'Boş bırakılan hücreler mevcut kayıtlardaki değerleri değiştirmez. Bir alanı temizlemek için ilgili personel kartını kullanın.'
+
+// Boş hücre = dokunma (Melih kararı, 22.09.2026) — ham değer undefined ise
+// (Excel hücresi boş/sütun satırda hiç yok) anahtar hiç eklenmez: CREATE'te
+// şema varsayılanı (nullable string → NULL, boolean → @default(false))
+// bugünkü açık değerle AYNI sonucu üretir, UPDATE'te mevcut değere
+// dokunulmaz. Alanı GERÇEKTEN temizleme ihtiyacı import'la DEĞİL, personel
+// kartından (ekrandan) karşılanır — "kolaylık olsun" diye buraya geri
+// null/false yazımı EKLENMESİN.
+function opsiyonelMetinAta(obj: Record<string, unknown>, key: string, ham: unknown) {
+  if (ham !== undefined) obj[key] = (ham as { toString(): string }).toString().trim() || null
+}
+function opsiyonelBoolAta(obj: Record<string, unknown>, key: string, ham: unknown) {
+  if (ham !== undefined) obj[key] = parseBoolean(ham)
+}
+
 function parseDate(value: any): Date | null {
   if (!value) return null
   // Excel serial date number
@@ -396,27 +415,20 @@ export async function POST(request: NextRequest) {
           adSoyad: mapped.adSoyad.toString().trim(),
           cinsiyet,
           yakaRengi,
+          // yakaDetayi BİLEREK "boş=dokunma" DIŞI bırakıldı: basit bir
+          // passthrough değil, yakaRengi'ye bağlı hesaplanmış bir taban değer
+          // (normalizeYakaDetayi). Aynı satırda yakaRengi DEĞİŞMİŞSE eski
+          // yakaDetayi yeni rengiyle tutarsız kalabilir — doğru çözüm
+          // create/update ayrımının ötesinde ek mantık ister, ayrı karar
+          // konusu (Melih'e raporlandı, bu turda dokunulmadı).
           yakaDetayi,
           iseGirisTarihi,
           gorev: mapped.gorev.toString().trim(),
           bolum: mapped.bolum.toString().trim(),
-          sinif: mapped.sinif?.toString().trim() || null,
-          bolumDetay: mapped.bolumDetay?.toString().trim() || null,
-          birimSorumlusu: mapped.birimSorumlusu?.toString().trim() || null,
-          sorumlu2: mapped.sorumlu2?.toString().trim() || null,
-          sorumlu3: mapped.sorumlu3?.toString().trim() || null,
-          bolumMuduru: mapped.bolumMuduru?.toString().trim() || null,
-          masrafMerkezi: mapped.masrafMerkezi?.toString().trim() || null,
-          interKepMail: mapped.interKepMail?.toString().trim() || null,
-          mailAdresi: mapped.mailAdresi?.toString().trim() || null,
-          serviceRoute: mapped.serviceRoute?.toString().trim() || null,
-          serviceStop: mapped.serviceStop?.toString().trim() || null,
-          telefon: mapped.telefon?.toString().trim() || null,
-          egitimYeri: mapped.egitimYeri?.toString().trim() || null,
-          egitimTipi: mapped.egitimTipi?.toString().trim() || null,
-          egitimAlani: mapped.egitimAlani?.toString().trim() || null,
-          // Excel'de tarih varsa onu kullan; yoksa iseGirisTarihi + 2/6 ay
-          // (deneme süresi yasal sabit hesap; Excel'deki manuel girişler tutarsız oluyordu)
+          // denemeDegerlendirme/altiAyDegerlendirme de AYNI sebeple dışarıda
+          // bırakıldı: "boşsa HESAPLA" (iseGirisTarihi'nden) zaten var olan
+          // ayrı bir tasarım kararı, "boşsa DOKUNMA"dan farklı — ayrı karar
+          // konusu.
           denemeDegerlendirme: mapped.denemeDegerlendirme
             ? parseDate(mapped.denemeDegerlendirme)
             : addMonthsToDate(iseGirisTarihi, 2),
@@ -426,14 +438,25 @@ export async function POST(request: NextRequest) {
           createdBy: user.id,
         }
 
-        // İkamet adresi — DİĞER opsiyonel alanlardan FARKLI olarak, Excel
-        // hücresi boşsa (mapped.ikametAdresi === undefined) anahtar hiç
-        // eklenmiyor: personnelData'ya "boş → null" yazılırsa mevcut kayıttaki
-        // gerçek adres toplu import'ta sessizce silinir ve adresDegisimDamgasi
-        // yanlışlıkla "değişti" damgası basar (bkz. adres-damgasi.ts).
-        // Hücre GERÇEKTEN dolu ama boşluk/gibi trim sonrası boşsa (nadir) yine
-        // null yazılır — o zaten kullanıcının/Excel'in bilerek verdiği bir
-        // değerdir, "hiç gönderilmedi" değildir.
+        // Boş hücre = dokunma (Melih kararı) — bkz. opsiyonelMetinAta/
+        // opsiyonelBoolAta üstündeki yorum. İkamet adresi ayrı bırakıldı
+        // (adresDegisimDamgasi ile birlikte çalışıyor, bkz. adres-damgasi.ts)
+        // ama AYNI kuralı uyguluyor.
+        opsiyonelMetinAta(personnelData, 'sinif', mapped.sinif)
+        opsiyonelMetinAta(personnelData, 'bolumDetay', mapped.bolumDetay)
+        opsiyonelMetinAta(personnelData, 'birimSorumlusu', mapped.birimSorumlusu)
+        opsiyonelMetinAta(personnelData, 'sorumlu2', mapped.sorumlu2)
+        opsiyonelMetinAta(personnelData, 'sorumlu3', mapped.sorumlu3)
+        opsiyonelMetinAta(personnelData, 'bolumMuduru', mapped.bolumMuduru)
+        opsiyonelMetinAta(personnelData, 'masrafMerkezi', mapped.masrafMerkezi)
+        opsiyonelMetinAta(personnelData, 'interKepMail', mapped.interKepMail)
+        opsiyonelMetinAta(personnelData, 'mailAdresi', mapped.mailAdresi)
+        opsiyonelMetinAta(personnelData, 'serviceRoute', mapped.serviceRoute)
+        opsiyonelMetinAta(personnelData, 'serviceStop', mapped.serviceStop)
+        opsiyonelMetinAta(personnelData, 'telefon', mapped.telefon)
+        opsiyonelMetinAta(personnelData, 'egitimYeri', mapped.egitimYeri)
+        opsiyonelMetinAta(personnelData, 'egitimTipi', mapped.egitimTipi)
+        opsiyonelMetinAta(personnelData, 'egitimAlani', mapped.egitimAlani)
         if (mapped.ikametAdresi !== undefined) {
           personnelData.ikametAdresi = mapped.ikametAdresi.toString().trim() || null
         }
@@ -459,16 +482,21 @@ export async function POST(request: NextRequest) {
           const ilkYardimciDate = parseDate(mapped.ilkYardimciBelgesi)
           if (ilkYardimciDate) personnelData.ilkYardimciBelgesi = ilkYardimciDate
         }
-        personnelData.emekli = parseBoolean(mapped.emekli)
-        personnelData.engelli = parseBoolean(mapped.engelli)
-        personnelData.forkliftEhliyeti = parseBoolean(mapped.forkliftEhliyeti)
-        personnelData.eTrans = parseBoolean(mapped.eTrans)
+        // Boş hücre = dokunma (Melih kararı): CREATE'te şema varsayılanı
+        // (@default(false)) bugünkü açık `false`'la AYNI sonucu üretir,
+        // UPDATE'te mevcut değere dokunulmaz (ör. `emekli=true` olan bir
+        // kayıt, sütun boş bırakılmış bir toplu import satırıyla sessizce
+        // false'a dönmez).
+        opsiyonelBoolAta(personnelData, 'emekli', mapped.emekli)
+        opsiyonelBoolAta(personnelData, 'engelli', mapped.engelli)
+        opsiyonelBoolAta(personnelData, 'forkliftEhliyeti', mapped.forkliftEhliyeti)
+        opsiyonelBoolAta(personnelData, 'eTrans', mapped.eTrans)
         // yanginSertifikasi tarih alanı
         if (mapped.yanginSertifikasi) {
           const yanginDate = parseDate(mapped.yanginSertifikasi)
           if (yanginDate) personnelData.yanginSertifikasi = yanginDate
         }
-        personnelData.ustaOgreticiBelgesi = parseBoolean(mapped.ustaOgreticiBelgesi)
+        opsiyonelBoolAta(personnelData, 'ustaOgreticiBelgesi', mapped.ustaOgreticiBelgesi)
 
         // Belge tarihleri
         if (mapped.kalfalikBelgesi) {
@@ -666,7 +694,7 @@ export async function POST(request: NextRequest) {
       durum: 'TAMAMLANDI',
     })
 
-    return NextResponse.json({ created, updated, errors, importId })
+    return NextResponse.json({ created, updated, errors, importId, bilgi: BOS_HUCRE_BILGISI })
   } catch (error) {
     console.error('Excel import hatası:', error)
     // HATA DURUMUNDA DA İZ: nereye kadar işlendiği kaybolmasın. Sayaçlar try

@@ -38,10 +38,14 @@ import { ImportDialog, downloadFile } from './_components/ImportDialog'
 
 const NAVY = '#1B4F72'
 const SG_LABEL = 'SİSTEM GELİŞTİRME MÜDÜRLÜĞÜ'
+const GENEL_LABEL = 'Genel'
+// "Genel" en büyük payı aldığı için önceden en canlı rengi (lacivert) kapıp diğer bölümleri
+// eziyordu — artık her zaman nötr gri: dikkat çekmesin, asıl ilgi alanı olan bölümler öne çıksın.
+const GENEL_COLOR = '#9CA3AF'
+// Doğrulanmış kategorik palet (renk körlüğü güvenli, sabit sıra — validate_palette.js ile kontrol edildi)
 const PALETTE = [
-  NAVY, '#0F6E56', '#993C1D', '#B4B2A9', '#7C3AED',
-  '#D97706', '#059669', '#DB2777', '#2563EB', '#65A30D',
-  '#9333EA', '#DC2626', '#0891B2',
+  '#2a78d6', '#eb6834', '#1baf7a', '#eda100',
+  '#e87ba4', '#008300', '#4a3aa7', '#e34948',
 ]
 
 type Currency = 'TRY' | 'USD' | 'EUR'
@@ -275,19 +279,45 @@ export default function FaturaTakipPage() {
     }
   }
 
+  // Renk atama: "Genel" her zaman nötr gri (payı en büyük olduğu için canlı renk alırsa
+  // diğer bölümleri ezip grafiği okunaksız yapıyordu). Gerçek bölümler alfabetik SABİT sırayla
+  // doğrulanmış paletten renk alır (tutara göre sıralarsak veri değiştikçe renkler kayar).
+  // 8 palet renginden fazlası varsa fazlalar "Diğer" altında toplanır.
   const departmentColor = useMemo(() => {
     const map = new Map<string, string>()
-    ;(summary?.departments ?? []).forEach((d, i) => map.set(d.label, PALETTE[i % PALETTE.length]))
+    map.set(GENEL_LABEL, GENEL_COLOR)
+    const real = (summary?.departments ?? [])
+      .filter((d) => d.label !== GENEL_LABEL)
+      .map((d) => d.label)
+      .sort((a, b) => a.localeCompare(b, 'tr'))
+    real.slice(0, PALETTE.length).forEach((label, i) => map.set(label, PALETTE[i]))
+    map.set('Diğer', '#78716C')
     return map
+  }, [summary])
+
+  // Grafikte gösterilecek seri sırası: Genel önce (varsa), sonra gerçek bölümler alfabetik
+  // (en fazla 8 — palet kadar), taşanlar "Diğer" altında toplanır.
+  const chartSeries = useMemo(() => {
+    if (!summary) return []
+    const labels = summary.departments.map((d) => d.label)
+    const hasGenel = labels.includes(GENEL_LABEL)
+    const real = labels.filter((l) => l !== GENEL_LABEL).sort((a, b) => a.localeCompare(b, 'tr'))
+    const shown = real.slice(0, PALETTE.length)
+    const overflow = real.length > PALETTE.length
+    return [...(hasGenel ? [GENEL_LABEL] : []), ...shown, ...(overflow ? ['Diğer'] : [])]
   }, [summary])
 
   const chartData = useMemo(() => {
     if (!summary) return []
     if (chartDept === 'ALL') {
+      const shownSet = new Set(chartSeries)
       return summary.months.map((m) => {
         const row: Record<string, string | number> = { ay: formatMonthLabel(m.key) }
-        for (const d of summary.departments) row[d.label] = 0
-        for (const d of m.departments) row[d.label] = d.eur
+        for (const label of chartSeries) row[label] = 0
+        for (const d of m.departments) {
+          const key = shownSet.has(d.label) ? d.label : 'Diğer'
+          row[key] = (Number(row[key]) || 0) + d.eur
+        }
         return row
       })
     }
@@ -295,7 +325,7 @@ export default function FaturaTakipPage() {
       ay: formatMonthLabel(m.key),
       [chartDept]: m.departments.find((d) => d.label === chartDept)?.eur ?? 0,
     }))
-  }, [summary, chartDept])
+  }, [summary, chartDept, chartSeries])
 
   const totalCiro = useMemo(() => Object.values(revenues).reduce((s, v) => s + v, 0), [revenues])
 
@@ -432,10 +462,11 @@ export default function FaturaTakipPage() {
         ) : null}
       </div>
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      {/* Sadece Toplam ve Sistem Geliştirme Oranı — "Sistem Geliştirme" ve "Genel" kartları kaldırıldı:
+          "Genel" burada aslında Sistem Geliştirme dışındaki TÜM gerçek bölümleri (Mühendislik, Kalite vb.)
+          kapsıyordu, "atanmamış" değil — yanıltıcıydı. Doğru, bölüm bazlı kırılım aşağıdaki tabloda. */}
+      <div className="grid grid-cols-2 gap-3">
         <SummaryCard label="Toplam (€)" value={formatEur(cardTotals.toplam)} color={NAVY} />
-        <SummaryCard label="Sistem Geliştirme (€)" value={formatEur(cardTotals.sistemGelistirme)} color="#0F6E56" />
-        <SummaryCard label="Genel (€)" value={formatEur(cardTotals.genel)} color="#888780" />
         <SummaryCard label="Sistem Geliştirme Oranı" value={`${cardTotals.oran.toFixed(1)}%`} color="#993C1D" />
       </div>
 
@@ -466,13 +497,15 @@ export default function FaturaTakipPage() {
                 <Tooltip formatter={(v: number) => formatEur(v)} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
                 {chartDept === 'ALL'
-                  ? (summary?.departments ?? []).map((d, i) => (
+                  ? chartSeries.map((label, i) => (
                       <Bar
-                        key={d.label}
-                        dataKey={d.label}
+                        key={label}
+                        dataKey={label}
                         stackId="a"
-                        fill={departmentColor.get(d.label) ?? PALETTE[i % PALETTE.length]}
-                        radius={i === (summary?.departments.length ?? 1) - 1 ? [4, 4, 0, 0] : undefined}
+                        fill={departmentColor.get(label) ?? PALETTE[i % PALETTE.length]}
+                        stroke="#fff"
+                        strokeWidth={2}
+                        radius={i === chartSeries.length - 1 ? [4, 4, 0, 0] : undefined}
                       />
                     ))
                   : (

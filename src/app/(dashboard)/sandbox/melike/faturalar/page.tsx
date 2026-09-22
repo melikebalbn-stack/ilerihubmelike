@@ -130,6 +130,7 @@ export default function FaturaTakipPage() {
   const [editingInvoice, setEditingInvoice] = useState<EditableInvoice | null>(null)
   const [showImport, setShowImport] = useState(false)
   const [filter, setFilter] = useState('ALL') // 'ALL' | 'GENEL' | <orgUnitId>
+  const [selectedMonth, setSelectedMonth] = useState('')
   const [search, setSearch] = useState('')
   const [departments, setDepartments] = useState<Department[]>([])
 
@@ -322,62 +323,59 @@ export default function FaturaTakipPage() {
 
       <Card>
         <CardContent className="pt-6">
-          <div className="text-sm font-semibold text-muted-foreground">Aylık ciro karşılaştırması</div>
-          <p className="mb-3 text-xs text-muted-foreground/80">
-            Her ay için ciroyu € olarak elle gir, o ayın oranı otomatik hesaplansın.
-          </p>
+          <div className="text-sm font-semibold text-muted-foreground">Ciro karşılaştırması</div>
+          <p className="mb-3 text-xs text-muted-foreground/80">Bir ay seç, o ayın cirosunu € olarak gir.</p>
           {!summary?.months.length ? (
             <p className="py-2 text-sm text-muted-foreground">Henüz fatura kaydı yok.</p>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Ay</TableHead>
-                  <TableHead className="text-right">Fatura Toplamı (€)</TableHead>
-                  <TableHead>Bölüm Dağılımı</TableHead>
-                  <TableHead className="text-right w-36">Ciro (€)</TableHead>
-                  <TableHead className="text-right">Oran</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {summary.months.map((m) => {
-                  const monthCiro = revenues[m.key] ?? 0
-                  const monthOran = monthCiro > 0 ? (m.toplamEUR / monthCiro) * 100 : null
-                  return (
-                    <TableRow key={m.key}>
-                      <TableCell>{formatMonthLabel(m.key)}</TableCell>
-                      <TableCell className="text-right font-semibold">{formatEur(m.toplamEUR)}</TableCell>
-                      <TableCell>
-                        <div className="flex flex-col gap-0.5 text-xs">
-                          {m.departments.map((d) => (
-                            <span
-                              key={d.label}
-                              style={{ color: d.label === 'SİSTEM GELİŞTİRME MÜDÜRLÜĞÜ' ? NAVY : undefined }}
-                              className={d.label === 'SİSTEM GELİŞTİRME MÜDÜRLÜĞÜ' ? '' : 'text-muted-foreground'}
-                            >
-                              {d.label}: {formatEur(d.eur)}
-                            </span>
-                          ))}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Input
-                          value={monthCiro > 0 ? formatThousands(String(monthCiro)) : ''}
-                          onChange={(e) => handleRevenueChange(m.key, e.target.value.replace(/\D/g, ''))}
-                          onBlur={() => handleRevenueBlur(m.key)}
-                          placeholder="ciro gir"
-                          inputMode="numeric"
-                          className="h-8 text-right"
-                        />
-                      </TableCell>
-                      <TableCell className="text-right font-semibold" style={{ color: monthOran == null ? '#BBB' : NAVY }}>
-                        {monthOran == null ? '—' : formatPercent(monthOran)}
-                      </TableCell>
-                    </TableRow>
-                  )
-                })}
-              </TableBody>
-            </Table>
+            (() => {
+              const selectedSummary = summary.months.find((m) => m.key === selectedMonth) ?? summary.months[summary.months.length - 1]
+              const monthCiro = revenues[selectedSummary.key] ?? 0
+              const monthOran = monthCiro > 0 ? (selectedSummary.toplamEUR / monthCiro) * 100 : null
+              return (
+                <div className="flex flex-wrap items-end gap-4">
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Ay</label>
+                    <Select value={selectedSummary.key} onValueChange={setSelectedMonth}>
+                      <SelectTrigger className="w-32">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {summary.months.map((m) => (
+                          <SelectItem key={m.key} value={m.key}>
+                            {formatMonthLabel(m.key)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Fatura Toplamı (€)</label>
+                    <div className="flex h-9 items-center text-sm font-semibold">{formatEur(selectedSummary.toplamEUR)}</div>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Ciro (€)</label>
+                    <Input
+                      value={monthCiro > 0 ? formatThousands(String(monthCiro)) : ''}
+                      onChange={(e) => handleRevenueChange(selectedSummary.key, e.target.value.replace(/\D/g, ''))}
+                      onBlur={() => handleRevenueBlur(selectedSummary.key)}
+                      placeholder="ciro gir"
+                      inputMode="numeric"
+                      className="h-9 w-40 text-right"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Oran</label>
+                    <div
+                      className="flex h-9 items-center text-sm font-semibold"
+                      style={{ color: monthOran == null ? '#BBB' : NAVY }}
+                    >
+                      {monthOran == null ? '—' : formatPercent(monthOran)}
+                    </div>
+                  </div>
+                </div>
+              )
+            })()
           )}
         </CardContent>
       </Card>

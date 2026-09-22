@@ -138,6 +138,58 @@ export default function KpiOzetPage() {
         )}
       </div>
 
+      {/* Genel özet — departman seçimine bağlı değil, her zaman görünür */}
+      {ceyrekTrend && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Tüm Departmanlar — Genel Özet</CardTitle>
+            <p className="text-xs text-muted-foreground">{secilenYil} yılı, çeyreklere göre — her departman kendi küçük grafiğinde. Birine tıklayınca altta detayı açılır.</p>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+              {ceyrekTrend.map(d => {
+                const veri = d.ceyrekler.map(c => ({ ad: `Ç${c.ceyrek}`, Oran: c.oran }))
+                const sonDegerler = d.ceyrekler.filter(c => c.oran != null)
+                const sonOran = sonDegerler.length > 0 ? sonDegerler[sonDegerler.length - 1].oran : null
+                const secili = d.orgUnitId === secilenDepartmanId
+                return (
+                  <button
+                    key={d.orgUnitId}
+                    onClick={() => setSecilenDepartmanId(d.orgUnitId)}
+                    className="text-left rounded-md border p-2 transition-colors"
+                    style={{
+                      borderColor: secili ? NAVY : '#e2e8f0',
+                      backgroundColor: secili ? '#eff6ff' : 'white',
+                    }}
+                  >
+                    <p className="text-xs font-medium truncate mb-1" title={d.name}>{d.name}</p>
+                    <ResponsiveContainer width="100%" height={50}>
+                      <LineChart data={veri} margin={{ left: 0, right: 4, top: 4, bottom: 0 }}>
+                        <YAxis hide domain={[0, 100]} />
+                        <Tooltip formatter={(v: number) => `%${v}`} labelFormatter={(l) => l} />
+                        <Line
+                          type="monotone"
+                          dataKey="Oran"
+                          stroke={secili ? NAVY : '#94a3b8'}
+                          strokeWidth={2}
+                          dot={{ r: 2 }}
+                          connectNulls
+                          isAnimationActive={false}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                    <p className="text-sm font-bold" style={{ color: sonOran == null ? '#94a3b8' : NAVY }}>
+                      {sonOran == null ? 'Veri yok' : `%${sonOran}`}
+                    </p>
+                  </button>
+                )
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Departmana özel detay — seçime göre değişir */}
       {!ozet ? (
         <div className="flex justify-center py-12">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -168,80 +220,30 @@ export default function KpiOzetPage() {
           </Card>
 
           {ceyrekTrend && (
-            <>
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base">{secilenDepartman?.name} — Çeyreklik Gidişat</CardTitle>
-                  <p className="text-xs text-muted-foreground">{secilenYil} yılı, çeyrek çeyrek genel başarı — iyileşme/kötüleşme trendi</p>
-                </CardHeader>
-                <CardContent>
-                  <ResponsiveContainer width="100%" height={220}>
-                    <LineChart
-                      data={
-                        ceyrekTrend.find(d => d.orgUnitId === secilenDepartmanId)?.ceyrekler.map(c => ({
-                          ad: `Ç${c.ceyrek}`, Oran: c.oran,
-                        })) ?? []
-                      }
-                      margin={{ left: 4, right: 8, top: 4, bottom: 4 }}
-                    >
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="ad" tick={{ fontSize: 12 }} />
-                      <YAxis tick={{ fontSize: 12 }} domain={[0, 100]} />
-                      <Tooltip formatter={(v: number) => `%${v}`} />
-                      <Line type="monotone" dataKey="Oran" stroke={NAVY} strokeWidth={2} dot={{ r: 4 }} connectNulls />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base">Tüm Departmanlar — Karşılaştırma</CardTitle>
-                  <p className="text-xs text-muted-foreground">{secilenYil} yılı — her departman kendi küçük grafiğinde, karışmasın diye</p>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-                    {ceyrekTrend.map(d => {
-                      const veri = d.ceyrekler.map(c => ({ ad: `Ç${c.ceyrek}`, Oran: c.oran }))
-                      const sonDegerler = d.ceyrekler.filter(c => c.oran != null)
-                      const sonOran = sonDegerler.length > 0 ? sonDegerler[sonDegerler.length - 1].oran : null
-                      const secili = d.orgUnitId === secilenDepartmanId
-                      return (
-                        <button
-                          key={d.orgUnitId}
-                          onClick={() => setSecilenDepartmanId(d.orgUnitId)}
-                          className="text-left rounded-md border p-2 transition-colors"
-                          style={{
-                            borderColor: secili ? NAVY : '#e2e8f0',
-                            backgroundColor: secili ? '#eff6ff' : 'white',
-                          }}
-                        >
-                          <p className="text-xs font-medium truncate mb-1" title={d.name}>{d.name}</p>
-                          <ResponsiveContainer width="100%" height={50}>
-                            <LineChart data={veri} margin={{ left: 0, right: 4, top: 4, bottom: 0 }}>
-                              <YAxis hide domain={[0, 100]} />
-                              <Tooltip formatter={(v: number) => `%${v}`} labelFormatter={(l) => l} />
-                              <Line
-                                type="monotone"
-                                dataKey="Oran"
-                                stroke={secili ? NAVY : '#94a3b8'}
-                                strokeWidth={2}
-                                dot={{ r: 2 }}
-                                connectNulls
-                                isAnimationActive={false}
-                              />
-                            </LineChart>
-                          </ResponsiveContainer>
-                          <p className="text-sm font-bold" style={{ color: sonOran == null ? '#94a3b8' : NAVY }}>
-                            {sonOran == null ? 'Veri yok' : `%${sonOran}`}
-                          </p>
-                        </button>
-                      )
-                    })}
-                  </div>
-                </CardContent>
-              </Card>
-            </>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">{secilenDepartman?.name} — Çeyreklik Gidişat</CardTitle>
+                <p className="text-xs text-muted-foreground">{secilenYil} yılı, çeyrek çeyrek genel başarı — iyileşme/kötüleşme trendi</p>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={220}>
+                  <LineChart
+                    data={
+                      ceyrekTrend.find(d => d.orgUnitId === secilenDepartmanId)?.ceyrekler.map(c => ({
+                        ad: `Ç${c.ceyrek}`, Oran: c.oran,
+                      })) ?? []
+                    }
+                    margin={{ left: 4, right: 8, top: 4, bottom: 4 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="ad" tick={{ fontSize: 12 }} />
+                    <YAxis tick={{ fontSize: 12 }} domain={[0, 100]} />
+                    <Tooltip formatter={(v: number) => `%${v}`} />
+                    <Line type="monotone" dataKey="Oran" stroke={NAVY} strokeWidth={2} dot={{ r: 4 }} connectNulls />
+                  </LineChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
           )}
 
           <Card>

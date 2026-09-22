@@ -1,14 +1,13 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requirePermission } from '@/lib/auth/require-permission'
-import { PERMISSION_KEYS } from '@/lib/auth/permissions'
+import { requireKpiGoruntule, requireKpiYaz } from '@/lib/yonetim/kpi-yetki'
 import { ORG_UNIT_CODE_TO_PERSONNEL_BOLUM } from '../../personel-map'
 
 export const dynamic = 'force-dynamic'
 
-// GET: aksiyon sorumlusu adayları (KPI departmanının Personnel listesi).
+// GET: aksiyon sorumlusu adayları (KPI departmanının Personnel listesi). Görüntüleme kapısı.
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { error } = await requirePermission([PERMISSION_KEYS.KPI_VIEW, PERMISSION_KEYS.KPI_MANAGE])
+  const { error } = await requireKpiGoruntule()
   if (error) return error
 
   const { id } = await params
@@ -29,12 +28,13 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   })
 }
 
-// POST: yeni aksiyon + Planlı Görev oluştur. Veri değiştirir → kpi.manage.
+// POST: yeni aksiyon + Planlı Görev oluştur. Veri değiştirir → kpi.manage ∨ müdür koltuğu
+// (KPI'nın departmanı koltuk ağacında; requireKpiYaz 403/404 döner).
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { error } = await requirePermission(PERMISSION_KEYS.KPI_MANAGE)
+  const { id } = await params
+  const { error } = await requireKpiYaz(id)
   if (error) return error
 
-  const { id } = await params
   const body = await request.json()
 
   const action = typeof body.action === 'string' ? body.action.trim() : ''
@@ -42,9 +42,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: 'Aksiyon metni zorunludur' }, { status: 400 })
   }
 
-  // KPI gerçekten var mı — yabancı kpiId ile aksiyon oluşturmayı engelle.
-  const kpi = await prisma.kPIDefinition.findUnique({ where: { id }, select: { name: true } })
-  if (!kpi) return NextResponse.json({ error: 'KPI bulunamadı' }, { status: 404 })
+  // Kapıdan geçtiyse KPI var; adı Planlı Görev başlığı için gerekiyor.
+  const kpi = await prisma.kPIDefinition.findUniqueOrThrow({ where: { id }, select: { name: true } })
 
   const sorumluPersonelId = typeof body.sorumluPersonelId === 'string' && body.sorumluPersonelId ? body.sorumluPersonelId : null
   const reason = typeof body.reason === 'string' && body.reason.trim() ? body.reason.trim() : null

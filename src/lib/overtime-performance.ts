@@ -354,6 +354,12 @@ export async function getScrapMetrics(from: Date, to: Date, allowedDepts?: strin
  * Döngü guard: visited (B1'de parentId!==id engellendi ama yine de koru).
  */
 async function getDeptSubtreeNames(seedIds: string[]): Promise<string[]> {
+  return [...new Set((await getDeptSubtree(seedIds)).map((d) => d.name))] // ad tekilleştirme (eski davranış)
+}
+
+// Alt ağaç düğümleri (id + ad). getDeptSubtreeNames bunun ad projeksiyonu;
+// KPI müdür kapsamı (yonetim/kpi-yetki.ts) id'leri kullanır (DeptDef.orgUnitId eşlemesi için).
+async function getDeptSubtree(seedIds: string[]): Promise<{ id: string; name: string }[]> {
   if (seedIds.length === 0) return []
   const all = await prisma.departmentDefinition.findMany({ select: { id: true, name: true, parentId: true } })
   const byId = new Map(all.map((d) => [d.id, d]))
@@ -365,17 +371,17 @@ async function getDeptSubtreeNames(seedIds: string[]): Promise<string[]> {
     }
   }
   const visited = new Set<string>()
-  const names = new Set<string>()
+  const nodes: { id: string; name: string }[] = []
   const stack = [...seedIds]
   while (stack.length) {
     const id = stack.pop()!
     if (visited.has(id)) continue // döngü guard
     visited.add(id)
     const node = byId.get(id)
-    if (node) names.add(node.name)
+    if (node) nodes.push({ id: node.id, name: node.name })
     for (const childId of childrenByParent.get(id) ?? []) stack.push(childId)
   }
-  return [...names]
+  return nodes
 }
 
 /**
@@ -400,6 +406,13 @@ async function getDeptSubtreeNames(seedIds: string[]): Promise<string[]> {
  * (resolveAllowedDepts dokunulmadı).
  */
 export async function resolveMudurKoltukDepts(userId: string): Promise<string[]> {
+  return (await resolveMudurKoltukDeptler(userId)).map((d) => d.name)
+}
+
+// Aynı kapsam, id'li: müdür/müdür-yrd koltuğu + alt ağaç düğümleri. KPI müdür
+// yetkisi (DeptDef.id → orgUnitId) buradan gider; ad listesi isteyen yerler
+// resolveMudurKoltukDepts'i kullanmaya devam eder.
+export async function resolveMudurKoltukDeptler(userId: string): Promise<{ id: string; name: string }[]> {
   const u = await prisma.user.findUnique({ where: { id: userId }, select: { personnelId: true } })
   const personnelId = u?.personnelId
   if (!personnelId) return []
@@ -408,7 +421,7 @@ export async function resolveMudurKoltukDepts(userId: string): Promise<string[]>
     select: { id: true },
   })
   if (gorevli.length === 0) return []
-  return getDeptSubtreeNames(gorevli.map((d) => d.id))
+  return getDeptSubtree(gorevli.map((d) => d.id))
 }
 
 export async function resolveAllowedDepts(userId: string): Promise<string[] | undefined> {

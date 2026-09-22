@@ -1,16 +1,16 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requirePermission } from '@/lib/auth/require-permission'
-import { PERMISSION_KEYS } from '@/lib/auth/permissions'
+import { requireKpiYaz } from '@/lib/yonetim/kpi-yetki'
 
 export const dynamic = 'force-dynamic'
 
-// PATCH: mevcut aksiyonu güncelle. Veri değiştirir → kpi.manage.
+// PATCH: mevcut aksiyonu güncelle. Veri değiştirir → kpi.manage ∨ müdür koltuğu
+// (KPI'nın departmanı koltuk ağacında; requireKpiYaz 403/404 döner).
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string; aksiyonId: string }> }) {
-  const { error } = await requirePermission(PERMISSION_KEYS.KPI_MANAGE)
+  const { id, aksiyonId } = await params
+  const { error } = await requireKpiYaz(id)
   if (error) return error
 
-  const { id, aksiyonId } = await params
   const body = await request.json()
 
   const mevcut = await prisma.kPIAction.findUnique({ where: { id: aksiyonId } })

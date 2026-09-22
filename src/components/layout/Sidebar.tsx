@@ -417,10 +417,12 @@ const entegrasyonMenuItems = [
   { name: "Syteline Malzeme", icon: Boxes, href: "/entegrasyon/syteline", roles: [] as string[], permission: "entegrasyon.syteline" },
 ]
 
-// Yönetim modülü (KPI takibi). Görünürlük permission ile (IPRO/Entegrasyon deseni).
+// Yönetim modülü (KPI takibi). Görünürlük SUNUCU bayrağıyla (/api/yonetim/kpi/yetki →
+// goruntule: kpi.view ∨ kpi.manage ∨ müdür/müdür-yrd koltuğu; kadro-talep deseni).
+// Sayfa guard'ı ile birebir (kpi-yetki.ts); client'ta izin/rol hesaplanmaz.
 const yonetimMenuItems = [
-  { name: "KPI Takibi", icon: BarChart3, href: "/yonetim/kpi", roles: [] as string[], permission: "kpi.view" },
-  { name: "KPI Özet", icon: Activity, href: "/yonetim/kpi-ozet", roles: [] as string[], permission: "kpi.view" },
+  { name: "KPI Takibi", icon: BarChart3, href: "/yonetim/kpi", roles: [] as string[] },
+  { name: "KPI Özet", icon: Activity, href: "/yonetim/kpi-ozet", roles: [] as string[] },
 ]
 
 // Rapor tasarımcısı. Görünürlük permission ile (Yönetim deseni).
@@ -492,6 +494,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   // İş Analizi menü bayrakları — SUNUCUDAN (amir DB sorgusu + ik OR mantığı iaRolCozumle'de).
   const [iaFlags, setIaFlags] = useState<{ amir: boolean; ik: boolean }>({ amir: false, ik: false })
   const [kadroTalepAcabilir, setKadroTalepAcabilir] = useState(false)
+  const [kpiGorunur, setKpiGorunur] = useState(false)
   const [ifsRaporGorunur, setIfsRaporGorunur] = useState(false)
   const [denemeGorunur, setDenemeGorunur] = useState(false)
   // IV-FR-27 menü başlığı sunucudan gelir: İV → "Deneme Değerlendirme", zincir üyesi → "Deneme Formlarım".
@@ -615,6 +618,18 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         if (!r.ok) return
         const d = await r.json()
         setKadroTalepAcabilir(!!d.talepAcabilir)
+      })
+      .catch(() => {})
+  }, [session])
+
+  // Yönetim → KPI menü bayrağı sunucudan (kpi.view ∨ kpi.manage ∨ müdür/müdür-yrd koltuğu).
+  useEffect(() => {
+    if (!session?.user) return
+    fetch('/api/yonetim/kpi/yetki')
+      .then(async (r) => {
+        if (!r.ok) return
+        const d = await r.json()
+        setKpiGorunur(!!d.goruntule)
       })
       .catch(() => {})
   }, [session])
@@ -807,8 +822,8 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const filteredSistemGelistirmeItems = filterItems(sistemGelistirmeMenuItems)
   // Entegrasyon öğeleri permission alanını string tutuyor; filterItems cast (IPRO/zimmet deseni).
   const filteredEntegrasyonItems = filterItems(entegrasyonMenuItems as unknown as typeof mainMenuItems)
-  // Yönetim öğeleri de permission alanını string tutuyor; aynı cast.
-  const filteredYonetimItems = filterItems(yonetimMenuItems as unknown as typeof mainMenuItems)
+  // Yönetim (KPI) — sunucu bayrağı (kpiGorunur); filterItems'tan geçmez.
+  const filteredYonetimItems = kpiGorunur ? yonetimMenuItems : []
   const filteredRaporItems = filterItems(raporMenuItems as unknown as typeof mainMenuItems)
   const filteredBottomItems = filterItems(bottomMenuItems)
 

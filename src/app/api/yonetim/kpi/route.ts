@@ -2,13 +2,14 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/auth/require-permission'
 import { PERMISSION_KEYS } from '@/lib/auth/permissions'
+import { requireKpiGoruntule } from '@/lib/yonetim/kpi-yetki'
 
 const ORG_UNIT_ID_IK = 'cmrzg1kr600037jpe4ge6rxe0' // İnsan Varlıkları Müdürlüğü (varsayılan)
 
 export const dynamic = 'force-dynamic'
 
 export async function GET(request: Request) {
-  const { error } = await requirePermission([PERMISSION_KEYS.KPI_VIEW, PERMISSION_KEYS.KPI_MANAGE])
+  const { error } = await requireKpiGoruntule()
   if (error) return error
 
   const { searchParams } = new URL(request.url)

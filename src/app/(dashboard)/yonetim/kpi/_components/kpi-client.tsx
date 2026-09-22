@@ -57,6 +57,15 @@ interface Baseline {
   average: number
 }
 
+// /api/yonetim/kpi/yetki — sunucuda çözülür (kpi-yetki.ts). manage: tanım oluştur/sil/
+// düzenle + import/şablon; yazilabilirOrgUnitIdler: ölçüm/ortalama/aksiyon girilebilen
+// departmanlar (null = tümü). Müdür (koltuk) yalnız kendi ağacında düzenler, diğerlerinde salt-okuma.
+interface KpiYetki {
+  goruntule: boolean
+  manage: boolean
+  yazilabilirOrgUnitIdler: string[] | null
+}
+
 interface Kpi {
   id: string
   name: string
@@ -234,7 +243,7 @@ function YeniKpiDialog({ orgUnitId, onCreated }: { orgUnitId: string; onCreated:
   )
 }
 
-function ExcelIslemleri({ orgUnitId, onImported }: { orgUnitId: string; onImported: () => void }) {
+function ExcelIslemleri({ orgUnitId, onImported, manage }: { orgUnitId: string; onImported: () => void; manage: boolean }) {
   const [yukleniyor, setYukleniyor] = useState(false)
   const dosyaInputRef = useRef<HTMLInputElement>(null)
 
@@ -266,25 +275,31 @@ function ExcelIslemleri({ orgUnitId, onImported }: { orgUnitId: string; onImport
 
   return (
     <div className="flex flex-wrap items-center gap-2 -mt-2">
-      {/* eslint-disable-next-line @next/next/no-html-link-for-pages -- API route'undan Excel şablon indirme; <Link> indirmez */}
-      <a href="/api/yonetim/kpi/sablon">
-        <Button size="sm" variant="outline">Şablon İndir</Button>
-      </a>
+      {manage && (
+        // eslint-disable-next-line @next/next/no-html-link-for-pages -- API route'undan Excel şablon indirme; <Link> indirmez
+        <a href="/api/yonetim/kpi/sablon">
+          <Button size="sm" variant="outline">Şablon İndir</Button>
+        </a>
+      )}
       {/* eslint-disable-next-line @next/next/no-html-link-for-pages -- API route'undan Excel dışa aktarma indirme */}
       <a href={`/api/yonetim/kpi/export?orgUnitId=${orgUnitId}`}>
         <Button size="sm" variant="outline">Excel'e Aktar</Button>
       </a>
-      <Button size="sm" variant="outline" disabled={yukleniyor} onClick={() => dosyaInputRef.current?.click()}>
-        {yukleniyor ? 'İçeri alınıyor...' : "Excel'den İçeri Al"}
-      </Button>
-      <input
-        ref={dosyaInputRef}
-        type="file"
-        accept=".xlsx,.xls"
-        className="hidden"
-        onChange={dosyaSecildi}
-        disabled={yukleniyor}
-      />
+      {manage && (
+        <>
+          <Button size="sm" variant="outline" disabled={yukleniyor} onClick={() => dosyaInputRef.current?.click()}>
+            {yukleniyor ? 'İçeri alınıyor...' : "Excel'den İçeri Al"}
+          </Button>
+          <input
+            ref={dosyaInputRef}
+            type="file"
+            accept=".xlsx,.xls"
+            className="hidden"
+            onChange={dosyaSecildi}
+            disabled={yukleniyor}
+          />
+        </>
+      )}
     </div>
   )
 }
@@ -587,12 +602,21 @@ function GrafikTooltip({ active, payload, label, unit }: {
 }
 
 function DuzenlenebilirHucre({
-  deger, onKaydet, className, style,
-}: { deger: number | null; onKaydet: (v: number | null) => void; className?: string; style?: React.CSSProperties }) {
+  deger, onKaydet, className, style, saltOkuma = false,
+}: { deger: number | null; onKaydet: (v: number | null) => void; className?: string; style?: React.CSSProperties; saltOkuma?: boolean }) {
   const [duzenleniyor, setDuzenleniyor] = useState(false)
   const [taslak, setTaslak] = useState(deger == null ? '' : String(deger))
 
   useEffect(() => { setTaslak(deger == null ? '' : String(deger)) }, [deger])
+
+  // Kapsam dışı departman (müdür başka departmana bakıyor): tıklanamaz düz hücre.
+  if (saltOkuma) {
+    return (
+      <td className={className} style={style}>
+        {sayiFormat(deger) || <span className="text-muted-foreground">·</span>}
+      </td>
+    )
+  }
 
   function bitir() {
     setDuzenleniyor(false)
@@ -626,8 +650,8 @@ function DuzenlenebilirHucre({
 }
 
 function KpiVeriTablosu({
-  kpi, yillar, onChanged, aktifYil, onAktifYilChange,
-}: { kpi: Kpi; yillar: number[]; onChanged: () => void; aktifYil: number | null; onAktifYilChange: (y: number) => void }) {
+  kpi, yillar, onChanged, aktifYil, onAktifYilChange, duzenlenebilir,
+}: { kpi: Kpi; yillar: number[]; onChanged: () => void; aktifYil: number | null; onAktifYilChange: (y: number) => void; duzenlenebilir: boolean }) {
   const [ekstraYillar, setEkstraYillar] = useState<number[]>([])
   const [donemYilGirdi, setDonemYilGirdi] = useState('')
   const tumYillar = useMemo(
@@ -758,6 +782,7 @@ function KpiVeriTablosu({
                             <DuzenlenebilirHucre
                               key={y}
                               deger={ort}
+                              saltOkuma={!duzenlenebilir}
                               onKaydet={(d) => ortalamaKaydet(y, d)}
                               className="p-2 text-center font-medium bg-sky-100 text-sky-900 border-l border-slate-200"
                             />
@@ -770,6 +795,7 @@ function KpiVeriTablosu({
                         <DuzenlenebilirHucre
                           key={i}
                           deger={v.actual}
+                          saltOkuma={!duzenlenebilir}
                           onKaydet={(d) => hucreKaydet(yil, i + 1, 'actual', d)}
                           className="p-2 text-center font-semibold border-l border-slate-200"
                           style={{
@@ -787,6 +813,7 @@ function KpiVeriTablosu({
                       <DuzenlenebilirHucre
                         key={i}
                         deger={v.target}
+                        saltOkuma={!duzenlenebilir}
                         onKaydet={(d) => hucreKaydet(yil, i + 1, 'target', d)}
                         className="p-2 text-center font-medium bg-slate-200 text-slate-800 border-l border-slate-300"
                       />
@@ -833,6 +860,15 @@ export default function KpiClient() {
   const [hata, setHata] = useState<string | null>(null)
   const [seciliId, setSeciliId] = useState<string | null>(null)
   const searchParams = useSearchParams()
+  // Yetki sunucudan; gelene kadar her şey salt-okuma (kontroller gizli).
+  const [yetki, setYetki] = useState<KpiYetki>({ goruntule: false, manage: false, yazilabilirOrgUnitIdler: [] })
+
+  useEffect(() => {
+    fetch('/api/yonetim/kpi/yetki')
+      .then(res => (res.ok ? res.json() : null))
+      .then(d => { if (d) setYetki(d) })
+      .catch(() => {})
+  }, [])
 
   useEffect(() => {
     fetch('/api/yonetim/kpi/departmanlar')
@@ -919,6 +955,8 @@ export default function KpiClient() {
   }, [secili, birlesikGrafikVerisi.yilA])
 
   const secilenDepartman = departmanlar.find(d => d.id === secilenDepartmanId)
+  // Seçili departmanda ölçüm/ortalama/aksiyon girilebilir mi: manage ∨ koltuk ağacında.
+  const duzenlenebilir = yetki.manage || (yetki.yazilabilirOrgUnitIdler?.includes(secilenDepartmanId) ?? false)
 
   return (
     <div className="space-y-6">
@@ -946,11 +984,15 @@ export default function KpiClient() {
           <Link href="/yonetim/kpi-ozet">
             <Button size="sm" variant="outline">KPI Özet →</Button>
           </Link>
-          <YeniKpiDialog orgUnitId={secilenDepartmanId} onCreated={yukle} />
+          {yetki.manage && <YeniKpiDialog orgUnitId={secilenDepartmanId} onCreated={yukle} />}
         </div>
       </div>
 
-      <ExcelIslemleri orgUnitId={secilenDepartmanId} onImported={yukle} />
+      {yetki.goruntule && !duzenlenebilir && (
+        <p className="text-xs text-muted-foreground -mt-3">Bu departmanda salt-okuma görüntülüyorsunuz.</p>
+      )}
+
+      <ExcelIslemleri orgUnitId={secilenDepartmanId} onImported={yukle} manage={yetki.manage} />
 
       {hata ? (
         <p className="text-sm text-muted-foreground">{hata}</p>
@@ -991,8 +1033,8 @@ export default function KpiClient() {
                     </p>
                   </div>
                   <div className="flex items-center gap-1">
-                    <KpiDuzenleDialog kpi={secili} onSaved={yukle} />
-                    <AlertDialog>
+                    {yetki.manage && <KpiDuzenleDialog kpi={secili} onSaved={yukle} />}
+                    {yetki.manage && <AlertDialog>
                       <AlertDialogTrigger asChild>
                         <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-red-600">
                           <Trash2 className="h-4 w-4" />
@@ -1019,7 +1061,7 @@ export default function KpiClient() {
                           </AlertDialogAction>
                         </AlertDialogFooter>
                       </AlertDialogContent>
-                    </AlertDialog>
+                    </AlertDialog>}
                   </div>
                 </CardHeader>
                 <CardContent>
@@ -1088,6 +1130,7 @@ export default function KpiClient() {
                       onChanged={yukle}
                       aktifYil={aktifYil}
                       onAktifYilChange={setAktifYil}
+                      duzenlenebilir={duzenlenebilir}
                     />
                   </div>
                 </CardContent>
@@ -1101,7 +1144,7 @@ export default function KpiClient() {
                       <p className="text-xs text-muted-foreground mt-0.5">{aktifYil} vs {aktifYil - 1} dönemine ait</p>
                     )}
                   </div>
-                  <AksiyonFormDialog kpiId={secili.id} onSaved={yukle} />
+                  {duzenlenebilir && <AksiyonFormDialog kpiId={secili.id} onSaved={yukle} />}
                 </CardHeader>
                 <CardContent>
                   {donemAksiyonlari.length === 0 ? (
@@ -1130,7 +1173,7 @@ export default function KpiClient() {
                               <td className="py-2 pr-4">{a.endDate ? new Date(a.endDate).toLocaleDateString('tr-TR') : '—'}</td>
                               <td className="py-2 pr-4">%{a.completionPercent ?? 0}</td>
                               <td className="py-2">
-                                <AksiyonFormDialog kpiId={secili.id} mevcut={a} onSaved={yukle} />
+                                {duzenlenebilir && <AksiyonFormDialog kpiId={secili.id} mevcut={a} onSaved={yukle} />}
                               </td>
                             </tr>
                           ))}

@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requirePermission } from '@/lib/auth/require-permission'
-import { PERMISSION_KEYS } from '@/lib/auth/permissions'
+import { requireKpiGoruntule } from '@/lib/yonetim/kpi-yetki'
 
 export const dynamic = 'force-dynamic'
 
@@ -12,7 +11,7 @@ function tutuldu(direction: string, target: number, actual: number): boolean {
 }
 
 export async function GET() {
-  const { error } = await requirePermission([PERMISSION_KEYS.KPI_VIEW, PERMISSION_KEYS.KPI_MANAGE])
+  const { error } = await requireKpiGoruntule()
   if (error) return error
 
   const departmanlar = await prisma.orgUnit.findMany({

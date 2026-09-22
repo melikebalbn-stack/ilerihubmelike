@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server'
 import * as XLSX from 'xlsx'
 import { prisma } from '@/lib/prisma'
-import { requirePermission } from '@/lib/auth/require-permission'
-import { PERMISSION_KEYS } from '@/lib/auth/permissions'
+import { requireKpiGoruntule } from '@/lib/yonetim/kpi-yetki'
 import { kpiExcelOlustur } from '../excel-sablon'
 
 export const dynamic = 'force-dynamic'
@@ -11,7 +10,7 @@ const ORG_UNIT_ID_IK = 'cmrzg1kr600037jpe4ge6rxe0'
 
 // GET: departmanın KPI'larını Excel olarak dışa aktar. Salt okuma → kpi.view∨manage.
 export async function GET(request: Request) {
-  const { error } = await requirePermission([PERMISSION_KEYS.KPI_VIEW, PERMISSION_KEYS.KPI_MANAGE])
+  const { error } = await requireKpiGoruntule()
   if (error) return error
 
   const { searchParams } = new URL(request.url)

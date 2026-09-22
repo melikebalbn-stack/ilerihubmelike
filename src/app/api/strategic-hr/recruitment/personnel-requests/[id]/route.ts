@@ -15,6 +15,7 @@ import { sendEmail } from "@/lib/email";
 import { escapeHtml, ileriHubUrl } from "@/lib/email-templates/akademi/_base";
 import { renderEmail, logoAttachments, p } from "@/lib/email-templates/layout";
 import { resolveHRRecipients } from "@/lib/hr-notifications";
+import { logAuditEvent } from "@/lib/audit-log";
 
 type BildirimTuru = "SIRA" | "ONAYLANDI" | "REDDEDILDI";
 
@@ -147,7 +148,7 @@ export async function GET(
       },
     });
 
-    if (!personnelRequest) {
+    if (!personnelRequest || personnelRequest.silindiMi) {
       return NextResponse.json({ error: "Talep bulunamadı" }, { status: 404 });
     }
 
@@ -201,7 +202,7 @@ export async function PUT(
     // Mevcut talebi al
     const existingRequest = await prisma.personnelRequest.findUnique({ where: { id } });
 
-    if (!existingRequest) {
+    if (!existingRequest || existingRequest.silindiMi) {
       return NextResponse.json({ error: "Talep bulunamadı" }, { status: 404 });
     }
 
@@ -503,46 +504,82 @@ export async function PUT(
   }
 }
 
-// DELETE - Talebi sil
+// DELETE - Talebi sil (SOFT DELETE, 22.09.2026)
+//
+// Yetki: recruitment.admin izni VEYA SUPER_ADMIN rolü. Talep sahibi/DRAFT
+// istisnası KALKTI — silme yalnız yönetici işlemi (Melih kararı).
+// Kural: bağlı işe alım kaydı varsa REDDET (409) — ilan (jobOpeningId), ilana
+// başvuru, ya da İV kapanış bölümünde işe başlayan kişi/kadro doldurulma tarihi.
+// Satır silinmez: silindiMi=true + silenId + silinmeTarihi; listeler/detay/export/
+// pdf silindiMi=false süzer. Onay satırları (PersonnelRequestApproval) yerinde
+// kalır (iz). Denetim: PERSONNEL_REQUEST / PERSONNEL_REQUEST_SOFT_DELETE.
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // PR-Y2.5-strategic-hr: requireSession (role/department/email session'dan)
     const { session, error } = await requireSession();
     if (error) return error;
 
     const { id } = await params;
-    const userEmail = (session.user.email || "").toLowerCase();
-    // ÖN KAPI (19.09.2026 erişim daraltma): admin ∨ view ∨ koltuk ∨ kadro.talep.ac; aksi 403.
-    const erisim = await kadroTalepErisimiCore(session.user.id, session.user.permissions ?? []);
-    if (!erisim.erisebilir) return kadroTalepErisimYok();
+    const perms = session.user.permissions ?? [];
+    const yetkili = perms.includes("recruitment.admin") || session.user.role === "SUPER_ADMIN";
+    if (!yetkili) {
+      return NextResponse.json({ error: "Talep silme yalnız İşe Alım yöneticisi / süper yönetici yetkisindedir" }, { status: 403 });
+    }
 
-    // PR-RECRUIT-RBAC: silme — admin veya talep sahibi
-    const hasFullAccess = session.user.permissions?.includes("recruitment.admin") ?? false;
+    const existingRequest = await prisma.personnelRequest.findUnique({
+      where: { id },
+      include: { jobOpening: { select: { id: true, code: true, title: true, _count: { select: { applications: true } } } } },
+    });
 
-    const existingRequest = await prisma.personnelRequest.findUnique({ where: { id } });
-
-    if (!existingRequest) {
+    if (!existingRequest || existingRequest.silindiMi) {
       return NextResponse.json({ error: "Talep bulunamadı" }, { status: 404 });
     }
 
-    // Sadece taslak talepler silinebilir
-    if (existingRequest.status !== "DRAFT") {
-      return NextResponse.json({ error: "Sadece taslak talepler silinebilir" }, { status: 400 });
+    // Bağ kontrolü — sebep kullanıcıya gösterilir.
+    const engeller: string[] = [];
+    if (existingRequest.jobOpening) {
+      const basvuru = existingRequest.jobOpening._count.applications;
+      engeller.push(
+        `Talebe bağlı iş ilanı var (${existingRequest.jobOpening.code ?? existingRequest.jobOpening.title})` +
+          (basvuru > 0 ? ` ve ilana ${basvuru} başvuru bağlı` : ""),
+      );
+    }
+    if (existingRequest.iseBaslayanPersonelAdi || existingRequest.kadroDoldurulmaTarihi) {
+      engeller.push("İV kapanış bölümünde işe başlayan personel / kadro doldurulma tarihi kayıtlı");
+    }
+    if (engeller.length > 0) {
+      return NextResponse.json(
+        { error: "Bu talep silinemez: " + engeller.join("; ") + ". Önce bağlı işe alım kaydını kaldırın.", engeller },
+        { status: 409 },
+      );
     }
 
-    // Yetki kontrolü - sadece talep sahibi veya admin silebilir
-    if (existingRequest.requesterEmail.toLowerCase() !== userEmail && !hasFullAccess) {
-      return NextResponse.json({ error: "Bu işlem için yetkiniz yok" }, { status: 403 });
-    }
-
-    await prisma.personnelRequest.delete({
-      where: { id }
+    const simdi = new Date();
+    await prisma.$transaction(async (tx) => {
+      await tx.personnelRequest.update({
+        where: { id },
+        data: { silindiMi: true, silenId: session.user.id, silinmeTarihi: simdi },
+      });
+      await logAuditEvent({
+        tx,
+        actorId: session.user.id,
+        action: "PERSONNEL_REQUEST_SOFT_DELETE",
+        targetType: "PERSONNEL_REQUEST",
+        targetId: id,
+        details: {
+          requestNumber: existingRequest.requestNumber,
+          status: existingRequest.status,
+          department: existingRequest.department,
+          title: existingRequest.title,
+          requesterEmail: existingRequest.requesterEmail,
+          silinmeTarihi: simdi.toISOString(),
+        },
+      });
     });
 
-    return NextResponse.json({ message: "Talep başarıyla silindi" });
+    return NextResponse.json({ message: "Talep silindi", id, silinmeTarihi: simdi.toISOString() });
   } catch (error) {
     console.error("Talep silme hatası:", error);
     return NextResponse.json(

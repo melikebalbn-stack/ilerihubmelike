@@ -60,7 +60,8 @@ export function kadroTalepGorunurluk(
   const canViewByDept = perms.includes("recruitment.view");
   const requesterIdler = hasFullAccess ? null : kapsam.requesterIdler;
 
-  const where: Prisma.PersonnelRequestWhereInput = {};
+  // Soft-delete süzgeci (22.09.2026): silinmiş talep hiçbir kapsamda listelenmez.
+  const where: Prisma.PersonnelRequestWhereInput = { silindiMi: false };
   const out = { hasFullAccess, canViewByDept, userId, userEmail, requesterIdler, where, erisebilir: kapsam.erisebilir };
 
   // Savunma: ön kapıyı geçmemiş çağrı → hiçbir kayıt (id eşleşmez). Uçlar zaten 403 döner.

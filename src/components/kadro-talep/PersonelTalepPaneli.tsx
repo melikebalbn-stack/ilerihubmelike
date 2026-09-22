@@ -174,6 +174,9 @@ const requestStatusColors: Record<string, string> = {
 // sekmesi hem de bağımsız /strategic-hr/kadro-talep sayfası bu bileşeni render eder.
 export function PersonelTalepPaneli() {
   const { data: session } = useSession()
+  // Silme onay penceresi (yalnız recruitment.admin / SUPER_ADMIN — bkz. silebilir)
+  const [silinecek, setSilinecek] = useState<PersonnelRequest | null>(null)
+  const [siliniyor, setSiliniyor] = useState(false)
 
   const [requests, setRequests] = useState<PersonnelRequest[]>([])
   const [loading, setLoading] = useState(true)
@@ -397,24 +400,28 @@ export function PersonelTalepPaneli() {
     }
   }
 
+  // Soft delete — sunucu yetki + bağ kontrolü yapar (409 → sebep toast'ta).
   const handleDeleteRequest = async (requestId: string) => {
-    if (!confirm("Bu talebi silmek istediginizden emin misiniz?")) return
-
+    setSiliniyor(true)
     try {
       const res = await fetch(`/api/strategic-hr/recruitment/personnel-requests/${requestId}`, {
         method: "DELETE"
       })
 
       if (res.ok) {
+        setSilinecek(null)
+        setIsRequestDetailOpen(false)
         fetchRequests()
         toast.success("Talep silindi")
       } else {
         const error = await res.json()
-        toast.error(error.error || "Talep silinemedi")
+        toast.error(error.error || "Talep silinemedi", { duration: 8000 })
       }
     } catch (error) {
       console.error("Talep silinirken hata:", error)
       toast.error("Bir hata olustu")
+    } finally {
+      setSiliniyor(false)
     }
   }
 
@@ -486,6 +493,10 @@ export function PersonelTalepPaneli() {
   const normDept = normalizeDept(userDepartment)
   const isHrDepartment = hrDepartments.some(dept => normDept.includes(normalizeDept(dept)))
   const hasFullAccess = fullAccessRoles.includes(userRole) || isHrDepartment
+  // Silme düğmesi görünürlüğü — sunucu DELETE ucuyla AYNI kural (recruitment.admin ∨ SUPER_ADMIN).
+  // Client'ta yetki hesaplanmaz; yalnız düğmeyi gizler, asıl kapı sunucuda.
+  const userPerms = ((session?.user as { permissions?: string[] } | undefined)?.permissions ?? [])
+  const silebilir = userPerms.includes("recruitment.admin") || userRole === "SUPER_ADMIN"
 
   const filteredRequests = requests
 
@@ -622,13 +633,6 @@ export function PersonelTalepPaneli() {
                                 <Play className="h-4 w-4 mr-2" />
                                 Onaya Gonder
                               </DropdownMenuItem>
-                              <DropdownMenuItem
-                                className="text-red-600"
-                                onClick={() => handleDeleteRequest(req.id)}
-                              >
-                                <Trash2 className="h-4 w-4 mr-2" />
-                                Sil
-                              </DropdownMenuItem>
                             </>
                           )}
                           {req.status === "PENDING" && hasFullAccess && (
@@ -646,6 +650,15 @@ export function PersonelTalepPaneli() {
                               <DropdownMenuItem onClick={() => handleRequestAction(req.id, "create_opening")}>
                                 <FileText className="h-4 w-4 mr-2" />
                                 Ilan Olustur
+                              </DropdownMenuItem>
+                            </>
+                          )}
+                          {silebilir && (
+                            <>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem className="text-red-600" onClick={() => setSilinecek(req)}>
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Sil
                               </DropdownMenuItem>
                             </>
                           )}
@@ -1136,12 +1149,44 @@ export function PersonelTalepPaneli() {
                   </Button>
                 )}
 
+                {silebilir && (
+                  <Button variant="destructive" onClick={() => setSilinecek(selectedRequest)}>
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Sil
+                  </Button>
+                )}
+
                 <Button variant="outline" onClick={() => setIsRequestDetailOpen(false)}>
                   Kapat
                 </Button>
               </DialogFooter>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Silme onayı — soft delete; bağlı ilan/başvuru/işe alım kaydı varsa sunucu 409 döner. */}
+      <Dialog open={!!silinecek} onOpenChange={(o) => { if (!o && !siliniyor) setSilinecek(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Talebi Sil</DialogTitle>
+            <DialogDescription>
+              {silinecek && (
+                <>
+                  <span className="font-medium">{silinecek.requestNumber}</span> · {silinecek.title} · {silinecek.department}
+                  <br />
+                  Talep listelerden kaldırılır (kayıt ve onay izi denetim için saklanır). Bağlı iş ilanı,
+                  başvuru ya da işe başlayan personel kaydı varsa silme reddedilir.
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" disabled={siliniyor} onClick={() => setSilinecek(null)}>Vazgeç</Button>
+            <Button variant="destructive" disabled={siliniyor} onClick={() => silinecek && handleDeleteRequest(silinecek.id)}>
+              {siliniyor ? "Siliniyor…" : "Sil"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

@@ -14,13 +14,13 @@ describe('kadroTalepGorunurluk', () => {
   })
   it('koltuk kapsamı → requesterId IN ∪ kendi ∪ onaycı', () => {
     const k = kadroTalepGorunurluk(oturum(['recruitment.view']), sp, { erisebilir: true, requesterIdler: ['p1', 'p2'] })
-    expect(k.where).toEqual({ OR: [{ requesterId: { in: ['p1', 'p2'] } }, { requesterEmail: 'a@x' }, { approvals: { some: { approverId: 'u1' } } }] })
+    expect(k.where).toEqual({ silindiMi: false, OR: [{ requesterId: { in: ['p1', 'p2'] } }, { requesterEmail: 'a@x' }, { approvals: { some: { approverId: 'u1' } } }] })
     expect(kadroTalepGorebilirMi(k, { requesterEmail: 'b@x', requesterId: 'p2' })).toBe(true)
     expect(kadroTalepGorebilirMi(k, { requesterEmail: 'b@x', requesterId: 'p9' })).toBe(false)
   })
   it('kapsam boş (koltuksuz / kadro.talep.ac) → yalnız kendi + onaycı', () => {
     const k = kadroTalepGorunurluk(oturum([]), sp, { erisebilir: true, requesterIdler: [] })
-    expect(k.where).toEqual({ OR: [{ requesterEmail: 'a@x' }, { approvals: { some: { approverId: 'u1' } } }] })
+    expect(k.where).toEqual({ silindiMi: false, OR: [{ requesterEmail: 'a@x' }, { approvals: { some: { approverId: 'u1' } } }] })
   })
   it('atanmış onaycı → kapsam dışı talebi de görür (Orkun senaryosu)', () => {
     const k = kadroTalepGorunurluk(oturum(['recruitment.view']), sp, { erisebilir: true, requesterIdler: ['p1'] })
@@ -28,7 +28,7 @@ describe('kadroTalepGorunurluk', () => {
   })
   it('recruitment.admin → filtre yok, her kaydı görür', () => {
     const k = kadroTalepGorunurluk(oturum(['recruitment.admin']), sp, { erisebilir: true, requesterIdler: [] })
-    expect(k.where).toEqual({})
+    expect(k.where).toEqual({ silindiMi: false })
     expect(kadroTalepGorebilirMi(k, { requesterEmail: 'z@x', requesterId: 'p9' })).toBe(true)
   })
   it('LDAP department metni artık KULLANILMAZ (where içinde department yok)', () => {

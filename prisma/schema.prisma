@@ -5311,6 +5311,12 @@ model PersonnelRequest {
   ivOnayId               String? // İK onaylayan userId (approvedById deseni gibi düz alan; FK değil)
   ivOnayTarihi           DateTime?
 
+  // ── Soft delete (22.09.2026) — recruitment.admin / SUPER_ADMIN. Satır kalır,
+  // listeler/detay/export/pdf silindiMi=false süzer; denetim kaydı PERSONNEL_REQUEST.
+  silindiMi     Boolean   @default(false)
+  silenId       String?   // User.id (approvedById deseni gibi düz alan; FK değil)
+  silinmeTarihi DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -5320,6 +5326,7 @@ model PersonnelRequest {
   @@index([requesterId])
   @@index([department])
   @@index([status])
+  @@index([silindiMi])
 }
 
 // Eleman talebi onay adımı — OvertimeApproval deseninin karşılığı.

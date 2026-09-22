@@ -30,7 +30,7 @@ export async function GET(
       },
     });
 
-    if (!pr) {
+    if (!pr || pr.silindiMi) {
       return NextResponse.json({ error: "Talep bulunamadı" }, { status: 404 });
     }
 

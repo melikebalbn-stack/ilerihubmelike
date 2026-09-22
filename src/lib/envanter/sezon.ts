@@ -192,7 +192,7 @@ export type PlanlananAlimOnerisi = {
 // Sadece okuma; işe alım modülüne yazma yapılmaz.
 export async function oneriPlanlananAlim(): Promise<PlanlananAlimOnerisi> {
   const sonuc = await prisma.personnelRequest.aggregate({
-    where: { status: { in: ['APPROVED', 'IN_PROGRESS'] } },
+    where: { status: { in: ['APPROVED', 'IN_PROGRESS'] }, silindiMi: false },
     _sum: { headcount: true },
   })
 

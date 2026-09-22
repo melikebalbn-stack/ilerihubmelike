@@ -17,6 +17,7 @@ vi.mock('@/lib/servis-yonetimi/operasyonel-servis-listesi', () => ({
 
 import { GET as listeGET } from './route'
 import { GET as exportGET } from './export/route'
+import { GET as exportPdfGET } from './export-pdf/route'
 
 beforeEach(() => {
   mocks.requirePermission.mockReset()
@@ -32,11 +33,19 @@ beforeEach(() => {
 })
 
 describe('servis.view var / servis.export yok — liste ile export ayrımı', () => {
-  it('liste ucu 200 döner, export ucu AYNI kullanıcı için 403 döner', async () => {
+  it('liste ucu 200 döner, Excel export ucu AYNI kullanıcı için 403 döner', async () => {
     const listeRes = await listeGET(new NextRequest('http://localhost/x'))
     expect(listeRes.status).toBe(200)
 
     const exportRes = await exportGET(new NextRequest('http://localhost/x'))
     expect(exportRes.status).toBe(403)
+  })
+
+  it('liste ucu 200 döner, PDF export ucu AYNI kullanıcı için 403 döner', async () => {
+    const listeRes = await listeGET(new NextRequest('http://localhost/x'))
+    expect(listeRes.status).toBe(200)
+
+    const exportPdfRes = await exportPdfGET(new NextRequest('http://localhost/x'))
+    expect(exportPdfRes.status).toBe(403)
   })
 })

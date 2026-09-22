@@ -25,6 +25,7 @@ import { gorunumHtml } from '@/lib/rapor/gorunum-html'
 import type { EtkilesimliIcerik, Gorunum, GorunumKolon, GorunumToplamFn, SablonParametre } from '@/lib/rapor/tipler'
 import type { VeriSetiAlan } from '@/lib/rapor/veri-seti-alanlar'
 import { GeriRozet, RozetLink } from '../../_components/rozet-link'
+import { TUR_ADI } from '@/lib/rapor/tur-adlari'
 
 const NAVY = '#1B4F72'
 const CYAN = '#2AA5C7'
@@ -122,6 +123,13 @@ export default function EtkilesimliRapor({ sablon, icerik, alanlar, tasarlayabil
   const [kayitliGorunum, setKayitliGorunum] = useState<Gorunum>(varsayilan)
   const [surum, setSurum] = useState(sablon.surum)
   const etiketler = useMemo(() => Object.fromEntries(alanlar.map((a) => [a.ad, a.etiket])) as Record<string, string | null>, [alanlar])
+  /** alan → (ham değer → Türkçe gösterim). Katalogdan gelir; YALNIZ gösterimde kullanılır. */
+  const degerEtiketleri = useMemo(
+    () => Object.fromEntries(alanlar.filter((a) => a.degerEtiketleri).map((a) => [a.ad, a.degerEtiketleri!])) as Record<string, Record<string, string>>,
+    [alanlar],
+  )
+  /** Hücre/seçenek gösterimi: etiket varsa Türkçesi, yoksa biçimli ham değer. */
+  const gosterim = useCallback((alan: string, v: unknown, bicim?: GorunumKolon['bicim']) => degerEtiketleri[alan]?.[String(v)] ?? bicimle(v, bicim), [degerEtiketleri])
   const hesaplananAdlari = useMemo(() => new Set((gorunum.hesaplananAlanlar ?? []).map((h) => h.ad)), [gorunum.hesaplananAlanlar])
   const baslik = useCallback((alan: string) => gorunum.kolonlar.find((k) => k.alan === alan)?.baslik ?? etiketler[alan] ?? alan, [gorunum.kolonlar, etiketler])
 
@@ -160,9 +168,9 @@ export default function EtkilesimliRapor({ sablon, icerik, alanlar, tasarlayabil
   const { sonuc, hesapMs } = useMemo(() => {
     if (!veri) return { sonuc: null, hesapMs: 0 }
     const t0 = performance.now()
-    const s = gorunumUygula(veri, gorunum)
+    const s = gorunumUygula(veri, gorunum, { degerEtiketleri })
     return { sonuc: s, hesapMs: Math.round(performance.now() - t0) }
-  }, [veri, gorunum])
+  }, [veri, gorunum, degerEtiketleri])
   // Çizim süresi: bu render'ın başlangıcından commit sonrasına (grup aç/kapa, devamını göster dahil).
   const renderBaslangic = performance.now()
   useEffect(() => { if (sonuc) setCizimMs(Math.round(performance.now() - renderBaslangic)) }, [sonuc, kapali, acilanSegmentler]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -288,6 +296,7 @@ export default function EtkilesimliRapor({ sablon, icerik, alanlar, tasarlayabil
       parametreTanimlari: parametreler,
       raporKodu: sablon.kod,
       basliklar: Object.fromEntries(gorunum.kolonlar.map((k) => [k.alan, baslik(k.alan)])),
+      degerEtiketleri,
     })
     yazdirIframe.current?.remove()
     const f = document.createElement('iframe')
@@ -329,7 +338,7 @@ export default function EtkilesimliRapor({ sablon, icerik, alanlar, tasarlayabil
 
   // ── Tablo satırları ───────────────────────────────────────────────────
   const hucre = (k: GorunumKolon, v: unknown) => {
-    const metin = bicimle(v, k.bicim)
+    const metin = gosterim(k.alan, v, k.bicim)
     const sec = secenekler[k.alan]
     return <td key={k.alan} className={`px-2 py-1 border-b border-slate-200 whitespace-nowrap ${tipler[k.alan] === 'sayi' ? 'text-right font-mono text-[12px]' : ''} ${kosulluSinif(k, v)}`}>{sec && metin ? <span className="text-[10.5px] px-1.5 py-px rounded-full border border-slate-300">{metin}</span> : metin}</td>
   }
@@ -388,7 +397,7 @@ export default function EtkilesimliRapor({ sablon, icerik, alanlar, tasarlayabil
           <h1 className="text-xl lg:text-2xl font-bold tracking-tight flex items-center gap-3">
             <FileBarChart2 className="h-6 w-6" style={{ color: NAVY }} />
             {icerik.baslik || sablon.ad}
-            <Badge className="bg-[#DCEDF5] text-[#1B4F72] hover:bg-[#DCEDF5]">Etkileşimli</Badge>
+            <Badge className="bg-[#DCEDF5] text-[#1B4F72] hover:bg-[#DCEDF5]">{TUR_ADI.etkilesimli}</Badge>
             {sablon.durum === 'TASLAK' && <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100">Taslak</Badge>}
             <Badge variant="outline" className="font-normal">sürüm {surum}</Badge>
           </h1>
@@ -576,7 +585,7 @@ export default function EtkilesimliRapor({ sablon, icerik, alanlar, tasarlayabil
                         <th key={k.alan} className="sticky top-[32px] z-[2] bg-[#F4F7FA] px-1.5 py-1 font-normal">
                           {secenekler[k.alan] ? (
                             <NativeSelect className="h-7 text-[11.5px] py-0 px-1.5" value={gorunum.filtreler[k.alan] ?? ''} onChange={(e) => filtreYaz(k.alan, e.target.value)}>
-                              <option value="">Tümü</option>{secenekler[k.alan].map((v) => <option key={v} value={v}>{v}</option>)}
+                              <option value="">Tümü</option>{secenekler[k.alan].map((v) => <option key={v} value={v}>{degerEtiketleri[k.alan]?.[v] ?? v}</option>)}
                             </NativeSelect>
                           ) : (
                             <input className="w-full h-7 text-[11.5px] px-1.5 rounded border border-slate-300 bg-white" value={gorunum.filtreler[k.alan] ?? ''} placeholder={tipler[k.alan] === 'sayi' ? '< 90' : 'süz…'} onChange={(e) => filtreYaz(k.alan, e.target.value)} />

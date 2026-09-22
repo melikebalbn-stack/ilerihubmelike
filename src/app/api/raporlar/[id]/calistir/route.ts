@@ -82,7 +82,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const b = await raporBaglami(id, userId, govde.data.parametreler, govde.data.cikti)
   if (b.hata) return b.hata
   const { sablon, icerik, tanim, degerler, kayit, calistiranAd } = b.baglam
-  if (etkilesimliMi(icerik)) return NextResponse.json({ error: 'Etkileşimli rapor: /veri veya /excel ucunu kullanın' }, { status: 400 })
+  if (etkilesimliMi(icerik)) return NextResponse.json({ error: 'AI Rapor: /veri veya /excel ucunu kullanın' }, { status: 400 })
 
   const t0 = Date.now()
   try {

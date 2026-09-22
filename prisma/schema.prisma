@@ -14892,6 +14892,27 @@ model RaporKatalog {
   @@map("rapor_katalog")
 }
 
+/// Katalog alan DEĞERLERİ + Türkçe etiketleri. IFS'te durum/kod alanları EnumType'tır; olası
+/// değerler $metadata'dan gelir (kaynak='ENUM'). Enum olmayan metin alanlarına elle/AI değer eklenebilir.
+/// Etiket YALNIZ gösterimde kullanılır; ham veri ve süzgeç değerleri değişmez.
+model RaporKatalogDeger {
+  id          String   @id @default(cuid())
+  kaynakAd    String
+  entity      String
+  alan        String
+  /// IFS'in döndürdüğü ham değer (ör. 'Closed').
+  deger       String
+  /// Türkçe gösterim (ör. 'Kapandı'); null → ham değer gösterilir.
+  etiket      String?
+  /// Etiketi kim üretti: 'ENUM' (yeni satır, etiketsiz), 'AI' (toplu çeviri), 'ELLE' (kullanıcı düzeltti).
+  kaynak      String   @default("ENUM")
+  guncellenme DateTime @updatedAt
+
+  @@unique([kaynakAd, entity, alan, deger])
+  @@index([kaynakAd, alan])
+  @@map("rapor_katalog_deger")
+}
+
 /// Katalog entity düzeyi Türkçe etiket/açıklama (alan etiketleri RaporKatalog.etiket'te).
 model RaporKatalogEntity {
   id          String   @id @default(cuid())

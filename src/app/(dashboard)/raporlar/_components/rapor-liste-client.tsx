@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Clock, Database, FileBarChart2, FileSearch, LayoutGrid, List, Loader2, Plus, Search, Star, X } from 'lucide-react'
 import { RozetLink } from './rozet-link'
+import { TUR_ADI } from '@/lib/rapor/tur-adlari'
 
 const NAVY = '#1B4F72'
 
@@ -96,7 +97,7 @@ export default function RaporListeClient() {
   )
   const rozetler = (s: Sablon) => (
     <span className="flex items-center gap-1 shrink-0">
-      <Badge className={s.tur === 'etkilesimli' ? 'bg-[#DCEDF5] text-[#1B4F72] hover:bg-[#DCEDF5]' : 'bg-slate-100 text-slate-700 hover:bg-slate-100'}>{s.tur === 'etkilesimli' ? 'Etkileşimli' : 'Belge'}</Badge>
+      <Badge className={s.tur === 'etkilesimli' ? 'bg-[#DCEDF5] text-[#1B4F72] hover:bg-[#DCEDF5]' : 'bg-slate-100 text-slate-700 hover:bg-slate-100'}>{TUR_ADI[s.tur]}</Badge>
       {s.durum !== 'YAYINDA' && <Badge className={DURUM_ETIKET[s.durum].sinif}>{DURUM_ETIKET[s.durum].metin}</Badge>}
     </span>
   )
@@ -165,8 +166,8 @@ export default function RaporListeClient() {
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="text-[11px] text-muted-foreground mr-1">Tür:</span>
-            <Cip aktif={tur === 'etkilesimli'} onClick={() => setTur(tur === 'etkilesimli' ? null : 'etkilesimli')}>Etkileşimli</Cip>
-            <Cip aktif={tur === 'belge'} onClick={() => setTur(tur === 'belge' ? null : 'belge')}>Belge</Cip>
+            <Cip aktif={tur === 'etkilesimli'} onClick={() => setTur(tur === 'etkilesimli' ? null : 'etkilesimli')}>{TUR_ADI.etkilesimli}</Cip>
+            <Cip aktif={tur === 'belge'} onClick={() => setTur(tur === 'belge' ? null : 'belge')}>{TUR_ADI.belge}</Cip>
             <span className="text-[11px] text-muted-foreground ml-2 mr-1">Durum:</span>
             <Cip aktif={durum === 'YAYINDA'} onClick={() => setDurum(durum === 'YAYINDA' ? null : 'YAYINDA')}>Yayında</Cip>
             {cevap.tasarlayabilir && <Cip aktif={durum === 'TASLAK'} onClick={() => setDurum(durum === 'TASLAK' ? null : 'TASLAK')}>Taslak</Cip>}

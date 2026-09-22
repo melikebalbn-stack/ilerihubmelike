@@ -20,8 +20,8 @@ function hucre(v: unknown, bicim?: Bicim): ExcelJS.CellValue {
   return String(v)
 }
 
-export async function gorunumXlsx(baslik: string, satirlar: Satir[], gorunum: Gorunum, ek?: { altBaslik?: string; parametreOzeti?: string }): Promise<Buffer> {
-  const sonuc = gorunumUygula(satirlar, gorunum)
+export async function gorunumXlsx(baslik: string, satirlar: Satir[], gorunum: Gorunum, ek?: { altBaslik?: string; parametreOzeti?: string; degerEtiketleri?: Record<string, Record<string, string>> }): Promise<Buffer> {
+  const sonuc = gorunumUygula(satirlar, gorunum, { degerEtiketleri: ek?.degerEtiketleri })
   const grupAlanlari = new Set((gorunum.gruplar ?? []).slice(0, 2))
   const kolonlar = gorunum.kolonlar.filter((k) => k.gorunur && !grupAlanlari.has(k.alan))
   const wb = new ExcelJS.Workbook()
@@ -38,7 +38,8 @@ export async function gorunumXlsx(baslik: string, satirlar: Satir[], gorunum: Go
   baslikSatiri.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: NAVY } }
   ws.views = [{ state: 'frozen', ySplit: baslikSatiri.number }]
 
-  const detay = (s: Satir) => { ws.addRow(kolonlar.map((k) => hucre(s[k.alan], k.bicim))) }
+  // Hücre: değer etiketi varsa Türkçesi (metin olarak), yoksa ham/biçimli değer.
+  const detay = (s: Satir) => { ws.addRow(kolonlar.map((k) => ek?.degerEtiketleri?.[k.alan]?.[String(s[k.alan])] ?? hucre(s[k.alan], k.bicim))) }
   const toplamSatiri = (etiket: string, toplamlar: Record<string, number | null>, stil: 'alt' | 'genel') => {
     const r = ws.addRow(kolonlar.map((k, i) => (k.toplam && toplamlar[k.alan] !== undefined ? toplamlar[k.alan] : i === 0 ? etiket : null)))
     r.font = { bold: true }

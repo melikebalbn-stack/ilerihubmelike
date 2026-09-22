@@ -8,6 +8,7 @@ import { etkilesimliMi, type Gorunum } from '@/lib/rapor/tipler'
 import { calistirmaHatasiKaydet, calistirmaKaydet, raporBaglami } from '@/lib/rapor/sunucu-calistirma'
 import { GorunumSchema } from '../../sablonlar/_ortak'
 import { bicimle } from '@/lib/rapor/bicim'
+import { veriSetiAlanlari } from '@/lib/rapor/veri-seti-alanlar'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 120
@@ -29,14 +30,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const b = await raporBaglami(id, userId, govde.data.parametreler, 'XLSX')
   if (b.hata) return b.hata
   const { sablon, icerik, tanim, degerler, kayit } = b.baglam
-  if (!etkilesimliMi(icerik)) return NextResponse.json({ error: 'Belge şablonu için /calistir (cikti: XLSX) kullanın' }, { status: 400 })
+  if (!etkilesimliMi(icerik)) return NextResponse.json({ error: 'Hazır Rapor için /calistir (cikti: XLSX) kullanın' }, { status: 400 })
   const gorunum = (govde.data.gorunum as Gorunum | undefined) ?? icerik.gorunum
 
   const t0 = Date.now()
   try {
     const veri = await veriSetiCalistir(tanim, degerler)
     const parametreOzeti = (icerik.parametreler ?? []).map((p) => `${p.etiket}: ${bicimle(degerler[p.ad], p.tip === 'tarih' ? 'gg.aa.yyyy' : undefined)}`).join('  ·  ')
-    const buffer = await gorunumXlsx(icerik.baslik || sablon.ad, veri.satirlar, gorunum, { altBaslik: icerik.altBaslik, parametreOzeti })
+    const degerEtiketleri = Object.fromEntries((await veriSetiAlanlari(tanim)).filter((a) => a.degerEtiketleri).map((a) => [a.ad, a.degerEtiketleri!]))
+    const buffer = await gorunumXlsx(icerik.baslik || sablon.ad, veri.satirlar, gorunum, { altBaslik: icerik.altBaslik, parametreOzeti, degerEtiketleri })
     await calistirmaKaydet(kayit, veri.satirlar.length, Date.now() - t0)
     return new NextResponse(new Uint8Array(buffer), {
       status: 200,

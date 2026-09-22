@@ -7,6 +7,10 @@
  * Aynı fonksiyon tarayıcıda (tablo/KPI/grafik) ve sunucuda (Excel) çalışır; bu yüzden burada
  * DOM, Prisma, fetch, Date.now() YOK. Sonuçlar iki tarafta birebir aynıdır.
  *
+ * DEĞER ETİKETLERİ (secenekler.degerEtiketleri): alan → (ham değer → Türkçe gösterim). YALNIZ
+ * gösterimde kullanılır — grup başlığı ve grafik etiketi. Gruplama/süzgeç/sıralama HAM değerle yapılır,
+ * grup anahtarı ham kalır (aç/kapa durumu ve Excel/PDF ile birebir eşleşsin diye).
+ *
  * ORAN ORTALAMASI KURALI: `verim = {tamamlanan} / {planlanan} * 100` gibi bir hesaplanan alanın
  * grup "ortalaması" satır ortalaması olarak alınırsa yanlıştır (küçük iş emirleri büyükleriyle eşit
  * ağırlık alır). Bu yüzden ifadesi `{a} / {b}` ya da `{a} / {b} * k` biçiminde (istenirse yuvarla(…)
@@ -44,13 +48,21 @@ export interface KpiKart {
   bicim?: Bicim
 }
 
+export interface GorunumSecenekleri {
+  /** Göreli tarih süzgeçlerinin ("< bugün", "bu_hafta") çözüleceği gün. */
+  bugun?: Date
+  /** alan → (ham değer → gösterim etiketi). Verilmezse ham değerler biçimlenerek gösterilir. */
+  degerEtiketleri?: Record<string, Record<string, string>>
+}
+
 export interface GorunumSonuc {
   /** Filtre + sıralama uygulanmış düz satırlar (hesaplanan alanlar dahil). */
   satirlar: Satir[]
   /** Grup ağacı; gruplama yoksa boş dizi (satirlar düz kullanılır). */
   gruplar: GrupDugum[]
   genelToplam: Record<string, number | null>
-  grafikVerisi: { etiket: string; deger: number }[]
+  /** etiket: gösterim (varsa Türkçe), ham: kırılım değerinin ham hâli. */
+  grafikVerisi: { etiket: string; ham: string; deger: number }[]
   kpi: { satirSayisi: number; toplamSatir: number; kartlar: KpiKart[] }
   /** Her kolonun veri tipi (ilk dolu değerden). */
   kolonTipleri: Record<string, KolonTipi>
@@ -280,7 +292,7 @@ export function kiyasla(a: unknown, b: unknown, tip: KolonTipi): number {
 
 // ── Gruplama ─────────────────────────────────────────────────────────────
 
-function grupla(satirlar: Satir[], alanlar: string[], seviye: number, ustAnahtar: string, kolonlar: GorunumKolon[], tipler: Record<string, KolonTipi>, oranlar: Map<string, { pay: string; payda: string; carpan: number }>, bicimler: Record<string, Bicim | undefined>): GrupDugum[] {
+function grupla(satirlar: Satir[], alanlar: string[], seviye: number, ustAnahtar: string, kolonlar: GorunumKolon[], tipler: Record<string, KolonTipi>, oranlar: Map<string, { pay: string; payda: string; carpan: number }>, bicimler: Record<string, Bicim | undefined>, goster: (alan: string, v: unknown) => string): GrupDugum[] {
   if (seviye >= alanlar.length) return []
   const alan = alanlar[seviye]
   const kovalar = new Map<string, { deger: unknown; satirlar: Satir[] }>()
@@ -294,10 +306,10 @@ function grupla(satirlar: Satir[], alanlar: string[], seviye: number, ustAnahtar
   const gruplar = [...kovalar.values()].sort((a, b) => kiyasla(a.deger, b.deger, tip))
   return gruplar.map((g) => {
     const anahtar = `${ustAnahtar}${ustAnahtar ? '|' : ''}${alan}=${g.deger instanceof Date ? g.deger.toISOString() : String(g.deger ?? '')}`
-    const alt = grupla(g.satirlar, alanlar, seviye + 1, anahtar, kolonlar, tipler, oranlar, bicimler)
+    const alt = grupla(g.satirlar, alanlar, seviye + 1, anahtar, kolonlar, tipler, oranlar, bicimler, goster)
     return {
       anahtar, seviye, alan, deger: g.deger,
-      etiket: bosMu(g.deger) ? '(boş)' : bicimle(g.deger, bicimler[alan]),
+      etiket: bosMu(g.deger) ? '(boş)' : goster(alan, g.deger),
       satirSayisi: g.satirlar.length,
       satirlar: alt.length ? [] : g.satirlar,
       altGruplar: alt,
@@ -316,18 +328,20 @@ export const MAX_GRUP = 2
  *   varken sonucu etkiler. Sunucu/istemci çıktısının birebir aynı olması gereken yerlerde
  *   (Excel) aynı gün değeri geçirilir.
  */
-export function gorunumUygula(hamSatirlar: Satir[], gorunum: Gorunum, secenekler?: { bugun?: Date }): GorunumSonuc {
+export function gorunumUygula(hamSatirlar: Satir[], gorunum: Gorunum, secenekler: GorunumSecenekleri = {}): GorunumSonuc {
   const hesapli = hesaplananlariEkle(hamSatirlar, gorunum.hesaplananAlanlar)
   const kolonlar = gorunum.kolonlar
   const tipler = kolonTipleriniBul(hesapli, kolonlar)
   const bicimler: Record<string, Bicim | undefined> = {}
   for (const k of kolonlar) bicimler[k.alan] = k.bicim
   const oranlar = oranHaritasi(gorunum.hesaplananAlanlar)
+  /** Gösterim metni: önce değer etiketi (Türkçe), yoksa biçimlenmiş ham değer. */
+  const goster = (alan: string, v: unknown): string => secenekler.degerEtiketleri?.[alan]?.[String(v)] ?? bicimle(v, bicimler[alan])
 
   // Filtre
   const aktifFiltreler = Object.entries(gorunum.filtreler ?? {}).filter(([, f]) => f && f.trim())
   let satirlar = aktifFiltreler.length
-    ? hesapli.filter((s) => aktifFiltreler.every(([alan, f]) => filtreEslesir(s[alan], f, tipler[alan] ?? kolonTipi(alan, hesapli), bicimler[alan], secenekler?.bugun)))
+    ? hesapli.filter((s) => aktifFiltreler.every(([alan, f]) => filtreEslesir(s[alan], f, tipler[alan] ?? kolonTipi(alan, hesapli), bicimler[alan], secenekler.bugun)))
     : hesapli
 
   // Sıralama (kararlı)
@@ -345,20 +359,22 @@ export function gorunumUygula(hamSatirlar: Satir[], gorunum: Gorunum, secenekler
 
   // Gruplar (≤ MAX_GRUP)
   const grupAlanlari = (gorunum.gruplar ?? []).slice(0, MAX_GRUP).filter(Boolean)
-  const gruplar = grupAlanlari.length ? grupla(satirlar, grupAlanlari, 0, '', kolonlar, tipler, oranlar, bicimler) : []
+  const gruplar = grupAlanlari.length ? grupla(satirlar, grupAlanlari, 0, '', kolonlar, tipler, oranlar, bicimler, goster) : []
 
   // Genel toplam
   const genelToplam = toplamlariHesapla(kolonlar, satirlar, oranlar)
 
   // Grafik
-  const grafikVerisi: { etiket: string; deger: number }[] = []
+  const grafikVerisi: { etiket: string; ham: string; deger: number }[] = []
   const g = gorunum.grafik
   if (g?.grupla && g.deger) {
+    // Kırılım HAM değere göre (iki ham değer aynı Türkçe etikete düşerse birleşmesin).
     const kovalar = new Map<string, Satir[]>()
-    for (const s of satirlar) { const e = bosMu(s[g.grupla]) ? '(boş)' : bicimle(s[g.grupla], bicimler[g.grupla]); kovalar.set(e, [...(kovalar.get(e) ?? []), s]) }
+    for (const s of satirlar) { const h = bosMu(s[g.grupla]) ? '' : String(s[g.grupla]); kovalar.set(h, [...(kovalar.get(h) ?? []), s]) }
     const tip = tipler[g.grupla] ?? 'metin'
-    for (const [etiket, rows] of [...kovalar.entries()].sort((a, b) => kiyasla(a[1][0]?.[g.grupla], b[1][0]?.[g.grupla], tip))) {
-      grafikVerisi.push({ etiket, deger: toplamHesapla(g.fn, g.deger, rows, oranlar) ?? 0 })
+    for (const [ham, rows] of [...kovalar.entries()].sort((a, b) => kiyasla(a[1][0]?.[g.grupla], b[1][0]?.[g.grupla], tip))) {
+      const ornek = rows[0]?.[g.grupla]
+      grafikVerisi.push({ etiket: bosMu(ornek) ? '(boş)' : goster(g.grupla, ornek), ham, deger: toplamHesapla(g.fn, g.deger, rows, oranlar) ?? 0 })
     }
   }
 

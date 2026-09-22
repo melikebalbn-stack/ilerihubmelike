@@ -49,7 +49,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const sablon = await prisma.raporSablon.findUnique({ where: { id }, include: { veriSeti: { select: { tanim: true } } } })
   if (!sablon) return NextResponse.json({ error: 'Rapor bulunamadı' }, { status: 404 })
   const icerik = sablon.icerik as unknown as SablonIcerikHer
-  if (!etkilesimliMi(icerik)) return NextResponse.json({ error: 'Bu rapor etkileşimli değil' }, { status: 400 })
+  if (!etkilesimliMi(icerik)) return NextResponse.json({ error: 'Bu rapor bir AI Rapor değil' }, { status: 400 })
 
   const alanlar = await veriSetiAlanlari(sablon.veriSeti.tanim as unknown as VeriSetiTanim)
   const mevcutGorunum = govde.data.mevcutGorunum as unknown as Parameters<typeof aiGorunumKur>[0]['mevcutGorunum']

@@ -1,10 +1,10 @@
 'use client'
 
 /**
- * /raporlar/tasarim/yeni — en üstte tür seçimi.
- *  Etkileşimli (önerilen): kod + ad + veri seti → "Oluştur" → tüm alanlar görünür varsayılan görünümle
+ * /raporlar/tasarim/yeni — en üstte tür seçimi (kullanıcıya: "AI Rapor" / "Hazır Rapor").
+ *  AI Rapor / 'etkilesimli' (önerilen): kod + ad + veri seti → "Oluştur" → tüm alanlar görünür varsayılan görünümle
  *    kaydedilir → doğrudan /raporlar/[id] (kullanıcı orada kurgular, "Görünümü kaydet" der).
- *  Basılı belge: mevcut şablon tasarım ekranı (SablonTasarimClient).
+ *  Hazır Rapor / 'belge': mevcut şablon tasarım ekranı (SablonTasarimClient).
  */
 import { useEffect, useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
@@ -18,6 +18,7 @@ import { varsayilanGorunum } from '@/lib/rapor/gorunum'
 import { veriSetiParametreleri } from '@/lib/rapor/sablon-dogrula'
 import type { EtkilesimliIcerik, SablonParametre, VeriSetiTanim } from '@/lib/rapor/tipler'
 import { GeriRozet } from '../../../_components/rozet-link'
+import { TUR_ACIKLAMA, TUR_ADI } from '@/lib/rapor/tur-adlari'
 
 const NAVY = '#1B4F72'
 
@@ -66,12 +67,12 @@ export default function YeniSablonSecim({ veriSetleri, kategoriler, belgeTasarim
       </div>
       <div className="grid gap-3 sm:grid-cols-2 max-w-3xl">
         <button type="button" onClick={() => setTur('etkilesimli')} className={`text-left rounded-lg border-2 p-4 transition-colors hover:bg-[#DCEDF5]/40 ${tur === 'etkilesimli' ? 'border-[#1B4F72] bg-[#DCEDF5]/40' : 'border-slate-200 bg-white'}`}>
-          <div className="flex items-center gap-2 font-semibold" style={{ color: NAVY }}><MousePointerClick className="h-5 w-5" />Etkileşimli rapor <span className="text-[10px] font-semibold uppercase tracking-wide rounded-full px-2 py-0.5 bg-[#2AA5C7] text-[#06222C]">önerilen</span></div>
-          <p className="text-sm text-muted-foreground mt-1.5">Ekranda kolon aç/kapa, sürükleyerek grupla, sırala, süz, toplam/ortalama, grafik. Görünüm kaydedilir; Excel aynı görünümle iner.</p>
+          <div className="flex items-center gap-2 font-semibold" style={{ color: NAVY }}><MousePointerClick className="h-5 w-5" />{TUR_ADI.etkilesimli} <span className="text-[10px] font-semibold uppercase tracking-wide rounded-full px-2 py-0.5 bg-[#2AA5C7] text-[#06222C]">önerilen</span></div>
+          <p className="text-sm text-muted-foreground mt-1.5">{TUR_ACIKLAMA.etkilesimli}</p>
         </button>
         <button type="button" onClick={() => setTur('belge')} className="text-left rounded-lg border-2 border-slate-200 bg-white p-4 transition-colors hover:bg-slate-50">
-          <div className="flex items-center gap-2 font-semibold" style={{ color: NAVY }}><FileText className="h-5 w-5" />Basılı belge</div>
-          <p className="text-sm text-muted-foreground mt-1.5">A4 yazdırmaya uygun sabit düzen: kolon genişlikleri, 3 seviye grup, koşullu biçim, sayfa altı. Şablon tasarım ekranında kurgulanır.</p>
+          <div className="flex items-center gap-2 font-semibold" style={{ color: NAVY }}><FileText className="h-5 w-5" />{TUR_ADI.belge}</div>
+          <p className="text-sm text-muted-foreground mt-1.5">{TUR_ACIKLAMA.belge}</p>
         </button>
       </div>
 

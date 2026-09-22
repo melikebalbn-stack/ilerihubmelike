@@ -35,6 +35,10 @@ export interface MetadataAlan {
   anahtarMi: boolean
   /** IFS iç alanları (luname, objkey…) — katalogda pasif tutulur. */
   gizli: boolean
+  /** Alan bir EnumType'a işaret ediyorsa tipin adı (ör. 'ShopOrdState'). */
+  enumTipi?: string
+  /** Enum üye adları — IFS'in döndürdüğü HAM değerler (ör. Closed, Released). */
+  degerler?: string[]
 }
 
 export interface MetadataEntity {
@@ -73,8 +77,31 @@ export async function metadataGetir(projeksiyon: string): Promise<string> {
 const attr = (etiketler: string, ad: string): string | undefined =>
   new RegExp(`\\b${ad}="([^"]*)"`).exec(etiketler)?.[1]
 
+/**
+ * CSDL EnumType'ları: tip adı → üye adları.
+ * IFS'te durum/kod alanları düz metin DEĞİL enum'dur (ShopOrd.Objstate → IfsApp.ShopOrderHandling.ShopOrdState);
+ * olası değerler yalnız burada tanımlıdır. Üye adı = OData'nın döndürdüğü ham değer.
+ */
+export function enumlariAyristir(xml: string): Map<string, string[]> {
+  const out = new Map<string, string[]>()
+  const re = /<EnumType\b([^>]*)>([\s\S]*?)<\/EnumType>/g
+  for (let m = re.exec(xml); m; m = re.exec(xml)) {
+    const ad = attr(m[1], 'Name')
+    if (!ad) continue
+    const uyeler: string[] = []
+    const uyeRe = /<Member\b([^>]*?)\/?>/g
+    for (let u = uyeRe.exec(m[2]); u; u = uyeRe.exec(m[2])) {
+      const uye = attr(u[1], 'Name')
+      if (uye) uyeler.push(uye)
+    }
+    if (uyeler.length) out.set(ad, uyeler)
+  }
+  return out
+}
+
 /** CSDL: her EntityType için Key/PropertyRef ve Property listesi. NavigationProperty/ComplexType dışarıda. */
 export function metadataAyristir(xml: string): MetadataEntity[] {
+  const enumlar = enumlariAyristir(xml)
   const out: MetadataEntity[] = []
   const entityRe = /<EntityType\b([^>]*)>([\s\S]*?)<\/EntityType>/g
   for (let m = entityRe.exec(xml); m; m = entityRe.exec(xml)) {
@@ -97,11 +124,16 @@ export function metadataAyristir(xml: string): MetadataEntity[] {
       const alan = attr(p[1], 'Name')
       if (!alan || gorulen.has(alan)) continue
       gorulen.add(alan)
+      // Tip "IfsApp.<Projeksiyon>.<Ad>" ise ve <Ad> bir EnumType'sa alanın olası değerleri bilinir.
+      const tipAdi = attr(p[1], 'Type') ?? ''
+      const sonParca = tipAdi.split('.').pop() ?? ''
+      const degerler = enumlar.get(sonParca)
       alanlar.push({
         alan,
-        veriTipi: veriTipiEsle(attr(p[1], 'Type') ?? ''),
+        veriTipi: veriTipiEsle(tipAdi),
         anahtarMi: anahtarlar.has(alan),
         gizli: GIZLI_ALANLAR.has(alan.toLowerCase()),
+        ...(degerler ? { enumTipi: sonParca, degerler } : {}),
       })
     }
     out.push({ entity, alanlar })

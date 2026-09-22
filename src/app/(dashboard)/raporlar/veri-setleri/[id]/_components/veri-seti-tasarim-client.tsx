@@ -12,7 +12,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { NativeSelect } from '@/components/ui/select'
 import { DateField } from '@/components/ui/date-field'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { ChevronDown, ChevronRight, Database, Download, Loader2, Maximize2, Pencil, Play, Plus, Save, Search, Trash2, X } from 'lucide-react'
+import { ChevronDown, ChevronRight, Database, Download, List, Loader2, Maximize2, Pencil, Play, Plus, Save, Search, Sparkles, Trash2, X } from 'lucide-react'
 import type { Birlestirme, Kaynak, KaynakIfs, KaynakPostgres, VeriSetiTanim } from '@/lib/rapor/tipler'
 import { GeriRozet } from '../../../_components/rozet-link'
 import { referansMi } from '@/lib/rapor/katalog-siniflama'
@@ -179,6 +179,12 @@ export default function VeriSetiTasarimClient({ katalogYukleyebilir, mevcut }: P
   const [katalogAlanAra, setKatalogAlanAra] = useState('')
   /** Etiket düzenleme: hangi alan (sol panel) + geçici metin. */
   const [etiketDuzenle, setEtiketDuzenle] = useState<{ alan: string; metin: string } | null>(null)
+  /** Değerler dialogu: hangi alan + satırlar (etiket kutuları). */
+  const [degerlerAlani, setDegerlerAlani] = useState<{ entity: string; alan: string; alanEtiket: string | null } | null>(null)
+  const [degerSatirlari, setDegerSatirlari] = useState<{ deger: string; etiket: string; kaynak: string; degisti?: boolean }[]>([])
+  const [degerDurum, setDegerDurum] = useState<{ yukleniyor?: boolean; aiCalisiyor?: boolean; kaydediliyor?: boolean; hata?: string | null; not?: string | null }>({})
+  const [yeniDeger, setYeniDeger] = useState('')
+  const [topluAi, setTopluAi] = useState<{ acik: boolean; calisiyor?: boolean; sonuc?: string | null }>({ acik: false })
   const [entityEtiketDuzenle, setEntityEtiketDuzenle] = useState<{ entity: string; metin: string } | null>(null)
   const [aramaEntityler, setAramaEntityler] = useState<AramaEntity[]>([])
   const [referansGoster, setReferansGoster] = useState(false)
@@ -318,6 +324,84 @@ export default function VeriSetiTasarimClient({ katalogYukleyebilir, mevcut }: P
       ifsKaynakEkle(e, set, { projeksiyon: s.kaynakAd, ekAlan: s.alan || undefined })
       setKaynakTip('ifs'); setSeciliProjeksiyon(s.kaynakAd); setEntityAra(''); setSeciliEntity(e); setArama('')
     } catch (e) { setSolHata(e instanceof Error ? e.message : String(e)) }
+  }
+
+  // ── Katalog değerleri (rapor_katalog_deger) ───────────────────────────
+  /** Alanın değerlerini aç: enum değerleri katalogdan gelir; yoksa elle eklenebilir. */
+  async function degerleriAc(alan: string, alanEtiket: string | null) {
+    if (!seciliEntity) return
+    setDegerlerAlani({ entity: seciliEntity.entity, alan, alanEtiket })
+    setDegerSatirlari([]); setYeniDeger(''); setDegerDurum({ yukleniyor: true })
+    try {
+      const d = await getJson<{ degerler: { deger: string; etiket: string | null; kaynak: string }[]; not?: string }>(`/api/raporlar/katalog/degerler?kaynakAd=${encodeURIComponent(seciliProjeksiyon)}&entity=${encodeURIComponent(seciliEntity.entity)}&alan=${encodeURIComponent(alan)}`)
+      setDegerSatirlari(d.degerler.map((x) => ({ deger: x.deger, etiket: x.etiket ?? '', kaynak: x.kaynak })))
+      setDegerDurum({ not: d.not ?? null })
+    } catch (e) { setDegerDurum({ hata: e instanceof Error ? e.message : String(e) }) }
+  }
+
+  /** AI önerileri kutulara yazılır — KAYDEDİLMEZ. Elle düzeltilmiş (ELLE) satırların üzerine yazılmaz. */
+  async function degerleriAiDoldur() {
+    if (!degerlerAlani) return
+    setDegerDurum((d) => ({ ...d, aiCalisiyor: true, hata: null }))
+    try {
+      const r = await fetch('/api/raporlar/katalog/degerler/ai', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kaynakAd: seciliProjeksiyon, entity: degerlerAlani.entity, alan: degerlerAlani.alan }) })
+      const d = await r.json()
+      if (!r.ok) throw new Error(d.error ?? `HTTP ${r.status}`)
+      const oneriler: Record<string, string> = d.cevriler?.[`${seciliProjeksiyon}|${degerlerAlani.entity}|${degerlerAlani.alan}`] ?? {}
+      const sayi = Object.keys(oneriler).length
+      setDegerSatirlari((l) => l.map((x) => (x.kaynak === 'ELLE' && x.etiket ? x : oneriler[x.deger] ? { ...x, etiket: oneriler[x.deger], kaynak: 'AI', degisti: true } : x)))
+      setDegerDurum((s2) => ({ ...s2, aiCalisiyor: false, not: sayi ? `${sayi} öneri dolduruldu — kontrol edip Kaydet deyin.` : (d.not ?? 'Yeni öneri gelmedi.') }))
+    } catch (e) { setDegerDurum((s2) => ({ ...s2, aiCalisiyor: false, hata: e instanceof Error ? e.message : String(e) })) }
+  }
+
+  async function degerleriKaydet() {
+    if (!degerlerAlani) return
+    setDegerDurum((d) => ({ ...d, kaydediliyor: true, hata: null }))
+    try {
+      const r = await fetch('/api/raporlar/katalog/degerler', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          kaynakAd: seciliProjeksiyon, entity: degerlerAlani.entity, alan: degerlerAlani.alan, eksikleriSil: true,
+          // Elle değiştirilen satır 'ELLE' olur → sonraki AI doldurmaları üzerine yazmaz.
+          degerler: degerSatirlari.map((x) => ({ deger: x.deger, etiket: x.etiket.trim() || null, kaynak: x.degisti && x.kaynak !== 'AI' ? 'ELLE' : (x.kaynak as 'ENUM' | 'AI' | 'ELLE') })),
+        }),
+      })
+      const d = await r.json()
+      if (!r.ok) throw new Error(d.error ?? `HTTP ${r.status}`)
+      setDegerSatirlari((d.degerler as { deger: string; etiket: string | null; kaynak: string }[]).map((x) => ({ deger: x.deger, etiket: x.etiket ?? '', kaynak: x.kaynak })))
+      setDegerDurum({ not: 'Kaydedildi.' })
+    } catch (e) { setDegerDurum((s2) => ({ ...s2, kaydediliyor: false, hata: e instanceof Error ? e.message : String(e) })) }
+    finally { setDegerDurum((s2) => ({ ...s2, kaydediliyor: false })) }
+  }
+
+  /** Veri setindeki TÜM IFS kaynaklarının enum alanları için tek seferde AI çevirisi (onaylı). */
+  async function topluAiCalistir() {
+    setTopluAi({ acik: true, calisiyor: true })
+    try {
+      // Kaynak takma adı → projeksiyon; alan adları çıktı eşlemesinden (kaynak.alan) türetilir.
+      const hedefler: { kaynakAd: string; entity: string; alan: string }[] = []
+      for (const k of kaynaklar) {
+        if (k.tip !== 'ifs-odata') continue
+        const e = await getJson<{ entityler: Entity[] }>(`/api/raporlar/katalog/entityler?projeksiyon=${encodeURIComponent(k.projeksiyon)}&ara=`)
+        const entity = e.entityler.find((x) => x.entitySetleri.includes(k.entitySet))?.entity
+        if (!entity) continue
+        for (const alan of k.select ?? []) hedefler.push({ kaynakAd: k.projeksiyon, entity, alan })
+      }
+      if (!hedefler.length) { setTopluAi({ acik: true, calisiyor: false, sonuc: 'IFS kaynağı/alanı bulunamadı.' }); return }
+      const r = await fetch('/api/raporlar/katalog/degerler/ai', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ alanlar: hedefler.slice(0, 40) }) })
+      const d = await r.json()
+      if (!r.ok) throw new Error(d.error ?? `HTTP ${r.status}`)
+      // Öneriler doğrudan kaydedilir (toplu akışta tek tek onay pratik değil); kaynak='AI', ELLE satırlar korunur.
+      let kaydedilen = 0
+      for (const [anahtar, cevri] of Object.entries(d.cevriler as Record<string, Record<string, string>>)) {
+        const [kaynakAd, entity, alan] = anahtar.split('|')
+        const mevcut = await getJson<{ degerler: { deger: string; etiket: string | null; kaynak: string }[] }>(`/api/raporlar/katalog/degerler?kaynakAd=${encodeURIComponent(kaynakAd)}&entity=${encodeURIComponent(entity)}&alan=${encodeURIComponent(alan)}`)
+        const govde = mevcut.degerler.map((x) => (x.kaynak === 'ELLE' && x.etiket ? { deger: x.deger, etiket: x.etiket, kaynak: 'ELLE' as const } : cevri[x.deger] ? { deger: x.deger, etiket: cevri[x.deger], kaynak: 'AI' as const } : { deger: x.deger, etiket: x.etiket, kaynak: (x.kaynak as 'ENUM' | 'AI' | 'ELLE') }))
+        const pr = await fetch('/api/raporlar/katalog/degerler', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kaynakAd, entity, alan, degerler: govde }) })
+        if (pr.ok) kaydedilen += Object.keys(cevri).length
+      }
+      setTopluAi({ acik: true, calisiyor: false, sonuc: `${kaydedilen} değer etiketlendi (${d.gonderilenDeger ?? 0} gönderildi, ${d.atlanan ?? 0} atlandı).` })
+    } catch (e) { setTopluAi({ acik: true, calisiyor: false, sonuc: e instanceof Error ? e.message : String(e) }) }
   }
 
   /** Türkçe etiket kaydet (rapor.katalog). Boş → siler. */
@@ -682,7 +766,10 @@ export default function VeriSetiTasarimClient({ katalogYukleyebilir, mevcut }: P
                                           <span className="truncate flex-1">{a.anahtarMi ? '🔑 ' : ''}{a.alan}{a.etiket ? <span className="font-sans text-slate-600"> — {a.etiket}</span> : null} <span className="opacity-60">{a.veriTipi}</span></span>
                                         )}
                                         {katalogYukleyebilir && etiketDuzenle?.alan !== a.alan && (
-                                          <button type="button" className="opacity-0 group-hover/alan:opacity-100 text-muted-foreground hover:text-foreground shrink-0" title="Türkçe etiket" onClick={() => setEtiketDuzenle({ alan: a.alan, metin: a.etiket ?? '' })}><Pencil className="h-3 w-3" /></button>
+                                          <>
+                                            <button type="button" className="opacity-0 group-hover/alan:opacity-100 text-muted-foreground hover:text-foreground shrink-0" title="Türkçe etiket" onClick={() => setEtiketDuzenle({ alan: a.alan, metin: a.etiket ?? '' })}><Pencil className="h-3 w-3" /></button>
+                                            <button type="button" className="opacity-0 group-hover/alan:opacity-100 text-muted-foreground hover:text-foreground shrink-0" title="Değerler ve Türkçe karşılıkları" onClick={() => degerleriAc(a.alan, a.etiket ?? null)}><List className="h-3 w-3" /></button>
+                                          </>
                                         )}
                                       </div>
                                     ))}
@@ -734,7 +821,12 @@ export default function VeriSetiTasarimClient({ katalogYukleyebilir, mevcut }: P
         {/* ORTA — Kaynaklar ve birleştirme */}
         <div className="space-y-4 min-w-0">
           <Card>
-            <CardHeader className="pb-2"><CardTitle className="text-base">Kaynaklar <span className="text-muted-foreground font-normal text-sm">({kaynaklar.length})</span></CardTitle></CardHeader>
+            <CardHeader className="pb-2 flex-row items-center justify-between space-y-0">
+              <CardTitle className="text-base">Kaynaklar <span className="text-muted-foreground font-normal text-sm">({kaynaklar.length})</span></CardTitle>
+              {katalogYukleyebilir && kaynaklar.some((k) => k.tip === 'ifs-odata') && (
+                <Button size="sm" variant="outline" className="h-7 text-xs" title="Seçili alanların katalog değerlerini AI ile Türkçeleştir" onClick={() => setTopluAi({ acik: true })}><Sparkles className="h-3 w-3 mr-1" />Tümünü AI ile doldur</Button>
+              )}
+            </CardHeader>
             <CardContent className="space-y-3">
               {kaynaklar.length === 0 && <p className="text-sm text-muted-foreground">Sol panelden bir entity veya tablo ekleyin. İlk kaynak taban kaynaktır; diğerleri ona birleştirilir.</p>}
               {kaynaklar.map((k, i) => {
@@ -949,6 +1041,7 @@ export default function VeriSetiTasarimClient({ katalogYukleyebilir, mevcut }: P
                         <tbody>{onizleme.satirlar.map((s, i) => <tr key={i} className="border-t">{onizlemeKolonlari.map((c) => <td key={c} className="px-2 py-0.5 max-w-[160px] truncate" title={hucreMetni(s[c])}>{hucreMetni(s[c])}</td>)}</tr>)}</tbody>
                       </table>
                     </div>
+                    {/* buraya taşındı: değerler dialogu bileşenin sonunda */}
                     <Dialog open={onizlemeBuyuk} onOpenChange={setOnizlemeBuyuk}>
                       <DialogContent className="max-w-[96vw] w-[96vw] h-[92vh] flex flex-col p-4 gap-3">
                         <DialogHeader className="shrink-0">
@@ -978,6 +1071,75 @@ export default function VeriSetiTasarimClient({ katalogYukleyebilir, mevcut }: P
           </CardContent>
         </Card>
       </div>
+
+      {/* Değerler dialogu: ham değer + Türkçe etiket; AI ile toplu doldur, elle düzelt, kaydet. */}
+      <Dialog open={!!degerlerAlani} onOpenChange={(a) => { if (!a) { setDegerlerAlani(null); setDegerDurum({}) } }}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-base">
+              Değerler — <span className="font-mono">{degerlerAlani?.entity}.{degerlerAlani?.alan}</span>
+              {degerlerAlani?.alanEtiket ? <span className="text-muted-foreground font-normal"> · {degerlerAlani.alanEtiket}</span> : null}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2 text-sm">
+            <p className="text-xs text-muted-foreground">Etiket YALNIZ gösterimde kullanılır: tablo, grup başlığı, grafik, Excel ve PDF. Ham veri ve süzgeç değerleri değişmez.</p>
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="outline" className="h-7 text-xs" disabled={degerDurum.aiCalisiyor || !degerSatirlari.length} onClick={degerleriAiDoldur}>
+                {degerDurum.aiCalisiyor ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <Sparkles className="h-3 w-3 mr-1" />}AI ile doldur
+              </Button>
+              <span className="text-[11px] text-muted-foreground">Elle düzelttiğiniz satırların üzerine yazılmaz.</span>
+              {degerDurum.not && <span className="ml-auto text-[11px] text-green-700">{degerDurum.not}</span>}
+            </div>
+            {degerDurum.hata && <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{degerDurum.hata}</div>}
+            {degerDurum.yukleniyor ? (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground py-6 justify-center"><Loader2 className="h-4 w-4 animate-spin" />Yükleniyor…</div>
+            ) : (
+              <div className="max-h-[50vh] overflow-y-auto border rounded">
+                <table className="w-full text-xs">
+                  <thead className="bg-muted sticky top-0"><tr><th className="text-left px-2 py-1 font-medium">Ham değer</th><th className="text-left px-2 py-1 font-medium">Türkçe etiket</th><th className="px-2 py-1 w-16 font-medium">Kaynak</th><th className="w-8" /></tr></thead>
+                  <tbody>
+                    {degerSatirlari.map((x, i) => (
+                      <tr key={x.deger} className="border-t">
+                        <td className="px-2 py-1 font-mono">{x.deger}</td>
+                        <td className="px-1 py-0.5"><Input className="h-7 text-xs" value={x.etiket} placeholder="—" onChange={(e) => setDegerSatirlari((l) => l.map((y, j) => (j === i ? { ...y, etiket: e.target.value, degisti: true, kaynak: y.kaynak === 'AI' && e.target.value !== y.etiket ? 'ELLE' : y.kaynak } : y)))} /></td>
+                        <td className="px-2 py-1 text-center"><span className={`text-[10px] rounded-full px-1.5 py-px border ${x.kaynak === 'ELLE' ? 'border-[#1B4F72] text-[#1B4F72]' : x.kaynak === 'AI' ? 'border-[#2AA5C7] text-[#2AA5C7]' : 'border-slate-300 text-slate-500'}`}>{x.kaynak}</span></td>
+                        <td className="px-1"><button type="button" className="text-red-600 hover:text-red-700" title="Satırı kaldır" onClick={() => setDegerSatirlari((l) => l.filter((_, j) => j !== i))}><Trash2 className="h-3 w-3" /></button></td>
+                      </tr>
+                    ))}
+                    {degerSatirlari.length === 0 && <tr><td colSpan={4} className="px-2 py-3 text-center text-muted-foreground">Değer yok — enum olmayan alanlara elle değer ekleyebilirsiniz.</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <div className="flex items-center gap-2">
+              <Input className="h-7 text-xs w-56 font-mono" placeholder="Yeni ham değer ekle…" value={yeniDeger} onChange={(e) => setYeniDeger(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && yeniDeger.trim()) { setDegerSatirlari((l) => (l.some((x) => x.deger === yeniDeger.trim()) ? l : [...l, { deger: yeniDeger.trim(), etiket: '', kaynak: 'ELLE', degisti: true }])); setYeniDeger('') } }} />
+              <Button size="sm" variant="outline" className="h-7 text-xs" disabled={!yeniDeger.trim()} onClick={() => { setDegerSatirlari((l) => (l.some((x) => x.deger === yeniDeger.trim()) ? l : [...l, { deger: yeniDeger.trim(), etiket: '', kaynak: 'ELLE', degisti: true }])); setYeniDeger('') }}><Plus className="h-3 w-3 mr-1" />Ekle</Button>
+              <Button size="sm" className="h-7 text-xs ml-auto" style={{ backgroundColor: NAVY }} disabled={degerDurum.kaydediliyor} onClick={degerleriKaydet}>
+                {degerDurum.kaydediliyor ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <Save className="h-3 w-3 mr-1" />}Kaydet
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Toplu AI onayı */}
+      <Dialog open={topluAi.acik} onOpenChange={(a) => setTopluAi({ acik: a })}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader><DialogTitle className="text-base">Tüm değerleri AI ile doldur</DialogTitle></DialogHeader>
+          <div className="space-y-3 text-sm">
+            <p>Bu veri setindeki IFS kaynaklarının <b>seçili alanlarının</b> katalog değerleri Claude ile Türkçeleştirilir ve kaydedilir.</p>
+            <p className="text-xs text-muted-foreground">Elle düzeltilmiş (ELLE) etiketlere dokunulmaz. Etiketler yalnız gösterimi değiştirir; ham veri ve süzgeçler aynı kalır.</p>
+            {topluAi.sonuc && <div className="rounded-md border bg-muted px-3 py-2 text-xs">{topluAi.sonuc}</div>}
+            <div className="flex items-center gap-2 justify-end">
+              <Button size="sm" variant="outline" onClick={() => setTopluAi({ acik: false })}>Kapat</Button>
+              <Button size="sm" style={{ backgroundColor: NAVY }} disabled={topluAi.calisiyor} onClick={topluAiCalistir}>
+                {topluAi.calisiyor ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Sparkles className="h-4 w-4 mr-1.5" />}Başlat
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

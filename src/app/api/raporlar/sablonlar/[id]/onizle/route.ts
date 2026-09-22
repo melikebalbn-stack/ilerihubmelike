@@ -27,7 +27,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const govde = Govde.safeParse(await req.json().catch(() => null))
   if (!govde.success) return NextResponse.json({ error: 'Geçersiz istek gövdesi' }, { status: 400 })
 
-  if (govde.data.icerik && etkilesimliMi(govde.data.icerik)) return NextResponse.json({ error: 'Etkileşimli şablon için önizleme /api/raporlar/[id]/veri ile yapılır' }, { status: 400 })
+  if (govde.data.icerik && etkilesimliMi(govde.data.icerik)) return NextResponse.json({ error: 'AI Rapor önizlemesi /api/raporlar/[id]/veri ile yapılır' }, { status: 400 })
   let icerik: SablonIcerik | null = (govde.data.icerik as SablonIcerik | undefined) ?? null
   let veriSetiId = govde.data.veriSetiId
   let kod = 'ONIZLEME'
@@ -35,7 +35,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const s = await prisma.raporSablon.findUnique({ where: { id }, select: { kod: true, icerik: true, veriSetiId: true } })
     if (!s) return NextResponse.json({ error: 'Şablon bulunamadı' }, { status: 404 })
     kod = s.kod
-    if (etkilesimliMi(s.icerik)) return NextResponse.json({ error: 'Etkileşimli şablon için önizleme /api/raporlar/[id]/veri ile yapılır' }, { status: 400 })
+    if (etkilesimliMi(s.icerik)) return NextResponse.json({ error: 'AI Rapor önizlemesi /api/raporlar/[id]/veri ile yapılır' }, { status: 400 })
     icerik ??= s.icerik as unknown as SablonIcerik
     veriSetiId ??= s.veriSetiId
   }

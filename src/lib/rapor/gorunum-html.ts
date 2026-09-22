@@ -18,6 +18,8 @@ export interface GorunumHtmlBaglam extends RenderBaglam {
   parametreTanimlari?: SablonParametre[]
   /** Kolon → başlık (ekrandaki etiketle aynı). */
   basliklar?: Record<string, string>
+  /** alan → (ham değer → Türkçe gösterim); tablo hücresi, grup başlığı ve grafik etiketinde kullanılır. */
+  degerEtiketleri?: Record<string, Record<string, string>>
 }
 
 function kosulluSinif(k: GorunumKolon, v: unknown): string {
@@ -44,7 +46,7 @@ export function cubukGrafikSvg(veri: { etiket: string; deger: number }[], bicim?
 }
 
 export function gorunumHtml(baslik: string, altBaslik: string | undefined, satirlar: Satir[], gorunum: Gorunum, baglam: GorunumHtmlBaglam = {}): { html: string; yon: 'portrait' | 'landscape'; satirSayisi: number } {
-  const sonuc = gorunumUygula(satirlar, gorunum)
+  const sonuc = gorunumUygula(satirlar, gorunum, { degerEtiketleri: baglam.degerEtiketleri })
   const grupSet = new Set((gorunum.gruplar ?? []).slice(0, 2))
   const kolonlar = gorunum.kolonlar.filter((k) => k.gorunur && !grupSet.has(k.alan))
   const ad = (alan: string) => baglam.basliklar?.[alan] ?? gorunum.kolonlar.find((k) => k.alan === alan)?.baslik ?? alan
@@ -61,7 +63,8 @@ export function gorunumHtml(baslik: string, altBaslik: string | undefined, satir
   if (gorunum.siralama?.alan) ek.push(['Sıralama', `${ad(gorunum.siralama.alan)} ${gorunum.siralama.yon === 1 ? '▲' : '▼'}`])
   const meta = metaSatiri(baglam.parametreTanimlari, baglam.parametreler, baglam, sonuc.satirlar.length, ek)
 
-  const hucre = (k: GorunumKolon, v: unknown) => `<td class="${hiza(k)}${kosulluSinif(k, v)}">${esc(bicimle(v, k.bicim))}</td>`
+  const gosterim = (alan: string, v: unknown) => baglam.degerEtiketleri?.[alan]?.[String(v)] ?? bicimle(v, gorunum.kolonlar.find((k) => k.alan === alan)?.bicim)
+  const hucre = (k: GorunumKolon, v: unknown) => `<td class="${hiza(k)}${kosulluSinif(k, v)}">${esc(gosterim(k.alan, v))}</td>`
   const detay = (rows: Satir[]) => rows.map((s) => `<tr>${kolonlar.map((k) => hucre(k, s[k.alan])).join('')}</tr>`).join('\n')
   const toplamSatiri = (etiket: string, t: Record<string, number | null>, sinif: string) =>
     `<tr class="${sinif}">${kolonlar.map((k, i) => { const v = k.toplam ? t[k.alan] : undefined; const m = v === undefined || v === null ? (i === 0 ? etiket : '') : k.toplam === 'say' ? String(v) : bicimle(v, k.bicim); return `<td class="${i === 0 && v == null ? 'h-sol' : hiza(k)}${k.toplam && k.toplam !== 'say' ? kosulluSinif(k, v) : ''}">${esc(m)}</td>` }).join('')}</tr>`

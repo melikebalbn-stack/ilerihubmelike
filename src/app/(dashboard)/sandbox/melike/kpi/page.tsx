@@ -537,9 +537,17 @@ function AksiyonFormDialog({
   )
 }
 
-function hedefTutuldu(kpi: Kpi, target: number | null, actual: number | null): boolean | null {
-  if (target == null || actual == null) return null
-  return kpi.direction === 'lower_is_better' ? actual <= target : actual >= target
+// Hücre renklendirmesi için 3 kademeli: tam/üstünde tutturma yeşil, hedefe yakın
+// (%90 ve üzeri başarı) sarı, daha uzak kırmızı — ikili yeşil/kırmızıda %96 gibi
+// "neredeyse tutturulmuş" bir ay da kırmızı görünüyordu, bu daha gerçekçi.
+const YAKIN_ESIK = 90 // % — bu ve üzeri "yakın" (sarı) sayılır, altı "kırmızı"
+
+function basariSeviyesi(kpi: Kpi, target: number | null, actual: number | null): 'iyi' | 'yakin' | 'kotu' | null {
+  if (target == null || actual == null || target === 0) return null
+  const basariOrani = kpi.direction === 'lower_is_better' ? (target / actual) * 100 : (actual / target) * 100
+  if (basariOrani >= 100) return 'iyi'
+  if (basariOrani >= YAKIN_ESIK) return 'yakin'
+  return 'kotu'
 }
 
 function sayiFormat(n: number | null): string {
@@ -774,17 +782,20 @@ function KpiVeriTablosu({
                         )
                       : ortYillar.map(([y]) => <td key={y} className="p-2 bg-slate-50 border-l border-slate-200" />)}
                     {aylikVeri.map((v, i) => {
-                      const tutuldu = hedefTutuldu(kpi, v.target, v.actual)
+                      const seviye = basariSeviyesi(kpi, v.target, v.actual)
+                      const renkler = {
+                        iyi: { bg: '#bbf7d0', fg: '#14532d' },
+                        yakin: { bg: '#fef3c7', fg: '#78350f' },
+                        kotu: { bg: '#fecaca', fg: '#7f1d1d' },
+                      } as const
+                      const renk = seviye ? renkler[seviye] : { bg: '#f8fafc', fg: '#475569' }
                       return (
                         <DuzenlenebilirHucre
                           key={i}
                           deger={v.actual}
                           onKaydet={(d) => hucreKaydet(yil, i + 1, 'actual', d)}
                           className="p-2 text-center font-semibold border-l border-slate-200"
-                          style={{
-                            backgroundColor: tutuldu == null ? '#f8fafc' : tutuldu ? '#bbf7d0' : '#fecaca',
-                            color: tutuldu == null ? '#475569' : tutuldu ? '#14532d' : '#7f1d1d',
-                          }}
+                          style={{ backgroundColor: renk.bg, color: renk.fg }}
                           unit={kpi.unit}
                         />
                       )

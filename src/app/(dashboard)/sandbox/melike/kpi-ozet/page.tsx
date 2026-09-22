@@ -9,13 +9,23 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 import { Loader2, LayoutDashboard } from 'lucide-react'
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+} from 'recharts'
 
 const NAVY = '#1B4F72'
 const IK_ORG_UNIT_ID = 'cmrzg1kr600037jpe4ge6rxe0'
+const CEYREK_RENKLERI = ['#1B4F72', '#16a34a', '#d97706', '#dc2626', '#7c3aed', '#0891b2', '#be185d', '#65a30d', '#ea580c', '#4338ca']
 
 interface Departman {
   id: string
   name: string
+}
+
+interface DepartmanCeyrekTrendi {
+  orgUnitId: string
+  name: string
+  ceyrekler: { ceyrek: number; oran: number | null }[]
 }
 
 interface OzetKpiSirasi {
@@ -50,6 +60,7 @@ export default function KpiOzetPage() {
   const [ozet, setOzet] = useState<DepartmanOzeti[] | null>(null)
   const [mevcutYillar, setMevcutYillar] = useState<number[]>([])
   const [secilenYil, setSecilenYil] = useState<number | null>(null)
+  const [ceyrekTrend, setCeyrekTrend] = useState<DepartmanCeyrekTrendi[] | null>(null)
 
   useEffect(() => {
     fetch('/api/sandbox/melike/kpi/departmanlar')
@@ -70,6 +81,14 @@ export default function KpiOzetPage() {
         if (secilenYil == null && d.aktifYil != null) setSecilenYil(d.aktifYil)
       })
       .catch(() => setOzet([]))
+  }, [secilenYil])
+
+  useEffect(() => {
+    if (secilenYil == null) return
+    fetch(`/api/sandbox/melike/kpi/ceyrek-trend?yil=${secilenYil}`)
+      .then(res => res.json())
+      .then(d => setCeyrekTrend(d.trend ?? []))
+      .catch(() => setCeyrekTrend([]))
   }, [secilenYil])
 
   const secilenOzet = useMemo(
@@ -148,6 +167,73 @@ export default function KpiOzetPage() {
               )}
             </CardContent>
           </Card>
+
+          {ceyrekTrend && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base">{secilenDepartman?.name} — Çeyreklik Gidişat</CardTitle>
+                  <p className="text-xs text-muted-foreground">{secilenYil} yılı, çeyrek çeyrek genel başarı — iyileşme/kötüleşme trendi</p>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={220}>
+                    <LineChart
+                      data={
+                        ceyrekTrend.find(d => d.orgUnitId === secilenDepartmanId)?.ceyrekler.map(c => ({
+                          ad: `Ç${c.ceyrek}`, Oran: c.oran,
+                        })) ?? []
+                      }
+                      margin={{ left: 4, right: 8, top: 4, bottom: 4 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="ad" tick={{ fontSize: 12 }} />
+                      <YAxis tick={{ fontSize: 12 }} domain={[0, 100]} />
+                      <Tooltip formatter={(v: number) => `%${v}`} />
+                      <Line type="monotone" dataKey="Oran" stroke={NAVY} strokeWidth={2} dot={{ r: 4 }} connectNulls />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base">Tüm Departmanlar — Karşılaştırma</CardTitle>
+                  <p className="text-xs text-muted-foreground">{secilenYil} yılı, çeyreklere göre tüm departmanlar bir arada</p>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={220}>
+                    <LineChart
+                      data={[1, 2, 3, 4].map(ceyrek => {
+                        const satir: Record<string, string | number | null> = { ad: `Ç${ceyrek}` }
+                        ceyrekTrend.forEach(d => {
+                          satir[d.name] = d.ceyrekler.find(c => c.ceyrek === ceyrek)?.oran ?? null
+                        })
+                        return satir
+                      })}
+                      margin={{ left: 4, right: 8, top: 4, bottom: 4 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="ad" tick={{ fontSize: 12 }} />
+                      <YAxis tick={{ fontSize: 12 }} domain={[0, 100]} />
+                      <Tooltip formatter={(v: number) => `%${v}`} />
+                      <Legend wrapperStyle={{ fontSize: 10 }} />
+                      {ceyrekTrend.map((d, i) => (
+                        <Line
+                          key={d.orgUnitId}
+                          type="monotone"
+                          dataKey={d.name}
+                          stroke={CEYREK_RENKLERI[i % CEYREK_RENKLERI.length]}
+                          strokeWidth={d.orgUnitId === secilenDepartmanId ? 3 : 1.5}
+                          dot={{ r: 3 }}
+                          connectNulls
+                        />
+                      ))}
+                    </LineChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+            </div>
+          )}
 
           <Card>
             <CardHeader className="pb-2">

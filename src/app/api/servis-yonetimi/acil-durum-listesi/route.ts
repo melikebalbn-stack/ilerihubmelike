@@ -72,11 +72,11 @@ async function erisimIziYaz(args: {
     await logAuditEvent({
       action: 'SERVIS_ACIL_DURUM_GORUNTULENDI',
       actorId: args.actorId,
-      // NOT: ayrı bir 'SERVIS' hedef tipi daha temiz olurdu ama o,
-      // paylaşılan src/lib/audit-log.ts'e dokunmayı gerektirir (CLAUDE.md:
-      // önce sor). Erişilen şey personel verisi olduğu için 'PERSONNEL'
-      // kullanıldı; güzergâh/dilim bağlamı details'te.
-      targetType: 'PERSONNEL',
+      // Hedef = güzergâh: "X güzergâhının acil listesine kim baktı" sorgusu
+      // @@index([targetType, targetId]) üzerinden doğrudan çalışsın ve gerçek
+      // PERSONNEL olaylarını kirletmesin.
+      targetType: 'SERVIS',
+      targetId: args.guzergahId,
       details: {
         guzergahId: args.guzergahId,
         guzergahKod: args.sonuc.guzergah.kod,

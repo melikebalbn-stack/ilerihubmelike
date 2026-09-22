@@ -185,6 +185,9 @@ describe('GET /api/servis-yonetimi/acil-durum-listesi — erişim izi', () => {
     const cagri = mocks.logAuditEvent.mock.calls[0][0]
     expect(cagri.action).toBe('SERVIS_ACIL_DURUM_GORUNTULENDI')
     expect(cagri.actorId).toBe('u1')
+    // Hedef güzergâh — PERSONNEL altında kaybolmasın, indexle sorgulanabilsin.
+    expect(cagri.targetType).toBe('SERVIS')
+    expect(cagri.targetId).toBe('g1')
     expect(cagri.details).toMatchObject({
       guzergahId: 'g1',
       guzergahKod: 'G1',

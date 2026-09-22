@@ -91,6 +91,11 @@ export type AuditTargetType =
   | 'IZIN_BELGE'
   // Erken dönüş kuyruğu (Faz 4). action: IZIN_ERKEN_DONUS_TESPIT / _ONAYLANDI / _REDDEDILDI.
   | 'IZIN_ERKEN_DONUS'
+  // Servis yönetimi. targetId = ilgili güzergâh (ServisGuzergah.id) — böylece
+  // @@index([targetType, targetId]) ile "X güzergâhında ne oldu" sorgulanabilir.
+  // İlk kullanan: MASTER madde 49 acil durum listesi görüntüleme
+  // (action: SERVIS_ACIL_DURUM_GORUNTULENDI).
+  | 'SERVIS'
 
 export interface AuditLogParams {
   action: string

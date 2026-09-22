@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { sendEmail } from '@/lib/email'
+import { renderEmail, dataTable, logoAttachments } from '@/lib/email-templates/layout'
 
 export const dynamic = 'force-dynamic'
 
@@ -38,31 +39,23 @@ function esc(s: string): string {
 }
 
 function buildHtml(etiket: string, satirlar: OzetSatir[]): string {
-  const rows = satirlar
-    .map(
-      (r) =>
-        `<tr>` +
-        `<td style="padding:6px 10px;border:1px solid #ddd;">${esc(r.sicilNo || '-')}</td>` +
-        `<td style="padding:6px 10px;border:1px solid #ddd;">${esc(r.adSoyad)}</td>` +
-        `<td style="padding:6px 10px;border:1px solid #ddd;">${esc(r.bolum || '-')}</td>` +
-        `<td style="padding:6px 10px;border:1px solid #ddd;">${esc(r.girisSaati || '-')}</td>` +
-        `<td style="padding:6px 10px;border:1px solid #ddd;">${esc(r.cikisSaati || '-')}</td>` +
-        `</tr>`
-    )
-    .join('')
-  return (
-    `<div style="font-family:Arial,sans-serif;color:#222;">` +
-    `<h2 style="color:#1B4F72;">Toplu Kart Okutamama — Günlük Özet</h2>` +
-    `<p><strong>Tarih:</strong> ${esc(etiket)} &nbsp;|&nbsp; <strong>Toplam:</strong> ${satirlar.length} kayıt</p>` +
-    `<table style="border-collapse:collapse;font-size:13px;">` +
-    `<thead><tr style="background:#1B4F72;color:#fff;">` +
-    `<th style="padding:6px 10px;border:1px solid #ddd;">Sicil No</th>` +
-    `<th style="padding:6px 10px;border:1px solid #ddd;">Ad Soyad</th>` +
-    `<th style="padding:6px 10px;border:1px solid #ddd;">Bölüm</th>` +
-    `<th style="padding:6px 10px;border:1px solid #ddd;">Giriş</th>` +
-    `<th style="padding:6px 10px;border:1px solid #ddd;">Çıkış</th>` +
-    `</tr></thead><tbody>${rows}</tbody></table></div>`
-  )
+  const { html } = renderEmail({
+    module: 'İnsan Varlıkları',
+    title: 'Toplu Kart Okutamama — Günlük Özet',
+    subtitle: `${etiket} · ${satirlar.length} kayıt`,
+    afterHtml: dataTable(
+      ['Sicil No', 'Ad Soyad', 'Bölüm', 'Giriş', 'Çıkış'],
+      satirlar.map((r) => [
+        esc(r.sicilNo || '-'),
+        esc(r.adSoyad),
+        esc(r.bolum || '-'),
+        esc(r.girisSaati || '-'),
+        esc(r.cikisSaati || '-'),
+      ]),
+    ),
+    width: 800,
+  })
+  return html
 }
 
 function buildText(etiket: string, satirlar: OzetSatir[]): string {
@@ -117,7 +110,7 @@ async function handle(req: NextRequest) {
     const html = buildHtml(etiket, satirlar)
 
     // sendEmail içinde NOTIFY_TEST_MODE / MAIL_RECIPIENT_OVERRIDE korumaları geçerli.
-    const res = await sendEmail([{ email: hrEmail, name: 'İK' }], subject, text, html)
+    const res = await sendEmail([{ email: hrEmail, name: 'İK' }], subject, text, html, logoAttachments())
 
     // SMTP hatasında 500 DÖNME — cron retry fırtınasını önlemek için loglanır,
     // 200 ile { sent:false } döner. Mail helper kendi backoff/koruması ne yapıyorsa o geçerli.

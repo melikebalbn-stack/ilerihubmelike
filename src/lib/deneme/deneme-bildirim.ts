@@ -10,16 +10,78 @@
 
 import { prisma } from '@/lib/prisma'
 import { sendEmail } from '@/lib/email'
+import { renderEmail, p, esc, logoAttachments, type EmailInfoRow } from '@/lib/email-templates/layout'
 import { denemeZinciriCoz } from '@/lib/deneme/deneme-zincir'
 import { adimSahibiRol } from '@/lib/deneme/deneme-yetki'
 import { denemeBildirimAcikMi, DENEME_BILDIRIM_ENV } from '@/lib/deneme/deneme-bayrak'
 import { sentetikMailMi } from '@/lib/bluecollar-email'
-import {
-  generateDenemeDegerlendiriciEmail,
-  generateDenemeEskalasyonEmail,
-  generateDenemeZincirHatasiEmail,
-} from '@/lib/email'
 import type { DenemeTur, DenemeDurum } from '@/generated/prisma'
+
+// ── Deneme değerlendirme e-posta içerikleri — ortak şablon (renderEmail) ──
+// Eskiden email.ts'te inline HTML üreten generateDeneme* fonksiyonları vardı;
+// İnsan Varlıkları modül yerleşimine taşındı, o fonksiyonlar silindi.
+type DenemeMailKisi = {
+  adSoyad: string
+  sicilNo: string | null
+  bolum: string
+  gorev: string
+  tur: string
+  hedefTarih: Date
+  gunKala: number
+  link: string
+}
+
+function denemeKisiSatirlari(k: DenemeMailKisi): EmailInfoRow[] {
+  const tarih = `${k.hedefTarih.toLocaleDateString('tr-TR')} (${k.gunKala <= 0 ? 'bugün' : `${k.gunKala} gün sonra`})`
+  return [
+    { label: 'Personel', value: `${esc(k.adSoyad)} (${esc(k.sicilNo ?? '-')})` },
+    { label: 'Bölüm', value: esc(k.bolum) },
+    { label: 'Görev', value: esc(k.gorev) },
+    { label: 'Değerlendirme tarihi', value: esc(tarih) },
+  ]
+}
+
+function generateDenemeDegerlendiriciEmail(k: DenemeMailKisi): { subject: string; body: string; html: string } {
+  const { html, text } = renderEmail({
+    module: 'İnsan Varlıkları',
+    title: `${k.tur} değerlendirmesi sizde`,
+    subtitle: `${k.adSoyad} · ${k.sicilNo ?? '-'}`,
+    bodyHtml: p(`<strong>${esc(k.tur)}</strong> değerlendirmesi sizin adımınızda bekliyor. 20 kriter, her biri 1–5 puan; geçerli not 60.`),
+    infoRows: denemeKisiSatirlari(k),
+    cta: { label: 'Formu Aç', url: k.link },
+  })
+  return { subject: `📋 ${k.tur} Değerlendirmesi Sizde — ${k.adSoyad}`, body: text, html }
+}
+
+function generateDenemeEskalasyonEmail(
+  k: DenemeMailKisi & { durum: string },
+): { subject: string; body: string; html: string } {
+  const { html, text } = renderEmail({
+    module: 'İnsan Varlıkları',
+    title: `${k.tur} değerlendirmesi gecikiyor`,
+    subtitle: `${k.adSoyad} · ${k.sicilNo ?? '-'}`,
+    bodyHtml: p(`<strong>${esc(k.tur)}</strong> değerlendirmesi henüz tamamlanmadı ve tarihe ${k.gunKala <= 0 ? 'ulaşıldı' : `${k.gunKala} gün kaldı`}.`),
+    infoRows: [...denemeKisiSatirlari(k), { label: 'Aşama', value: esc(k.durum) }],
+    cta: { label: 'Formu Aç', url: k.link },
+  })
+  return { subject: `⚠️ GECİKİYOR — ${k.tur} Değerlendirmesi: ${k.adSoyad}`, body: text, html }
+}
+
+function generateDenemeZincirHatasiEmail(
+  kayitlar: { sicilNo: string; adSoyad: string; tur: string; sebep: string }[],
+): { subject: string; body: string; html: string } {
+  const { html, text } = renderEmail({
+    module: 'İnsan Varlıkları',
+    title: 'Deneme değerlendirme formu açılamadı',
+    subtitle: `${kayitlar.length} personel`,
+    bodyHtml: p('Aşağıdaki personel için değerlendirme zinciri kurulamadığından form AÇILAMADI. Eksik veri tamamlanana kadar değerlendirme başlamayacaktır.'),
+    infoRows: kayitlar.map((r) => ({
+      label: `${r.adSoyad} (${r.sicilNo}) — ${r.tur}`,
+      value: esc(r.sebep),
+    })),
+  })
+  return { subject: `🚨 Deneme Değerlendirme Formu Açılamadı — ${kayitlar.length} personel`, body: text, html }
+}
 
 export type DenemeCronSonuc = {
   acilan: number
@@ -149,7 +211,7 @@ async function gonder(
   }
 
   const [mailRes, inAppRes] = await Promise.allSettled([
-    sendEmail([{ name: alici.name, email: alici.email }], konu, govde, html),
+    sendEmail([{ name: alici.name, email: alici.email }], konu, govde, html, logoAttachments()),
     prisma.notification.create({
       data: { userId: alici.userId, title: inAppBaslik, message: konu, type: 'INFO', link },
     }),
@@ -424,19 +486,19 @@ export async function denemeFormlariniIsle(args: {
       .map((m, i) => `${i + 1}. ${m.adSoyad} (${m.email}) — ${m.personel}`)
       .join('\n')
     const konu = `ℹ️ Deneme değerlendirme: ${bildirilecek.length} değerlendiriciye e-posta ULAŞMADI`
-    const govde = `Aşağıdaki değerlendiricilerin sistem hesabı gerçek bir posta kutusuna bağlı değil
-(mavi yaka giriş adresi). E-posta GÖNDERİLMEDİ; uygulama içi bildirim oluşturuldu.
-
-${satirlar}
-
-Bu kişiler ILERIHub'a giriş yaptıklarında bildirimi göreceklerdir. Kalıcı çözüm için
-kurumsal e-posta hesabı açılması gerekir.
-
---
-ILERIHub İnsan Varlıkları Yönetim Sistemi`
+    const { html: ulasmadiHtml, text: ulasmadiText } = renderEmail({
+      module: 'İnsan Varlıkları',
+      title: 'Bazı değerlendiricilere e-posta ulaşmadı',
+      subtitle: `${bildirilecek.length} değerlendirici`,
+      bodyHtml:
+        p('Aşağıdaki değerlendiricilerin sistem hesabı gerçek bir posta kutusuna bağlı değil (mavi yaka giriş adresi). E-posta GÖNDERİLMEDİ; uygulama içi bildirim oluşturuldu.') +
+        p(esc(satirlar).replace(/\n/g, '<br>')) +
+        p('Bu kişiler ILERIHub’a giriş yaptıklarında bildirimi göreceklerdir. Kalıcı çözüm için kurumsal e-posta hesabı açılması gerekir.'),
+      cta: { label: 'Deneme Değerlendirmeleri', url: `${base}/deneme` },
+    })
     let gitti = false
     for (const a of iv) {
-      const r = await gonder(a, konu, govde, govde.replace(/\n/g, '<br>'), `${base}/deneme`, 'Bildirim e-postası ulaşmadı')
+      const r = await gonder(a, konu, ulasmadiText, ulasmadiHtml, `${base}/deneme`, 'Bildirim e-postası ulaşmadı')
       if (r.mail || r.inApp) gitti = true
     }
     // Bildirim çıktıysa her VAKA için ayrı işaret — 14 gün boyunca tekrarlanmaz.

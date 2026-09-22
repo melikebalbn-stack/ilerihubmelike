@@ -15,17 +15,97 @@
  */
 
 import { prisma } from '@/lib/prisma'
-import {
-  sendEmail,
-  generateReviewCycleLaunchEmail,
-  generateReviewReminderEmail,
-  generateReviewOverdueEmail,
-} from '@/lib/email'
+import { sendEmail } from '@/lib/email'
+import { renderEmail, p, esc, logoAttachments } from '@/lib/email-templates/layout'
 import { sendPushToUser } from '@/lib/push-notifications'
 import { resolveHRRecipients, type HRRecipient } from '@/lib/hr-notifications'
 import { ReviewStatus, PerformanceCycleStatus } from '@/generated/prisma'
 
 export type ReminderEventType = 'CYCLE_LAUNCH' | 'DEADLINE_7' | 'DEADLINE_0' | 'OVERDUE'
+
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://hub.ilerigroup.com'
+
+function fmtDate(d: Date | string): string {
+  return new Date(d).toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' })
+}
+
+// ── Performans bildirim e-posta içerikleri — ortak şablon (renderEmail) ──
+// Eskiden email.ts'te inline HTML üreten generateReview* fonksiyonları vardı;
+// İnsan Varlıkları modül yerleşimine taşındı, o fonksiyonlar silindi.
+function buildCycleLaunchEmail(
+  cycle: { id: string; name: string; year: number; yearEndReviewEnd: Date | null },
+  recipientName: string,
+): { subject: string; body: string; html: string } {
+  const url = `${APP_URL}/strategic-hr/performance?cycle=${cycle.id}`
+  const deadlineStr = cycle.yearEndReviewEnd ? fmtDate(cycle.yearEndReviewEnd) : 'belirlenmedi'
+  const { html, text } = renderEmail({
+    module: 'İnsan Varlıkları',
+    title: 'Performans değerlendirme başladı',
+    subtitle: cycle.name,
+    bodyHtml:
+      p(`Sayın ${esc(recipientName)},`) +
+      p(`<strong>${esc(cycle.name)}</strong> dönemi başlatıldı. Değerlendirmenizi sayfa üzerinden tamamlayabilirsiniz.`),
+    infoRows: [
+      { label: 'Dönem', value: esc(cycle.name) },
+      { label: 'Son tamamlanma', value: esc(deadlineStr) },
+    ],
+    cta: { label: 'Değerlendirmeyi Aç', url },
+  })
+  return { subject: `Performans Değerlendirme Dönemi Başladı: ${cycle.name}`, body: text, html }
+}
+
+function buildReminderEmail(
+  review: { cycleId: string; cycleName: string; deadline: Date | string },
+  daysRemaining: number,
+  recipientName: string,
+): { subject: string; body: string; html: string } {
+  const url = `${APP_URL}/strategic-hr/performance?cycle=${review.cycleId}`
+  const deadlineStr = fmtDate(review.deadline)
+  const urgent = daysRemaining === 0
+  const subject = urgent
+    ? `SON GÜN: Performans Değerlendirme Tamamlanmalı (${review.cycleName})`
+    : `Hatırlatma: ${daysRemaining} gün içinde performans değerlendirme tamamlanmalı`
+  const { html, text } = renderEmail({
+    module: 'İnsan Varlıkları',
+    title: urgent ? 'Son gün uyarısı' : 'Değerlendirme hatırlatması',
+    subtitle: review.cycleName,
+    bodyHtml:
+      p(`Sayın ${esc(recipientName)},`) +
+      p(`<strong>${esc(review.cycleName)}</strong> dönemi performans değerlendirmeniz henüz tamamlanmadı.`),
+    infoRows: [
+      {
+        label: 'Son tarih',
+        value: urgent ? `${esc(deadlineStr)} <strong>(BUGÜN)</strong>` : `${esc(deadlineStr)} (${daysRemaining} gün kaldı)`,
+      },
+    ],
+    cta: { label: 'Değerlendirmeyi Tamamla', url },
+  })
+  return { subject, body: text, html }
+}
+
+function buildOverdueEmail(
+  review: { cycleId: string; cycleName: string; employeeName: string; employeeEmail: string; deadline: Date | string },
+  daysOverdue: number,
+  recipientName: string,
+): { subject: string; body: string; html: string } {
+  const url = `${APP_URL}/strategic-hr/performance?cycle=${review.cycleId}`
+  const deadlineStr = fmtDate(review.deadline)
+  const { html, text } = renderEmail({
+    module: 'İnsan Varlıkları',
+    title: 'Gecikmiş değerlendirme',
+    subtitle: `${review.employeeName} · ${review.cycleName}`,
+    bodyHtml:
+      p(`Sayın ${esc(recipientName)},`) +
+      p(`<strong>${esc(review.employeeName)}</strong> için <strong>${esc(review.cycleName)}</strong> dönemi performans değerlendirmesi <strong>${daysOverdue} gündür gecikmiş</strong> durumda.`),
+    infoRows: [
+      { label: 'Çalışan', value: `${esc(review.employeeName)} (${esc(review.employeeEmail)})` },
+      { label: 'Son tarih (geçti)', value: esc(deadlineStr) },
+      { label: 'Gecikme', value: `${daysOverdue} gün` },
+    ],
+    cta: { label: 'Aksiyon Al', url },
+  })
+  return { subject: `GECİKMİŞ: ${review.employeeName} performans değerlendirme (${daysOverdue} gün geçti)`, body: text, html }
+}
 
 type DispatchResult = {
   eventType: ReminderEventType
@@ -83,7 +163,7 @@ async function dispatchToRecipient(args: {
   const errors: string[] = []
 
   const [emailRes, inAppRes, pushRes] = await Promise.allSettled([
-    sendEmail([{ name: recipient.name, email: recipient.email }], args.subject, args.body, args.html),
+    sendEmail([{ name: recipient.name, email: recipient.email }], args.subject, args.body, args.html, logoAttachments()),
     prisma.notification.create({
       data: {
         userId: recipient.id,
@@ -199,7 +279,7 @@ export async function dispatchCycleLaunch(cycleId: string): Promise<DispatchResu
   for (const recipient of recipientMap.values()) {
     result.attempted++
     try {
-      const { subject, body, html } = generateReviewCycleLaunchEmail(
+      const { subject, body, html } = buildCycleLaunchEmail(
         {
           id: cycle.id,
           name: cycle.name,
@@ -294,13 +374,10 @@ async function dispatchReviewReminder(
   for (const recipient of recipients) {
     result.attempted++
     try {
-      const { subject, body, html } = generateReviewReminderEmail(
+      const { subject, body, html } = buildReminderEmail(
         {
-          id: review.id,
           cycleId: review.cycleId,
           cycleName: review.cycle.name,
-          employeeName: review.employeeName,
-          employeeEmail: review.employeeEmail,
           deadline: review.cycle.yearEndReviewEnd,
         },
         daysRemaining,
@@ -387,9 +464,8 @@ async function dispatchReviewOverdue(reviewId: string, daysOverdue: number): Pro
   for (const recipient of recipientMap.values()) {
     result.attempted++
     try {
-      const { subject, body, html } = generateReviewOverdueEmail(
+      const { subject, body, html } = buildOverdueEmail(
         {
-          id: review.id,
           cycleId: review.cycleId,
           cycleName: review.cycle.name,
           employeeName: review.employeeName,

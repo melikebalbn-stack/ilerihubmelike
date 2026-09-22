@@ -7,6 +7,7 @@
 import { prisma } from '@/lib/prisma'
 import { sendEmail } from '@/lib/email'
 import { sentetikMailMi } from '@/lib/bluecollar-email'
+import { renderEmail, p, esc, logoAttachments } from '@/lib/email-templates/layout'
 import { FifDurum } from '@/generated/prisma'
 
 const BASE_URL = process.env.NEXTAUTH_URL || 'https://hub.ilerigroup.com'
@@ -53,7 +54,12 @@ export type FifBildirimSonuc = { hedefSayisi: number; mailGiden: number; mailAtl
 /** Tek alıcıya mail+in-app. Sentetik → mail atla, in-app oluştur. */
 async function gonder(alici: Alici, konu: string, govde: string, link: string, sonuc: FifBildirimSonuc) {
   sonuc.hedefSayisi++
-  const html = `<p>${govde.replace(/\n/g, '<br>')}</p><p><a href="${BASE_URL}${link}">FİF'i aç</a></p>`
+  const { html, text } = renderEmail({
+    module: 'Kalite',
+    title: konu,
+    bodyHtml: p(esc(govde).replace(/\n/g, '<br>')),
+    cta: { label: "FİF'i aç", url: `${BASE_URL}${link}` },
+  })
   if (alici.sentetik) {
     try {
       await prisma.notification.create({ data: { userId: alici.userId, title: konu, message: govde, type: 'INFO', link } })
@@ -64,7 +70,7 @@ async function gonder(alici: Alici, konu: string, govde: string, link: string, s
     return
   }
   const [mailRes, inAppRes] = await Promise.allSettled([
-    sendEmail([{ name: alici.name, email: alici.email }], konu, govde, html),
+    sendEmail([{ name: alici.name, email: alici.email }], konu, text, html, logoAttachments()),
     prisma.notification.create({ data: { userId: alici.userId, title: konu, message: govde, type: 'INFO', link } }),
   ])
   if (inAppRes.status === 'fulfilled') sonuc.inApp++

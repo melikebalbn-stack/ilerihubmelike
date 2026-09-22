@@ -18,6 +18,9 @@
 import { prisma } from '@/lib/prisma'
 import { sendEmail } from '@/lib/email'
 import { sendPushToUser } from '@/lib/push-notifications'
+import { renderEmail, p, logoAttachments } from '@/lib/email-templates/layout'
+
+const BASE_URL = process.env.NEXTAUTH_URL || 'https://hub.ilerigroup.com'
 
 export type RmaBildirimKaydi = {
   id: string
@@ -46,22 +49,22 @@ async function sendSorumluEmail(
   kayit: RmaBildirimKaydi,
 ): Promise<void> {
   const subject = `[ILERIHub] ${kayit.tip} No ${kayit.no} kaydına sorumlu olarak atandınız`
-  const govde =
-    `${kayit.tip} No ${kayit.no}\n` +
-    `Müşteri: ${kayit.musteriAdi ?? '—'}\n` +
-    `${terminMetni(kayit.termin)}`
-  const body = `Merhaba ${alici.name},\n\nBir RMA/SMA iade kaydına sorumlu olarak atandınız.\n\n${govde}\n\nKök neden ve aksiyon alanlarını doldurmak için ILERIHub'a giriş yapabilirsiniz.`
-  const html = `
-    <p>Merhaba ${esc(alici.name)},</p>
-    <p>Bir RMA/SMA iade kaydına <strong>sorumlu</strong> olarak atandınız.</p>
-    <ul>
-      <li><strong>Kayıt:</strong> ${esc(kayit.tip)} No ${kayit.no}</li>
-      <li><strong>Müşteri:</strong> ${esc(kayit.musteriAdi ?? '—')}</li>
-      <li><strong>Termin:</strong> ${esc(terminMetni(kayit.termin))}</li>
-    </ul>
-    <p>Kök neden ve aksiyon alanlarını doldurmak için ILERIHub'a giriş yapabilirsiniz.</p>
-  `
-  await sendEmail([{ name: alici.name, email: alici.email }], subject, body, html)
+  const { html, text } = renderEmail({
+    module: 'Kalite',
+    title: 'RMA/SMA sorumluluğu atandı',
+    subtitle: `${kayit.tip} No ${kayit.no}`,
+    bodyHtml:
+      p(`Merhaba ${esc(alici.name)},`) +
+      p('Bir RMA/SMA iade kaydına <strong>sorumlu</strong> olarak atandınız.'),
+    infoRows: [
+      { label: 'Kayıt', value: `${esc(kayit.tip)} No ${kayit.no}` },
+      { label: 'Müşteri', value: esc(kayit.musteriAdi ?? '—') },
+      { label: 'Termin', value: esc(terminMetni(kayit.termin)) },
+    ],
+    afterHtml: p('Kök neden ve aksiyon alanlarını doldurmak için ILERIHub’a giriş yapabilirsiniz.'),
+    cta: { label: 'Kaydı Aç', url: `${BASE_URL}/kalite/rma/${kayit.id}` },
+  })
+  await sendEmail([{ name: alici.name, email: alici.email }], subject, text, html, logoAttachments())
 }
 
 async function sendSorumluPush(userId: string, kayit: RmaBildirimKaydi): Promise<void> {

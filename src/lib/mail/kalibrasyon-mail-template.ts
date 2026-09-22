@@ -8,7 +8,7 @@
 // route'unda map'lenir; interface'in kendisi tasarım sözleşmesi olarak korunur.
 // ============================================================================
 
-import { renderEmail, p, dataTable, TOKENS } from "@/lib/email-templates/layout";
+import { renderEmailHtml, p, dataTable, TOKENS } from "@/lib/email-templates/layout";
 
 export interface KalibrasyonDevice {
   cihazId: string;                   // "Kod" — Cihaz ID (örn. "C 1019")
@@ -74,7 +74,7 @@ export function buildKalibrasyonMailHtml(
   const bugun = fmtDate(new Date());
 
   // 9 sütunlu cihaz listesi 600px'e sığmaz → geniş kart (800px); yerleşim aynı.
-  return renderEmail({
+  return renderEmailHtml({
     module: "Kalibrasyon",
     width: 800,
     title: baslik,

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { sendEmail } from '@/lib/email'
 import { escapeHtml } from '@/lib/email-templates/akademi/_base'
-import { renderEmail, logoAttachments, p } from '@/lib/email-templates/layout'
+import { renderEmailHtml, logoAttachments, p } from '@/lib/email-templates/layout'
 import { dispatchTicketKapandi } from '@/lib/ticket-notifications'
 import { AZAMI_TOPLU_KAPANIS, ALARM_EPOSTASI, ITIRAZ_SURESI_GUN } from '@/lib/tickets/cozum'
 
@@ -78,7 +78,7 @@ export async function POST(req: NextRequest) {
             `Bu normal bir yığılma değil, bir hata sinyali olabilir (ör. autoCloseAt ` +
             `yanlış hesaplanmış olabilir). Kontrol edilene kadar tur boşa dönmeye devam eder.\n\n` +
             `İlk ${Math.min(20, adaylar.length)} aday:\n${ozet}\n\nİleri Group`,
-          renderEmail({
+          renderEmailHtml({
             module: 'Destek',
             title: 'Otomatik kapanma durduruldu',
             subtitle: `${adaylar.length} aday · sınır ${AZAMI_TOPLU_KAPANIS}`,

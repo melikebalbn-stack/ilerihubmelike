@@ -5,7 +5,7 @@ import { sendPushToUser } from '@/lib/push-notifications'
 import { requireUser } from '@/lib/auth/require-user'
 import { sendEmail } from '@/lib/email'
 import { ileriHubUrl, escapeHtml } from '@/lib/email-templates/akademi/_base'
-import { renderEmail, logoAttachments, p, quote } from '@/lib/email-templates/layout'
+import { renderEmailHtml, logoAttachments, p, quote } from '@/lib/email-templates/layout'
 import { buildVardiyaServiceMailHtml, buildVardiyaServiceMailText } from '@/lib/email-templates/vardiya-service'
 import {
   approvalPendingSubject,
@@ -505,7 +505,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
           ? 'Formu düzenleyip yeniden onaya gönderebilirsiniz.'
           : 'Form reddedilmiştir. Gerekirse yeni bir form oluşturabilirsiniz.'
         const text = `${baslik}\n\n${m.role} tarafından${m.comment ? `: ${m.comment}` : ''}\n\n${aksiyon}\n${link}`
-        const html = renderEmail({
+        const html = renderEmailHtml({
           module: 'Mesai',
           title: baslik,
           subtitle: `${m.role} tarafından${iade ? ' düzeltme için iade edildi' : ' reddedildi'}`,

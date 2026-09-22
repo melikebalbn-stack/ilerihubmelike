@@ -16,7 +16,7 @@
 // zaten akademi dışından da import ediyor: api/overtime/[id]/approve/route.ts).
 
 import { escapeHtml, ileriHubUrl } from "@/lib/email-templates/akademi/_base";
-import { renderEmail, quote } from "@/lib/email-templates/layout";
+import { renderEmailHtml, quote } from "@/lib/email-templates/layout";
 
 /**
  * Baş harfler — TÜRKÇE yerel ayarla.
@@ -80,7 +80,7 @@ export type IskeletGirdi = {
  */
 export function basvuruMailHtml(g: IskeletGirdi): string {
   const poz = g.pozisyon?.trim() || "Pozisyon belirtilmemiş";
-  return renderEmail({
+  return renderEmailHtml({
     module: "İnsan Varlıkları",
     title: g.baslik,
     subtitle: `${g.adayAdi} · ${poz}`,

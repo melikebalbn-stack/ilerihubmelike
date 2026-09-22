@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { sendEmail } from '@/lib/email'
 import { sendPushToUser } from '@/lib/push-notifications'
 import { ileriHubUrl, escapeHtml } from '@/lib/email-templates/akademi/_base'
-import { renderEmail, logoAttachments, p } from '@/lib/email-templates/layout'
+import { renderEmailHtml, logoAttachments, p } from '@/lib/email-templates/layout'
 
 export const dynamic = 'force-dynamic'
 
@@ -132,7 +132,7 @@ export async function POST(req: NextRequest) {
         `${message}\n\n` +
         `Formlar: ${formNos.join(', ')}\n` +
         `Girmek için: ${ileriHubUrl(link)}\n\nİleri Group`
-      const html = renderEmail({
+      const html = renderEmailHtml({
         module: 'Mesai',
         title: 'Gerçekleşen üretim adedi bekliyor',
         subtitle: `${tarihMetni} · ${formNos.length} form`,

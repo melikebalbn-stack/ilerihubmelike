@@ -2,7 +2,7 @@
 // birim sorumlularına gönderilen bilgi maili. Her sorumlu YALNIZ kendi sorumlu olduğu
 // bölüm(ler)in personelini görür. Kurumsal yerleşim (layout.ts, üst şerit "Mesai").
 import { escapeHtml } from '@/lib/email-templates/akademi/_base'
-import { renderEmail, p, dataTable, sectionTitle } from '@/lib/email-templates/layout'
+import { renderEmailHtml, p, dataTable, sectionTitle } from '@/lib/email-templates/layout'
 
 export type DeptGroup = { name: string; personel: string[] }
 export type ApprovedDeptResponsibleInput = {
@@ -43,7 +43,7 @@ export function buildApprovedDeptResponsibleMailHtml(input: ApprovedDeptResponsi
     )
     .join('')
 
-  return renderEmail({
+  return renderEmailHtml({
     module: 'Mesai',
     title: `Onaylanan ${input.turAdi} formu`,
     subtitle: `${input.formNo} · ${input.tarihLabel}: ${input.tarihStr}`,

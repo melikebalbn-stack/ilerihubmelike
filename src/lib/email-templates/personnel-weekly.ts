@@ -6,7 +6,7 @@
  */
 import { escapeHtml } from '@/lib/email-templates/akademi/_base'
 import type { HaftalikPersonelRaporu, HareketSatiri } from '@/lib/personnel-weekly-report'
-import { renderEmail, p, dataTable, sectionTitle, kpiRow, barRow, TOKENS } from '@/lib/email-templates/layout'
+import { renderEmailHtml, p, dataTable, sectionTitle, kpiRow, barRow, TOKENS } from '@/lib/email-templates/layout'
 
 /** Yaka renkleri ekrandaki YAKA_RENK ile aynı: beyaz→teal, mavi→blue, gri→slate. */
 const YAKA = {
@@ -105,7 +105,7 @@ export function buildPersonnelWeeklyHtml(veri: HaftalikPersonelRaporu, opts: Haf
       ? p(`<span style="color:${TOKENS.muted};">${escapeHtml(veri.tarihMetni)} haftasında işe giren veya işten çıkan personel yok.</span>`)
       : ''
 
-  return renderEmail({
+  return renderEmailHtml({
     module: 'İnsan Varlıkları',
     title: opts.baslik,
     subtitle: `Hafta: ${veri.tarihMetni} · Pazartesi–Pazar, Europe/Istanbul`,

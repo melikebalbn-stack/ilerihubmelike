@@ -4,7 +4,7 @@
  * Kurumsal yerleşim (layout.ts, üst şerit "Mesai"); çubuklar barRow ile (tablo hücresi).
  */
 import type { PerfResult } from '@/lib/overtime-performance'
-import { renderEmail, kpiRow, barRow, sectionTitle, TOKENS } from '@/lib/email-templates/layout'
+import { renderEmailHtml, kpiRow, barRow, sectionTitle, TOKENS } from '@/lib/email-templates/layout'
 
 function perfColor(yuzde: number): string {
   if (yuzde < 70) return TOKENS.red
@@ -46,7 +46,7 @@ export function buildPerfEmailHtml(data: PerfResult, opts: PerfMailOpts): string
     )
     .join('')
 
-  return renderEmail({
+  return renderEmailHtml({
     module: 'Mesai',
     title: opts.baslik,
     subtitle: opts.tarihMetni,

@@ -26,7 +26,7 @@ import { parseMembers } from '@/lib/tickets/team-members'
 import { sendEmail, generateTicketCreatedEmailContent } from '@/lib/email'
 import { sendPushToUser } from '@/lib/push-notifications'
 import { ileriHubUrl, escapeHtml } from '@/lib/email-templates/akademi/_base'
-import { renderEmail, logoAttachments, p, quote } from '@/lib/email-templates/layout'
+import { renderEmailHtml, logoAttachments, p, quote } from '@/lib/email-templates/layout'
 
 // ════════════════════════════════════════════════════════════
 // TİP TANIMLARI
@@ -546,7 +546,7 @@ export async function dispatchTicketKapandi(
       `Konu: ${ticket.subject}\n\n` +
       `Aldığınız hizmeti değerlendirmek için talebe gidin:\n${ileriHubUrl(link)}\n\n` +
       `Değerlendirme bağlantısı 14 gün geçerlidir.\n\nİleri Group`
-    const html = renderEmail({
+    const html = renderEmailHtml({
       module: 'Destek',
       title: `Talebiniz ${durumMetni}`,
       subtitle: `Talep No: ${ticket.ticketNumber}`,
@@ -693,7 +693,7 @@ export async function dispatchTicketYorum(
       `Yanıtlayan: ${yorum.authorName}\n\n` +
       `${govde}\n\n` +
       `Talebe gitmek için:\n${ileriHubUrl(link)}\n\nİleri Group`
-    const html = renderEmail({
+    const html = renderEmailHtml({
       module: 'Destek',
       title: 'Talebinize yeni yanıt',
       subtitle: `Talep No: ${ticket.ticketNumber} · ${yorum.authorName}`,
@@ -780,7 +780,7 @@ export async function dispatchTicketCozuldu(ticket: TicketCozumInfo): Promise<vo
       ? quote(escapeHtml(cozum), `Çözüm · ${escapeHtml(ticket.cozenAd)}`)
       : ''
 
-    const html = renderEmail({
+    const html = renderEmailHtml({
       module: 'Destek',
       title: 'Talebiniz çözüldü',
       subtitle: `Talep No: ${ticket.ticketNumber} · Çözen: ${ticket.cozenAd}`,
@@ -841,7 +841,7 @@ export async function dispatchTicketItiraz(ticket: TicketItirazInfo): Promise<vo
       `Konu: ${ticket.subject}\n\n` +
       `Talep yeniden "İşlemde" durumuna alındı ve üzerinizde.\n\n` +
       `${ileriHubUrl(link)}\n\nİleri Group`
-    const html = renderEmail({
+    const html = renderEmailHtml({
       module: 'Destek',
       title: 'Sorun devam ediyor',
       subtitle: `Talep No: ${ticket.ticketNumber} · ${ticket.itirazEdenAd}`,
@@ -945,7 +945,7 @@ export async function dispatchTicketKaydedildi(ticket: TicketKaydedildiInfo): Pr
       `Kayıt yolu: ${kanalMetni}\n\n` +
       `Talebin durumunu buradan izleyebilir, gelişmeleri e-posta ile alırsınız:\n` +
       `${ileriHubUrl(link)}\n\nİleri Group`
-    const html = renderEmail({
+    const html = renderEmailHtml({
       module: 'Destek',
       title: 'Talebiniz kaydedildi',
       subtitle: `Talep No: ${ticket.ticketNumber} · ${kanalMetni}`,

@@ -14,7 +14,7 @@
 import { prisma } from '@/lib/prisma'
 import { sendEmail } from '@/lib/email'
 import { ileriHubUrl } from '@/lib/email-templates/akademi/_base'
-import { renderEmail, logoAttachments, p } from '@/lib/email-templates/layout'
+import { renderEmailHtml, logoAttachments, p } from '@/lib/email-templates/layout'
 import { sendPushToUser } from '@/lib/push-notifications'
 import { zimmetTurGosterim, YAZILIM_KOK_ADI } from '@/lib/zimmet/tur'
 
@@ -75,7 +75,7 @@ Tür: ${turLabel}
 
 Detayları görmek için ILERIHub'a giriş yapabilirsiniz.`
 
-  const html = renderEmail({
+  const html = renderEmailHtml({
     module: 'Zimmet',
     title: 'Onay bekleyen zimmet tutanağı',
     subtitle: `${zimmet.zimmetSahibiAdi} · ${turLabel}`,
@@ -173,7 +173,7 @@ async function sendZimmetSahibiImzaEmail(
       .replace(/'/g, '&#039;')
   const subject = '[ILERIHub] Zimmet tutanağınız onaylandı — imzanız bekleniyor'
   const body = `Merhaba ${recipientName},\n\nZimmet tutanağınız onaylandı ve imzanızı bekliyor.\n\nDetaylar için ILERIHub'a giriş yapabilirsiniz.`
-  const html = renderEmail({
+  const html = renderEmailHtml({
     module: 'Zimmet',
     title: 'Zimmet tutanağınız onaylandı',
     subtitle: 'İmzanız bekleniyor',
@@ -315,7 +315,7 @@ Eski sistemden aktarılan ${kayitSayisi} zimmet kaydı üzerinize kayıtlı ve o
 Zimmetlerim ekranından işlem yapabilirsiniz: /zimmet-formu/zimmetlerim`
   // Eski HTML'deki <a href="/zimmet-formu/zimmetlerim"> göreli yoldu (mail
   // istemcisinde çalışmaz) → buton mutlak URL ile.
-  const html = renderEmail({
+  const html = renderEmailHtml({
     module: 'Zimmet',
     title: 'Onayınızı bekleyen zimmetler',
     subtitle: `${kayitSayisi} kayıt · eski sistemden aktarım`,

@@ -1,7 +1,7 @@
 import { getTumStoklar } from '@/lib/envanter/tum-stoklar'
 import { sendEmail } from '@/lib/email'
 import { escapeHtml, ileriHubUrl } from '@/lib/email-templates/akademi/_base'
-import { renderEmail, logoAttachments, dataTable, p } from '@/lib/email-templates/layout'
+import { renderEmailHtml, logoAttachments, dataTable, p } from '@/lib/email-templates/layout'
 
 // Kritik stok bildirimi alıcıları — ENV değişkeninden okunur (koda GÖMÜLMEZ):
 //   ENVANTER_KRITIK_BILDIRIM_ALICI  (virgülle çoklu adres). Önerilen değer:
@@ -58,7 +58,7 @@ export async function kritikUrunBildirimGonder(): Promise<{
   const konu = `Kritik Stok Uyarısı — ${kritikler.length} ürün sipariş bekliyor`
   const govde = `Aşağıdaki ürünler kritik veya minimum stok seviyesinin altına düşmüştür. Sipariş açılması önerilir:\n\n${satirlar}\n\nBu bir otomatik envanter bildirimidir.`
 
-  const html = renderEmail({
+  const html = renderEmailHtml({
     module: 'Envanter',
     title: 'Kritik stok uyarısı',
     subtitle: `${kritikler.length} ürün sipariş bekliyor`,

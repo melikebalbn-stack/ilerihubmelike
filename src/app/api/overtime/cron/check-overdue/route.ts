@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { sendEmail } from "@/lib/email";
 import { sendPushToUser } from "@/lib/push-notifications";
 import { ileriHubUrl, escapeHtml } from "@/lib/email-templates/akademi/_base";
-import { renderEmail, logoAttachments, p } from "@/lib/email-templates/layout";
+import { renderEmailHtml, logoAttachments, p } from "@/lib/email-templates/layout";
 
 export const dynamic = "force-dynamic";
 
@@ -32,7 +32,7 @@ function buildReminderMail(input: {
     `Mesai Tarihi: ${dateStr}\n` +
     `Onay adımınız: ${role}\n\n` +
     `Forma git: ${link}\n\nİleri Group`;
-  const html = renderEmail({
+  const html = renderEmailHtml({
     module: "Mesai",
     title: "Onayınız bekliyor",
     subtitle: `${formNo} · ${role}`,
@@ -67,7 +67,7 @@ function buildEscalationMail(input: {
     `Mesai Tarihi: ${dateStr}\n` +
     `Onay adımı: ${role}\n\n` +
     `Forma git: ${link}\n\nİleri Group`;
-  const html = renderEmail({
+  const html = renderEmailHtml({
     module: "Mesai",
     title: "Onay size devredildi",
     subtitle: `${formNo} · ${role} · ${minutes} dk`,

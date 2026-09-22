@@ -1,6 +1,6 @@
 import { CalibrationEmailType, TaskEmailType } from '@/generated/prisma'
 import nodemailer from 'nodemailer'
-import { renderEmail, p as emailP, quote as emailQuote } from '@/lib/email-templates/layout'
+import { renderEmailHtml, p as emailP, quote as emailQuote } from '@/lib/email-templates/layout'
 import { generateVisitReportPDFBuffer, VisitReportForPDF } from '@/lib/pdf/visit-report-pdf-server'
 
 export interface EmailRecipient {
@@ -173,6 +173,14 @@ export async function sendEmail(
     cc?: EmailRecipient[]
   }
 ): Promise<{ success: boolean; error?: string; messageId?: string }> {
+  // BEKÇİ: ortak şablon dışı HTML. html verilmiş ama renderEmail damgası
+  // (HUB_MAIL_STAMP = "<!-- hub-mail-v1 -->", bkz. email-templates/layout.ts) yoksa
+  // uyar — inline HTML mailleri ortak yerleşime taşınsın. Şimdilik yalnız UYARI.
+  // (Literal kullanılır: layout↔email tip-halkası dışında runtime bağımlılık eklenmesin.)
+  if (html && !html.includes('<!-- hub-mail-v1 -->')) {
+    const cagiran = new Error().stack?.split('\n')[2]?.trim() ?? '(bilinmiyor)'
+    console.warn(`[email] ortak şablon dışı HTML: ${cagiran}`)
+  }
   // GUARD: test/staging mail koruması (env-gated). MAIL_RECIPIENT_OVERRIDE
   // doluysa TÜM alıcıları o adrese yönlendir + konuya "[STAGING]" ön-eki ekle.
   // Prod'da env boş → hiçbir değişiklik (normal gönderim).
@@ -984,7 +992,7 @@ ILERIHub Bildirim Sistemi`
 
   const labelText = isCritical ? 'ACİL — Yeni IT talebi' : 'Yeni IT talebi'
 
-  const html = renderEmail({
+  const html = renderEmailHtml({
     module: 'Destek',
     title: labelText,
     subtitle: `${ticket.ticketNumber} · ${acilis}`,

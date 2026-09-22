@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { sendEmail } from '@/lib/email'
 import { sendPushToUser } from '@/lib/push-notifications'
 import { ileriHubUrl, escapeHtml } from '@/lib/email-templates/akademi/_base'
-import { renderEmail, logoAttachments } from '@/lib/email-templates/layout'
+import { renderEmailHtml, logoAttachments } from '@/lib/email-templates/layout'
 import { parseMembers } from '@/lib/tickets/team-members'
 import { ihlalDegerlendir, ihlalEtiketi, KAPALI_DURUMLAR, type IhlalKarari, type TakvimBaglami } from '@/lib/sla/ihlal'
 import { getSlaAyar, getTatilMap } from '@/lib/sla'
@@ -136,7 +136,7 @@ function mailGovdesi(t: { ticketNumber: string; subject: string }, etiket: strin
     `Ticket: ${t.ticketNumber}\n` +
     `Konu: ${t.subject}\n\n` +
     `Talebe git: ${link}\n\nİleri Group`
-  const html = renderEmail({
+  const html = renderEmailHtml({
     module: 'Destek',
     title: etiket,
     subtitle: `Talep No: ${t.ticketNumber}`,

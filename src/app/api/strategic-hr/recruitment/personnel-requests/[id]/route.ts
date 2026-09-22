@@ -13,7 +13,7 @@ import { talepAlanlariSchema, tarihDon } from "@/lib/recruitment/personnel-reque
 import { sendPushToUser } from "@/lib/push-notifications";
 import { sendEmail } from "@/lib/email";
 import { escapeHtml, ileriHubUrl } from "@/lib/email-templates/akademi/_base";
-import { renderEmail, logoAttachments, p } from "@/lib/email-templates/layout";
+import { renderEmailHtml, logoAttachments, p } from "@/lib/email-templates/layout";
 import { resolveHRRecipients } from "@/lib/hr-notifications";
 import { logAuditEvent } from "@/lib/audit-log";
 
@@ -30,7 +30,7 @@ async function notifyHrTeam(requestNumber: string, title: string) {
       alicilar.map((a) => ({ email: a.email ?? "", name: a.name ?? a.email ?? "" })).filter((a) => a.email),
       "Personel Talebi Onaylandı",
       mesaj,
-      renderEmail({
+      renderEmailHtml({
         module: "İnsan Varlıkları",
         title: "Personel talebi onaylandı",
         subtitle: `${requestNumber} · ${title}`,
@@ -90,7 +90,7 @@ async function notifyApprover(
         [{ email: u.email, name: u.name || "" }],
         "Personel Talebi Onayı",
         mesaj,
-        renderEmail({
+        renderEmailHtml({
           module: "İnsan Varlıkları",
           title: baslik,
           subtitle: `${requestNumber} · ${title}`,

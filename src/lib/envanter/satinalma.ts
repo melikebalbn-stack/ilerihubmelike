@@ -1,7 +1,7 @@
 import { prisma } from '@/lib/prisma'
 import { sendEmail } from '@/lib/email'
 import { escapeHtml, ileriHubUrl } from '@/lib/email-templates/akademi/_base'
-import { renderEmail, logoAttachments, p } from '@/lib/email-templates/layout'
+import { renderEmailHtml, logoAttachments, p } from '@/lib/email-templates/layout'
 import { createEnvanterStokHareket, logEnvanterIslem } from './service'
 
 export type SatinAlmaDurumTip =
@@ -147,7 +147,7 @@ async function bildirGecis(talep: {
           Array.from(hedefler.values()).map((h) => ({ email: h.email, name: h.name })),
           baslik,
           mesaj,
-          renderEmail({
+          renderEmailHtml({
             module: 'Envanter',
             title: 'Satın alma talebi güncellendi',
             subtitle: `${talep.formNo} · ${durumEtiketi}`,

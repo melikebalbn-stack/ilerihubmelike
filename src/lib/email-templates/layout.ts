@@ -32,7 +32,8 @@ export type EmailModule =
   | "Zimmet"
   | "Mesai"
   | "İnsan Varlıkları"
-  | "Kalibrasyon";
+  | "Kalibrasyon"
+  | "Kalite";
 
 /** Şablonların kendi bloklarını (bar, KPI kutusu…) aynı paletle çizmesi için. */
 export const TOKENS = {
@@ -188,7 +189,79 @@ function displayUrl(url: string): string {
   return url.replace(/^https?:\/\//, "");
 }
 
-export function renderEmail(input: EmailLayoutInput): string {
+/**
+ * Ortak şablon damgası — HTML çıktısının başına gömülür. sendEmail bekçisi
+ * (bkz. lib/email.ts) bu damgayı arar; damgasız HTML "ortak şablon dışı" uyarısı
+ * üretir. Sürüm arttıkça (-v2 …) geriye dönük tanınsın diye önek sabit tutulur.
+ */
+export const HUB_MAIL_STAMP = "<!-- hub-mail-v1 -->";
+
+/** HTML parçasını düz metne indirger: <br>/<p> → satır, etiketler atılır, entity çözülür. */
+function htmlToText(html: string): string {
+  return html
+    .replace(/<\s*br\s*\/?\s*>/gi, "\n")
+    .replace(/<\/\s*p\s*>/gi, "\n\n")
+    .replace(/<\/\s*(div|tr|h[1-6]|li)\s*>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+/**
+ * HTML mailin düz metin karşılığı — HTML görüntülenemeyen istemciler için.
+ * Başlık, alt satır, gövde paragrafları, "Etiket: Değer" tablo satırları, buton
+ * URL'si ve dipnottan oluşur. renderEmail bunu HTML ile birlikte döndürür.
+ */
+export function renderEmailText(input: EmailLayoutInput): string {
+  const parcalar: string[] = [];
+  parcalar.push(input.title);
+  if (input.subtitle) parcalar.push(input.subtitle);
+  parcalar.push("");
+  if (input.bodyHtml) parcalar.push(htmlToText(input.bodyHtml));
+
+  const rows = (input.infoRows ?? []).filter((r) => r.value !== "");
+  if (rows.length) {
+    parcalar.push("");
+    for (const r of rows) parcalar.push(`${r.label}: ${htmlToText(r.value)}`);
+  }
+
+  if (input.afterHtml) {
+    parcalar.push("");
+    parcalar.push(htmlToText(input.afterHtml));
+  }
+
+  if (input.cta) {
+    parcalar.push("");
+    parcalar.push(`${input.cta.label}: ${input.cta.url}`);
+  }
+
+  parcalar.push("");
+  parcalar.push(
+    `${input.footnote ? input.footnote + " " : ""}Bu e-posta ILERIHub ${input.module} tarafından otomatik gönderilmiştir.`
+  );
+  parcalar.push(`İleri Group · ${new Date().getFullYear()}`);
+
+  return parcalar.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+/**
+ * Ortak e-posta yerleşimi — HTML + düz metin birlikte. YENİ çağrılar bunu kullanır:
+ *   const { html, text } = renderEmail({ module, title, ... })
+ *   await sendEmail([to], subject, text, html, logoAttachments())
+ * Yalnız HTML isteyen eski çağrılar renderEmailHtml() kullanır (imza korunur).
+ */
+export function renderEmail(input: EmailLayoutInput): { html: string; text: string } {
+  return { html: renderEmailHtml(input), text: renderEmailText(input) };
+}
+
+export function renderEmailHtml(input: EmailLayoutInput): string {
   const title = esc(input.title);
   const preheader = esc(input.preheader ?? input.title);
   const W = input.width ?? 600;
@@ -246,6 +319,7 @@ ${rows
 <!--[if mso]><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml><![endif]-->
 </head>
 <body style="margin:0;padding:0;background-color:#f4f5f7;">
+${HUB_MAIL_STAMP}
 <div style="display:none;max-height:0;overflow:hidden;font-size:1px;line-height:1px;color:#f4f5f7;">${preheader}</div>
 
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f4f5f7;">

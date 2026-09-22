@@ -4,7 +4,7 @@
 // Kurumsal yerleşim: email-templates/layout.ts (üst şerit "Mesai").
 
 import { escapeHtml } from '@/lib/email-templates/akademi/_base'
-import { renderEmail, p } from '@/lib/email-templates/layout'
+import { renderEmailHtml, p } from '@/lib/email-templates/layout'
 
 export interface ApprovalPendingMailInput {
   formNo: string
@@ -39,7 +39,7 @@ export function buildApprovalPendingMailText(input: ApprovalPendingMailInput): s
 
 export function buildApprovalPendingMailHtml(input: ApprovalPendingMailInput): string {
   const tur = input.isVardiya ? 'vardiya' : 'mesai'
-  return renderEmail({
+  return renderEmailHtml({
     module: 'Mesai',
     title: `Onayınızı bekleyen ${tur} formu`,
     subtitle: `${input.formNo} · ${input.tarihStr}`,

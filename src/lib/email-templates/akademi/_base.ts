@@ -1,4 +1,4 @@
-import { renderEmail, type EmailLayoutInput } from "../layout";
+import { renderEmailHtml, type EmailLayoutInput } from "../layout";
 
 export { p, quote, type EmailInfoRow } from "../layout";
 
@@ -43,5 +43,5 @@ export function ileriHubUrl(path: string): string {
  * buton/dipnot alanlarını ayrı ayrı verir, HTML'i `renderEmail` üretir.
  */
 export function akademiMail(input: Omit<EmailLayoutInput, "module">): string {
-  return renderEmail({ module: "Akademi", ...input });
+  return renderEmailHtml({ module: "Akademi", ...input });
 }

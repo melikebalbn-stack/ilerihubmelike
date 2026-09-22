@@ -3,7 +3,7 @@ import type { AuditCategory } from '@/lib/hr-data-quality'
 // Personel Veri Kalitesi Raporu maili. Kurumsal yerleşim (layout.ts, üst şerit
 // "İnsan Varlıkları"). Kategori boşsa gösterilmez (çağıran zaten boşları elemiş olur).
 
-import { renderEmail, p, dataTable, sectionTitle, TOKENS } from '@/lib/email-templates/layout'
+import { renderEmailHtml, p, dataTable, sectionTitle, TOKENS } from '@/lib/email-templates/layout'
 
 function escapeHtml(s: string): string {
   return String(s ?? '')
@@ -39,7 +39,7 @@ export function buildHrDataQualityMailHtml(kategoriler: AuditCategory[]): string
     )
     .join('')
 
-  return renderEmail({
+  return renderEmailHtml({
     module: 'İnsan Varlıkları',
     title: 'Personel veri kalitesi raporu',
     subtitle: `${tarih} · ${toplam} sorun, ${kategoriler.length} kategori`,

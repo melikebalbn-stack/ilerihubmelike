@@ -6,7 +6,7 @@ import { format } from 'date-fns'
 import { tr } from 'date-fns/locale'
 import { formatVardiyaHafta } from '@/lib/vardiya-hafta'
 import { escapeHtml } from '@/lib/email-templates/akademi/_base'
-import { renderEmail, p, dataTable, sectionTitle } from '@/lib/email-templates/layout'
+import { renderEmailHtml, p, dataTable, sectionTitle } from '@/lib/email-templates/layout'
 
 export type VardiyaServiceRow = { ad: string; guzergah: string; durak: string }
 // Vardiya Hafta Modu: mail'de hafta/tarih bilgisi. date = "YYYY-MM-DD".
@@ -52,7 +52,7 @@ export function buildVardiyaServiceMailHtml(formNo: string, rows: VardiyaService
         )
       : p('<span style="color:#6b7280;">Personel bulunmuyor.</span>')
 
-  return renderEmail({
+  return renderEmailHtml({
     module: 'Mesai',
     title: 'Vardiya servis listesi',
     subtitle: `${formNo} · Onay tarihi: ${bugunMetni()}`,

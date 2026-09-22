@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/auth/require-permission'
 import { PERMISSION_KEYS } from '@/lib/auth/permissions'
 import { YON_TERS, PERIYOT_TERS, ORAN_TERS } from '../excel-sablon'
-import { ORG_UNIT_TO_PERSONNEL_BOLUM } from '../personel-map'
+import { ORG_UNIT_CODE_TO_PERSONNEL_BOLUM } from '../personel-map'
 
 export const dynamic = 'force-dynamic'
 
@@ -105,7 +105,8 @@ export async function POST(request: Request) {
   let sorumluEslesen = 0
   const eslesmeyenSorumlular = new Set<string>()
   if (aksiyonSayfasi) {
-    const bolum = ORG_UNIT_TO_PERSONNEL_BOLUM[orgUnitId]
+    const orgUnit = await prisma.orgUnit.findUnique({ where: { id: orgUnitId }, select: { code: true } })
+    const bolum = orgUnit ? ORG_UNIT_CODE_TO_PERSONNEL_BOLUM[orgUnit.code] : undefined
     const personeller = bolum
       ? await prisma.personnel.findMany({ where: { bolum, aktif: true }, select: { id: true, adSoyad: true } })
       : []

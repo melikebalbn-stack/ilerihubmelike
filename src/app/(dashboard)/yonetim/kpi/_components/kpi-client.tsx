@@ -550,8 +550,12 @@ function sayiFormat(n: number | null): string {
 }
 
 function sayiFormatBirimli(n: number | null, unit?: string | null): string {
+  if (n == null) return ''
+  if (!unit) return sayiFormat(n)
+  // Birim "%" ise değer 0-1 arası bir oran olarak tutuluyor (0,64 = %64) —
+  // gösterirken 100 ile çarpıp yüzde işaretini ekliyoruz.
+  if (unit.trim() === '%') return `${sayiFormat(n * 100)}%`
   const s = sayiFormat(n)
-  if (!s || !unit) return s
   return `${s} ${unit}`
 }
 

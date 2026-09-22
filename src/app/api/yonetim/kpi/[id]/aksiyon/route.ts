@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/auth/require-permission'
 import { PERMISSION_KEYS } from '@/lib/auth/permissions'
-import { ORG_UNIT_TO_PERSONNEL_BOLUM } from '../../personel-map'
+import { ORG_UNIT_CODE_TO_PERSONNEL_BOLUM } from '../../personel-map'
 
 export const dynamic = 'force-dynamic'
 
@@ -12,10 +12,10 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   if (error) return error
 
   const { id } = await params
-  const kpi = await prisma.kPIDefinition.findUnique({ where: { id }, select: { orgUnitId: true } })
+  const kpi = await prisma.kPIDefinition.findUnique({ where: { id }, select: { orgUnit: { select: { code: true } } } })
   if (!kpi) return NextResponse.json({ error: 'KPI bulunamadı' }, { status: 404 })
 
-  const bolum = ORG_UNIT_TO_PERSONNEL_BOLUM[kpi.orgUnitId]
+  const bolum = ORG_UNIT_CODE_TO_PERSONNEL_BOLUM[kpi.orgUnit.code]
   const sorumluAdaylari = bolum
     ? await prisma.personnel.findMany({
         where: { bolum, aktif: true },

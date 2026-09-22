@@ -555,12 +555,15 @@ const PARA_SEMBOLLERI: Record<string, string> = {
 }
 
 function sayiFormatBirimli(n: number | null, unit?: string | null): string {
-  const s = sayiFormat(n)
-  if (!s || !unit) return s
+  if (n == null) return ''
+  if (!unit) return sayiFormat(n)
+  // Birim "%" ise değer 0-1 arası bir oran olarak tutuluyor (0,64 = %64) —
+  // gösterirken 100 ile çarpıp yüzde işaretini ekliyoruz.
+  if (unit.trim() === '%') return `${sayiFormat(n * 100)}%`
   const normalize = unit.trim().toLocaleUpperCase('tr')
   const sembol = PARA_SEMBOLLERI[normalize]
+  const s = sayiFormat(n)
   if (sembol) return `${sembol}${s}`
-  if (unit.trim() === '%') return `${s}%`
   return `${s} ${unit}`
 }
 

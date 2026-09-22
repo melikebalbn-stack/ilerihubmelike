@@ -290,8 +290,9 @@ model User {
   denemeLoglari     DenemeDegerlendirmeLog[] @relation("DenemeLogAktor")
 
   // Avans dönem kilidi (back-relations)
-  avansDonemKapattiklari AvansDonemKapanis[]    @relation("AvansDonemKapatan")
-  avansDonemLoglari      AvansDonemKapanisLog[] @relation("AvansDonemLogKullanici")
+  avansDonemKapattiklari AvansDonemKapanis[]       @relation("AvansDonemKapatan")
+  avansDonemLoglari      AvansDonemKapanisLog[]    @relation("AvansDonemLogKullanici")
+  avansGeriCekmeLoglari  AvansTalebiGeriCekmeLog[] @relation("AvansGeriCekmeLogKullanici")
 
   // KPI modülü — bu kullanıcının girdiği ölçümler (ters ilişki)
   kpiMeasurementsEntered KPIMeasurement[]
@@ -14402,27 +14403,37 @@ model SyteEsleme {
 // ============================================================
 
 model AvansTalebi {
-  id             String   @id @default(cuid())
-  sorumluId      String // Personnel.id — formu gönderen birim sorumlusu (kendi giren beyaz yaka için de kendisi)
-  bolum          String
-  donemYil       Int
-  donemAy        Int
-  gonderimTarihi DateTime @default(now())
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id              String    @id @default(cuid())
+  sorumluId       String // Personnel.id — formu gönderen birim sorumlusu (kendi giren beyaz yaka için de kendisi)
+  bolum           String
+  donemYil        Int
+  donemAy         Int
+  gonderimTarihi  DateTime  @default(now())
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
   // Vekil senaryosu (c): sorumluId eşleşmesi "(V)"/"V." işaretli bir vekil
   // alanı üzerinden kurulduysa true. Asıl sorumlunun kendisi eşleştiyse
   // (aynı bölümde işaretsiz bir alan da eşleşiyorsa) false kalır.
-  vekaletenMi    Boolean  @default(false)
+  vekaletenMi     Boolean   @default(false)
   // true: kendi/route.ts (kendim formu) üzerinden girildi — sorumluId,
   // formu gönderen kişinin kendi id'si. false (default): sorumlu formu
   // (route.ts) üzerinden girildi. Personnel'in güncel sorumluluk
   // durumundan ÇIKARIM YAPILMAZ — kayıt anındaki olgu olarak saklanır,
   // aksi halde bir sorumlu görevden alındığında geçmiş kayıtların anlamı
   // sessizce değişirdi.
-  kendiFormuMu   Boolean  @default(false)
+  kendiFormuMu    Boolean   @default(false)
+  // SOFT DELETE (integ/avans-donem-push'tan şema parçası, 22.09.2026): geri-cek
+  // ucu AvansTalebi'yi fiziksel silmek yerine bu üçünü set eder — kim/ne zaman
+  // geri çektiğinin izi kalıcı tutulur. Aynı (sorumluId+bolum+donemYil+donemAy)
+  // için yeni gönderim unique constraint gereği AYNI satırı bulup bu üçünü
+  // sıfırlayarak "reaktive" eder. Kod tarafı o dalla gelir; burada yalnız şema
+  // (prod'a 22.09 uygulanmış migration'larla hizalama).
+  geriCekildiMi   Boolean   @default(false)
+  geriCekenId     String? // Personnel.id — sorumluId ile aynı kural, FK değil
+  geriCekmeTarihi DateTime?
 
-  satirlar AvansTalebiSatiri[]
+  satirlar         AvansTalebiSatiri[]
+  geriCekmeLoglari AvansTalebiGeriCekmeLog[]
 
   @@unique([sorumluId, bolum, donemYil, donemAy], map: "uq_avans_talebi_sorumlu_donem")
   @@index([donemYil, donemAy], map: "idx_avans_talebi_donem")
@@ -14470,6 +14481,23 @@ model AvansDonemKapanisLog {
   aciklama    String?
 
   @@index([yil, ay], map: "idx_avans_donem_log")
+}
+
+// Geri çekme/reaktivasyon denetim kaydı — AvansTalebi.geriCekildiMi/
+// geriCekenId/geriCekmeTarihi aynı dönem için tekrar gönderimde (upsert)
+// sıfırlanıp reaktive olduğunda "daha önce geri çekilmişti" izi kaybolur.
+// Bu iz burada kalıcı tutulur. AvansDonemKapanisLog ile aynı felsefe: her
+// GERI_CEKME ve REAKTIVASYON işlemi buraya bir satır düşer (silinmez).
+model AvansTalebiGeriCekmeLog {
+  id            String      @id @default(cuid())
+  avansTalebiId String
+  avansTalebi   AvansTalebi @relation(fields: [avansTalebiId], references: [id])
+  islem         String // 'GERI_CEKME' | 'REAKTIVASYON'
+  kullaniciId   String
+  kullanici     User        @relation("AvansGeriCekmeLogKullanici", fields: [kullaniciId], references: [id])
+  tarih         DateTime    @default(now())
+
+  @@index([avansTalebiId], map: "idx_avans_gericekme_log")
 }
 
 model KPIDefinition {

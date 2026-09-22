@@ -117,14 +117,16 @@ function formatMonthLabel(key: string) {
 export default function FaturalarClient() {
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [summary, setSummary] = useState<Summary | null>(null)
-  const [ciroInput, setCiroInput] = useState('')
+  const [revenues, setRevenues] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [editingInvoice, setEditingInvoice] = useState<EditableInvoice | null>(null)
   const [showImport, setShowImport] = useState(false)
   const [filter, setFilter] = useState('ALL') // 'ALL' | 'GENEL' | <orgUnitId>
+  const [selectedMonth, setSelectedMonth] = useState('')
   const [search, setSearch] = useState('')
   const [departments, setDepartments] = useState<Department[]>([])
+
 
   const loadInvoices = useCallback(async () => {
     const params = new URLSearchParams()
@@ -142,11 +144,13 @@ export default function FaturalarClient() {
     if (res.ok) setSummary(await res.json())
   }, [])
 
-  const loadTotalCiro = useCallback(async () => {
+  const loadRevenues = useCallback(async () => {
     const res = await fetch('/api/finans/faturalar/revenue')
     if (res.ok) {
       const data = await res.json()
-      setCiroInput(data.totalRevenueEUR != null ? formatThousands(String(Math.round(data.totalRevenueEUR))) : '')
+      const map: Record<string, number> = {}
+      for (const r of data.revenues ?? []) map[r.month] = r.revenueEUR
+      setRevenues(map)
     }
   }, [])
 
@@ -160,7 +164,7 @@ export default function FaturalarClient() {
 
   useEffect(() => {
     setLoading(true)
-    Promise.all([loadInvoices(), loadSummary(), loadTotalCiro(), loadDepartments()]).finally(() => setLoading(false))
+    Promise.all([loadInvoices(), loadSummary(), loadRevenues(), loadDepartments()]).finally(() => setLoading(false))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -191,12 +195,16 @@ export default function FaturalarClient() {
     }
   }
 
-  async function handleCiroBlur() {
-    const value = parseThousands(ciroInput)
+  async function handleRevenueChange(monthKey: string, value: string) {
+    setRevenues((prev) => ({ ...prev, [monthKey]: parseThousands(value) }))
+  }
+
+  async function handleRevenueBlur(monthKey: string) {
+    const value = revenues[monthKey] ?? 0
     await fetch('/api/finans/faturalar/revenue', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ totalRevenueEUR: value }),
+      body: JSON.stringify({ month: monthKey, revenueEUR: value }),
     })
   }
 
@@ -210,7 +218,7 @@ export default function FaturalarClient() {
     [summary]
   )
 
-  const totalCiro = parseThousands(ciroInput)
+  const totalCiro = useMemo(() => Object.values(revenues).reduce((s, v) => s + v, 0), [revenues])
 
   if (loading) {
     return (
@@ -292,35 +300,78 @@ export default function FaturalarClient() {
 
       <Card>
         <CardContent className="pt-6">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <div className="flex items-center gap-2">
-                <div className="text-sm font-semibold text-muted-foreground">Bölüme göre dağılım</div>
-                <button
-                  onClick={() => downloadFile('/api/finans/faturalar/export?type=summary')}
-                  className="flex items-center gap-1 text-xs font-medium text-[#1B4F72] hover:underline"
-                  title="Bu tablonun sayısal, yuvarlanmamış Excel çıktısı — KPI dosyana çekmek için"
-                >
-                  <Download className="h-3 w-3" /> KPI Özet İndir
-                </button>
-              </div>
-              <p className="mb-3 text-xs text-muted-foreground/80">
-                Tüm zamanlar toplamı, bölüm bazında (organizasyon şemasındaki Müdürlükler + Genel). Cironun Oranı,
-                aşağıya girdiğin ciroya göre.
-              </p>
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs text-muted-foreground">Ciro (€)</label>
-              <Input
-                value={ciroInput}
-                onChange={(e) => setCiroInput(formatThousands(e.target.value.replace(/\D/g, '')))}
-                onBlur={handleCiroBlur}
-                placeholder="ciro gir"
-                inputMode="numeric"
-                className="h-8 w-40 text-right"
-              />
-            </div>
+          <div className="text-sm font-semibold text-muted-foreground">Ciro karşılaştırması</div>
+          <p className="mb-3 text-xs text-muted-foreground/80">Bir ay seç, o ayın cirosunu € olarak gir.</p>
+          {!summary?.months.length ? (
+            <p className="py-2 text-sm text-muted-foreground">Henüz fatura kaydı yok.</p>
+          ) : (
+            (() => {
+              const selectedSummary = summary.months.find((m) => m.key === selectedMonth) ?? summary.months[summary.months.length - 1]
+              const monthCiro = revenues[selectedSummary.key] ?? 0
+              const monthOran = monthCiro > 0 ? (selectedSummary.toplamEUR / monthCiro) * 100 : null
+              return (
+                <div className="flex flex-wrap items-end gap-4">
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Ay</label>
+                    <Select value={selectedSummary.key} onValueChange={setSelectedMonth}>
+                      <SelectTrigger className="w-32">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {summary.months.map((m) => (
+                          <SelectItem key={m.key} value={m.key}>
+                            {formatMonthLabel(m.key)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Fatura Toplamı (€)</label>
+                    <div className="flex h-9 items-center text-sm font-semibold">{formatEur(selectedSummary.toplamEUR)}</div>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Ciro (€)</label>
+                    <Input
+                      value={monthCiro > 0 ? formatThousands(String(monthCiro)) : ''}
+                      onChange={(e) => handleRevenueChange(selectedSummary.key, e.target.value.replace(/\D/g, ''))}
+                      onBlur={() => handleRevenueBlur(selectedSummary.key)}
+                      placeholder="ciro gir"
+                      inputMode="numeric"
+                      className="h-9 w-40 text-right"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Oran</label>
+                    <div
+                      className="flex h-9 items-center text-sm font-semibold"
+                      style={{ color: monthOran == null ? '#BBB' : NAVY }}
+                    >
+                      {monthOran == null ? '—' : formatPercent(monthOran)}
+                    </div>
+                  </div>
+                </div>
+              )
+            })()
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="pt-6">
+          <div className="flex items-center gap-2">
+            <div className="text-sm font-semibold text-muted-foreground">Bölüme göre dağılım</div>
+            <button
+              onClick={() => downloadFile('/api/finans/faturalar/export?type=summary')}
+              className="flex items-center gap-1 text-xs font-medium text-[#1B4F72] hover:underline"
+              title="Bu tablonun sayısal, yuvarlanmamış Excel çıktısı — KPI dosyana çekmek için"
+            >
+              <Download className="h-3 w-3" /> KPI Özet İndir
+            </button>
           </div>
+          <p className="mb-3 text-xs text-muted-foreground/80">
+            Tüm zamanlar toplamı, bölüm bazında. Cironun Oranı, yukarıda girdiğin tüm ayların ciro toplamına göre.
+          </p>
           {!summary?.departments.length ? (
             <p className="py-2 text-sm text-muted-foreground">Henüz fatura kaydı yok.</p>
           ) : (
@@ -338,7 +389,7 @@ export default function FaturalarClient() {
                   const deptCiroOran = totalCiro > 0 ? (d.eur / totalCiro) * 100 : null
                   return (
                     <TableRow key={d.label}>
-                      <TableCell style={{ color: d.label === 'Sistem Geliştirme Müdürlüğü' ? NAVY : undefined }}>
+                      <TableCell style={{ color: d.label === 'SİSTEM GELİŞTİRME MÜDÜRLÜĞÜ' ? NAVY : undefined }}>
                         {d.label}
                       </TableCell>
                       <TableCell className="text-right">{formatTL(d.tl)}</TableCell>

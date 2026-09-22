@@ -44,9 +44,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     let departmentName: string | null = null
     if (departmentOrgUnitId) {
-      const dept = await prisma.orgUnit.findUnique({ where: { id: departmentOrgUnitId }, select: { name: true } })
+      const dept = await prisma.personnel.findFirst({ where: { bolum: departmentOrgUnitId, aktif: true }, select: { bolum: true } })
       if (!dept) return apiBadRequest('Geçersiz bölüm')
-      departmentName = dept.name
+      departmentName = dept.bolum
     }
 
     const existing = await prisma.invoice.findUnique({ where: { id } })

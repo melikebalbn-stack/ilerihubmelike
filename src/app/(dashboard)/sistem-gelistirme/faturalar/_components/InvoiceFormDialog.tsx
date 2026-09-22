@@ -22,6 +22,8 @@ interface Department {
 
 type Currency = 'TRY' | 'USD' | 'EUR'
 
+const GENEL_KEY = 'GENEL'
+
 export interface EditableInvoice {
   id: string
   invoiceDate: string
@@ -87,9 +89,11 @@ export function InvoiceFormDialog({ open, onOpenChange, onSaved, invoice }: Prop
       })
       if (invoice.allocations.length > 0) {
         setMultiMode(true)
-        setSplitPercentages(
-          Object.fromEntries(invoice.allocations.map((a) => [a.departmentOrgUnitId, a.percentage]))
-        )
+        const entries: [string, string][] = invoice.allocations.map((a) => [a.departmentOrgUnitId, a.percentage])
+        const sum = invoice.allocations.reduce((s, a) => s + (parseFloat(a.percentage) || 0), 0)
+        const remainder = 100 - sum
+        if (remainder > 0.5) entries.push([GENEL_KEY, remainder.toFixed(1)])
+        setSplitPercentages(Object.fromEntries(entries))
       }
     }
   }, [open, invoice])
@@ -148,9 +152,10 @@ export function InvoiceFormDialog({ open, onOpenChange, onSaved, invoice }: Prop
     const amountNum = parseFloat(form.amount.replace(',', '.'))
     if (!form.amount || isNaN(amountNum) || amountNum <= 0) e.amount = 'Geçerli bir tutar gir'
     if (multiMode) {
-      const deptIds = Object.keys(splitPercentages)
-      if (deptIds.length < 2) e.split = 'En az 2 bölüm seç'
-      else if (Math.abs(splitTotal - 100) > 0.5) e.split = `Yüzdeler toplamı %100 olmalı (şu an %${splitTotal.toFixed(1)})`
+      const realDeptIds = Object.keys(splitPercentages).filter((k) => k !== GENEL_KEY)
+      if (realDeptIds.length < 1) e.split = 'En az 1 bölüm seç'
+      else if (splitTotal > 100.5) e.split = `Yüzdeler toplamı %100'ü geçemez (şu an %${splitTotal.toFixed(1)})`
+      else if (splitTotal <= 0) e.split = 'Geçerli bir yüzde gir'
     }
     setErrors(e)
     return Object.keys(e).length === 0
@@ -169,10 +174,12 @@ export function InvoiceFormDialog({ open, onOpenChange, onSaved, invoice }: Prop
           amount: parseFloat(form.amount.replace(',', '.')),
           departmentOrgUnitId: multiMode ? null : form.departmentOrgUnitId || null,
           allocations: multiMode
-            ? Object.entries(splitPercentages).map(([departmentOrgUnitId, pct]) => ({
-                departmentOrgUnitId,
-                percentage: parseFloat(pct) || 0,
-              }))
+            ? Object.entries(splitPercentages)
+                .filter(([key]) => key !== GENEL_KEY)
+                .map(([departmentOrgUnitId, pct]) => ({
+                  departmentOrgUnitId,
+                  percentage: parseFloat(pct) || 0,
+                }))
             : undefined,
         }),
       })
@@ -294,7 +301,7 @@ export function InvoiceFormDialog({ open, onOpenChange, onSaved, invoice }: Prop
               </Select>
             ) : (
               <div className="space-y-2 rounded-md border p-2.5">
-                {departments.map((d) => {
+                {[{ id: GENEL_KEY, name: 'Genel' }, ...departments].map((d) => {
                   const checked = d.id in splitPercentages
                   return (
                     <div key={d.id} className="flex items-center gap-2">
@@ -318,9 +325,14 @@ export function InvoiceFormDialog({ open, onOpenChange, onSaved, invoice }: Prop
                 })}
                 <div
                   className="pt-1 text-right text-xs font-medium"
-                  style={{ color: Math.abs(splitTotal - 100) > 0.5 ? '#C0392B' : '#0F6E56' }}
+                  style={{ color: splitTotal > 100.5 || splitTotal <= 0 ? '#C0392B' : '#0F6E56' }}
                 >
                   Toplam: %{splitTotal.toFixed(1)}
+                  {splitTotal < 99.5 && (
+                    <span className="ml-1 font-normal text-muted-foreground">
+                      (kalan %{(100 - splitTotal).toFixed(1)} Genel sayılır)
+                    </span>
+                  )}
                 </div>
               </div>
             )}

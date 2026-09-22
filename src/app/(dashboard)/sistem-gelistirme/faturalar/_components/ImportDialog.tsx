@@ -84,8 +84,8 @@ export function ImportDialog({ open, onOpenChange, onImported }: Props) {
             <p className="mb-2 text-xs text-muted-foreground">
               Şablondaki (veya indirdiğin fatura listesindeki) başlıkları koru: <strong>Tarih, Firma, Fatura No,
               Tutar</strong> zorunlu; Para Birimi (varsayılan TRY) ve Bölüm (varsayılan Genel) opsiyonel. Birden
-              fazla bölüme bölünecek faturalar için Bölüm hücresine <strong>"Kalite Müdürlüğü %60, Sistem
-              Geliştirme Müdürlüğü %40"</strong> gibi yazabilirsin (yüzdeler %100 etmeli) — örneği boş şablonda
+              fazla bölüme bölünecek faturalar için Bölüm hücresine <strong>"KALİTE MÜDÜRLÜĞÜ %60, SİSTEM
+              GELİŞTİRME MÜDÜRLÜĞÜ %40"</strong> gibi yazabilirsin (yüzdeler %100 etmeli) — örneği boş şablonda
               görebilirsin. € karşılığı içe aktarımda otomatik yeniden hesaplanır.
             </p>
             <input

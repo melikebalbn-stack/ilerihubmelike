@@ -8,7 +8,7 @@ import { resolveDepartments, computeAmounts } from './_lib/invoice'
 
 const CURRENCIES: InvoiceCurrency[] = ['TRY', 'USD', 'EUR']
 
-// GET ?department=<orgUnitId>|GENEL&search= — fatura listesi
+// GET ?department=<bölüm adı>|GENEL&search= — fatura listesi
 export async function GET(request: NextRequest) {
   try {
     const { user, error } = await requireUser()

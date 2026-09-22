@@ -36,8 +36,8 @@ export async function GET(request: NextRequest) {
           allocations: { select: { departmentName: true, amountEUR: true, amountTRY: true } },
         },
       })
-      const revenueSetting = await prisma.invoiceRevenueSetting.findUnique({ where: { id: 'singleton' } })
-      const totalCiro = revenueSetting ? Number(revenueSetting.totalRevenueEUR) : null
+      const revenueRows = await prisma.invoiceMonthlyRevenue.findMany({ select: { revenueEUR: true } })
+      const totalCiro = revenueRows.length > 0 ? revenueRows.reduce((s, r) => s + Number(r.revenueEUR), 0) : null
 
       const { departments } = computeSummary(invoices)
 
@@ -69,7 +69,7 @@ export async function GET(request: NextRequest) {
           'Para Birimi': 'TRY',
           'TL Karşılığı': '',
           '€ Karşılığı': '',
-          Bölüm: 'Kalite Müdürlüğü %60, Sistem Geliştirme Müdürlüğü %40',
+          Bölüm: 'KALİTE MÜDÜRLÜĞÜ %60, SİSTEM GELİŞTİRME MÜDÜRLÜĞÜ %40',
           Not: 'Birden fazla bölüme bölünmüş fatura örneği — yüzdeler %100 etmeli',
         },
       ]

@@ -4,7 +4,8 @@
  * Etkileşimli rapor ekranı — referans: "ILERIHub — Etkileşimli Rapor (mockup)" artifact'ı.
  * Ham satırlar /api/raporlar/[id]/veri'den gelir; görünüm (filtre/sıra/grup/toplam/grafik/KPI)
  * TARAYICIDA gorunumUygula ile kurulur — Excel sunucuda AYNI fonksiyonu çağırır.
- * Doğal dil çubuğu bu turda yok: devre dışı yer tutucu kutu.
+ * Doğal dil çubuğu: /api/raporlar/[id]/ai — istek SUNUCUDA Claude'a gider (API anahtarı
+ * istemciye asla inmez), dönen görünüm doğrulanmış olarak uygulanır; geri al yığını tutulur.
  */
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
@@ -17,7 +18,7 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { DateField } from '@/components/ui/date-field'
 import { NativeSelect } from '@/components/ui/select'
-import { FileBarChart2, FileSpreadsheet, GripVertical, Loader2, Play, Printer, RotateCcw, Save, Sparkles, X } from 'lucide-react'
+import { AlertTriangle, FileBarChart2, FileSpreadsheet, GripVertical, Loader2, Play, Printer, RotateCcw, Save, Sparkles, Undo2, X } from 'lucide-react'
 import { gorunumUygula, MAX_GRUP, type GrupDugum, type KolonTipi, type Satir } from '@/lib/rapor/gorunum'
 import { bicimle } from '@/lib/rapor/bicim'
 import { gorunumHtml } from '@/lib/rapor/gorunum-html'
@@ -65,6 +66,33 @@ function kosulluSinif(k: GorunumKolon, v: unknown): string {
 }
 
 const tipSimgesi = (tip: KolonTipi, hesaplanan: boolean) => (hesaplanan ? 'fx' : tip === 'sayi' ? '12' : tip === 'tarih' ? '◷' : 'Aa')
+
+/**
+ * Örnek istek çipleri — SABİT değil, veri setinin kendi alanlarından üretilir:
+ * ilk metin alanına göre grupla, ilk sayı alanına göre sırala, oran/% alanı varsa eşik süzgeci,
+ * tarih alanı varsa geciken kaydı. En fazla 4 çip.
+ */
+function ornekCipler(
+  kolonlar: GorunumKolon[],
+  tipler: Record<string, KolonTipi>,
+  baslik: (alan: string) => string,
+  hesaplananAdlari: Set<string>,
+): string[] {
+  const tip = (k: GorunumKolon) => tipler[k.alan] ?? (hesaplananAdlari.has(k.alan) ? 'sayi' : 'metin')
+  const metinler = kolonlar.filter((k) => tip(k) === 'metin')
+  const sayilar = kolonlar.filter((k) => tip(k) === 'sayi')
+  const tarihler = kolonlar.filter((k) => tip(k) === 'tarih')
+  const oran = kolonlar.find((k) => k.bicim?.startsWith('%'))
+  const cipler: string[] = []
+  if (metinler[0]) cipler.push(`${baslik(metinler[0].alan).toLocaleLowerCase('tr-TR')} bazında grupla`)
+  if (oran) cipler.push(`${baslik(oran.alan).toLocaleLowerCase('tr-TR')} 90'ın altında olanlar`)
+  if (sayilar[0]) cipler.push(`en yüksek ${baslik(sayilar[0].alan).toLocaleLowerCase('tr-TR')} üstte olacak şekilde sırala`)
+  if (tarihler[0] && cipler.length < 4) cipler.push(`${baslik(tarihler[0].alan).toLocaleLowerCase('tr-TR')} tarihi geçmiş olanlar`)
+  if (metinler[1] && sayilar[0] && cipler.length < 4) {
+    cipler.push(`${baslik(metinler[1].alan).toLocaleLowerCase('tr-TR')} bazında ${baslik(sayilar[0].alan).toLocaleLowerCase('tr-TR')} grafiği`)
+  }
+  return cipler.slice(0, 4)
+}
 
 // ── dnd: sol liste öğesi + GRUPLA alanı ─────────────────────────────────
 
@@ -157,6 +185,77 @@ export default function EtkilesimliRapor({ sablon, icerik, alanlar, tasarlayabil
     }
     return out
   }, [veri, gorunum.kolonlar, tipler])
+
+  // ── Doğal dil çubuğu ──────────────────────────────────────────────────
+  const [aiIstek, setAiIstek] = useState('')
+  const [aiCalisiyor, setAiCalisiyor] = useState(false)
+  const [aiSerit, setAiSerit] = useState<{ aciklama: string; uyari: boolean } | null>(null)
+  /** Geri al yığını: AI her görünüm kurduğunda öncekini iter (çok adım geri alınabilir). */
+  const [aiGecmis, setAiGecmis] = useState<Gorunum[]>([])
+
+  /**
+   * Süzgeç doğruluğu için modele örnek değerler: ≤20 farklı değeri olan METİN kolonları
+   * (Durum: Planned/Released/…, tezgah adları). Veri yoksa boş gider — kutu yine çalışır.
+   */
+  const ornekDegerler = useMemo(() => {
+    const out: Record<string, string[]> = {}
+    if (!veri) return out
+    for (const k of gorunum.kolonlar) {
+      if ((tipler[k.alan] ?? 'metin') !== 'metin') continue
+      const s = new Set<string>()
+      for (const r of veri) {
+        const v = r[k.alan]
+        if (v === null || v === undefined || v === '') continue
+        s.add(String(v))
+        if (s.size > 20) break
+      }
+      if (s.size > 0 && s.size <= 20) out[k.alan] = [...s].sort((a, b) => a.localeCompare(b, 'tr-TR'))
+    }
+    return out
+  }, [veri, gorunum.kolonlar, tipler])
+
+  const cipler = useMemo(
+    () => ornekCipler(gorunum.kolonlar, tipler, baslik, hesaplananAdlari),
+    [gorunum.kolonlar, tipler, baslik, hesaplananAdlari],
+  )
+
+  const aiGonder = useCallback(async (metin: string) => {
+    const istek = metin.trim()
+    if (!istek || aiCalisiyor) return
+    setAiCalisiyor(true)
+    try {
+      const r = await fetch(`/api/raporlar/${sablon.id}/ai`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ istek, mevcutGorunum: gorunum, ornekDegerler }),
+      })
+      const d = await r.json()
+      if (!r.ok) throw new Error(d.error ?? `HTTP ${r.status}`)
+      if (d.anlasilmadi || !d.gorunum) {
+        setAiSerit({ aciklama: d.aciklama ?? 'İstek anlaşılamadı.', uyari: true })
+        return
+      }
+      setAiGecmis((y) => [...y, gorunum])
+      setGorunum(gorunumuHizala(d.gorunum as Gorunum, alanlar))
+      setKapali(new Set()); setAcilanSegmentler(new Set())
+      setAiSerit({ aciklama: d.aciklama ?? 'Görünüm güncellendi.', uyari: false })
+      setAiIstek('')
+    } catch (e) {
+      setAiSerit({ aciklama: e instanceof Error ? e.message : String(e), uyari: true })
+    } finally {
+      setAiCalisiyor(false)
+    }
+  }, [aiCalisiyor, gorunum, ornekDegerler, sablon.id, alanlar])
+
+  const aiGeriAl = () => {
+    setAiGecmis((y) => {
+      if (!y.length) return y
+      setGorunum(y[y.length - 1])
+      setKapali(new Set()); setAcilanSegmentler(new Set())
+      setAiSerit(null)
+      return y.slice(0, -1)
+    })
+  }
 
   // ── Görünüm işlemleri ─────────────────────────────────────────────────
   const kolonGuncelle = (alan: string, d: Partial<GorunumKolon>) => setGorunum((g) => ({ ...g, kolonlar: g.kolonlar.map((k) => (k.alan === alan ? { ...k, ...d } : k)) }))
@@ -304,12 +403,51 @@ export default function EtkilesimliRapor({ sablon, icerik, alanlar, tasarlayabil
         </div>
       </div>
 
-      {/* Doğal dil — YER TUTUCU (sonraki iş) */}
-      <div className="rounded-lg border bg-white px-4 py-3 opacity-60" aria-disabled title="Sonraki sürümde: doğal dille görünüm kurma">
+      {/* Doğal dil çubuğu — görünümü sunucudaki yapay zekâ kurar (anahtar istemciye inmez) */}
+      <div className="rounded-lg border bg-white px-4 py-3">
         <div className="flex gap-2 max-w-4xl">
-          <div className="relative flex-1"><Sparkles className="h-4 w-4 absolute left-3 top-2.5 text-[#2AA5C7]" /><Input disabled className="pl-9 border-[#2AA5C7]/60" placeholder="Yakında: ne görmek istediğini yaz — örn. tezgaha göre planlanan ve tamamlanan toplamları, grafikle" /></div>
-          <Button disabled style={{ backgroundColor: NAVY }}>Oluştur</Button>
+          <div className="relative flex-1">
+            <Sparkles className="h-4 w-4 absolute left-3 top-2.5 text-[#2AA5C7]" />
+            <Input
+              className="pl-9 border-[#2AA5C7]/60"
+              value={aiIstek}
+              onChange={(e) => setAiIstek(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void aiGonder(aiIstek) } }}
+              disabled={aiCalisiyor}
+              maxLength={500}
+              placeholder="Ne görmek istiyorsun? Örn: tezgaha göre grupla, verimi 90'ın altındakiler"
+            />
+          </div>
+          <Button onClick={() => void aiGonder(aiIstek)} disabled={aiCalisiyor || !aiIstek.trim()} style={{ backgroundColor: NAVY }}>
+            {aiCalisiyor ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : null}Oluştur
+          </Button>
         </div>
+        {cipler.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mt-2 max-w-4xl">
+            {cipler.map((c) => (
+              <button
+                key={c}
+                type="button"
+                disabled={aiCalisiyor}
+                onClick={() => { setAiIstek(c); void aiGonder(c) }}
+                className="text-[11px] rounded-full border border-[#2AA5C7]/50 bg-[#F2F9FC] text-[#1B4F72] px-2.5 py-1 hover:bg-[#DCEDF5] disabled:opacity-50"
+              >
+                {c}
+              </button>
+            ))}
+          </div>
+        )}
+        {aiSerit && (
+          <div className={`mt-2.5 flex items-start gap-2 rounded-md border px-3 py-2 text-xs max-w-4xl ${aiSerit.uyari ? 'border-amber-300 bg-amber-50 text-amber-900' : 'border-[#2AA5C7]/40 bg-[#F2F9FC] text-[#1B4F72]'}`}>
+            {aiSerit.uyari ? <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" /> : <Sparkles className="h-3.5 w-3.5 mt-0.5 shrink-0" />}
+            <span className="flex-1">{aiSerit.uyari ? aiSerit.aciklama : <><span className="font-semibold">Kurulan görünüm:</span> {aiSerit.aciklama}</>}</span>
+            {aiGecmis.length > 0 && (
+              <Button variant="ghost" size="sm" className="h-6 px-2 text-[11px]" onClick={aiGeriAl}>
+                <Undo2 className="h-3 w-3 mr-1" />Geri al{aiGecmis.length > 1 ? ` (${aiGecmis.length})` : ''}
+              </Button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Parametreler */}

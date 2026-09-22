@@ -168,10 +168,80 @@ function toplamlariHesapla(kolonlar: GorunumKolon[], satirlar: Satir[], oranlar:
 
 const SAYI_FILTRE = /^\s*(<=|>=|<>|!=|<|>|=)?\s*(-?\d+(?:[.,]\d+)?)\s*$/
 
-/** Sayı kolonu: "< 90", ">= 10", "= 5", "90" (eşit). Metin/tarih: biçimlenmiş değerde içerir (tr-TR, büyük/küçük duyarsız). */
-export function filtreEslesir(v: unknown, filtre: string, tip: KolonTipi, bicim?: Bicim): boolean {
+// ── Tarih süzgeci ────────────────────────────────────────────────────────
+//
+// Tarih kolonunda karşılaştırmalı süzgeç: "< bugün", ">= 2026-09-01", "= 01.09.2026",
+// ve dönem anahtarları "bu_hafta" / "bu_ay" / "bugün". Karşılaştırma GÜN çözünürlüğünde
+// (saat yok sayılır). Eşleşmeyen metin eski davranışa düşer (biçimlenmiş değerde içerir) —
+// kayıtlı görünümlerdeki "09.2026" gibi süzgeçler bozulmaz.
+
+const TARIH_FILTRE = /^\s*(<=|>=|<>|!=|<|>|=)?\s*(bugün|bugun|\d{4}-\d{2}-\d{2}|\d{1,2}\.\d{1,2}\.\d{4})\s*$/i
+const DONEM_FILTRE = /^\s*(bu[_ ]hafta|bu[_ ]ay)\s*$/i
+
+/** Yerel gün numarası (1970'ten beri gün) — saat/dakika yok sayılır. */
+function gunNo(d: Date): number {
+  return Math.floor((d.getTime() - d.getTimezoneOffset() * 60_000) / 86_400_000)
+}
+
+function tarihSabiti(metin: string, bugun: Date): number | null {
+  const m = metin.trim().toLowerCase()
+  if (m === 'bugün' || m === 'bugun') return gunNo(bugun)
+  const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(m)
+  if (iso) return gunNo(new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3])))
+  const tr = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/.exec(m)
+  if (tr) return gunNo(new Date(Number(tr[3]), Number(tr[2]) - 1, Number(tr[1])))
+  return null
+}
+
+/** Pazartesi başlangıçlı haftanın ilk günü. */
+function haftaBasi(bugun: Date): number {
+  const g = bugun.getDay() // 0 Paz … 6 Cmt
+  return gunNo(bugun) - (g === 0 ? 6 : g - 1)
+}
+
+/**
+ * Tarih süzgecini gün aralığına çevirir; süzgeç tarih söz dizimi değilse null
+ * (çağıran metin "içerir" davranışına düşer).
+ */
+export function tarihFiltresiCoz(filtre: string, bugun: Date): { en: number; ez: number } | { disla: number } | null {
+  const donem = DONEM_FILTRE.exec(filtre)
+  if (donem) {
+    if (/hafta/i.test(donem[1])) { const b = haftaBasi(bugun); return { en: b, ez: b + 6 } }
+    const ilk = gunNo(new Date(bugun.getFullYear(), bugun.getMonth(), 1))
+    const son = gunNo(new Date(bugun.getFullYear(), bugun.getMonth() + 1, 0))
+    return { en: ilk, ez: son }
+  }
+  const m = TARIH_FILTRE.exec(filtre)
+  if (!m) return null
+  const hedef = tarihSabiti(m[2], bugun)
+  if (hedef === null) return null
+  switch (m[1] ?? '=') {
+    case '<': return { en: -Infinity, ez: hedef - 1 }
+    case '<=': return { en: -Infinity, ez: hedef }
+    case '>': return { en: hedef + 1, ez: Infinity }
+    case '>=': return { en: hedef, ez: Infinity }
+    case '<>': case '!=': return { disla: hedef }
+    default: return { en: hedef, ez: hedef }
+  }
+}
+
+/**
+ * Sayı kolonu: "< 90", ">= 10", "= 5", "90" (eşit).
+ * Tarih kolonu: "< bugün", ">= 2026-09-01", "bu_hafta" … (bkz. tarihFiltresiCoz); söz dizimi
+ * tutmazsa metin gibi davranır. Metin: biçimlenmiş değerde içerir (tr-TR, büyük/küçük duyarsız).
+ */
+export function filtreEslesir(v: unknown, filtre: string, tip: KolonTipi, bicim?: Bicim, bugun?: Date): boolean {
   const f = filtre.trim()
   if (!f) return true
+  if (tip === 'tarih') {
+    const aralik = tarihFiltresiCoz(f, bugun ?? new Date())
+    if (aralik) {
+      const d = tarihe(v)
+      if (!d) return false // tarihi olmayan satır karşılaştırmalı süzgeçte düşer
+      const g = gunNo(d)
+      return 'disla' in aralik ? g !== aralik.disla : g >= aralik.en && g <= aralik.ez
+    }
+  }
   if (tip === 'sayi') {
     const m = SAYI_FILTRE.exec(f)
     if (!m) return true // anlaşılmayan süzgeç: satırı düşürme
@@ -187,8 +257,14 @@ export function filtreEslesir(v: unknown, filtre: string, tip: KolonTipi, bicim?
       default: return x === hedef
     }
   }
+  // Metin: "içerir". Başına <> / != konursa "içermez" (dışlama) — sayı sözdizimiyle aynı işaret.
+  // Kapanmış kayıtları gizleme gibi istekler bu olmadan kurulamıyordu.
+  const dislama = /^(<>|!=)\s*([\s\S]*)$/.exec(f)
+  const aranan = (dislama ? dislama[2] : f).trim().toLocaleLowerCase('tr-TR')
+  if (!aranan) return true
   const metin = bicimle(v, bicim).toLocaleLowerCase('tr-TR')
-  return metin.includes(f.toLocaleLowerCase('tr-TR'))
+  const icerir = metin.includes(aranan)
+  return dislama ? !icerir : icerir
 }
 
 // ── Sıralama ─────────────────────────────────────────────────────────────
@@ -234,7 +310,13 @@ function grupla(satirlar: Satir[], alanlar: string[], seviye: number, ustAnahtar
 
 export const MAX_GRUP = 2
 
-export function gorunumUygula(hamSatirlar: Satir[], gorunum: Gorunum): GorunumSonuc {
+/**
+ * @param secenekler.bugun Göreli tarih süzgeçlerinin ("< bugün", "bu_hafta") çözüleceği gün.
+ *   Verilmezse `new Date()` — modülün saflık kuralının TEK istisnası ve yalnız göreli süzgeç
+ *   varken sonucu etkiler. Sunucu/istemci çıktısının birebir aynı olması gereken yerlerde
+ *   (Excel) aynı gün değeri geçirilir.
+ */
+export function gorunumUygula(hamSatirlar: Satir[], gorunum: Gorunum, secenekler?: { bugun?: Date }): GorunumSonuc {
   const hesapli = hesaplananlariEkle(hamSatirlar, gorunum.hesaplananAlanlar)
   const kolonlar = gorunum.kolonlar
   const tipler = kolonTipleriniBul(hesapli, kolonlar)
@@ -245,7 +327,7 @@ export function gorunumUygula(hamSatirlar: Satir[], gorunum: Gorunum): GorunumSo
   // Filtre
   const aktifFiltreler = Object.entries(gorunum.filtreler ?? {}).filter(([, f]) => f && f.trim())
   let satirlar = aktifFiltreler.length
-    ? hesapli.filter((s) => aktifFiltreler.every(([alan, f]) => filtreEslesir(s[alan], f, tipler[alan] ?? kolonTipi(alan, hesapli), bicimler[alan])))
+    ? hesapli.filter((s) => aktifFiltreler.every(([alan, f]) => filtreEslesir(s[alan], f, tipler[alan] ?? kolonTipi(alan, hesapli), bicimler[alan], secenekler?.bugun)))
     : hesapli
 
   // Sıralama (kararlı)

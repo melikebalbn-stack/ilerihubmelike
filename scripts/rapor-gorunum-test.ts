@@ -2,7 +2,7 @@
  * gorunum.ts birim testi — saf, DB/IFS yok.
  *   npx tsx scripts/rapor-gorunum-test.ts
  */
-import { gorunumUygula, oranBilesenleri, filtreEslesir, kiyasla, toplamHesapla } from '../src/lib/rapor/gorunum'
+import { gorunumUygula, oranBilesenleri, filtreEslesir, kiyasla, tarihFiltresiCoz, toplamHesapla } from '../src/lib/rapor/gorunum'
 import type { Gorunum } from '../src/lib/rapor/tipler'
 
 let ok = 0, hata = 0
@@ -77,9 +77,32 @@ test('sayı "= 80"', gorunumUygula(veri, { ...gorunum, gruplar: [], filtreler: {
 test('çıplak sayı "80" = eşit', gorunumUygula(veri, { ...gorunum, gruplar: [], filtreler: { planlanan: '80' } }).satirlar.length === 1)
 test('tr-TR büyük/küçük: "ÇEL" tezgah çelik', gorunumUygula(veri, { ...gorunum, gruplar: [], filtreler: { tezgah: 'ÇEL' } }).satirlar.length === 1)
 test('tarih filtresi biçimlenmiş metinde: "09.2026"', gorunumUygula(veri, { ...gorunum, gruplar: [], filtreler: { termin: '09.2026' } }).satirlar.length === 5)
+test('metin dışlama "<> Closed" → Closed olmayan 4 satır', gorunumUygula(veri, { ...gorunum, gruplar: [], filtreler: { durum: '<> Closed' } }).satirlar.length === 4)
+test('metin dışlama "!= clos" küçük/büyük duyarsız', gorunumUygula(veri, { ...gorunum, gruplar: [], filtreler: { durum: '!= clos' } }).satirlar.length === 4)
+test('dışlamada boş değerli satır KALIR (tezgah <> TORNA → 5)', gorunumUygula(veri, { ...gorunum, gruplar: [], filtreler: { tezgah: '<> TORNA' } }).satirlar.length === 5)
+test('yalnız "<>" (aranan boş) → süzgeç yok sayılır', gorunumUygula(veri, { ...gorunum, gruplar: [], filtreler: { durum: '<>' } }).satirlar.length === 7)
 test('anlaşılmayan sayı süzgeci satır düşürmez', filtreEslesir(5, 'abc', 'sayi') === true)
 test('null sayı, süzgeç varsa düşer', filtreEslesir(null, '> 0', 'sayi') === false)
 test('filtreli KPI satır sayısı', f1.kpi.satirSayisi === 3 && f1.kpi.toplamSatir === 7)
+
+console.log('— tarih süzgeci (göreli + mutlak) —')
+// Sabit "bugün" ile deterministik: 2026-09-04 Cuma (hafta 31.08 Pzt – 06.09 Paz).
+const BUGUN = new Date(2026, 8, 4)
+// Satır kümesi karşılaştırılır (görünümün kendi sıralaması planlanan'a göre).
+const tf = (f: string) => gorunumUygula(veri, { ...gorunum, gruplar: [], filtreler: { termin: f } }, { bugun: BUGUN }).satirlar.map((r) => r.isEmri).sort().join(',')
+test('"< bugün" → 30.08 + 01-03.09', tf('< bugün') === 'İE-2,İE-4,İE-6,İE-7', tf('< bugün'))
+test('">= bugün" → 05.09 ve 09.09', tf('>= bugün') === 'İE-1,İE-3', tf('>= bugün'))
+test('"= bugün" → hiçbiri (04.09 yok)', tf('= bugün') === '')
+test('">= 2026-09-03" → 03,05,09.09', tf('>= 2026-09-03') === 'İE-1,İE-3,İE-6', tf('>= 2026-09-03'))
+test('"< 01.09.2026" (gg.aa.yyyy) → yalnız 30.08', tf('< 01.09.2026') === 'İE-7', tf('< 01.09.2026'))
+test('"bu_hafta" → 31.08–06.09 (01,02,03,05.09)', tf('bu_hafta') === 'İE-1,İE-2,İE-4,İE-6', tf('bu_hafta'))
+test('"bu_ay" → eylül terminleri (5 satır)', tf('bu_ay').split(',').length === 5, tf('bu_ay'))
+test('termini boş satır karşılaştırmalı süzgeçte düşer', !tf('< bugün').includes('İE-5') && !tf('>= bugün').includes('İE-5'))
+test('"<> 2026-09-05" → 05.09 hariç (boş termin de düşer)', tf('<> 2026-09-05') === 'İE-2,İE-3,İE-4,İE-6,İE-7', tf('<> 2026-09-05'))
+test('tarih söz dizimi değilse metin davranışı korunur ("09.2026")', tf('09.2026').split(',').length === 5)
+test('tarihFiltresiCoz: tanınmayan metin null', tarihFiltresiCoz('geçen sene', BUGUN) === null)
+test('bugün varsayılanı: seçenek verilmese de çalışır', filtreEslesir(new Date(), '<= bugün', 'tarih') === true)
+test('Date nesnesi değerle de eşleşir', filtreEslesir(new Date(2026, 8, 1), '< bugün', 'tarih', undefined, BUGUN) === true)
 
 console.log('— boş veri / kenar —')
 const bos = gorunumUygula([], gorunum)

@@ -46,6 +46,7 @@ import {
   BookOpen,
   ListChecks,
   MessageSquareWarning,
+  Siren,
   GitBranch,
   FileWarning,
   MessageCircle,
@@ -317,6 +318,12 @@ const strategicHrMenuItems = [
   // MASTER madde 29 — Operasyonel Servis Listesi. Diğer dört servis öğesiyle
   // aynı "servis" alt grubu.
   { name: "Operasyonel Servis Listesi", icon: ListChecks, href: "/servis-yonetimi/operasyonel-servis-listesi", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"], permission: "servis.view", subgroup: "servis" as StrategicHrAltGrup },
+  // MASTER madde 49 — Acil Durum Servis Listesi. Diğer beş servis öğesiyle
+  // aynı "servis" alt grubu.
+  // 🔴 permissionsAll: sayfa/API guard'ı requireAllPermissions (AND). `permission`
+  // dizisi OR olduğu için burada KULLANILAMAZ: servis.view'i olup
+  // servis.kvkk.view'i olmayan kullanıcı menüde görür, sayfada 403 yerdi.
+  { name: "Acil Durum Servis Listesi", icon: Siren, href: "/servis-yonetimi/acil-durum-listesi", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"], permissionsAll: ["servis.view", "servis.kvkk.view"], subgroup: "servis" as StrategicHrAltGrup },
   { name: "Organizasyon Şeması", icon: Network, href: "/strategic-hr/org-chart", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"] },
   // VIEW gate = YILLIK_TAKVIM_VIEW_PERMISSIONS (yilliktakvim.view | yilliktakvim.admin, OR).
   // admin eklendi — yalnız admin izinli kullanıcı sayfayı açabildiği hâlde menüde göremiyordu.
@@ -795,6 +802,25 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   // kalite ekibi/admin (canAccessKalite) VEYA qdms.view permission.
   const canSeeQdms = canAccessKalite(userRole, userDepartment, userOu) || userPermissions.includes('qdms.view')
 
+  // Menü öğesinin izin kararı — TEK uygulama (iki süzgeç de bunu çağırır).
+  //   permissionsAll → AND (requireAllPermissions'lı sayfalar için)
+  //   permission     → OR  (mevcut davranış, birebir korundu)
+  //   ikisi de yoksa → undefined = "izin alanı yok, rol/departman mantığına devam et"
+  // permissionsAll iki süzgeçte birden tanınıyor: yalnız birine eklenseydi,
+  // öbür listeye permissionsAll yazan kişi izin alanı YOKMUŞ gibi rol/departman
+  // koluna düşer ve öğe sessizce YETKİSİZE GÖRÜNÜRDÜ.
+  const menuIzinKarari = (item: object): boolean | undefined => {
+    const hepsi = (item as { permissionsAll?: string[] }).permissionsAll
+    if (hepsi) return hepsi.every(k => userPermissions.includes(k))
+
+    const itemPermission = (item as { permission?: string | string[] }).permission
+    if (itemPermission) {
+      const perms = Array.isArray(itemPermission) ? itemPermission : [itemPermission]
+      return perms.some(k => userPermissions.includes(k))
+    }
+    return undefined
+  }
+
   const filterItems = (items: typeof mainMenuItems) => items.filter(item => {
     // `hidden: true` — menüden GİZLİ kalem. Her şeyden önce elenir (permission
     // dahil): sayfa/route/izin dokunulmadan yalnız menü girişi kapatılır.
@@ -802,14 +828,11 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     // gizli kalem aramada da ÇIKMAZ.
     if ((item as { hidden?: boolean }).hidden) return false
 
-    // Permission tabanlı erişim: item'da `permission` varsa TEK belirleyici
-    // odur (rol/departman/e-posta clause'ları değerlendirilmez). Menü
-    // görünürlüğü kozmetiktir; asıl zorlama sayfa ve API guard'larındadır.
-    const itemPermission = (item as { permission?: string | string[] }).permission
-    if (itemPermission) {
-      const perms = Array.isArray(itemPermission) ? itemPermission : [itemPermission]
-      return perms.some((k) => userPermissions.includes(k))
-    }
+    // Permission tabanlı erişim: item'da `permission`/`permissionsAll` varsa
+    // TEK belirleyici odur (rol/departman/e-posta clause'ları değerlendirilmez).
+    // Menü görünürlüğü kozmetiktir; asıl zorlama sayfa ve API guard'larındadır.
+    const izin = menuIzinKarari(item)
+    if (izin !== undefined) return izin
 
     if (item.roles.includes('*')) return true
     if (item.roles.includes('SUPER_ADMIN') && userRole === 'SUPER_ADMIN') return true
@@ -834,16 +857,13 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   // İnsan Varlıkları departmanı veya yetkili roller tam erişim
   // Departman müdürleri (DEPT_HEAD) de erişebilir (API'de departman filtresi uygulanacak)
   const filterStrategicHrItems = (items: typeof strategicHrMenuItems) => items.filter(item => {
-    // Permission tabanlı erişim: item'da `permission` varsa TEK belirleyici
-    // odur (rol/departman clause'ları değerlendirilmez) — filterItems'taki
-    // aynı desen (satır ~490-497). RBAC permission'ı olan (örn. idari-isler
-    // rolündeki) kullanıcı, İV departmanında olmasa/legacy admin rolü
-    // taşımasa bile görür.
-    const itemPermission = (item as { permission?: string | string[] }).permission
-    if (itemPermission) {
-      const perms = Array.isArray(itemPermission) ? itemPermission : [itemPermission]
-      return perms.some((k) => userPermissions.includes(k))
-    }
+    // Permission tabanlı erişim: item'da `permission`/`permissionsAll` varsa
+    // TEK belirleyici odur (rol/departman clause'ları değerlendirilmez) —
+    // filterItems'takiyle AYNI karar (menuIzinKarari). RBAC permission'ı olan
+    // (örn. idari-isler rolündeki) kullanıcı, İV departmanında olmasa/legacy
+    // admin rolü taşımasa bile görür.
+    const izin = menuIzinKarari(item)
+    if (izin !== undefined) return izin
 
     // Admin roller her zaman görebilir
     if (['SUPER_ADMIN', 'ADMIN', 'HR_MANAGER', 'IT_MANAGER'].includes(userRole)) return true

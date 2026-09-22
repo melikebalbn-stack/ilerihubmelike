@@ -540,3 +540,39 @@ describe('Sidebar — "Operasyonel Servis Listesi" menü öğesi için permissio
     expect(screen.getByText('Operasyonel Servis Listesi')).toBeInTheDocument()
   })
 })
+
+describe('Sidebar — "Acil Durum Servis Listesi" menü öğesi için permission testi (madde 49, AND)', () => {
+  it('🔴 servis.view izni OLAN ama servis.kvkk.view izni OLMAYAN kullanıcı satırı GÖRMEZ (AND kuralı; OR olsaydı görünür, sayfada 403 yerdi)', () => {
+    mockSession({ role: 'KULLANICI', department: 'Üretim', permissions: ['servis.view'] })
+    renderSidebar()
+    acIvGrubunu()
+    // Aynı izinle GÖRMESİ gereken kardeş satır görünüyor — "grup kapalı olduğu
+    // için göremedi" yanlış-negatifi eleniyor.
+    expect(screen.getByText('Operasyonel Servis Listesi')).toBeInTheDocument()
+    expect(screen.queryByText('Acil Durum Servis Listesi')).not.toBeInTheDocument()
+  })
+
+  it('servis.kvkk.view izni OLAN ama servis.view izni OLMAYAN kullanıcı da satırı GÖRMEZ (AND iki yönlü)', () => {
+    // yilliktakvim.view yalnız İV/Stratejik İK grubunu AÇTIRMAK için —
+    // "grup kapalı olduğu için göremedi" yanlış-negatifini eler.
+    mockSession({ role: 'KULLANICI', department: 'Üretim', permissions: ['servis.kvkk.view', 'yilliktakvim.view'] })
+    renderSidebar()
+    acIvGrubunu()
+    expect(screen.getByText('Yıllık Çalışma Takvimi')).toBeInTheDocument()
+    expect(screen.queryByText('Acil Durum Servis Listesi')).not.toBeInTheDocument()
+  })
+
+  it('legacy admin rolü + İV departmanı ama HİÇ RBAC izni olmayan kullanıcı satırı GÖRMEZ (rol/departman fallback devreye girmiyor)', () => {
+    mockSession({ role: 'HR_MANAGER', department: 'İnsan Varlıkları', permissions: [] })
+    renderSidebar()
+    acIvGrubunu()
+    expect(screen.queryByText('Acil Durum Servis Listesi')).not.toBeInTheDocument()
+  })
+
+  it('İKİ izne birden sahip kullanıcı satırı GÖRÜR', () => {
+    mockSession({ role: 'KULLANICI', department: 'Üretim', permissions: ['servis.view', 'servis.kvkk.view'] })
+    renderSidebar()
+    acIvGrubunu()
+    expect(screen.getByText('Acil Durum Servis Listesi')).toBeInTheDocument()
+  })
+})

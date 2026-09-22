@@ -72,17 +72,22 @@ function gunBaslangici(deger: Date): Date {
 }
 
 // Firma filtresi dolaylı: personelin atandığı güzergahta, o firmaya ait
-// GÜNCEL (bilinçli — point-in-time değil) aktif bir ANA araç ya da şoför
-// varsayılanı var mı. Personel ataması kendi başına bir firma taşımıyor,
-// yalnız güzergah üzerinden dolaylı kurulabiliyor.
-async function firmaGuzergahIdleriGetir(firmaId: string): Promise<Set<string>> {
+// SEÇİLEN TARİH itibarıyla ANA araç ya da şoför varsayılanı var mı. Personel
+// ROSTER'ıyla AYNI point-in-time mantığı — aktif bayrağına BAKILMAZ, yalnız
+// tarih aralığı kontrol edilir (madde 31/2 dersi: geçmiş tarihli liste
+// "geçmişin personeli + bugünün firması" gibi tutarsız üretmemeli).
+async function firmaGuzergahIdleriGetir(firmaId: string, tarih: Date): Promise<Set<string>> {
+  const tarihKosulu = {
+    baslangicTarihi: { lte: tarih },
+    OR: [{ bitisTarihi: null }, { bitisTarihi: { gte: tarih } }],
+  }
   const [aracVarsayilanlari, soforVarsayilanlari] = await Promise.all([
     prisma.servisGuzergahAracVarsayilan.findMany({
-      where: { rol: 'ANA', aktif: true, arac: { firmaId } },
+      where: { rol: 'ANA', ...tarihKosulu, arac: { firmaId } },
       select: { guzergahId: true },
     }),
     prisma.servisGuzergahSoforVarsayilan.findMany({
-      where: { rol: 'ANA', aktif: true, sofor: { firmaId } },
+      where: { rol: 'ANA', ...tarihKosulu, sofor: { firmaId } },
       select: { guzergahId: true },
     }),
   ])
@@ -129,7 +134,7 @@ export async function operasyonelServisListesiGetir(
   const bugun = gunBaslangici(new Date())
   const gecmisTarihSecildi = tarih.getTime() < bugun.getTime()
 
-  const izinliGuzergahIdler = filtre.firmaId ? await firmaGuzergahIdleriGetir(filtre.firmaId) : null
+  const izinliGuzergahIdler = filtre.firmaId ? await firmaGuzergahIdleriGetir(filtre.firmaId, tarih) : null
 
   const atamalar = await prisma.servisPersonelAtama.findMany({
     where: {

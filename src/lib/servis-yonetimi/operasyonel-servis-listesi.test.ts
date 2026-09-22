@@ -73,16 +73,39 @@ describe('operasyonelServisListesiGetir — tekil filtreler', () => {
     mocks.aracVarsayilanFindMany.mockResolvedValue([{ guzergahId: 'g1' }])
     mocks.soforVarsayilanFindMany.mockResolvedValue([{ guzergahId: 'g2' }])
 
-    await operasyonelServisListesiGetir({ firmaId: 'f1' })
+    await operasyonelServisListesiGetir({ firmaId: 'f1', tarih: '2026-06-01' })
 
     expect(mocks.aracVarsayilanFindMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { rol: 'ANA', aktif: true, arac: { firmaId: 'f1' } } }),
+      expect.objectContaining({
+        where: {
+          rol: 'ANA',
+          baslangicTarihi: { lte: new Date('2026-06-01T00:00:00.000Z') },
+          OR: [{ bitisTarihi: null }, { bitisTarihi: { gte: new Date('2026-06-01T00:00:00.000Z') } }],
+          arac: { firmaId: 'f1' },
+        },
+      }),
     )
     expect(mocks.soforVarsayilanFindMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { rol: 'ANA', aktif: true, sofor: { firmaId: 'f1' } } }),
+      expect.objectContaining({
+        where: {
+          rol: 'ANA',
+          baslangicTarihi: { lte: new Date('2026-06-01T00:00:00.000Z') },
+          OR: [{ bitisTarihi: null }, { bitisTarihi: { gte: new Date('2026-06-01T00:00:00.000Z') } }],
+          sofor: { firmaId: 'f1' },
+        },
+      }),
     )
     const cagriArg = mocks.personelAtamaFindMany.mock.calls[0][0]
     expect(cagriArg.where.guzergahId).toEqual({ in: expect.arrayContaining(['g1', 'g2']) })
+  })
+
+  it("firmaId filtresi point-in-time'dır — aktif bayrağına DEĞİL, verilen tarihe göre kurulur (madde 31/2 sınıfı hata)", async () => {
+    await operasyonelServisListesiGetir({ firmaId: 'f1', tarih: '2026-06-01' })
+
+    const aracCagri = mocks.aracVarsayilanFindMany.mock.calls[0][0]
+    const soforCagri = mocks.soforVarsayilanFindMany.mock.calls[0][0]
+    expect(aracCagri.where.aktif).toBeUndefined()
+    expect(soforCagri.where.aktif).toBeUndefined()
   })
 })
 

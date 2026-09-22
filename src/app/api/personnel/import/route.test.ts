@@ -106,6 +106,24 @@ describe('POST /api/personnel/import — ikametAdresi değişim damgası (mevcut
     expect(gonderilenVeri.ikametAdresiDegisimTarihi).toBeUndefined()
   })
 
+  // 🔴 Kritik senaryo (FAZ 1C göçü): İKAMET ADRESİ sütunu bu satırda hiç
+  // doldurulmamış (Excel hücresi boş → mapped.ikametAdresi === undefined).
+  // Mevcut kayıtta GERÇEK bir adres varsa bu ne "değişiklik" sayılmalı ne de
+  // mevcut adresi SİLMELİ — aksi halde toplu import yüzlerce kaydın adresini
+  // sessizce null'lar ve sahte "değişti" damgası basar.
+  it('İKAMET ADRESİ sütunu satırda hiç yoksa (boş hücre): mevcut adres SİLİNMEZ, damga SET EDİLMEZ', async () => {
+    mocks.personnelFindUnique.mockResolvedValue({ id: 'p1', sicilNo: '1001', ikametAdresi: 'Gerçek Mevcut Adres' })
+    xlsxOkumasiniKur({}) // İKAMET ADRESİ sütunu YOK — TEMEL_SATIR'da da zaten tanımlı değil
+
+    const res = await POST(istekOlustur())
+    expect(res.status).toBe(200)
+
+    expect(mocks.personnelUpdate).toHaveBeenCalledTimes(1)
+    const gonderilenVeri = mocks.personnelUpdate.mock.calls[0][0].data
+    expect(Object.prototype.hasOwnProperty.call(gonderilenVeri, 'ikametAdresi')).toBe(false)
+    expect(gonderilenVeri.ikametAdresiDegisimTarihi).toBeUndefined()
+  })
+
   it('YENİ kayıt oluşturmada (existing yok) damga hiç set edilmez — bu bir "değişiklik" değil', async () => {
     mocks.personnelFindUnique.mockResolvedValue(null)
     xlsxOkumasiniKur({ 'İKAMET ADRESİ': 'İlk Adres' })

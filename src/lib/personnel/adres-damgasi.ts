@@ -21,6 +21,14 @@ export function adresDegisimDamgasi(
   eskiAdres: string | null | undefined,
   yeniAdres: string | null | undefined,
 ): { ikametAdresiDegisimTarihi: Date } | Record<string, never> {
+  // yeniAdres === undefined = "alan hiç gönderilmedi/bilgi yok" (örn. toplu
+  // Excel import'ta boş hücre) — null/''den FARKLI: null/'' "kullanıcı
+  // BİLEREK boşalttı" anlamına gelir ve gerçek değişiklik sayılabilir,
+  // undefined ise KARŞILAŞTIRMAYA BİLE GİRMEDEN her zaman no-op'tur. Bu
+  // ayrım olmasa toplu import'ta boş bırakılan (doldurulmamış, silinmek
+  // İSTENMEYEN) adres sütunları mevcut adresleri sessizce sıfırlar ve
+  // sahte "değişti" damgası basardı (FAZ 1C göçü tam bu yoldan geçecek).
+  if (yeniAdres === undefined) return {}
   if (normalize(eskiAdres) === normalize(yeniAdres)) return {}
   return { ikametAdresiDegisimTarihi: new Date() }
 }

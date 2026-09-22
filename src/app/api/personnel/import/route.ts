@@ -409,7 +409,6 @@ export async function POST(request: NextRequest) {
           masrafMerkezi: mapped.masrafMerkezi?.toString().trim() || null,
           interKepMail: mapped.interKepMail?.toString().trim() || null,
           mailAdresi: mapped.mailAdresi?.toString().trim() || null,
-          ikametAdresi: mapped.ikametAdresi?.toString().trim() || null,
           serviceRoute: mapped.serviceRoute?.toString().trim() || null,
           serviceStop: mapped.serviceStop?.toString().trim() || null,
           telefon: mapped.telefon?.toString().trim() || null,
@@ -425,6 +424,18 @@ export async function POST(request: NextRequest) {
             ? parseDate(mapped.altiAyDegerlendirme)
             : addMonthsToDate(iseGirisTarihi, 6),
           createdBy: user.id,
+        }
+
+        // İkamet adresi — DİĞER opsiyonel alanlardan FARKLI olarak, Excel
+        // hücresi boşsa (mapped.ikametAdresi === undefined) anahtar hiç
+        // eklenmiyor: personnelData'ya "boş → null" yazılırsa mevcut kayıttaki
+        // gerçek adres toplu import'ta sessizce silinir ve adresDegisimDamgasi
+        // yanlışlıkla "değişti" damgası basar (bkz. adres-damgasi.ts).
+        // Hücre GERÇEKTEN dolu ama boşluk/gibi trim sonrası boşsa (nadir) yine
+        // null yazılır — o zaten kullanıcının/Excel'in bilerek verdiği bir
+        // değerdir, "hiç gönderilmedi" değildir.
+        if (mapped.ikametAdresi !== undefined) {
+          personnelData.ikametAdresi = mapped.ikametAdresi.toString().trim() || null
         }
 
         // Optional enums

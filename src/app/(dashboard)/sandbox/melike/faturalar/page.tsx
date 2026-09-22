@@ -22,7 +22,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Plus, Search, AlertCircle, Trash2, Pencil, FileSpreadsheet, Download } from 'lucide-react'
+import { Plus, Search, AlertCircle, Trash2, Pencil, FileSpreadsheet, Download, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react'
 import {
   Bar,
   BarChart,
@@ -37,6 +37,12 @@ import { InvoiceFormDialog, type EditableInvoice } from './_components/InvoiceFo
 import { ImportDialog, downloadFile } from './_components/ImportDialog'
 
 const NAVY = '#1B4F72'
+const SG_LABEL = 'SİSTEM GELİŞTİRME MÜDÜRLÜĞÜ'
+const PALETTE = [
+  NAVY, '#0F6E56', '#993C1D', '#B4B2A9', '#7C3AED',
+  '#D97706', '#059669', '#DB2777', '#2563EB', '#65A30D',
+  '#9333EA', '#DC2626', '#0891B2',
+]
 
 type Currency = 'TRY' | 'USD' | 'EUR'
 
@@ -116,6 +122,20 @@ function formatMonthLabel(key: string) {
   const d = new Date(Number(y), Number(m) - 1, 1)
   return d.toLocaleDateString('tr-TR', { year: '2-digit', month: 'short' })
 }
+function formatDateTR(dateStr: string) {
+  const [y, m, d] = dateStr.slice(0, 10).split('-')
+  return `${d}.${m}.${y}`
+}
+
+type SortKey = 'date' | 'company' | 'invoiceNumber' | 'amountEUR' | 'department'
+type SortDir = 'asc' | 'desc'
+
+function invoiceDepartmentLabel(inv: Invoice): string {
+  if (inv.allocations.length > 0) {
+    return inv.allocations.map((a) => a.departmentName).join(', ')
+  }
+  return inv.departmentName ?? 'Genel'
+}
 
 export default function FaturaTakipPage() {
   const { data: session, status } = useSession()
@@ -130,9 +150,20 @@ export default function FaturaTakipPage() {
   const [editingInvoice, setEditingInvoice] = useState<EditableInvoice | null>(null)
   const [showImport, setShowImport] = useState(false)
   const [filter, setFilter] = useState('ALL') // 'ALL' | 'GENEL' | <orgUnitId>
-  const [selectedMonth, setSelectedMonth] = useState('')
   const [search, setSearch] = useState('')
   const [departments, setDepartments] = useState<Department[]>([])
+
+  // Kartlar / Bölüme göre dağılım için ortak kapsam: belirli bir ay ya da tüm zamanlar (kümülatif)
+  const [scopeMode, setScopeMode] = useState<'MONTH' | 'ALL'>('MONTH')
+  const [scopeMonth, setScopeMonth] = useState('')
+
+  // Grafik: tüm bölümler mi, yoksa tek bir bölümün aylara göre değişimi mi
+  const [chartDept, setChartDept] = useState('ALL')
+
+  // Fatura listesi: ay filtresi + sıralama
+  const [listMonthFilter, setListMonthFilter] = useState('ALL')
+  const [sortKey, setSortKey] = useState<SortKey>('date')
+  const [sortDir, setSortDir] = useState<SortDir>('desc')
 
   useEffect(() => {
     if (status === 'loading') return
@@ -194,6 +225,13 @@ export default function FaturaTakipPage() {
     loadInvoices()
   }, [filter, search])
 
+  // Ay seçilmemişse (ilk yükleme) en son ayı varsayılan yap
+  useEffect(() => {
+    if (!scopeMonth && summary?.months.length) {
+      setScopeMonth(summary.months[summary.months.length - 1].key)
+    }
+  }, [summary, scopeMonth])
+
   async function handleDelete(id: string) {
     if (!confirm('Bu fatura kaydını silmek istediğine emin misin?')) return
     const res = await fetch(`/api/sandbox/melike/faturalar/${id}`, { method: 'DELETE' })
@@ -228,17 +266,72 @@ export default function FaturaTakipPage() {
     })
   }
 
-  const chartData = useMemo(
-    () =>
-      (summary?.months ?? []).map((m) => ({
-        ay: formatMonthLabel(m.key),
-        Genel: m.genel,
-        'Sistem Geliştirme': m.sistemGelistirme,
-      })),
-    [summary]
-  )
+  function toggleSort(key: SortKey) {
+    if (sortKey === key) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortKey(key)
+      setSortDir('asc')
+    }
+  }
+
+  const departmentColor = useMemo(() => {
+    const map = new Map<string, string>()
+    ;(summary?.departments ?? []).forEach((d, i) => map.set(d.label, PALETTE[i % PALETTE.length]))
+    return map
+  }, [summary])
+
+  const chartData = useMemo(() => {
+    if (!summary) return []
+    if (chartDept === 'ALL') {
+      return summary.months.map((m) => {
+        const row: Record<string, string | number> = { ay: formatMonthLabel(m.key) }
+        for (const d of summary.departments) row[d.label] = 0
+        for (const d of m.departments) row[d.label] = d.eur
+        return row
+      })
+    }
+    return summary.months.map((m) => ({
+      ay: formatMonthLabel(m.key),
+      [chartDept]: m.departments.find((d) => d.label === chartDept)?.eur ?? 0,
+    }))
+  }, [summary, chartDept])
 
   const totalCiro = useMemo(() => Object.values(revenues).reduce((s, v) => s + v, 0), [revenues])
+
+  const scopedMonthSummary = summary?.months.find((m) => m.key === scopeMonth) ?? null
+
+  const cardTotals = useMemo(() => {
+    if (scopeMode === 'MONTH' && scopedMonthSummary) {
+      const genel = scopedMonthSummary.genel
+      const sistemGelistirme = scopedMonthSummary.sistemGelistirme
+      const toplam = genel + sistemGelistirme
+      return { genel, sistemGelistirme, toplam, oran: toplam > 0 ? (sistemGelistirme / toplam) * 100 : 0 }
+    }
+    return summary?.totals ?? { genel: 0, sistemGelistirme: 0, toplam: 0, oran: 0 }
+  }, [scopeMode, scopedMonthSummary, summary])
+
+  const scopedDepartments = scopeMode === 'MONTH' && scopedMonthSummary ? scopedMonthSummary.departments : summary?.departments ?? []
+  const scopedCiro = scopeMode === 'MONTH' ? revenues[scopeMonth] ?? 0 : totalCiro
+
+  const listMonths = useMemo(() => summary?.months.map((m) => m.key) ?? [], [summary])
+
+  const displayedInvoices = useMemo(() => {
+    let rows = invoices
+    if (listMonthFilter !== 'ALL') {
+      rows = rows.filter((inv) => inv.invoiceDate.slice(0, 7) === listMonthFilter)
+    }
+    const sorted = [...rows].sort((a, b) => {
+      let cmp = 0
+      if (sortKey === 'date') cmp = a.invoiceDate.localeCompare(b.invoiceDate)
+      else if (sortKey === 'company') cmp = a.companyName.localeCompare(b.companyName, 'tr')
+      else if (sortKey === 'invoiceNumber') cmp = a.invoiceNumber.localeCompare(b.invoiceNumber, 'tr')
+      else if (sortKey === 'amountEUR') cmp = Number(a.amountEUR) - Number(b.amountEUR)
+      else if (sortKey === 'department') cmp = invoiceDepartmentLabel(a).localeCompare(invoiceDepartmentLabel(b), 'tr')
+      return sortDir === 'asc' ? cmp : -cmp
+    })
+    return sorted
+  }, [invoices, listMonthFilter, sortKey, sortDir])
 
   if (status === 'loading' || !authorized) {
     return (
@@ -250,6 +343,25 @@ export default function FaturaTakipPage() {
 
   const sandboxModule = getSandboxBySlug('melike')
   if (!sandboxModule) return null
+
+  function SortHead({ label, sortKeyName, className }: { label: string; sortKeyName: SortKey; className?: string }) {
+    const active = sortKey === sortKeyName
+    return (
+      <TableHead className={className}>
+        <button
+          onClick={() => toggleSort(sortKeyName)}
+          className="inline-flex items-center gap-1 hover:text-foreground"
+        >
+          {label}
+          {active ? (
+            sortDir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
+          ) : (
+            <ArrowUpDown className="h-3 w-3 opacity-40" />
+          )}
+        </button>
+      </TableHead>
+    )
+  }
 
   return (
     <div className="space-y-6">
@@ -287,34 +399,89 @@ export default function FaturaTakipPage() {
         </span>
       </div>
 
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex rounded-md border p-0.5 text-xs">
+          <button
+            onClick={() => setScopeMode('MONTH')}
+            className="rounded px-3 py-1.5 font-medium transition-colors"
+            style={scopeMode === 'MONTH' ? { backgroundColor: NAVY, color: 'white' } : { color: '#5F5E5A' }}
+          >
+            Aylık
+          </button>
+          <button
+            onClick={() => setScopeMode('ALL')}
+            className="rounded px-3 py-1.5 font-medium transition-colors"
+            style={scopeMode === 'ALL' ? { backgroundColor: NAVY, color: 'white' } : { color: '#5F5E5A' }}
+          >
+            Tüm Zamanlar (Kümülatif)
+          </button>
+        </div>
+        {scopeMode === 'MONTH' && summary?.months.length ? (
+          <Select value={scopeMonth} onValueChange={setScopeMonth}>
+            <SelectTrigger className="w-32">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {summary.months.map((m) => (
+                <SelectItem key={m.key} value={m.key}>
+                  {formatMonthLabel(m.key)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : null}
+      </div>
+
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <SummaryCard label="Toplam (€)" value={formatEur(summary?.totals.toplam ?? 0)} color={NAVY} />
-        <SummaryCard
-          label="Sistem Geliştirme (€)"
-          value={formatEur(summary?.totals.sistemGelistirme ?? 0)}
-          color="#0F6E56"
-        />
-        <SummaryCard label="Genel (€)" value={formatEur(summary?.totals.genel ?? 0)} color="#888780" />
-        <SummaryCard
-          label="Sistem Geliştirme Oranı"
-          value={`${(summary?.totals.oran ?? 0).toFixed(1)}%`}
-          color="#993C1D"
-        />
+        <SummaryCard label="Toplam (€)" value={formatEur(cardTotals.toplam)} color={NAVY} />
+        <SummaryCard label="Sistem Geliştirme (€)" value={formatEur(cardTotals.sistemGelistirme)} color="#0F6E56" />
+        <SummaryCard label="Genel (€)" value={formatEur(cardTotals.genel)} color="#888780" />
+        <SummaryCard label="Sistem Geliştirme Oranı" value={`${cardTotals.oran.toFixed(1)}%`} color="#993C1D" />
       </div>
 
       <Card>
         <CardContent className="pt-6">
-          <div className="mb-3 text-sm font-semibold text-muted-foreground">Aylık € dağılımı</div>
-          <div className="h-56 w-full">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <div className="text-sm font-semibold text-muted-foreground">Aylık € dağılımı</div>
+            <Select value={chartDept} onValueChange={setChartDept}>
+              <SelectTrigger className="w-56">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Tüm bölümler</SelectItem>
+                {(summary?.departments ?? []).map((d) => (
+                  <SelectItem key={d.label} value={d.label}>
+                    {d.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="h-64 w-full">
             <ResponsiveContainer>
               <BarChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#EEE" />
                 <XAxis dataKey="ay" tick={{ fontSize: 11 }} />
                 <YAxis tick={{ fontSize: 11 }} />
                 <Tooltip formatter={(v: number) => formatEur(v)} />
-                <Legend wrapperStyle={{ fontSize: 12 }} />
-                <Bar dataKey="Genel" stackId="a" fill="#B4B2A9" />
-                <Bar dataKey="Sistem Geliştirme" stackId="a" fill={NAVY} radius={[4, 4, 0, 0]} />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+                {chartDept === 'ALL'
+                  ? (summary?.departments ?? []).map((d, i) => (
+                      <Bar
+                        key={d.label}
+                        dataKey={d.label}
+                        stackId="a"
+                        fill={departmentColor.get(d.label) ?? PALETTE[i % PALETTE.length]}
+                        radius={i === (summary?.departments.length ?? 1) - 1 ? [4, 4, 0, 0] : undefined}
+                      />
+                    ))
+                  : (
+                      <Bar
+                        dataKey={chartDept}
+                        fill={departmentColor.get(chartDept) ?? NAVY}
+                        radius={[4, 4, 0, 0]}
+                      />
+                    )}
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -324,41 +491,37 @@ export default function FaturaTakipPage() {
       <Card>
         <CardContent className="pt-6">
           <div className="text-sm font-semibold text-muted-foreground">Ciro karşılaştırması</div>
-          <p className="mb-3 text-xs text-muted-foreground/80">Bir ay seç, o ayın cirosunu € olarak gir.</p>
+          <p className="mb-3 text-xs text-muted-foreground/80">
+            {scopeMode === 'MONTH'
+              ? 'Seçili ayın cirosunu € olarak gir (üstteki ay seçici ile aynı ay).'
+              : 'Tüm zamanlar kapsamındasın — girilen tüm ayların ciro toplamı kullanılıyor.'}
+          </p>
           {!summary?.months.length ? (
             <p className="py-2 text-sm text-muted-foreground">Henüz fatura kaydı yok.</p>
+          ) : scopeMode === 'ALL' ? (
+            <div className="text-sm">
+              Tüm ayların ciro toplamı: <span className="font-semibold">{formatEur(totalCiro)}</span>
+              <span className="ml-2 text-xs text-muted-foreground">
+                (aylık girmek için üstten "Aylık" moduna geç)
+              </span>
+            </div>
           ) : (
             (() => {
-              const selectedSummary = summary.months.find((m) => m.key === selectedMonth) ?? summary.months[summary.months.length - 1]
-              const monthCiro = revenues[selectedSummary.key] ?? 0
-              const monthOran = monthCiro > 0 ? (selectedSummary.toplamEUR / monthCiro) * 100 : null
+              const m = scopedMonthSummary ?? summary.months[summary.months.length - 1]
+              const monthCiro = revenues[m.key] ?? 0
+              const monthOran = monthCiro > 0 ? (m.toplamEUR / monthCiro) * 100 : null
               return (
                 <div className="flex flex-wrap items-end gap-4">
                   <div className="space-y-1">
-                    <label className="text-xs text-muted-foreground">Ay</label>
-                    <Select value={selectedSummary.key} onValueChange={setSelectedMonth}>
-                      <SelectTrigger className="w-32">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {summary.months.map((m) => (
-                          <SelectItem key={m.key} value={m.key}>
-                            {formatMonthLabel(m.key)}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-1">
                     <label className="text-xs text-muted-foreground">Fatura Toplamı (€)</label>
-                    <div className="flex h-9 items-center text-sm font-semibold">{formatEur(selectedSummary.toplamEUR)}</div>
+                    <div className="flex h-9 items-center text-sm font-semibold">{formatEur(m.toplamEUR)}</div>
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs text-muted-foreground">Ciro (€)</label>
                     <Input
                       value={monthCiro > 0 ? formatThousands(String(monthCiro)) : ''}
-                      onChange={(e) => handleRevenueChange(selectedSummary.key, e.target.value.replace(/\D/g, ''))}
-                      onBlur={() => handleRevenueBlur(selectedSummary.key)}
+                      onChange={(e) => handleRevenueChange(m.key, e.target.value.replace(/\D/g, ''))}
+                      onBlur={() => handleRevenueBlur(m.key)}
                       placeholder="ciro gir"
                       inputMode="numeric"
                       className="h-9 w-40 text-right"
@@ -383,7 +546,9 @@ export default function FaturaTakipPage() {
       <Card>
         <CardContent className="pt-6">
           <div className="flex items-center gap-2">
-            <div className="text-sm font-semibold text-muted-foreground">Bölüme göre dağılım</div>
+            <div className="text-sm font-semibold text-muted-foreground">
+              Bölüme göre dağılım {scopeMode === 'MONTH' && scopedMonthSummary ? `— ${formatMonthLabel(scopedMonthSummary.key)}` : '— Tüm Zamanlar'}
+            </div>
             <button
               onClick={() => downloadFile('/api/sandbox/melike/faturalar/export?type=summary')}
               className="flex items-center gap-1 text-xs font-medium text-[#1B4F72] hover:underline"
@@ -393,10 +558,10 @@ export default function FaturaTakipPage() {
             </button>
           </div>
           <p className="mb-3 text-xs text-muted-foreground/80">
-            Tüm zamanlar toplamı, bölüm bazında. Cironun Oranı, yukarıda girdiğin tüm ayların ciro toplamına göre.
+            Üstteki "Aylık / Tüm Zamanlar" seçimine göre değişir. Cironun Oranı da aynı kapsamdaki ciroya göre.
           </p>
-          {!summary?.departments.length ? (
-            <p className="py-2 text-sm text-muted-foreground">Henüz fatura kaydı yok.</p>
+          {!scopedDepartments.length ? (
+            <p className="py-2 text-sm text-muted-foreground">Bu kapsamda fatura kaydı yok.</p>
           ) : (
             <Table>
               <TableHeader>
@@ -408,13 +573,11 @@ export default function FaturaTakipPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {summary.departments.map((d) => {
-                  const deptCiroOran = totalCiro > 0 ? (d.eur / totalCiro) * 100 : null
+                {scopedDepartments.map((d) => {
+                  const deptCiroOran = scopedCiro > 0 ? (d.eur / scopedCiro) * 100 : null
                   return (
                     <TableRow key={d.label}>
-                      <TableCell style={{ color: d.label === 'SİSTEM GELİŞTİRME MÜDÜRLÜĞÜ' ? NAVY : undefined }}>
-                        {d.label}
-                      </TableCell>
+                      <TableCell style={{ color: d.label === SG_LABEL ? NAVY : undefined }}>{d.label}</TableCell>
                       <TableCell className="text-right">{formatTL(d.tl)}</TableCell>
                       <TableCell className="text-right font-semibold">{formatEur(d.eur)}</TableCell>
                       <TableCell className="text-right" style={{ color: deptCiroOran == null ? '#BBB' : NAVY }}>
@@ -435,11 +598,24 @@ export default function FaturaTakipPage() {
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="ALL">Tümü</SelectItem>
+            <SelectItem value="ALL">Tüm Bölümler</SelectItem>
             <SelectItem value="GENEL">Genel</SelectItem>
             {departments.map((d) => (
               <SelectItem key={d.id} value={d.id}>
                 {d.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={listMonthFilter} onValueChange={setListMonthFilter}>
+          <SelectTrigger className="w-32">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="ALL">Tüm Aylar</SelectItem>
+            {listMonths.map((key) => (
+              <SelectItem key={key} value={key}>
+                {formatMonthLabel(key)}
               </SelectItem>
             ))}
           </SelectContent>
@@ -459,12 +635,12 @@ export default function FaturaTakipPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Tarih</TableHead>
-              <TableHead>Firma</TableHead>
-              <TableHead>Fatura No</TableHead>
+              <SortHead label="Tarih" sortKeyName="date" />
+              <SortHead label="Firma" sortKeyName="company" />
+              <SortHead label="Fatura No" sortKeyName="invoiceNumber" />
               <TableHead className="text-right">Tutar</TableHead>
-              <TableHead className="text-right">€ Karşılığı</TableHead>
-              <TableHead>Bölüm</TableHead>
+              <SortHead label="€ Karşılığı" sortKeyName="amountEUR" className="text-right" />
+              <SortHead label="Bölüm" sortKeyName="department" />
               <TableHead className="w-10" />
             </TableRow>
           </TableHeader>
@@ -475,16 +651,16 @@ export default function FaturaTakipPage() {
                   Yükleniyor...
                 </TableCell>
               </TableRow>
-            ) : invoices.length === 0 ? (
+            ) : displayedInvoices.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={7} className="text-center text-muted-foreground py-6">
                   Kayıt yok
                 </TableCell>
               </TableRow>
             ) : (
-              invoices.map((inv) => (
+              displayedInvoices.map((inv) => (
                 <TableRow key={inv.id}>
-                  <TableCell>{inv.invoiceDate.slice(0, 10)}</TableCell>
+                  <TableCell>{formatDateTR(inv.invoiceDate)}</TableCell>
                   <TableCell className="max-w-[220px] truncate" title={inv.companyName}>
                     {inv.companyName}
                   </TableCell>

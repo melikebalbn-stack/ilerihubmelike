@@ -147,7 +147,8 @@ function grupHtml(g: Grup, tanimlar: GrupTanim[], hk: HazirKolon[], parametreler
   return parcalar.join('\n')
 }
 
-const CSS = `
+/** A4 yazdırma CSS'i — belge ve etkileşimli çıktı (gorunum-html) ortak. */
+export const yazdirmaCss = (yon: 'portrait' | 'landscape' = 'portrait') => `
 :root{--cizgi:#cbd5e1;--zemin:#f1f5f9;--metin:#0f172a;--kritik:#dc2626;--kritik-z:#fee2e2;--iyi:#15803d;--iyi-z:#dcfce7;--uyari:#b45309;--uyari-z:#fef3c7}
 *{box-sizing:border-box}
 body{font-family:Arial,Helvetica,sans-serif;font-size:10pt;color:var(--metin);margin:0;padding:12mm;background:#fff}
@@ -172,12 +173,45 @@ tr{break-inside:avoid;page-break-inside:avoid}
 .uyari-satir{color:var(--uyari);background:var(--uyari-z);padding:4pt 6pt;margin:6pt 0;font-size:9pt;border:1px solid #f59e0b}
 .bos{padding:16pt;text-align:center;color:#64748b}
 .sayfa-alti{display:flex;justify-content:space-between;font-size:8pt;color:#64748b;margin-top:10pt;border-top:1px solid var(--cizgi);padding-top:4pt}
-@page{size:A4 portrait;margin:15mm}
+@page{size:A4 ${yon};margin:15mm}
 @media print{
   body{padding:0}
   .yeni-sayfa{break-before:page;page-break-before:always}
   .r-kritik,.r-iyi,.r-uyari,.grup td,th,.alt-toplam td,.genel-toplam td{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 }`
+
+/** Başlık altı meta şeridi: parametreler, tarih, çalıştıran, rapor kodu, satır (+ ek çiftler). */
+export function metaSatiri(parametreler: SablonIcerik['parametreler'], degerler: Record<string, unknown> | undefined, baglam: RenderBaglam, satirSayisi: number, ek: Array<[string, string]> = []): string {
+  const paramOzeti = (parametreler ?? [])
+    .map((sp) => `<span><b>${esc(sp.etiket)}:</b> ${esc(bicimle(degerler?.[sp.ad], sp.tip === 'tarih' ? 'gg.aa.yyyy' : undefined))}</span>`)
+    .join('')
+  return [
+    paramOzeti,
+    ...ek.map(([b, v]) => `<span><b>${esc(b)}:</b> ${esc(v)}</span>`),
+    `<span><b>Tarih:</b> ${esc(tarihSaatMetni(new Date()))}</span>`,
+    baglam.calistiran ? `<span><b>Çalıştıran:</b> ${esc(baglam.calistiran)}</span>` : '',
+    baglam.raporKodu ? `<span><b>Rapor:</b> ${esc(baglam.raporKodu)}</span>` : '',
+    `<span><b>Satır:</b> ${satirSayisi.toLocaleString('tr-TR')}</span>`,
+  ].filter(Boolean).join('')
+}
+
+/** Tam HTML belgesi kabuğu (charset, başlık bloğu, gömülü CSS). */
+export function belgeKabugu(baslik: string, altBaslik: string | undefined, meta: string, govde: string, yon: 'portrait' | 'landscape' = 'portrait'): string {
+  return `<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${esc(baslik)}</title>
+<style>${yazdirmaCss(yon)}</style>
+</head>
+<body>
+<div class="baslik"><h1>${esc(baslik)}</h1>${altBaslik ? `<p class="alt">${esc(altBaslik)}</p>` : ''}</div>
+<div class="meta">${meta}</div>
+${govde}
+</body>
+</html>`
+}
 
 // ── Giriş noktası ───────────────────────────────────────────────────────
 
@@ -215,17 +249,7 @@ export function raporRender(icerik: SablonIcerik, satirlar: Satir[], baglam: Ren
     govde.push(toplamSatiri(hk, veri, 'Genel toplam', 'genel-toplam'))
   }
 
-  const simdi = new Date()
-  const paramOzeti = (icerik.parametreler ?? [])
-    .map((sp) => `<span><b>${esc(sp.etiket)}:</b> ${esc(bicimle(p?.[sp.ad], sp.tip === 'tarih' ? 'gg.aa.yyyy' : undefined))}</span>`)
-    .join('')
-  const meta = [
-    paramOzeti,
-    `<span><b>Tarih:</b> ${esc(tarihSaatMetni(simdi))}</span>`,
-    baglam.calistiran ? `<span><b>Çalıştıran:</b> ${esc(baglam.calistiran)}</span>` : '',
-    baglam.raporKodu ? `<span><b>Rapor:</b> ${esc(baglam.raporKodu)}</span>` : '',
-    `<span><b>Satır:</b> ${veri.length}</span>`,
-  ].filter(Boolean).join('')
+  const meta = metaSatiri(icerik.parametreler, p, baglam, veri.length)
 
   const colgroup = `<colgroup>${hk.map((h) => `<col style="width:${h.genislik.toFixed(2)}%">`).join('')}</colgroup>`
   const thead = `<thead><tr>${hk.map((h) => `<th class="h-${h.hiza}">${esc(h.k.baslik)}</th>`).join('')}</tr></thead>`
@@ -233,22 +257,9 @@ export function raporRender(icerik: SablonIcerik, satirlar: Satir[], baglam: Ren
   const sa = icerik.sayfaAlti
   const sayfaAlti = sa && (sa.sol || sa.sag) ? `<div class="sayfa-alti"><span>${esc(sa.sol ?? '')}</span><span>${esc(sa.sag ?? '')}</span></div>` : ''
 
-  const html = `<!DOCTYPE html>
-<html lang="tr">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${esc(icerik.baslik)}</title>
-<style>${CSS}</style>
-</head>
-<body>
-<div class="baslik"><h1>${esc(icerik.baslik)}</h1>${icerik.altBaslik ? `<p class="alt">${esc(icerik.altBaslik)}</p>` : ''}</div>
-<div class="meta">${meta}</div>
-${uyari}
+  const html = belgeKabugu(icerik.baslik, icerik.altBaslik, meta, `${uyari}
 ${veri.length ? `<table>${colgroup}${thead}<tbody>\n${govde.join('\n')}\n</tbody></table>` : '<div class="bos">Kayıt bulunamadı</div>'}
-${sayfaAlti}
-</body>
-</html>`
+${sayfaAlti}`)
 
   return { html, satirSayisi: veri.length, sureMs: Date.now() - t0 }
 }

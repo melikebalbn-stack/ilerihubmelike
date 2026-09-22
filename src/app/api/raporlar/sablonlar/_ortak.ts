@@ -20,6 +20,7 @@ export const EtkilesimliIcerikSchema = z.object({
   tur: z.literal('etkilesimli'),
   baslik: z.string(),
   altBaslik: z.string().optional(),
+  kategori: z.string().trim().max(60).optional(),
   parametreler: z.array(ParametreSchema).optional(),
   gorunum: GorunumSchema,
 })
@@ -28,6 +29,7 @@ export const BelgeIcerikSchema = z.object({
   tur: z.literal('belge').optional(),
   baslik: z.string(),
   altBaslik: z.string().optional(),
+  kategori: z.string().trim().max(60).optional(),
   parametreler: z.array(ParametreSchema).optional(),
   hesaplananAlanlar: z.array(HesaplananSchema).optional(),
   gruplar: z.array(z.object({ alan: z.string(), baslik: z.string().optional(), yeniSayfa: z.boolean().optional() })).optional(),

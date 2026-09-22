@@ -38,6 +38,7 @@ const tanim: VeriSetiTanim = {
 const icerik: EtkilesimliIcerik = {
   tur: 'etkilesimli',
   baslik: 'İş Emri Listesi',
+  kategori: 'Üretim',
   altBaslik: 'IFS ShopOrd + IPRO tezgah',
   parametreler: [
     { ad: 'baslangic', tip: 'tarih', etiket: 'Termin başlangıcı', zorunlu: true },

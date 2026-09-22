@@ -20,9 +20,17 @@ export async function GET() {
 
   const sablonlar = await prisma.raporSablon.findMany({
     where: { durum: tasarlayabilir ? { in: ['YAYINDA', 'TASLAK'] } : 'YAYINDA' },
-    select: { id: true, kod: true, ad: true, aciklama: true, durum: true, guncellenme: true, icerik: true },
+    select: { id: true, kod: true, ad: true, aciklama: true, durum: true, guncellenme: true, icerik: true, veriSeti: { select: { ad: true } } },
     orderBy: [{ durum: 'asc' }, { ad: 'asc' }],
   })
+  const liste = sablonlar.map(({ icerik, veriSeti, ...s }) => ({ ...s, tur: icerikTuru(icerik), kategori: ((icerik as { kategori?: string } | null)?.kategori ?? '').trim() || null, veriSetiAd: veriSeti.ad }))
 
-  return NextResponse.json({ sablonlar: sablonlar.map(({ icerik, ...s }) => ({ ...s, tur: icerikTuru(icerik) })), tasarlayabilir })
+  // Son çalıştırdıklarım: bu kullanıcının en yeni 5 FARKLI raporu (yalnız listede görünenler).
+  const gorunen = new Set(liste.map((s) => s.id))
+  const sonKosumlar = await prisma.raporCalistirma.findMany({ where: { calistiranId: userId, hata: null }, select: { sablonId: true, olusturma: true }, orderBy: { olusturma: 'desc' }, take: 60 })
+  const sonCalistirdiklarim: { id: string; olusturma: Date }[] = []
+  for (const k of sonKosumlar) { if (gorunen.has(k.sablonId) && !sonCalistirdiklarim.some((x) => x.id === k.sablonId)) sonCalistirdiklarim.push({ id: k.sablonId, olusturma: k.olusturma }); if (sonCalistirdiklarim.length >= 5) break }
+  const kategoriler = [...new Set(liste.map((s) => s.kategori).filter((k): k is string => !!k))].sort((a, b) => a.localeCompare(b, 'tr-TR'))
+
+  return NextResponse.json({ sablonlar: liste, tasarlayabilir, sonCalistirdiklarim, kategoriler, kullaniciId: userId })
 }

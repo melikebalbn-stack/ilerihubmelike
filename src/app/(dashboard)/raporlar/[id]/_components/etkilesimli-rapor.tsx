@@ -17,9 +17,10 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { DateField } from '@/components/ui/date-field'
 import { NativeSelect } from '@/components/ui/select'
-import { FileBarChart2, FileSpreadsheet, GripVertical, Loader2, Play, RotateCcw, Save, Sparkles, X } from 'lucide-react'
+import { FileBarChart2, FileSpreadsheet, GripVertical, Loader2, Play, Printer, RotateCcw, Save, Sparkles, X } from 'lucide-react'
 import { gorunumUygula, MAX_GRUP, type GrupDugum, type KolonTipi, type Satir } from '@/lib/rapor/gorunum'
 import { bicimle } from '@/lib/rapor/bicim'
+import { gorunumHtml } from '@/lib/rapor/gorunum-html'
 import type { EtkilesimliIcerik, Gorunum, GorunumKolon, GorunumToplamFn, SablonParametre } from '@/lib/rapor/tipler'
 import type { VeriSetiAlan } from '@/lib/rapor/veri-seti-alanlar'
 import { GeriRozet, RozetLink } from '../../_components/rozet-link'
@@ -179,6 +180,28 @@ export default function EtkilesimliRapor({ sablon, icerik, alanlar, tasarlayabil
   const onDragEnd = (e: DragEndEvent) => { setSurukleAlan(null); const alan = (e.active.data.current as { alan?: string })?.alan; if (alan && e.over?.id === 'drop:gruplar') grupEkle(alan) }
 
   // ── Excel / kaydet ────────────────────────────────────────────────────
+  /** Görünümün aynısını A4 HTML'e çevirip gizli iframe'de print() — kullanıcı "PDF olarak kaydet" seçer. */
+  const yazdirIframe = useRef<HTMLIFrameElement | null>(null)
+  function yazdir() {
+    if (!veri) return
+    const { html, yon, satirSayisi } = gorunumHtml(icerik.baslik || sablon.ad, icerik.altBaslik, veri, gorunum, {
+      parametreler: Object.fromEntries(parametreler.map((p) => [p.ad, p.tip === 'tarih' && paramDegerleri[p.ad] ? new Date(paramDegerleri[p.ad]) : paramDegerleri[p.ad]])),
+      parametreTanimlari: parametreler,
+      raporKodu: sablon.kod,
+      basliklar: Object.fromEntries(gorunum.kolonlar.map((k) => [k.alan, baslik(k.alan)])),
+    })
+    yazdirIframe.current?.remove()
+    const f = document.createElement('iframe')
+    f.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden'
+    f.setAttribute('aria-hidden', 'true')
+    document.body.appendChild(f)
+    yazdirIframe.current = f
+    f.onload = () => { try { f.contentWindow?.focus(); f.contentWindow?.print() } catch { toast.error('Yazdırma penceresi açılamadı') } }
+    f.srcdoc = html
+    toast(`Yazdırma hazır: ${satirSayisi.toLocaleString('tr-TR')} satır, A4 ${yon === 'landscape' ? 'yatay' : 'dikey'} — PDF için "PDF olarak kaydet"i seçin`)
+  }
+  useEffect(() => () => yazdirIframe.current?.remove(), [])
+
   async function excelIndir() {
     setExcelIniyor(true)
     try {
@@ -273,6 +296,7 @@ export default function EtkilesimliRapor({ sablon, icerik, alanlar, tasarlayabil
           <p className="text-sm text-muted-foreground mt-1"><span className="font-mono">{sablon.kod}</span> · veri seti: <span className="font-mono">{sablon.veriSetiAd}</span>{icerik.altBaslik ? ` · ${icerik.altBaslik}` : ''}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" onClick={yazdir} disabled={!veri} title="Mevcut görünümü A4 olarak yazdır / PDF kaydet"><Printer className="h-4 w-4 mr-1.5" />PDF / Yazdır</Button>
           <Button variant="outline" size="sm" onClick={excelIndir} disabled={!veri || excelIniyor}>{excelIniyor ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <FileSpreadsheet className="h-4 w-4 mr-1.5" />}Excel</Button>
           <Button variant="outline" size="sm" onClick={varsayilanaDon} disabled={!degisti} title="Kayıtlı görünüme dön"><RotateCcw className="h-4 w-4 mr-1.5" />Varsayılana dön</Button>
           {tasarlayabilir && <Button size="sm" onClick={gorunumuKaydet} disabled={!degisti || kaydediliyor} style={{ backgroundColor: CYAN, color: '#06222C' }} className="font-semibold">{kaydediliyor ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Save className="h-4 w-4 mr-1.5" />}Görünümü kaydet</Button>}

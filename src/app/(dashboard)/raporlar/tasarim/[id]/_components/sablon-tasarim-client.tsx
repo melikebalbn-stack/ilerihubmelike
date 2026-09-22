@@ -29,6 +29,7 @@ const NAVY = '#1B4F72'
 
 interface Props {
   veriSetleri: { id: string; ad: string }[]
+  kategoriler?: string[]
   mevcut?: { id: string; kod: string; ad: string; aciklama: string; veriSetiId: string; durum: 'TASLAK' | 'YAYINDA' | 'ARSIV'; surum: number; izinAnahtari: string; icerik: SablonIcerik }
 }
 
@@ -98,7 +99,7 @@ function IfadeKutusu({ deger, onChange, alanlar, placeholder, rows = 2 }: { dege
   )
 }
 
-export default function SablonTasarimClient({ veriSetleri, mevcut }: Props) {
+export default function SablonTasarimClient({ veriSetleri, kategoriler = [], mevcut }: Props) {
   const router = useRouter()
   const ic = mevcut?.icerik
 
@@ -109,6 +110,7 @@ export default function SablonTasarimClient({ veriSetleri, mevcut }: Props) {
   const [veriSetiId, setVeriSetiId] = useState(mevcut?.veriSetiId ?? '')
   const [durum, setDurum] = useState<'TASLAK' | 'YAYINDA'>(mevcut?.durum === 'YAYINDA' ? 'YAYINDA' : 'TASLAK')
   const [altBaslik, setAltBaslik] = useState(ic?.altBaslik ?? '')
+  const [kategori, setKategori] = useState(ic?.kategori ?? '')
   const [kaydediliyor, setKaydediliyor] = useState(false)
   const [kayitHata, setKayitHata] = useState<string | null>(null)
   const [kayitHatalari, setKayitHatalari] = useState<string[]>([])
@@ -155,13 +157,14 @@ export default function SablonTasarimClient({ veriSetleri, mevcut }: Props) {
   const icerik = useMemo<SablonIcerik>(() => ({
     baslik: ad.trim() || 'Rapor',
     altBaslik: altBaslik.trim() || undefined,
+    kategori: kategori.trim() || undefined,
     parametreler,
     hesaplananAlanlar: hesaplananlar,
     gruplar,
     kolonlar,
     genelToplam,
     sayfaAlti: sayfaAltiSol || sayfaAltiSag ? { sol: sayfaAltiSol || undefined, sag: sayfaAltiSag || undefined } : undefined,
-  }), [ad, altBaslik, parametreler, hesaplananlar, gruplar, kolonlar, genelToplam, sayfaAltiSol, sayfaAltiSag])
+  }), [ad, altBaslik, kategori, parametreler, hesaplananlar, gruplar, kolonlar, genelToplam, sayfaAltiSol, sayfaAltiSag])
 
   // ── Kolon işlemleri ───────────────────────────────────────────────────
   function kolonEkle(alan: string) {
@@ -279,7 +282,7 @@ export default function SablonTasarimClient({ veriSetleri, mevcut }: Props) {
         </div>
       </div>
       <Card>
-        <CardContent className="p-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+        <CardContent className="p-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-7">
           <div className="space-y-1.5"><Label htmlFor="s-kod">Kod <span className="text-red-600">*</span></Label><Input id="s-kod" className="font-mono" value={kod} onChange={(e) => setKod(e.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, ''))} placeholder="URT-002" /></div>
           <div className="space-y-1.5 xl:col-span-2"><Label htmlFor="s-ad">Ad (rapor başlığı) <span className="text-red-600">*</span></Label><Input id="s-ad" value={ad} onChange={(e) => setAd(e.target.value)} /></div>
           <div className="space-y-1.5"><Label htmlFor="s-vs">Veri seti <span className="text-red-600">*</span></Label>
@@ -291,7 +294,8 @@ export default function SablonTasarimClient({ veriSetleri, mevcut }: Props) {
             <NativeSelect id="s-durum" value={durum} onChange={(e) => setDurum(e.target.value as 'TASLAK' | 'YAYINDA')}><option value="TASLAK">Taslak</option><option value="YAYINDA">Yayında</option></NativeSelect>
           </div>
           <div className="space-y-1.5"><Label htmlFor="s-alt">Alt başlık</Label><Input id="s-alt" value={altBaslik} onChange={(e) => setAltBaslik(e.target.value)} /></div>
-          <div className="space-y-1.5 sm:col-span-2 xl:col-span-6"><Label htmlFor="s-aciklama">Açıklama (listede görünür)</Label><Input id="s-aciklama" value={aciklama} onChange={(e) => setAciklama(e.target.value)} /></div>
+          <div className="space-y-1.5"><Label htmlFor="s-kat">Kategori</Label><Input id="s-kat" list="kategori-onerileri" value={kategori} onChange={(e) => setKategori(e.target.value)} placeholder="Üretim" /><datalist id="kategori-onerileri">{kategoriler.map((k) => <option key={k} value={k} />)}</datalist></div>
+          <div className="space-y-1.5 sm:col-span-2 xl:col-span-7"><Label htmlFor="s-aciklama">Açıklama (listede görünür)</Label><Input id="s-aciklama" value={aciklama} onChange={(e) => setAciklama(e.target.value)} /></div>
         </CardContent>
       </Card>
       {(kayitHata || kayitHatalari.length > 0) && (

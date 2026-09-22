@@ -36,6 +36,7 @@ const tanim: VeriSetiTanim = {
 
 const icerik: SablonIcerik = {
   baslik: 'İş Emri Üretim Durumu',
+  kategori: 'Üretim',
   altBaslik: 'IFS iş emirleri (termin ≥ başlangıç) — durum bazında plan/tamamlanan',
   parametreler: [
     { ad: 'baslangic', tip: 'tarih', etiket: 'Başlangıç (termin)', zorunlu: true },

@@ -110,6 +110,8 @@ export interface SablonParametre {
 export interface SablonIcerik {
   baslik: string
   altBaslik?: string
+  /** Liste sayfasında gruplama/filtre için serbest kategori (ör. 'Üretim'). Migration yok — JSON'da. */
+  kategori?: string
   parametreler?: SablonParametre[]
   hesaplananAlanlar?: HesaplananAlan[]
   /** Sıralı, en fazla 3 seviye. */
@@ -163,6 +165,7 @@ export interface EtkilesimliIcerik {
   tur: 'etkilesimli'
   baslik: string
   altBaslik?: string
+  kategori?: string
   parametreler?: SablonParametre[]
   gorunum: Gorunum
 }

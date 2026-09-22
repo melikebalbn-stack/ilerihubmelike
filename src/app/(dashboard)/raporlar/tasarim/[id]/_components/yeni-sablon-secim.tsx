@@ -21,13 +21,14 @@ import { GeriRozet } from '../../../_components/rozet-link'
 
 const NAVY = '#1B4F72'
 
-interface Props { veriSetleri: { id: string; ad: string }[]; belgeTasarim: ReactNode }
+interface Props { veriSetleri: { id: string; ad: string }[]; kategoriler: string[]; belgeTasarim: ReactNode }
 
-export default function YeniSablonSecim({ veriSetleri, belgeTasarim }: Props) {
+export default function YeniSablonSecim({ veriSetleri, kategoriler, belgeTasarim }: Props) {
   const router = useRouter()
   const [tur, setTur] = useState<'etkilesimli' | 'belge' | null>(null)
   const [kod, setKod] = useState('')
   const [ad, setAd] = useState('')
+  const [kategori, setKategori] = useState('')
   const [veriSetiId, setVeriSetiId] = useState('')
   const [alanlar, setAlanlar] = useState<{ ad: string; veriTipi: string; etiket: string | null }[] | null>(null)
   const [tanim, setTanim] = useState<VeriSetiTanim | null>(null)
@@ -45,7 +46,7 @@ export default function YeniSablonSecim({ veriSetleri, belgeTasarim }: Props) {
     try {
       // Veri setindeki {p.x} yer tutucuları otomatik parametre olur (ad sezgisi: tarih/başlangıç/bitiş → tarih).
       const parametreler: SablonParametre[] = veriSetiParametreleri(tanim).map((p) => ({ ad: p, tip: /tarih|baslangic|bitis|date/i.test(p) ? 'tarih' : 'metin', etiket: p, zorunlu: true }))
-      const icerik: EtkilesimliIcerik = { tur: 'etkilesimli', baslik: ad.trim(), parametreler, gorunum: varsayilanGorunum(alanlar) }
+      const icerik: EtkilesimliIcerik = { tur: 'etkilesimli', baslik: ad.trim(), kategori: kategori.trim() || undefined, parametreler, gorunum: varsayilanGorunum(alanlar) }
       const r = await fetch('/api/raporlar/sablonlar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kod, ad, aciklama: '', veriSetiId, icerik, durum: 'TASLAK' }) })
       const d = await r.json()
       if (!r.ok) throw new Error([d.error, ...(d.hatalar ?? [])].filter(Boolean).join(' · '))
@@ -77,9 +78,10 @@ export default function YeniSablonSecim({ veriSetleri, belgeTasarim }: Props) {
       {tur === 'etkilesimli' && (
         <Card className="max-w-3xl">
           <CardContent className="p-4 space-y-3">
-            <div className="grid gap-3 sm:grid-cols-[160px_1fr_1fr]">
+            <div className="grid gap-3 sm:grid-cols-[160px_1fr_1fr_1fr]">
               <div className="space-y-1.5"><Label htmlFor="y-kod">Kod <span className="text-red-600">*</span></Label><Input id="y-kod" className="font-mono" value={kod} onChange={(e) => setKod(e.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, ''))} placeholder="URT-010" /></div>
               <div className="space-y-1.5"><Label htmlFor="y-ad">Ad <span className="text-red-600">*</span></Label><Input id="y-ad" value={ad} onChange={(e) => setAd(e.target.value)} placeholder="İş Emri Listesi" /></div>
+              <div className="space-y-1.5"><Label htmlFor="y-kat">Kategori</Label><Input id="y-kat" list="kategori-onerileri" value={kategori} onChange={(e) => setKategori(e.target.value)} placeholder="Üretim" /><datalist id="kategori-onerileri">{kategoriler.map((k) => <option key={k} value={k} />)}</datalist></div>
               <div className="space-y-1.5"><Label htmlFor="y-vs">Veri seti <span className="text-red-600">*</span></Label>
                 <NativeSelect id="y-vs" value={veriSetiId} onChange={(e) => setVeriSetiId(e.target.value)}><option value="">Seçin…</option>{veriSetleri.map((v) => <option key={v.id} value={v.id}>{v.ad}</option>)}</NativeSelect>
               </div>

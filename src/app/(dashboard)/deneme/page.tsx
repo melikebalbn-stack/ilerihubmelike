@@ -47,6 +47,10 @@ export default function DenemeListesiPage() {
   const [satirlar, setSatirlar] = useState<Satir[]>([])
   const [yetkisiz, setYetkisiz] = useState(false)
   const [yukleniyor, setYukleniyor] = useState(true)
+  // Kapsam SUNUCUDAN gelir ("tumu" = İV, "zincir" = zincir üyesi). İV'ye özgü
+  // sütun/filtreler yalnız kapsam "tumu" iken çizilir; client'ta yetki hesaplanmaz.
+  const [kapsam, setKapsam] = useState<"tumu" | "zincir">("zincir")
+  const iv = kapsam === "tumu"
   const [f, setF] = useState({ durum: "", tur: "", yaka: "", bolum: "", baslangic: "", bitis: "", hepsi: "false" })
 
   const yukle = useCallback(async () => {
@@ -63,6 +67,7 @@ export default function DenemeListesiPage() {
       }
       const j = await res.json()
       setSatirlar(j.formlar ?? [])
+      setKapsam(j.kapsam === "tumu" ? "tumu" : "zincir")
       setYetkisiz(false)
     } finally {
       setYukleniyor(false)
@@ -71,6 +76,7 @@ export default function DenemeListesiPage() {
 
   useEffect(() => { void yukle() }, [yukle])
 
+  const sutunSayisi = iv ? 12 : 8
   const bolumler = useMemo(
     () => [...new Set(satirlar.map((s) => s.personnel.bolum))].sort((a, b) => a.localeCompare(b, "tr")),
     [satirlar],
@@ -94,10 +100,10 @@ export default function DenemeListesiPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="flex items-center gap-2 text-xl font-semibold">
-            <ClipboardList className="h-5 w-5" /> Deneme Süresi Değerlendirmeleri
+            <ClipboardList className="h-5 w-5" /> {iv ? "Deneme Süresi Değerlendirmeleri" : "Deneme Formlarım"}
           </h1>
           <p className="text-sm text-muted-foreground">
-            IV-FR-27 · tüm formlar · {satirlar.length} kayıt
+            IV-FR-27 · {iv ? "tüm formlar" : "değerlendirici ya da onaylayan olduğunuz formlar"} · {satirlar.length} kayıt
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={() => void yukle()}>
@@ -107,7 +113,7 @@ export default function DenemeListesiPage() {
 
       {/* ── FİLTRELER ── */}
       <Card>
-        <CardContent className="grid gap-3 p-4 sm:grid-cols-3 lg:grid-cols-6">
+        <CardContent className={cn("grid gap-3 p-4 sm:grid-cols-3", iv ? "lg:grid-cols-6" : "lg:grid-cols-4")}>
           <Select value={f.durum} onChange={(e) => setF({ ...f, durum: e.target.value })}>
             <option value="">Durum (açık formlar)</option>
             {Object.entries(DURUM_ETIKET).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
@@ -117,16 +123,20 @@ export default function DenemeListesiPage() {
             <option value="DENEME_2AY">2 AY</option>
             <option value="ALTI_AY">6 AY</option>
           </Select>
-          <Select value={f.yaka} onChange={(e) => setF({ ...f, yaka: e.target.value })}>
-            <option value="">Yaka (hepsi)</option>
-            <option value="MAVI">Mavi</option>
-            <option value="GRI">Gri</option>
-            <option value="BEYAZ">Beyaz</option>
-          </Select>
-          <Select value={f.bolum} onChange={(e) => setF({ ...f, bolum: e.target.value })}>
-            <option value="">Bölüm (hepsi)</option>
-            {bolumler.map((b) => <option key={b} value={b}>{b}</option>)}
-          </Select>
+          {iv && (
+            <>
+              <Select value={f.yaka} onChange={(e) => setF({ ...f, yaka: e.target.value })}>
+                <option value="">Yaka (hepsi)</option>
+                <option value="MAVI">Mavi</option>
+                <option value="GRI">Gri</option>
+                <option value="BEYAZ">Beyaz</option>
+              </Select>
+              <Select value={f.bolum} onChange={(e) => setF({ ...f, bolum: e.target.value })}>
+                <option value="">Bölüm (hepsi)</option>
+                {bolumler.map((b) => <option key={b} value={b}>{b}</option>)}
+              </Select>
+            </>
+          )}
           <Input type="date" value={f.baslangic} onChange={(e) => setF({ ...f, baslangic: e.target.value })} />
           <Input type="date" value={f.bitis} onChange={(e) => setF({ ...f, bitis: e.target.value })} />
         </CardContent>
@@ -153,19 +163,24 @@ export default function DenemeListesiPage() {
               <tr className="[&>th]:whitespace-nowrap [&>th]:px-3 [&>th]:py-2 [&>th]:font-medium">
                 <th>Personel</th><th>Tür</th><th>Yaka</th><th>Bölüm</th>
                 <th>Hedef Tarih</th><th>Durum</th><th>Adım Sahibi</th>
-                <th className="text-right">1. Puan</th><th className="text-right">2. Puan</th>
-                <th className="text-right">Ortalama</th><th>Sonuç</th>
+                {/* Puan/ortalama/sonuç yalnız İV — sunucu zaten zincir kapsamında null döner. */}
+                {iv && (
+                  <>
+                    <th className="text-right">1. Puan</th><th className="text-right">2. Puan</th>
+                    <th className="text-right">Ortalama</th><th>Sonuç</th>
+                  </>
+                )}
                 <th className="text-right">İşlemler</th>
               </tr>
             </thead>
             <tbody className="divide-y">
               {yukleniyor && (
-                <tr><td colSpan={12} className="p-8 text-center text-muted-foreground">
+                <tr><td colSpan={sutunSayisi} className="p-8 text-center text-muted-foreground">
                   <Loader2 className="mx-auto h-5 w-5 animate-spin" />
                 </td></tr>
               )}
               {!yukleniyor && satirlar.length === 0 && (
-                <tr><td colSpan={12} className="p-8 text-center text-muted-foreground">
+                <tr><td colSpan={sutunSayisi} className="p-8 text-center text-muted-foreground">
                   Görüntüleyebileceğiniz değerlendirme yok.
                 </td></tr>
               )}
@@ -203,18 +218,22 @@ export default function DenemeListesiPage() {
                     </td>
                     <td className="whitespace-nowrap">{DURUM_ETIKET[s.durum] ?? s.durum}</td>
                     <td className="whitespace-nowrap text-xs">{s.adimSahibi ?? "—"}</td>
-                    <td className="text-right tabular-nums">{s.puan1 ?? "—"}</td>
-                    <td className="text-right tabular-nums">{s.puan2 ?? "—"}</td>
-                    <td className={cn("text-right font-semibold tabular-nums", dusuk && "text-destructive")}>
-                      {s.ortalama?.toFixed(1) ?? "—"}
-                    </td>
-                    <td>
-                      {s.basarili === null ? "—" : (
-                        <Badge variant={s.basarili ? "default" : "destructive"}>
-                          {s.basarili ? "BAŞARILI" : "BAŞARISIZ"}
-                        </Badge>
-                      )}
-                    </td>
+                    {iv && (
+                      <>
+                        <td className="text-right tabular-nums">{s.puan1 ?? "—"}</td>
+                        <td className="text-right tabular-nums">{s.puan2 ?? "—"}</td>
+                        <td className={cn("text-right font-semibold tabular-nums", dusuk && "text-destructive")}>
+                          {s.ortalama?.toFixed(1) ?? "—"}
+                        </td>
+                        <td>
+                          {s.basarili === null ? "—" : (
+                            <Badge variant={s.basarili ? "default" : "destructive"}>
+                              {s.basarili ? "BAŞARILI" : "BAŞARISIZ"}
+                            </Badge>
+                          )}
+                        </td>
+                      </>
+                    )}
                     {/* Mevcut form listelerindeki desen (OvertimeListView): sağda
                         "İşlemler" sütunu, ghost ikon buton, Eye + title="Görüntüle". */}
                     <td className="text-right">

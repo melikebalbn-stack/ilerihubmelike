@@ -494,6 +494,8 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const [kadroTalepAcabilir, setKadroTalepAcabilir] = useState(false)
   const [ifsRaporGorunur, setIfsRaporGorunur] = useState(false)
   const [denemeGorunur, setDenemeGorunur] = useState(false)
+  // IV-FR-27 menü başlığı sunucudan gelir: İV → "Deneme Değerlendirme", zincir üyesi → "Deneme Formlarım".
+  const [denemeBaslik, setDenemeBaslik] = useState("Deneme Değerlendirme")
   const [avansBayrak, setAvansBayrak] = useState<{ kendim: boolean; sorumlu: boolean }>({ kendim: false, sorumlu: false })
 
   // Collapse/pin (yalnız masaüstü; mobil sheet'te isOpen=true → her zaman geniş)
@@ -600,6 +602,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         if (!r.ok) return
         const d = await r.json()
         setDenemeGorunur(!!d.gorunur)
+        if (typeof d.baslik === 'string' && d.baslik) setDenemeBaslik(d.baslik)
       })
       .catch(() => {})
   }, [session])
@@ -756,10 +759,10 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const filteredIso27001Items = filterItems(iso27001MenuItems)
   // İş Analizi koşullu öğeler — SUNUCU bayrağı (iaFlags) ile; client'ta yetki hesaplanmaz.
   const iaAmirItem = { name: "Onayımdaki İş Analizleri", icon: UserCheck, href: "/strategic-hr/is-analizi/onaylarim", roles: ["*"] }
-  // IV-FR-27 — İV grubunda (Melih kararı: liste sonuçları gösterdiği için yalnız İV).
-  // Görünürlük menu-bayrak ucundan gelir ve artık SADECE ikMi() döner; zincirdeki
-  // müdürler menüde GÖRMEZ, formlarına maildeki /deneme/<id> linkiyle ulaşırlar.
-  const denemeItem = { name: "Deneme Değerlendirme", icon: ClipboardList, href: "/deneme", roles: ["*"] }
+  // IV-FR-27 — İV grubunda. Görünürlük + başlık menu-bayrak ucundan gelir:
+  // İV → "Deneme Değerlendirme" (tüm formlar), zincir üyesi → "Deneme Formlarım"
+  // (yalnız kendi zincirindekiler, puansız). Client'ta yetki hesaplanmaz.
+  const denemeItem = { name: denemeBaslik, icon: ClipboardList, href: "/deneme", roles: ["*"] }
   const iaIkItem = { name: "İş Analizi Onayları", icon: ClipboardCheck, href: "/strategic-hr/is-analizi/ik-onay", roles: ["*"] }
 
   const filteredStrategicHrItems = [
@@ -1346,7 +1349,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
           <div className="space-y-1 ml-4">
             {filteredPersonnelItems.map(item => renderMenuItem(item))}
             {filteredOffboardingItems.map(item => renderMenuItem(item))}
-            {/* IV-FR-27 deneme değerlendirme listesi — SUNUCU bayrağı (yalnız İV). */}
+            {/* IV-FR-27 deneme değerlendirme listesi — SUNUCU bayrağı (İV ya da zincir üyesi). */}
             {denemeGorunur && renderMenuItem(denemeItem)}
             {/* {renderMenuItem({ name: "Mavi Yaka Kullanıcılar", icon: Users, href: "/strategic-hr/bluecollar-users", roles: ["HR_MANAGER", "ADMIN", "SUPER_ADMIN"] })} */}
 

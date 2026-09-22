@@ -1,13 +1,17 @@
-// GET /api/deneme — liste. YALNIZ İV.
+// GET /api/deneme — liste.
 //
-// Liste puanları, ortalamayı ve başarılı/başarısız sonucunu döndürüyor; bu bilgi
-// İnsan Varlıkları'na aittir. Zincirdeki müdürler burayı GÖRMEZ (403) — onlar
-// maildeki /deneme/<id> bağlantısıyla yalnız KENDİ formlarını açar; form ekranının
-// görünürlük kuralı (zincirdekiler + İV) DEĞİŞMEDİ.
+// İKİ KAPSAM (21.09.2026, Melih kararı — "Deneme Formlarım"):
+//   • İV (hr.admin | recruitment.admin): TÜM formlar, puan/ortalama/sonuç dahil
+//     (kapsam: "tumu"). Davranış değişmedi.
+//   • Zincir üyesi: yalnız degerlendirici1Id / degerlendirici2Id / onaylayanId
+//     kendisi olan formlar (kapsam: "zincir"). Puan1/puan2/ortalama/başarılı
+//     alanları SUNUCUDA null'lanır — sonuçlar İV dışına gösterilmez; kişi kendi
+//     verdiği puanı form ekranında zaten görür. Personnel bağı yoksa boş liste.
+// Detay ekranının görünürlük kuralı (gorebilirMi: zincirdekiler + İV) DEĞİŞMEDİ.
 //
 // Personel kartındaki "Deneme Değerlendirme" bölümü de bu ucu çağırıyor
-// (?personnelId=…) — dolayısıyla o bölüm de yalnız İV'de görünür hâle gelir
-// (403 → bileşen boş liste sayar → kart hiç çizilmez).
+// (?personnelId=…) — zincir üyesi orada da yalnız kendi zincirindeki formları
+// (puansız) görür; başkası için boş liste → kart çizilmez.
 //
 // Filtreler: durum, tur, yaka, bolum, personnelId, tarih aralığı, hepsi.
 
@@ -58,11 +62,11 @@ export async function GET(request: NextRequest) {
   const { aktor, error } = await aktoruCoz();
   if (error) return error;
 
-  // İV KAPISI: liste yalnız İnsan Varlıkları'nın. Eski "kendi zincirindekileri
-  // görür" kapsamı KALKTI (Melih kararı — sonuçlar İV dışına gösterilmez).
-  if (!ikMi(aktor)) {
-    denemeRedLog({ uc: "liste", formId: "(liste)", from: "-", to: "-", reason: "İV yetkisi yok", user: aktor.email });
-    return NextResponse.json({ error: "Bu listeye erişim yetkiniz yok" }, { status: 403 });
+  const iv = ikMi(aktor);
+  // Zincir kapsamı: İV değil ve Personnel bağı yok → zincirde olamaz, boş liste
+  // (403 değil — menü bayrağı zaten göstermez, doğrudan URL'de boş ekran yeter).
+  if (!iv && !aktor.personnelId) {
+    return NextResponse.json({ formlar: [], toplam: 0, kapsam: "zincir" });
   }
 
   const sp = request.nextUrl.searchParams;
@@ -83,6 +87,10 @@ export async function GET(request: NextRequest) {
   const f = parsed.data;
 
   const where: Prisma.DenemeDegerlendirmeWhereInput = {};
+  if (!iv) {
+    const pid = aktor.personnelId!;
+    where.OR = [{ degerlendirici1Id: pid }, { degerlendirici2Id: pid }, { onaylayanId: pid }];
+  }
   // Varsayılan kapsam: AÇIK formlar. `durum` verilirse ya da hepsi=true ise kapsam açılır.
   if (!f.durum && f.hepsi !== "true") where.durum = { notIn: ["TAMAMLANDI", "IPTAL"] };
   if (f.durum) where.durum = f.durum;
@@ -110,6 +118,11 @@ export async function GET(request: NextRequest) {
     },
   });
 
-  const satirlar = formlar.map((x) => ({ ...x, adimSahibi: adimSahibiAdi(x) }));
-  return NextResponse.json({ formlar: satirlar, toplam: satirlar.length, kapsam: "tumu" });
+  const satirlar = formlar.map((x) => ({
+    ...x,
+    adimSahibi: adimSahibiAdi(x),
+    // Sonuç alanları yalnız İV'ye.
+    ...(iv ? {} : { puan1: null, puan2: null, ortalama: null, basarili: null }),
+  }));
+  return NextResponse.json({ formlar: satirlar, toplam: satirlar.length, kapsam: iv ? "tumu" : "zincir" });
 }

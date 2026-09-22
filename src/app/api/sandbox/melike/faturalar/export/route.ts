@@ -36,8 +36,8 @@ export async function GET(request: NextRequest) {
           allocations: { select: { departmentName: true, amountEUR: true, amountTRY: true } },
         },
       })
-      const revenueSetting = await prisma.invoiceRevenueSetting.findUnique({ where: { id: 'singleton' } })
-      const totalCiro = revenueSetting ? Number(revenueSetting.totalRevenueEUR) : null
+      const revenueRows = await prisma.invoiceMonthlyRevenue.findMany({ select: { revenueEUR: true } })
+      const totalCiro = revenueRows.length > 0 ? revenueRows.reduce((s, r) => s + Number(r.revenueEUR), 0) : null
 
       const { departments } = computeSummary(invoices)
 

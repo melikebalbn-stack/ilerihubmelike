@@ -72,6 +72,10 @@ export interface AcilDurumSofor {
   /** ServisSofor.telefon birincil; boşsa dahili şoförün Personnel.telefon'u. */
   telefon: string | null
   dahiliMi: boolean
+  /** Dahili şoförde Personnel.id, dış firma şoföründe null. API katmanı KVKK
+   *  erişim izini (PersonnelAccessLog) bununla yazar — dış firma şoförü
+   *  Personnel olmadığı için oraya loglanamaz (bilinen sınır). */
+  personnelId: string | null
 }
 
 export interface AcilDurumSorumlu {
@@ -242,6 +246,7 @@ export async function acilDurumListesiGetir(params: {
       // Telefon önceliği: ServisSofor.telefon → (dahili ise) Personnel.telefon
       telefon: s.sofor.telefon || s.sofor.personnel?.telefon || null,
       dahiliMi: s.sofor.personnelId !== null,
+      personnelId: s.sofor.personnelId,
     }
     if (s.sofor.firmaId) soforFirmaIdler.push(s.sofor.firmaId)
     ;(s.rol === 'ANA' ? soforAna : soforYedek).push(satir)

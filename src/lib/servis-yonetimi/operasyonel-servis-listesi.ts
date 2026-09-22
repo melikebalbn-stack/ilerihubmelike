@@ -42,6 +42,14 @@ export interface OperasyonelServisListesiFiltre {
   bolum?: string
   /** ServisYerleske.id — MASTER'daki "lokasyon" filtresinin karşılığı. */
   yerleskeId?: string
+  /**
+   * ServisSeferDilimi.id — atamanın O DİLİMİ kapsayıp kapsamadığı
+   * (ServisPersonelAtamaDilim junction'ı). OPSİYONEL ve additive: madde 29
+   * ekranı bunu GÖNDERMEZ, verilmediğinde davranış birebir eskisi gibidir
+   * (tüm dilimler). Madde 49 (Acil Durum Servis Listesi) yolcu listesini
+   * dilim bazında almak için kullanır — sorgu ikinci kez yazılmasın diye.
+   */
+  dilimId?: string
 }
 
 export interface OperasyonelServisListesiSatiri {
@@ -144,6 +152,9 @@ export async function operasyonelServisListesiGetir(
       ...(filtre.durakId ? { durakId: filtre.durakId } : {}),
       ...(filtre.bolum ? { personnel: { bolum: filtre.bolum } } : {}),
       ...(filtre.yerleskeId ? { guzergah: { yerleskeId: filtre.yerleskeId } } : {}),
+      // Dilim filtresi: atamanın O dilimi kapsayan bir ServisPersonelAtamaDilim
+      // satırı olmalı. Verilmezse anahtar hiç eklenmez → eski davranış.
+      ...(filtre.dilimId ? { dilimler: { some: { dilimId: filtre.dilimId } } } : {}),
       ...(izinliGuzergahIdler ? { guzergahId: { in: [...izinliGuzergahIdler] } } : {}),
     },
     select: {

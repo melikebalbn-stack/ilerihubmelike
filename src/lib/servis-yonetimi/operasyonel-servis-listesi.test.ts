@@ -69,6 +69,21 @@ describe('operasyonelServisListesiGetir — tekil filtreler', () => {
     expect(cagriArg.where.guzergah).toEqual({ yerleskeId: 'y1' })
   })
 
+  // dilimId — madde 49 (Acil Durum) için eklenen OPSİYONEL filtre.
+  it('dilimId verilmezse where\'e dilim anahtarı HİÇ eklenmez (madde 29 varsayılan davranışı birebir korunur)', async () => {
+    await operasyonelServisListesiGetir({ guzergahId: 'g1' })
+    const cagriArg = mocks.personelAtamaFindMany.mock.calls[0][0]
+    expect(Object.prototype.hasOwnProperty.call(cagriArg.where, 'dilimler')).toBe(false)
+  })
+
+  it('dilimId verilirse atamanın o dilimi kapsaması şartı eklenir (ServisPersonelAtamaDilim)', async () => {
+    await operasyonelServisListesiGetir({ guzergahId: 'g1', dilimId: 'd-sabah' })
+    const cagriArg = mocks.personelAtamaFindMany.mock.calls[0][0]
+    expect(cagriArg.where.dilimler).toEqual({ some: { dilimId: 'd-sabah' } })
+    // Diğer filtreler etkilenmez.
+    expect(cagriArg.where.guzergahId).toBe('g1')
+  })
+
   it('firmaId filtresi — araç/şoför varsayılanları üzerinden dolaylı, ilgili güzergahlarla sınırlar', async () => {
     mocks.aracVarsayilanFindMany.mockResolvedValue([{ guzergahId: 'g1' }])
     mocks.soforVarsayilanFindMany.mockResolvedValue([{ guzergahId: 'g2' }])

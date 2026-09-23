@@ -493,43 +493,50 @@ export default function FaturaTakipPage() {
           <p className="mb-3 text-xs text-muted-foreground/80">
             "Genel" (bölüm atanmamış faturalar) burada yok — toplamı üstteki "Toplam (€)" kartında.
           </p>
-          <div className="mb-4 h-64 w-full">
-            <ResponsiveContainer>
-              <BarChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#EEE" />
-                <XAxis
-                  dataKey={scopeMode === 'ALL' ? 'ay' : 'label'}
-                  tick={{ fontSize: 11 }}
-                  interval={0}
-                  angle={scopeMode === 'ALL' ? 0 : -25}
-                  textAnchor={scopeMode === 'ALL' ? 'middle' : 'end'}
-                  height={scopeMode === 'ALL' ? 30 : 60}
-                />
-                <YAxis tick={{ fontSize: 11 }} />
-                <Tooltip formatter={(v: number) => formatEur(v)} />
-                {scopeMode === 'ALL' && <Legend wrapperStyle={{ fontSize: 11 }} />}
-                {scopeMode === 'ALL'
-                  ? chartSeries.map((label, i) => (
-                      <Bar
-                        key={label}
-                        dataKey={label}
-                        stackId="a"
-                        fill={departmentColor.get(label) ?? PALETTE[i % PALETTE.length]}
-                        stroke="#fff"
-                        strokeWidth={2}
-                        radius={i === chartSeries.length - 1 ? [4, 4, 0, 0] : undefined}
-                      />
-                    ))
-                  : (
-                      <Bar dataKey="eur" radius={[4, 4, 0, 0]}>
-                        {chartData.map((entry: any, i: number) => (
-                          <Cell key={entry.label} fill={departmentColor.get(entry.label) ?? PALETTE[i % PALETTE.length]} />
-                        ))}
-                      </Bar>
-                    )}
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          {scopeMode === 'ALL' ? (
+            <div className="mb-4 h-64 w-full">
+              <ResponsiveContainer>
+                <BarChart data={chartData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#EEE" />
+                  <XAxis dataKey="ay" tick={{ fontSize: 11 }} />
+                  <YAxis tick={{ fontSize: 11 }} />
+                  <Tooltip formatter={(v: number) => formatEur(v)} />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                  {chartSeries.map((label, i) => (
+                    <Bar
+                      key={label}
+                      dataKey={label}
+                      stackId="a"
+                      fill={departmentColor.get(label) ?? PALETTE[i % PALETTE.length]}
+                      stroke="#fff"
+                      strokeWidth={2}
+                      radius={i === chartSeries.length - 1 ? [4, 4, 0, 0] : undefined}
+                    />
+                  ))}
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            // Bölüm adları uzun (ör. "İnsan Varlıkları Müdürlüğü") — dikey çubuk + eğik yazı
+            // kırpılıyordu (kart kenarından taşıp kesiliyordu). Yatay çubuğa çevrildi: isimler
+            // düz yazılıyor, kırpılma yok. dataviz skill'in de önerdiği şekil: uzun isimli
+            // kategoriler için yatay çubuk.
+            <div className="mb-4 w-full" style={{ height: Math.max(160, chartData.length * 48) }}>
+              <ResponsiveContainer>
+                <BarChart data={chartData} layout="vertical" margin={{ left: 8, right: 24, top: 4, bottom: 4 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#EEE" horizontal={false} />
+                  <XAxis type="number" tick={{ fontSize: 11 }} />
+                  <YAxis type="category" dataKey="label" tick={{ fontSize: 11 }} width={190} />
+                  <Tooltip formatter={(v: number) => formatEur(v)} />
+                  <Bar dataKey="eur" radius={[0, 4, 4, 0]} barSize={28}>
+                    {chartData.map((entry: any) => (
+                      <Cell key={entry.label} fill={departmentColor.get(entry.label) ?? NAVY} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
           {!scopedDepartments.length ? (
             <p className="py-2 text-sm text-muted-foreground">Bu kapsamda fatura kaydı yok.</p>
           ) : (

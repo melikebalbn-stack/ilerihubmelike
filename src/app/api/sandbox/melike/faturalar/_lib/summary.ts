@@ -1,4 +1,4 @@
-const SISTEM_GELISTIRME_LABEL = 'SİSTEM GELİŞTİRME MÜDÜRLÜĞÜ'
+import { isSistemGelistirme } from './access'
 
 export interface InvoiceForSummary {
   invoiceDate: Date
@@ -97,7 +97,7 @@ export function computeSummary(invoices: InvoiceForSummary[]): Summary {
     monthDept.tl += part.tl
     bucket.byDepartment.set(part.label, monthDept)
 
-    if (part.label === SISTEM_GELISTIRME_LABEL) {
+    if (isSistemGelistirme(part.label)) {
       sistemGelistirme += part.eur
       bucket.sistemGelistirme += part.eur
       bucket.sistemGelistirmeTRY += part.tl

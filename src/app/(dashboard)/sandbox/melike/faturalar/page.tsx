@@ -38,7 +38,11 @@ import { InvoiceFormDialog, type EditableInvoice } from './_components/InvoiceFo
 import { ImportDialog, downloadFile } from './_components/ImportDialog'
 
 const NAVY = '#1B4F72'
-const SG_LABEL = 'SİSTEM GELİŞTİRME MÜDÜRLÜĞÜ'
+// DİKKAT: departmentName'in GERÇEK veritabanı değeriyle harfiyen aynı olmalı (Personnel.bolum
+// title-case üretiyor: "Sistem Geliştirme Müdürlüğü") — daha önce hardcode ALL-CAPS ("SİSTEM
+// GELİŞTİRME MÜDÜRLÜĞÜ") idi, hiçbir zaman eşleşmiyordu, bu yüzden "Sistem Geliştirme Oranı"
+// kartı sürekli %0 gösteriyordu (Toplam kartı yine de doğruydu çünkü o sadece toplama bakıyor).
+const SG_LABEL = 'Sistem Geliştirme Müdürlüğü'
 const GENEL_LABEL = 'Genel'
 // Renk mantığı değişti: bölüm sayısı kadar rastgele/rainbow renk seçmek yerine ilerihub'ın
 // tüm sayfalarda zaten kullandığı TEK marka rengi (lacivert, NAVY) esas alınıyor. Bu uygulamanın

@@ -10,9 +10,12 @@ function tutuldu(direction: string, target: number, actual: number): boolean {
   return direction === 'lower_is_better' ? actual <= target : actual >= target
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   const { error } = await requireKpiGoruntule()
   if (error) return error
+
+  const { searchParams } = new URL(request.url)
+  const istenenYil = searchParams.get('yil') ? Number(searchParams.get('yil')) : null
 
   const departmanlar = await prisma.orgUnit.findMany({
     where: { parentId: UST_BIRIM_ID, unitType: 'DEPARTMENT', isActive: true },
@@ -25,12 +28,20 @@ export async function GET() {
     include: { measurements: true },
   })
 
+  // Genel olarak veri olan tüm yıllar (yıl seçici için) — en yeniden en eskiye.
+  const mevcutYillar = Array.from(new Set(kpiler.flatMap(k => k.measurements.map(m => m.year)))).sort((a, b) => b - a)
+  // Yıl belirtilmediyse en güncel yıl neyse onu kullan — 2025+2026'yı karışık
+  // ortalamak yerine, "genel başarı" hep TEK bir yılı yansıtsın.
+  const aktifYil = istenenYil ?? mevcutYillar[0] ?? null
+
   const ozet = departmanlar.map(dept => {
     const deptKpiler = kpiler.filter(k => k.orgUnitId === dept.id)
 
     const kpiOranlari = deptKpiler
       .map(k => {
-        const gecerliOlcumler = k.measurements.filter(m => m.target != null && m.actual != null)
+        const gecerliOlcumler = k.measurements.filter(
+          m => m.target != null && m.actual != null && (aktifYil == null || m.year === aktifYil),
+        )
         if (gecerliOlcumler.length === 0) return null
         const tutulan = gecerliOlcumler.filter(m => tutuldu(k.direction, m.target as number, m.actual as number)).length
         return { id: k.id, name: k.name, oran: Math.round((tutulan / gecerliOlcumler.length) * 100) }
@@ -48,9 +59,18 @@ export async function GET() {
       name: dept.name,
       kpiSayisi: deptKpiler.length,
       genelOran,
+      // Tüm KPI'lar, en başarılıdan en başarısıza sıralı — arayüz top3'e de,
+      // tam listeye de bu diziden bakabilir.
       kpiler: siraliAzalan,
     }
   })
 
-  return NextResponse.json({ ozet })
+  // Şirket geneli tek rakam — tüm departmanların tüm KPI oranları eşit ağırlıkla havuzlanır
+  // (departman ortalamalarının ortalaması değil; büyük/küçük departman ayrımı yapmadan tüm KPI'lar eşit sayılır).
+  const tumKpiOranlari = ozet.flatMap(d => d.kpiler.map(k => k.oran))
+  const genelToplam = tumKpiOranlari.length > 0
+    ? Math.round(tumKpiOranlari.reduce((t, o) => t + o, 0) / tumKpiOranlari.length)
+    : null
+
+  return NextResponse.json({ ozet, mevcutYillar, aktifYil, genelToplam })
 }

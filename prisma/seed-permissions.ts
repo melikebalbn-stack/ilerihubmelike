@@ -21,7 +21,17 @@ const SERVIS_PERMISSIONS: Record<string, string> = {
   'servis.restore': 'Pasif servis kayıtlarını geri alma',
   'servis.export': 'Servis verilerini dışa aktarma',
   'servis.kvkk.view': 'Servis kapsamındaki KVKK verilerini görüntüleme',
+  // MASTER madde 30 — versiyonlu liste yayımlama (REV.0 → REV.1). servis.create
+  // ile BİRLEŞTİRİLMEDİ: bu, firmaya giden ve geri alınamayan resmî bir belge
+  // üretmek; servis.create ise servis kaydı oluşturmak. Ayrı anahtar olmasaydı
+  // servis.create'i olan idari-isler yan etkiyle yayımcı olurdu.
+  'servis.liste.publish': 'Versiyonlu servis listesi yayımlama (REV)',
   'servis.admin': 'Servis yönetimi tam yetkisi',
+  // MASTER madde 46 — şikâyet/uygunsuzluk. servis.view TEK BAŞINA YETMEZ:
+  // şikâyet kaydı şikâyetçi kimliğini taşır (KVKK sınıfı) ve yalnız
+  // İK/İdari İşler görmelidir, bu yüzden ayrı anahtar.
+  'servis.sikayet.view': 'Servis şikâyet/uygunsuzluk kayıtlarını görüntüleme',
+  'servis.sikayet.manage': 'Servis şikâyet/uygunsuzluk kaydı oluşturma, aksiyon atama ve kapatma',
 }
 
 async function main() {

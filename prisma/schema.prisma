@@ -287,6 +287,11 @@ model User {
   servisPersonelDurumOlusturanlar     ServisPersonelDurum[]           @relation("ServisPersonelDurumOlusturan")
   servisPersonelDurumGuncelleyenler   ServisPersonelDurum[]           @relation("ServisPersonelDurumGuncelleyen")
   servisIslemYapilanlar               ServisIslemGecmisi[]            @relation("ServisIslemYapan")
+  // MASTER madde 30 — versiyonlu servis listesi oluşturan (ters uç, DB kolonu eklemez)
+  servisListesiRevizyonlari           ServisListesiRevizyonu[]        @relation("ServisListesiRevizyonuOlusturan")
+  // MASTER madde 46 — şikâyet audit ters uçları (DB kolonu eklemez)
+  servisSikayetOlusturanlar           ServisSikayet[]                 @relation("ServisSikayetOlusturan")
+  servisSikayetGuncelleyenler         ServisSikayet[]                 @relation("ServisSikayetGuncelleyen")
 
   // IV-FR-27 deneme değerlendirme — ters uçlar
   denemeIkKapattigi DenemeDegerlendirme[]    @relation("DenemeIkKapatan")
@@ -9335,6 +9340,13 @@ model Personnel {
   masrafMerkezi                String?
   interKepMail                 String?
   ikametAdresi                 String?
+  // Adres değişim tarihi (Melih kararı, 22.09.2026) — genel audit tablosu
+  // yerine dar/nullable alan. ikametAdresi GERÇEKTEN değiştiğinde (trim
+  // sonrası eski != yeni) now() yazılır; put-govde.ts'in tek yazma noktası.
+  // Mevcut kayıtlar NULL kalır — NULL "bilinmiyor" sayılır, uyarı üretilmez
+  // (aksi halde geriye dönük ~1400 kayıt sahte uyarı verir). Migration Melih
+  // tarafından üretilecek.
+  ikametAdresiDegisimTarihi    DateTime?
 
   // Servis
   serviceRoute String?
@@ -9428,6 +9440,12 @@ model Personnel {
   servisAtamalari   ServisPersonelAtama[]
   servisSorumlulari ServisSorumlusu[]
   servisDurumlari   ServisPersonelDurum[]
+  // MASTER madde 30 — gönderilmiş liste snapshot'larındaki satırları (ters uç)
+  servisListesiRevizyonSatirlari ServisListesiRevizyonSatiri[]
+
+  // MASTER madde 46 — şikâyet ters uçları (DB kolonu eklemez)
+  servisSikayetleri           ServisSikayet[] @relation("ServisSikayetSikayetci")
+  servisSikayetSorumluluklari ServisSikayet[] @relation("ServisSikayetSorumlu")
 
   // IV-FR-27 deneme değerlendirme — ters uçlar
   denemeDegerlendirmeleri DenemeDegerlendirme[] @relation("DenemeDegerlendirmePersonel")
@@ -13672,6 +13690,102 @@ enum ServisIslemTuru {
   AKTIFLESTIRME
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// MASTER MADDE 46 · ŞİKÂYET / UYGUNSUZLUK — enum'lar
+// ════════════════════════════════════════════════════════════════════════════
+
+/// MASTER madde 46'nın kategori listesi. DIGER listenin KENDİ son maddesidir
+/// (ayrıca eklenmedi) — toplam 13 değer.
+///
+/// Kalite modülündeki `HataKodu` ağacı KULLANILMADI: o katalog üretim hata
+/// kodlarını taşır, 873 geçmiş kayıt oradaki `kod` değerlerine bağlıdır ve
+/// şema yorumu "kod DEĞİŞMEZ" der. Servis kategorilerini oraya eklemek üretim
+/// kalite raporlarının eksenini kirletirdi.
+///
+/// Kategoriler madde 47'de İKİ KÜMEYE ayrılır (rapor katmanında, burada değil):
+///   ARAÇ problemi  → ARAC_ARIZASI, TEMIZLIK, KLIMA_ISITMA, EMNIYET_KEMERI, FAZLA_YOLCU
+///   SÜRÜCÜ problemi → SURUCU_DAVRANISI, TEHLIKELI_KULLANIM, HIZ_IHLALI
+enum ServisSikayetKategori {
+  GEC_GELME
+  DURAGA_UGRAMAMA
+  SURUCU_DAVRANISI
+  TEHLIKELI_KULLANIM
+  HIZ_IHLALI
+  TEMIZLIK
+  KLIMA_ISITMA
+  EMNIYET_KEMERI
+  ARAC_ARIZASI
+  FAZLA_YOLCU
+  YANLIS_GUZERGAH
+  SAAT_UYUMSUZLUGU
+  DIGER
+}
+
+/// Şikâyeti kimin açtığı. Madde 69.10 (personel self-service) BU FAZDA KAPSAM
+/// DIŞI, ama şema onu engellemesin diye ayrım ilk günden burada: self-service
+/// geldiğinde yeni model/alan değil, yalnız PERSONEL değerinin kullanılması
+/// yeter. Enum değeri eklemek additive ve ucuzdur (örn. ileride SORUMLU ya da
+/// FIRMA gerekirse) — bu yüzden şimdiden fazla değer konmadı.
+enum ServisSikayetKaynagi {
+  /// İV / İdari İşler kaydetti (bu fazda tek kullanılan değer).
+  IV
+  /// Çalışan kendi bildirdi (madde 69.10 self-service — henüz uç yok).
+  PERSONEL
+}
+
+/// Şikâyet durumu — SAKLANAN alan.
+///
+/// 🔴 Kalite modülündeki desen (durumu `kapanisTarihi` null/not-null'dan
+/// TÜRETMEK, bkz. uygunsuzluk-query.ts) BİLEREK KULLANILMADI: orada yalnız
+/// iki durum vardı; burada "aksiyon alındı ama henüz kapanmadı" GERÇEK bir
+/// iş durumu (firmaya bildirildi, termin bekleniyor) ve tarih alanlarından
+/// türetilemez.
+///
+/// MİNİMAL KÜME — her değerin işletmede bir karşılığı var:
+///   ACIK            kaydedildi, henüz aksiyon yok
+///   AKSIYON_ALINDI  aksiyon yazıldı + firmaya bildirildi, termin bekleniyor
+///   KAPANDI         çözüldü (madde 47 "kapanış süresi" YALNIZ bunu sayar)
+///   REDDEDILDI      incelendi, yersiz/kapsam dışı — firma performansına SAYILMAZ
+///
+/// REDDEDILDI'nin ayrı durum olmasının sebebi metriktir: reddedilen bir şikâyet
+/// firmayı cezalandırmamalı. KAPANDI ile birleştirilseydi bu ayrım yalnız
+/// `kapanisNotu` serbest metninden çıkarılabilirdi.
+///
+/// "FIRMAYA_BILDIRILDI" AYRI DURUM OLARAK AÇILMADI — bildirim, aksiyonun
+/// kendisidir; ayrı durum gerçek bir karar noktası eklemez.
+///
+/// GEÇİŞ MATRİSİ (deny-by-default, deneme-transitions.ts deseni). Uygulama
+/// katmanında `Record<ServisSikayetDurumu, ServisSikayetDurumu[]>` olarak
+/// yazılacak — exhaustiveness guard sayesinde enum'a değer eklenince matris
+/// güncellemesi UNUTULAMAZ:
+///   ACIK           → AKSIYON_ALINDI, REDDEDILDI
+///   AKSIYON_ALINDI → KAPANDI, REDDEDILDI
+///   KAPANDI        → ACIK              (hatalı/erken kapanış geri alınır)
+///   REDDEDILDI     → ACIK              (hatalı ret geri alınır)
+/// ACIK → KAPANDI YOK: bir şikâyet kapanıyorsa ne yapıldığı yazılmış olmalı;
+/// aksiyonsuz kapanış istenirse doğru değer REDDEDILDI'dir. Bu kural madde
+/// 47'nin "aksiyon süresi" KPI'sını da boşluksuz tutar.
+///
+/// ALAN TUTARLILIĞI (uygulama katmanı zorlar, Prisma ifade edemez):
+///   ACIK           → kapanisTarihi NULL
+///   AKSIYON_ALINDI → aksiyon + aksiyonTarihi DOLU, kapanisTarihi NULL
+///   KAPANDI        → kapanisTarihi DOLU
+///   REDDEDILDI     → kapanisTarihi DOLU + kapanisNotu ZORUNLU (ret gerekçesi)
+///
+/// 🔴 ACIK değişmezi YALNIZ `kapanisTarihi IS NULL`'dır — aksiyonTarihi'nı
+/// KAPSAMAZ. Bir şikâyet KAPANDI/REDDEDILDI'den ACIK'a geri döndüğünde
+/// kapanisTarihi TEMİZLENİR, ancak daha önce aksiyon almışsa aksiyonTarihi
+/// KORUNUR: ilk aksiyonun ne zaman alındığı tarihsel bir OLGUDUR, geri alma
+/// onu yok etmez (madde 47 "aksiyon süresi" KPI'sı da bu olguya dayanır).
+/// Yani "ACIK + aksiyonTarihi DOLU" geçerli bir birleşimdir ve yalnız
+/// yeniden açılmış bir kaydı ifade eder.
+enum ServisSikayetDurumu {
+  ACIK
+  AKSIYON_ALINDI
+  KAPANDI
+  REDDEDILDI
+}
+
 // ============================================================================
 // TANIM (MASTER) VERİLERİ
 // ============================================================================
@@ -13687,8 +13801,11 @@ model ServisFirma {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  araclar  ServisArac[]
-  soforler ServisSofor[]
+  araclar    ServisArac[]
+  soforler   ServisSofor[]
+  sikayetler ServisSikayet[]
+  // MASTER madde 30 — bu firmaya gönderilmiş liste revizyonları (ters uç)
+  listeRevizyonlari ServisListesiRevizyonu[]
 
   @@index([aktif])
   @@index([ad])
@@ -13739,6 +13856,7 @@ model ServisSeferDilimi {
   aracVarsayilanlari    ServisGuzergahAracVarsayilan[]
   soforVarsayilanlari   ServisGuzergahSoforVarsayilan[]
   personelAtamalari     ServisPersonelAtamaDilim[]
+  sikayetler            ServisSikayet[]
 
   @@index([aktif])
   @@index([yon])
@@ -13770,6 +13888,7 @@ model ServisGuzergah {
   aracVarsayilanlari  ServisGuzergahAracVarsayilan[]
   soforVarsayilanlari ServisGuzergahSoforVarsayilan[]
   sorumlular          ServisSorumlusu[]
+  sikayetler          ServisSikayet[]
 
   @@index([aktif])
   @@index([yerleskeId])
@@ -13889,6 +14008,7 @@ model ServisArac {
   updatedAt            DateTime    @updatedAt
 
   guzergahVarsayilanlari ServisGuzergahAracVarsayilan[]
+  sikayetler             ServisSikayet[]
 
   @@index([firmaId])
   @@index([aktif])
@@ -13913,6 +14033,7 @@ model ServisSofor {
   updatedAt         DateTime     @updatedAt
 
   guzergahVarsayilanlari ServisGuzergahSoforVarsayilan[]
+  sikayetler             ServisSikayet[]
 
   @@index([firmaId])
   @@index([aktif])
@@ -14170,6 +14291,247 @@ model ServisIslemGecmisi {
   @@index([hedefTipi, hedefId, tarih])
   @@index([userId, tarih])
   @@map("servis_islem_gecmisi")
+}
+
+// ============================================================================
+// VERSİYONLU SERVİS LİSTELERİ (MASTER madde 30)
+// ============================================================================
+//
+// "Servis firmasına gönderilen liste SONRADAN DEĞİŞMEMELİDİR." Bu yüzden bu
+// bir sorgu değil, gönderim anında alınmış IMMUTABLE SNAPSHOT'tır: satırlar
+// ServisListesiRevizyonSatiri'nde DENORMALİZE metin olarak saklanır, canlı
+// tablolardan yeniden üretilmez. Kaynak kayıt (personel/durak/güzergah)
+// sonradan değişse de gönderilmiş belge aynı kalır — sorunun özü budur.
+//
+// Desen emsali: CostAnalysis + revizyon zinciri (revisionNumber/parentId/
+// isLatest, tam satır kopyası). Aynı desen izleniyor.
+//
+// 🔴 isLatest TEKLİĞİ İÇİN KISMİ UNIQUE INDEX (WHERE isLatest) KURULMAYACAK.
+// Prisma kısmi index'i ifade edemiyor; elle SQL'e yazılsaydı her
+// `migrate diff` çıktısında KALICI BİR DRIFT daha doğar, guard beyaz listesi
+// (lib-knowndrift.sh) şişerdi — ServisGuzergahDurakSaat'teki aynı gerekçe.
+// Bunun yerine yeni revizyonu açan TRANSACTION içinde öncekinin isLatest'ı
+// false'a çekilir (CostAnalysis /revision ucunun birebir yaptığı gibi:
+// updateMany({where:{...,isLatest:true}}) → create). İleride biri kısmi
+// index eklemeye kalkmasın diye buraya yazıldı.
+model ServisListesiRevizyonu {
+  id      String      @id @default(cuid())
+  firmaId String
+  firma   ServisFirma @relation(fields: [firmaId], references: [id], onDelete: Restrict)
+
+  // Dönem: yıl + ay (MASTER örneği "Çayırova / Ağustos 2026 / REV.0").
+  donemYil Int
+  donemAy  Int
+
+  revizyonNo Int
+  /** Görünen etiket — "REV.0", "REV.1". revizyonNo'dan türetilir, okunabilirlik için saklanır. */
+  etiket     String
+
+  /** Listenin hangi tarih itibarıyla alındığı (madde 29'un point-in-time tarihi). */
+  tarihItibariyla DateTime @db.Date
+
+  olusturanId     String
+  olusturan       User     @relation("ServisListesiRevizyonuOlusturan", fields: [olusturanId], references: [id], onDelete: Restrict)
+  olusturmaTarihi DateTime @default(now())
+
+  /** Kullanıcının serbest metin gerekçesi ("neden REV.1"). */
+  degisiklikNotu String? @db.Text
+  /** Oluşturma ANINDA hesaplanan yapısal fark (güzergâh bazında eklenen/
+   *  çıkarılan/değişen personel). Çalışma anında hesaplanmaz: karşılaştırma
+   *  algoritması değişirse geçmiş belge de değişmiş olurdu — "sonradan
+   *  değişmemeli" kısıtına aykırı. */
+  degisiklikOzeti Json?
+  /** Listenin hangi filtrelerle üretildiği (güzergah/durak/bölüm/yerleşke…). */
+  filtreOzeti     Json?
+
+  parentId String?
+  parent   ServisListesiRevizyonu?  @relation("ServisListesiRevizyonZinciri", fields: [parentId], references: [id])
+  children ServisListesiRevizyonu[] @relation("ServisListesiRevizyonZinciri")
+  isLatest Boolean                  @default(true)
+
+  satirlar ServisListesiRevizyonSatiri[]
+
+  @@unique([firmaId, donemYil, donemAy, revizyonNo])
+  @@index([firmaId, donemYil, donemAy])
+  @@index([isLatest])
+  @@index([parentId])
+  @@index([olusturanId])
+  @@map("servis_listesi_revizyonu")
+}
+
+// Snapshot satırı — madde 29'un 7 alanı DENORMALİZE metin olarak. Kaynak
+// tablolara JOIN YAPILMAZ: güzergah adı değişse, durak yeniden adlandırılsa
+// ya da personel bölüm değiştirse gönderilmiş belge AYNI kalmalı.
+//
+// personnelId FK'si onDelete: Restrict — personel silinirse belge bozulmasın
+// (ServisPersonelAtama ile aynı gerekçe). KVKK saklama süresi/imha kararı
+// ayrı bir iş (Arşiv modülündeki saklamaSuresiYil → imhaTarihi → onaylı
+// ArsivImhaKaydi deseni emsal alınacak) — bu şemada henüz yok.
+model ServisListesiRevizyonSatiri {
+  id         String                 @id @default(cuid())
+  revizyonId String
+  revizyon   ServisListesiRevizyonu @relation(fields: [revizyonId], references: [id], onDelete: Cascade)
+
+  personnelId String
+  personnel   Personnel @relation(fields: [personnelId], references: [id], onDelete: Restrict)
+
+  // Madde 29'un liste alanları — snapshot anındaki DEĞERLERİYLE.
+  sicilNo     String?
+  adSoyad     String
+  bolum       String?
+  guzergahKod String
+  guzergahAd  String
+  durakKod    String?
+  durakAd     String?
+  sabahSaati  String?
+  telefon     String?
+
+  @@index([revizyonId])
+  @@index([personnelId])
+  @@map("servis_listesi_revizyonu_satiri")
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// MASTER MADDE 46 · ŞİKÂYET / UYGUNSUZLUK
+//
+// AYRI MODEL — KaliteUygunsuzluk'a TÜR olarak eklenmedi. Beş gerekçe:
+//   1. Domain farklı: KaliteUygunsuzluk.mamulUrunKodu ve .isEmriNo ZORUNLU
+//      (String, nullable değil); servis şikâyetinin ürün kodu/iş emri yoktur.
+//      Nullable'a çevirmek 873+ kayıtlı, regüle bir formun (KAL-KYT-15)
+//      zorunluluklarını gevşetirdi.
+//   2. Kategori: orada kategori `HataKodu` ÜRETİM hata kodu ağacıdır; servis
+//      kategorilerini oraya koymak o kataloğu kirletirdi.
+//   3. `KaliteUygunsuzluk.no` tek kesintisiz seridir; servis kayıtları aynı
+//      seriye girseydi KAL-KYT-15 numaralandırması bozulurdu.
+//   4. Okuma yetkisi: /api/quality/uygunsuzluk GET yalnız requireSession() —
+//      oturumu olan HERKES okuyor. Servis şikâyeti şikâyetçiyi ve sürücü
+//      davranışı iddiasını taşır; bu KVKK sınıfı veri o deseni devralamaz.
+//   5. İşlem geçmişi: kalite uygunsuzluğunda ServisIslemGecmisi benzeri iz
+//      YOK. Servis modülü tüm modellerinde iz tutar; oraya bağlanmak bu
+//      garantiyi kaybettirirdi.
+// Kalite'den DEVRALINAN yapıdır, tablo değil: `no` serisi (uygunsuzluk-no.ts
+// pg_advisory_xact_lock deseni), sorumlu/termin/kapanış dörtlüsü.
+//
+// 🔴 AYRI `ServisSikayetAksiyon` TABLOSU KURULMADI (Melih kararı) — AKSİYON
+// TAKİBİ İÇİN İKİNCİ TABLO EKLEMEYİN. Aksiyon alanının değişim tarihçesini
+// ServisIslemGecmisi zaten oncekiDeger/yeniDeger ile tutuyor; ayrı tablo o izi
+// ÇOĞALTIRDI (rule 6). Tek `aksiyon` metni + `aksiyonTarihi` (ilk aksiyon
+// kaydedilirken yazılır, sonradan değişmez) madde 47'nin "aksiyon süresi"
+// KPI'sını da tek çıkarmayla veriyor: aksiyonTarihi - bildirimTarihi.
+//
+// 🔴 ZAMAN BAĞIMLILIĞI — hem CANLI FK hem ANLIK KOPYA, ikisi birden:
+//   · Canlı FK (guzergah/firma/arac/sofor/dilim): madde 47 firma ve sürücü
+//     bazında TOPLAMA yapacak; bu indeksli gerçek ilişki ister.
+//   · Anlık kopya (plaka, soforAdSoyad, firmaAd, sorumluAdSoyad,
+//     planlananSaat): şikâyet DELİL niteliğinde bir kayıttır — "12 Mart'ta
+//     şoför X'ti". Atama satırı sonradan düzeltilir ya da araç yeniden
+//     plakalanırsa kayıt hâlâ o günkü değeri göstermeli.
+//     (Madde 30'daki ServisListesiRevizyonSatiri ile AYNI gerekçe:
+//      yayımlanmış/kayda geçmiş belge sonradan değişmez.)
+//   · Araç/şoförü okuma anında ServisGuzergahAracVarsayilan /
+//     ...SoforVarsayilan tarihçesinden TÜRETMEYİN: o satırlar geriye dönük
+//     düzeltilebiliyor ve `aktif` çevrilebiliyor — aynı şikâyet gelecek ay
+//     farklı şoför gösterirdi.
+//
+// 🔴 KVKK — sikayetciPersonnelId (Elif kararı, 2026-09-23): şikâyetçi kimliği
+// HER ZAMAN kaydedilir (takip edilebilsin), YALNIZ İK/İdari İşler görür ve
+// TAŞERON FİRMAYA ASLA GİTMEZ. Firmaya giden hiçbir çıktı (bildirim, rapor,
+// PDF) bu alanı içermemeli. Alan yine de NULLABLE tutuldu: ileride anonim
+// şikâyet seçeneği açılabilsin diye — bugün uygulama katmanı doldurulmasını
+// zorunlu kılar.
+//
+// 🔴 MADDE 47 SINIRI: "zamanında hizmet" ORANI bu tablodan HESAPLANAMAZ.
+// Gerçekleşen sefer verisi yok (ServisSeferGorevlendirme bu fazda yok,
+// telematik FAZ 10-12). Şikâyet sayısının PAYDASI yoktur — kaç sefer
+// yapıldığı bilinmiyor. GEC_GELME sayısı hiçbir ekranda YÜZDE olarak
+// gösterilmeyecek; "geç gelme şikâyeti: 7 adet" yazılır.
+// ════════════════════════════════════════════════════════════════════════════
+
+model ServisSikayet {
+  id String @id @default(cuid())
+  /// Tek kesintisiz seri, 1'den başlar. Üretimi uygunsuzluk-no.ts deseniyle:
+  /// pg_advisory_xact_lock ile kilitlenir, kayıt oluşturmayla AYNI transaction.
+  no Int    @unique
+
+  /// Olayın YAŞANDIĞI gün.
+  tarih          DateTime @db.Date
+  /// Şikâyetin AÇILDIĞI gün. 🔴 Tüm süre hesapları (aksiyon süresi, kapanış
+  /// süresi) BUNA dayanır — `tarih`e değil. Geç bildirilen bir olay firmanın
+  /// tepki süresini kötü göstermemeli.
+  bildirimTarihi DateTime @db.Date
+
+  kategori ServisSikayetKategori
+  aciklama String                @db.Text
+
+  // ── CANLI FK (toplama/raporlama için) — hepsi Restrict ────────────────────
+  // guzergahId ZORUNLU: şikâyet her zaman bir hatta aittir. Diğerleri
+  // opsiyonel — çalışan bildirdiğinde araç/şoför bilinmeyebilir, İV sonradan
+  // tamamlar.
+  guzergahId String
+  guzergah   ServisGuzergah     @relation(fields: [guzergahId], references: [id], onDelete: Restrict)
+  dilimId    String?
+  dilim      ServisSeferDilimi? @relation(fields: [dilimId], references: [id], onDelete: Restrict)
+  firmaId    String?
+  firma      ServisFirma?       @relation(fields: [firmaId], references: [id], onDelete: Restrict)
+  aracId     String?
+  arac       ServisArac?        @relation(fields: [aracId], references: [id], onDelete: Restrict)
+  soforId    String?
+  sofor      ServisSofor?       @relation(fields: [soforId], references: [id], onDelete: Restrict)
+
+  // ── ANLIK KOPYA (delil) — olay anındaki değerler, sonradan GÜNCELLENMEZ ───
+  plaka          String?
+  soforAdSoyad   String?
+  firmaAd        String?
+  sorumluAdSoyad String?
+  /// Olay anında geçerli planlanan durak saati. "HH:mm" —
+  /// ServisGuzergahDurakSaat.saat ile aynı desen.
+  planlananSaat  String?
+
+  // ── ŞİKÂYETÇİ (KVKK — yukarıdaki nota bakın) ──────────────────────────────
+  sikayetciPersonnelId String?
+  sikayetci            Personnel?           @relation("ServisSikayetSikayetci", fields: [sikayetciPersonnelId], references: [id], onDelete: Restrict)
+  kaynak               ServisSikayetKaynagi
+
+  // ── AKSİYON / DURUM ───────────────────────────────────────────────────────
+  sorumluId String?
+  sorumlu   Personnel? @relation("ServisSikayetSorumlu", fields: [sorumluId], references: [id], onDelete: SetNull)
+  termin    DateTime?  @db.Date
+
+  durum ServisSikayetDurumu @default(ACIK)
+
+  /// NULLABLE — ACIK durumunda henüz aksiyon yoktur. Boş metinle NOT NULL
+  /// tutmak "aksiyon yazılmamış"ı "aksiyon boş" gibi gösterirdi.
+  aksiyon       String?   @db.Text
+  /// İLK aksiyon kaydedildiğinde yazılır, sonraki düzenlemelerde DEĞİŞMEZ
+  /// (madde 47 "aksiyon süresi" ölçülebilir kalsın).
+  aksiyonTarihi DateTime?
+
+  kapanisTarihi DateTime?
+  kapanisNotu   String?   @db.Text
+
+  // ── Audit (servis modülü deseni: gerçek User FK) ──────────────────────────
+  createdById String?
+  createdBy   User?    @relation("ServisSikayetOlusturan", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedById String?
+  updatedBy   User?    @relation("ServisSikayetGuncelleyen", fields: [updatedById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Madde 47 firma/sürücü/araç bazlı dönemsel toplama bu üç bileşik indeksten
+  // okunur (bildirimTarihi ile — süre ve dönem ekseni odur).
+  @@index([firmaId, bildirimTarihi])
+  @@index([guzergahId, bildirimTarihi])
+  @@index([soforId, bildirimTarihi])
+  @@index([aracId, bildirimTarihi])
+  @@index([durum])
+  @@index([kategori])
+  @@index([bildirimTarihi])
+  @@index([dilimId])
+  @@index([sikayetciPersonnelId])
+  @@index([sorumluId])
+  @@index([createdById])
+  @@index([updatedById])
+  @@map("servis_sikayet")
 }
 
 // ════════════════════════════════════════════════════════════════════════════

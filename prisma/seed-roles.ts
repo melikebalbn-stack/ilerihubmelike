@@ -87,6 +87,41 @@ const SYSTEM_ROLES: SystemRoleDef[] = [
     ],
   },
   {
+    // Rol PROD/DEV ortamlarında ELLE açılmıştı ve bu dosyada tanımlı DEĞİLDİ;
+    // sıfırdan kurulan bir ortamda seed-servis-role-mapping.ts onu bulamayıp
+    // exit(1) veriyordu. Tanım buraya alındı (Melih kararı, 2026-09-23).
+    //
+    // name/isProtected canlı kayıttan BİREBİR alındı (dev DB: name='İdari
+    // İşler', is_system=t, is_protected=f) — mevcut satır varsa seed ona
+    // DOKUNMAZ, bu değerler yalnız yeni ortamda oluşacak kayıt için geçerli.
+    //
+    // Yetki listesi TÜRETİLMİŞTİR, icat edilmemiştir: seed-servis-role-
+    // mapping.ts'teki 6 servis anahtarı ile dev DB'deki fiilî 6 satır
+    // BİREBİR aynı. Rolün başka hiçbir yetkisi yok — kendiliğinden yetki
+    // EKLENMEDİ.
+    //
+    // 🔴 servis.sikayet.view / servis.sikayet.manage (MASTER madde 46) bu
+    // role ait AMA dev/elif/servis-sikayet-permission dalında duruyor ve bu
+    // daldan görünmüyor; o dal main'e girince buraya da eklenmeli.
+    slug: 'idari-isler',
+    name: 'İdari İşler',
+    description: 'Servis yönetimi operasyonu (güzergâh/durak/araç tanımları, sorumlu atamaları, işlem geçmişi).',
+    isProtected: false,
+    permissions: [
+      // 🔴 Bu 4 anahtarın PERMISSION_KEYS'te SABİTİ YOK — yalnız
+      // seed-permissions.ts'teki SERVIS_PERMISSIONS haritasında tanımlılar,
+      // bu yüzden P.* yerine düz metin yazmak ZORUNLU. Derleme zamanı koruma
+      // olmadığı için yazımları seed-permissions.ts'e karşı karakter karakter
+      // doğrulandı. Sabitler permissions.ts'e eklenirse burası P.*'a çevrilmeli.
+      P.SERVIS_VIEW,
+      'servis.create',
+      'servis.edit',
+      'servis.history',
+      P.SERVIS_TANIM_MANAGE,
+      'servis.sorumlu.manage',
+    ],
+  },
+  {
     slug: 'kalite-yoneticisi',
     name: 'Kalite Yöneticisi',
     description: 'Kalibrasyon, yangın tüpü, kalite süreçleri.',

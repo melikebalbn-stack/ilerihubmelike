@@ -24,6 +24,7 @@
 // tekrarlanırsa birleştirmede çakışır.
 
 import * as XLSX from 'xlsx'
+import type { VeriKaliteRaporSatiri } from './veri-kalite'
 
 /** Kontrol başına ÜRETİLEN SATIR tavanı (düzleştirme SONRASI). Kırpma
  *  politikası değil, bellek güvenlik sınırı — bkz. dosya başlığı. */
@@ -37,23 +38,20 @@ const YASAKLI_SAYFA_KARAKTERLERI = /[:\\/?*[\]]/g
 
 /**
  * Girdi satırı — `/api/servis-yonetimi/veri-kalite` yanıtındaki `data[]` ile
- * AYNI yapı. O tipler route.ts içinde tanımlı ve Next.js route dosyaları
- * yalnız HTTP metodu/config export edebildiği için oradan import EDİLEMEZ
- * (KAYIT_LIMIT'in export edilememesiyle aynı kısıt) — yapısal olarak burada
- * yeniden tarif ediliyor.
+ * AYNI yapı.
+ *
+ * Çekirdek şekil (kod/baslik/adet/kayitlar/hata) veri-kalite.ts'in kendi
+ * `VeriKaliteRaporSatiri` tipinden TÜRETİLİR — tek kaynak, sürüklenme yok.
+ * Kalan üç alan (`kirpildi`/`kapsamDisi`/`not`) uç katmanında üretiliyor ve
+ * Next.js route dosyaları yalnız HTTP metodu/config export edebildiği için
+ * oradan import edilemiyor; yalnız onlar burada tarif ediliyor.
  */
-export interface VeriKaliteExcelSatiri {
-  kod: string
-  baslik: string
-  adet: number
-  kayitlar: Record<string, unknown>[]
+export type VeriKaliteExcelSatiri = VeriKaliteRaporSatiri & {
   /** Girdi zaten kırpılmış geldiyse (ekran yanıtı) true olur. */
   kirpildi?: boolean
   /** Henüz uygulanamayan kontrol (veri kaynağı yok). */
   kapsamDisi?: boolean
   not?: string
-  /** Kontrol çalışırken hata aldıysa (veri-kalite.ts allSettled deseni). */
-  hata?: string
 }
 
 // ----------------------------------------------------------------------------

@@ -459,7 +459,11 @@ export default function FaturaTakipPage() {
           kapsıyordu, "atanmamış" değil — yanıltıcıydı. Doğru, bölüm bazlı kırılım aşağıdaki tabloda. */}
       <div className="grid grid-cols-2 gap-3">
         <SummaryCard label="Toplam (€)" value={formatEur(cardTotals.toplam)} color={NAVY} />
-        <SummaryCard label="Sistem Geliştirme Oranı" value={`${cardTotals.oran.toFixed(1)}%`} color="#993C1D" />
+        <SummaryCard
+          label="Sistem Geliştirme / Toplam Fatura"
+          value={`${cardTotals.oran.toFixed(1)}%`}
+          color="#993C1D"
+        />
       </div>
 
       <Card>
@@ -532,7 +536,7 @@ export default function FaturaTakipPage() {
                   <TableHead>Bölüm</TableHead>
                   <TableHead className="text-right">Toplam (₺)</TableHead>
                   <TableHead className="text-right">Toplam (€)</TableHead>
-                  <TableHead className="text-right">Cironun Oranı</TableHead>
+                  <TableHead className="text-right">Ciro İçindeki Payı</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>

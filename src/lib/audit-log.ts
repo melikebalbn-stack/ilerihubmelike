@@ -61,6 +61,11 @@ export type AuditTargetType =
   | 'TICKET'
   | 'PERSONNEL_WEEKLY_REPORT'
   | 'IFS_PERSONEL_SYNC'
+  // Kalibrasyon izlenebilirliği (ISO 9001 7.1.5.2). action:
+  // CALIBRATION_DEVICE_UPDATED / _ARCHIVED / _BULK_ARCHIVED,
+  // CALIBRATION_HISTORY_UPDATED — details.degisiklikler = [{alan,etiket,eski,yeni}]
+  | 'CALIBRATION_DEVICE'
+  | 'CALIBRATION_HISTORY'
 
 export interface AuditLogParams {
   action: string

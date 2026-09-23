@@ -4,6 +4,8 @@ import { CalibrationStatus } from '@/generated/prisma'
 import { computeCalibrationStatus } from '@/lib/calibration-status'
 import { requireSession } from '@/lib/auth/require-session'
 import { requireUser } from '@/lib/auth/require-user'
+import { logAuditEvent } from '@/lib/audit-log'
+import { kalibrasyonAlanDiff } from '@/lib/calibration-audit'
 
 // GET - Tek bir cihazı getir
 export async function GET(
@@ -24,7 +26,13 @@ export async function GET(
           orderBy: {
             calibrationDate: 'desc',
           },
+          // "Sisteme kaydeden" sütunu — kalibrasyonu YAPAN firma `calibratedBy`,
+          // bu ise kaydı Hub'a giren kullanıcı.
+          include: { createdBy: { select: { id: true, name: true, email: true } } },
         },
+        // İzlenebilirlik: liste ucuna EKLENMEZ (989 kayıt), yalnız detayda.
+        createdBy: { select: { id: true, name: true, email: true } },
+        updatedBy: { select: { id: true, name: true, email: true } },
       },
     })
 
@@ -191,8 +199,22 @@ export async function PUT(
         calibrationReturnDate: calibrationReturnDate ? new Date(calibrationReturnDate) : null,
         scrapDate: scrapDate ? new Date(scrapDate) : null,
         scrapDescription: scrapDescription || null,
+        updatedById: user.id,
       },
     })
+
+    // ISO izi: kritik alanların eski→yeni değeri permission_audit_log'a
+    // (JOB_APPLICATION_UPDATED deseni). Yeni tablo YOK. Audit hatası akışı bozmaz.
+    const degisiklikler = kalibrasyonAlanDiff(existingDevice, device)
+    if (degisiklikler.length > 0) {
+      await logAuditEvent({
+        action: 'CALIBRATION_DEVICE_UPDATED',
+        actorId: user.id,
+        targetType: 'CALIBRATION_DEVICE',
+        targetId: device.id,
+        details: { deviceId: device.deviceId, name: device.name, degisiklikler },
+      })
+    }
 
     return NextResponse.json(device)
   } catch (error) {
@@ -225,7 +247,16 @@ export async function DELETE(
       where: { id },
       data: {
         isActive: false,
+        updatedById: user.id,
       },
+    })
+
+    await logAuditEvent({
+      action: 'CALIBRATION_DEVICE_ARCHIVED',
+      actorId: user.id,
+      targetType: 'CALIBRATION_DEVICE',
+      targetId: device.id,
+      details: { deviceId: device.deviceId, name: device.name },
     })
 
     return NextResponse.json(device)

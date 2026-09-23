@@ -89,14 +89,17 @@ model User {
   signaturePin String? // Dijital imza için PIN (min 6 karakter, bcrypt hash)
 
   // Relations
-  accounts           Account[]
-  sessions           Session[]
-  notifications      Notification[]
-  pushSubscriptions  PushSubscription[]
-  responsibleDevices CalibrationDevice[]   @relation("ResponsibleDevices")
-  emailLogs          CalibrationEmailLog[]
+  accounts            Account[]
+  sessions            Session[]
+  notifications       Notification[]
+  pushSubscriptions   PushSubscription[]
+  responsibleDevices  CalibrationDevice[]   @relation("ResponsibleDevices")
+  createdDevices      CalibrationDevice[]   @relation("CalibrationDevicesCreated")
+  updatedDevices      CalibrationDevice[]   @relation("CalibrationDevicesUpdated")
+  createdCalibrations CalibrationHistory[]  @relation("CalibrationHistoryCreated")
+  emailLogs           CalibrationEmailLog[]
   // IPRO: bu User bir kiosk cihaz hesabiysa karsilik gelen cihaz (1-1, opsiyonel)
-  iproKiosk          IproKiosk?
+  iproKiosk           IproKiosk?
 
   // QDMS Relations
   qdmsDocumentsOwned        QdmsDocument[]              @relation("DocumentOwner")
@@ -541,6 +544,15 @@ model CalibrationDevice {
   attachments String? @db.Text // JSON array of file URLs
   imageUrl    String? // Ana görsel
 
+  // İZLENEBİLİRLİK (ISO 9001/27001): kaydı kim açtı / en son kim değiştirdi.
+  // Nullable — 2025-12/2026-08 toplu importlarında kullanıcı yazılmamıştı, geçmiş
+  // veri kurtarılamaz (NULL kalır, arayüzde "—"). Sistem kaynaklı durum senkronu
+  // (GET /api/calibration otomatik VALID/EXPIRED hesabı) updatedById YAZMAZ.
+  createdById String?
+  createdBy   User?   @relation("CalibrationDevicesCreated", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedById String?
+  updatedBy   User?   @relation("CalibrationDevicesUpdated", fields: [updatedById], references: [id], onDelete: SetNull)
+
   // İlişkiler
   calibrationHistory CalibrationHistory[]
   emailLogs          CalibrationEmailLog[]
@@ -577,11 +589,16 @@ model CalibrationHistory {
   certificatePath String?
   attachments     String? @db.Text // JSON array of file paths
 
-  createdBy String?
-  createdAt DateTime @default(now())
+  // Kalibrasyon sonucunu SİSTEME kaydeden kullanıcı (kalibrasyonu YAPAN firma
+  // `calibratedBy` alanında, o ayrı). Sütun adı createdBy → createdById olarak
+  // düzeltildi: alan vardı ama hiçbir uç doldurmuyordu (46/46 NULL).
+  createdById String?
+  createdBy   User?    @relation("CalibrationHistoryCreated", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
 
   @@index([deviceId])
   @@index([calibrationDate])
+  @@index([createdById])
 }
 
 enum CalibrationResult {
@@ -5315,7 +5332,7 @@ model PersonnelRequest {
   // ── Soft delete (22.09.2026) — recruitment.admin / SUPER_ADMIN. Satır kalır,
   // listeler/detay/export/pdf silindiMi=false süzer; denetim kaydı PERSONNEL_REQUEST.
   silindiMi     Boolean   @default(false)
-  silenId       String?   // User.id (approvedById deseni gibi düz alan; FK değil)
+  silenId       String? // User.id (approvedById deseni gibi düz alan; FK değil)
   silinmeTarihi DateTime?
 
   createdAt DateTime @default(now())
@@ -9754,22 +9771,22 @@ enum CourseDifficulty {
 }
 
 model Content {
-  id          String      @id @default(cuid())
-  courseId    String
-  title       String
-  description String?     @db.Text
-  type        ContentType
-  filePath    String?
-  fileUrl     String?
-  duration    Int?
-  fileSize    Int?
+  id               String      @id @default(cuid())
+  courseId         String
+  title            String
+  description      String?     @db.Text
+  type             ContentType
+  filePath         String?
+  fileUrl          String?
+  duration         Int?
+  fileSize         Int?
   // VIDEO: gerçek süre (sn) — ilk oynatmada istemcinin video.duration'ından yazılır,
   // %90 izleme şartı bunun üzerinden hesaplanır (duration dakika/elle, güvenilmez).
   videoDurationSec Int?
-  order       Int         @default(0)
-  isActive    Boolean     @default(true)
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  order            Int         @default(0)
+  isActive         Boolean     @default(true)
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
 
   course         Course              @relation(fields: [courseId], references: [id], onDelete: Cascade)
   progress       ContentProgress[]
@@ -10062,14 +10079,14 @@ model CourseProgress {
 }
 
 model ContentProgress {
-  id             String    @id @default(cuid())
-  userId         String
-  contentId      String
-  completed      Boolean   @default(false)
-  watchedSeconds Int?      // birikimli GERÇEK izleme (sn) — ileri sarma sayılmaz, monoton artar
-  lastPositionSec Int?     // kaldığı yer (sn) — kaldığı yerden devam için
-  completedAt    DateTime?
-  updatedAt      DateTime  @updatedAt
+  id              String    @id @default(cuid())
+  userId          String
+  contentId       String
+  completed       Boolean   @default(false)
+  watchedSeconds  Int? // birikimli GERÇEK izleme (sn) — ileri sarma sayılmaz, monoton artar
+  lastPositionSec Int? // kaldığı yer (sn) — kaldığı yerden devam için
+  completedAt     DateTime?
+  updatedAt       DateTime  @updatedAt
 
   user    User    @relation(fields: [userId], references: [id])
   content Content @relation(fields: [contentId], references: [id])
@@ -14501,24 +14518,24 @@ model AvansTalebiGeriCekmeLog {
 }
 
 model KPIDefinition {
-  id           String              @id @default(cuid())
-  orgUnitId    String
-  orgUnit      OrgUnit             @relation(fields: [orgUnitId], references: [id])
-  name         String
-  unit         String?
-  direction    String
-  frequency    String              @default("monthly")
+  id                 String              @id @default(cuid())
+  orgUnitId          String
+  orgUnit            OrgUnit             @relation(fields: [orgUnitId], references: [id])
+  name               String
+  unit               String?
+  direction          String
+  frequency          String              @default("monthly")
   // KPI-ETIKET: bazı departmanlar "Gerçekleşen/Hedef" yerine farklı isim/yön kullanıyor
   // (örn. "Gelen", ya da oranı H/G). Additive, varsayılanlar mevcut davranışı korur.
-  gerceklesenEtiketi String         @default("Gerçekleşen")
-  hedefEtiketi       String         @default("Hedef")
-  oranYonu           String         @default("G_H") // "G_H" (gerçekleşen/hedef) | "H_G" (hedef/gerçekleşen)
-  active       Boolean             @default(true)
-  createdAt    DateTime            @default(now())
-  updatedAt    DateTime            @updatedAt
-  measurements KPIMeasurement[]
-  actions      KPIAction[]
-  baselines    KPIYearlyBaseline[]
+  gerceklesenEtiketi String              @default("Gerçekleşen")
+  hedefEtiketi       String              @default("Hedef")
+  oranYonu           String              @default("G_H") // "G_H" (gerçekleşen/hedef) | "H_G" (hedef/gerçekleşen)
+  active             Boolean             @default(true)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  measurements       KPIMeasurement[]
+  actions            KPIAction[]
+  baselines          KPIYearlyBaseline[]
 
   @@unique([orgUnitId, name])
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
+import { logAuditEvent } from '@/lib/audit-log'
 
 // DELETE - Tüm kalibrasyon kayıtlarını arşivle (SADECE SUPER_ADMIN)
 export async function DELETE() {
@@ -27,7 +28,14 @@ export async function DELETE() {
 
     const result = await prisma.calibrationDevice.updateMany({
       where: { isActive: true },
-      data: { isActive: false }
+      data: { isActive: false, updatedById: user.id }
+    })
+
+    await logAuditEvent({
+      action: 'CALIBRATION_DEVICE_BULK_ARCHIVED',
+      actorId: user.id,
+      targetType: 'CALIBRATION_DEVICE',
+      details: { arsivlenen: result.count },
     })
 
     console.log(`[CALIBRATION] Bulk archive: ${result.count} devices archived by ${user.email}`)

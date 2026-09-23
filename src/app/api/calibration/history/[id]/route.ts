@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { CalibrationResult, CalibrationStatus } from '@/generated/prisma'
 import { requireUser } from '@/lib/auth/require-user'
+import { logAuditEvent } from '@/lib/audit-log'
+import { kalibrasyonGecmisAlanDiff } from '@/lib/calibration-audit'
 
 // PUT - Kalibrasyon kaydını düzenle (kalibrasyon.admin)
 export async function PUT(
@@ -160,11 +162,29 @@ export async function PUT(
       }
 
       if (Object.keys(deviceData).length > 0) {
+        deviceData.updatedById = user.id
         await prisma.calibrationDevice.update({
           where: { id: existing.deviceId },
           data: deviceData,
         })
       }
+    }
+
+    // ISO izi: geçmiş kaydının düzenlenmesi (ör. sonuç HURDA→PASS) alan bazlı loglanır.
+    // Kaydın createdById'si DEĞİŞMEZ — ilk kaydeden kalır, düzenleyen audit'te görünür.
+    const degisiklikler = kalibrasyonGecmisAlanDiff(existing, updated)
+    if (degisiklikler.length > 0) {
+      await logAuditEvent({
+        action: 'CALIBRATION_HISTORY_UPDATED',
+        actorId: user.id,
+        targetType: 'CALIBRATION_HISTORY',
+        targetId: updated.id,
+        details: {
+          deviceId: existing.device.deviceId,
+          cihazAdi: existing.device.name,
+          degisiklikler,
+        },
+      })
     }
 
     return NextResponse.json(updated)

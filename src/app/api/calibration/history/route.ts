@@ -97,6 +97,8 @@ export async function POST(request: NextRequest) {
           result: result as CalibrationResult,
           notes,
           certificatePath,
+          // Sonucu SİSTEME kaydeden kullanıcı (kalibrasyonu yapan firma: calibratedBy).
+          createdById: user.id,
         },
       })
 
@@ -145,6 +147,9 @@ export async function POST(request: NextRequest) {
       }
 
       if (Object.keys(deviceUpdateData).length > 0) {
+        // Kalibrasyon sonucu cihazın tarih/durum alanlarını değiştiriyor → bu da
+        // İNSAN kaynaklı bir güncelleme; son değiştiren buraya yazılır.
+        deviceUpdateData.updatedById = user.id
         await tx.calibrationDevice.update({
           where: { id: deviceId },
           data: deviceUpdateData,

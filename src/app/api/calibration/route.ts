@@ -293,6 +293,9 @@ export async function POST(request: NextRequest) {
         calibrationReturnDate: calibrationReturnDate ? new Date(calibrationReturnDate) : null,
         scrapDate: scrapDate ? new Date(scrapDate) : null,
         scrapDescription: scrapDescription || null,
+        // İzlenebilirlik: kaydı açan kullanıcı (ISO 9001 7.1.5.2).
+        createdById: user.id,
+        updatedById: user.id,
       },
     })
 

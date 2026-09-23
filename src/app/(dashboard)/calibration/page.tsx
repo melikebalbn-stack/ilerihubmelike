@@ -72,6 +72,9 @@ type CalibrationDevice = {
   requiresResponsible?: boolean
 }
 
+/** Kayıt izi (ISO): kullanıcı adı yoksa e-posta, o da yoksa arayüzde "—". */
+type IzKullanicisi = { id: string; name: string | null; email: string | null } | null
+
 type CalibrationHistoryRecord = {
   id: string
   calibrationDate: string
@@ -83,6 +86,15 @@ type CalibrationHistoryRecord = {
   notes?: string | null
   certificatePath?: string | null
   createdAt: string
+  createdBy?: IzKullanicisi
+}
+
+/** Cihaz detayından gelen kayıt izi — liste ucunda YOK, detay açılınca çekilir. */
+type CihazIzi = {
+  createdBy: IzKullanicisi
+  updatedBy: IzKullanicisi
+  createdAt: string
+  updatedAt: string
 }
 
 type Stats = {
@@ -164,6 +176,7 @@ export default function CalibrationPage() {
 
   // History dialog
   const [showHistoryDialog, setShowHistoryDialog] = useState(false)
+  const [deviceTrail, setDeviceTrail] = useState<CihazIzi | null>(null)
   const [historyDevice, setHistoryDevice] = useState<CalibrationDevice | null>(null)
   const [historyRecords, setHistoryRecords] = useState<CalibrationHistoryRecord[]>([])
   const [loadingHistory, setLoadingHistory] = useState(false)
@@ -729,6 +742,16 @@ export default function CalibrationPage() {
     }
   }
 
+  // Kayıt izi metni: geçmiş veri (2025-12 / 2026-07-08 toplu yüklemeleri) kullanıcısız
+  // olduğu için null gelir — hata değil, "—" gösterilir.
+  const izAdi = (k: IzKullanicisi) => k?.name?.trim() || k?.email || null
+  const izSatiri = (k: IzKullanicisi, tarih?: string) => {
+    const ad = izAdi(k)
+    const t = tarih ? new Date(tarih).toLocaleDateString('tr-TR') : null
+    if (!ad) return t ? `— (${t})` : '—'
+    return t ? `${ad} — ${t}` : ad
+  }
+
   const openEditDialog = (device: CalibrationDevice) => {
     setSelectedDevice(device)
     const deviceAttachments = device.attachments ? JSON.parse(device.attachments as string) : []
@@ -779,6 +802,21 @@ export default function CalibrationPage() {
       requiresResponsible: device.requiresResponsible || false,
     })
     setIsEditDialogOpen(true)
+    // Kayıt izi liste ucunda taşınmıyor (989 cihaz) → detay ucundan ayrıca çekilir.
+    setDeviceTrail(null)
+    fetch(`/api/calibration/${device.id}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d) {
+          setDeviceTrail({
+            createdBy: d.createdBy ?? null,
+            updatedBy: d.updatedBy ?? null,
+            createdAt: d.createdAt,
+            updatedAt: d.updatedAt,
+          })
+        }
+      })
+      .catch(() => setDeviceTrail(null))
   }
 
   // Geçmiş dialog
@@ -2298,6 +2336,24 @@ export default function CalibrationPage() {
                       Geçmişi Gör
                     </Button>
                   </div>
+
+                  {/* Kayıt izi (ISO 9001 7.1.5.2) — iz eklenmeden önceki kayıtlarda "—" */}
+                  <div className="text-xs text-muted-foreground border-t pt-2 space-y-0.5">
+                    <div>
+                      Oluşturan:{' '}
+                      <span className="text-foreground">
+                        {izSatiri(deviceTrail?.createdBy ?? null, deviceTrail?.createdAt)}
+                      </span>
+                    </div>
+                    <div>
+                      Son değiştiren:{' '}
+                      <span className="text-foreground">
+                        {deviceTrail?.updatedBy
+                          ? izSatiri(deviceTrail.updatedBy, deviceTrail.updatedAt)
+                          : '—'}
+                      </span>
+                    </div>
+                  </div>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
                     <div>
                       <p className="text-muted-foreground text-xs">Son Kalibrasyon</p>
@@ -2967,6 +3023,7 @@ export default function CalibrationPage() {
                       <TableHead>Sonuç</TableHead>
                       <TableHead>Maliyet</TableHead>
                       <TableHead>Notlar</TableHead>
+                      <TableHead>Sisteme kaydeden</TableHead>
                       {canEdit && <TableHead className="text-right">İşlemler</TableHead>}
                     </TableRow>
                   </TableHeader>
@@ -2990,6 +3047,9 @@ export default function CalibrationPage() {
                         </TableCell>
                         <TableCell>{record.cost ? `${Number(record.cost).toLocaleString('tr-TR')} TL` : '-'}</TableCell>
                         <TableCell className="max-w-[200px] truncate">{record.notes || '-'}</TableCell>
+                        <TableCell className="whitespace-nowrap">
+                          {izAdi(record.createdBy ?? null) ?? '—'}
+                        </TableCell>
                         {canEdit && (
                           <TableCell className="text-right">
                             <Button variant="ghost" size="sm" onClick={() => startEditHistory(record)}>

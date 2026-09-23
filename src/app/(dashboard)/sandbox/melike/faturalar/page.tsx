@@ -40,16 +40,12 @@ import { ImportDialog, downloadFile } from './_components/ImportDialog'
 const NAVY = '#1B4F72'
 const SG_LABEL = 'SİSTEM GELİŞTİRME MÜDÜRLÜĞÜ'
 const GENEL_LABEL = 'Genel'
-// "Genel" en büyük payı aldığı için önceden en canlı rengi (lacivert) kapıp diğer bölümleri
-// eziyordu — artık her zaman nötr gri: dikkat çekmesin, asıl ilgi alanı olan bölümler öne çıksın.
-const GENEL_COLOR = '#9CA3AF'
-// Palet artık ilerihub'ın KENDİ uygulamasında zaten kullanılan renkler — icat değil, alıntı:
-// #2563eb "beyaz"/personnel-reports, #7c3aed "mavi"/personnel-reports, #14b8a6 "erkek"/personnel-reports,
-// #16a34a BAŞARILI/ifs-evaluation-report, #dc2626 BAŞARISIZ/ifs-evaluation-report. Pembe/turuncu
-// hiç yok. Bu sırayla validate_palette.js: tüm zorunlu kontroller PASS (CVD ΔE 16.6, normal görüş ΔE 33.3).
-// Teal (#14b8a6) beyaz yüzeyde kontrastı düşük (WARN) — bu yüzden rengin yanında zaten bir legend
-// ve altında tam etiketli "Bölüme göre dağılım" tablosu var, tek başına renge güvenilmiyor.
-const PALETTE = ['#2563eb', '#dc2626', '#14b8a6', '#7c3aed', '#16a34a']
+// Renk mantığı değişti: bölüm sayısı kadar rastgele/rainbow renk seçmek yerine ilerihub'ın
+// tüm sayfalarda zaten kullandığı TEK marka rengi (lacivert, NAVY) esas alınıyor. Bu uygulamanın
+// bütün amacı zaten Sistem Geliştirme'yi öne çıkarmak — o yüzden "emphasis" yaklaşımı: asıl ilgi
+// noktası (Sistem Geliştirme) NAVY, diğer tüm gerçek bölümler tek bir nötr gri. Renk artık kimlik
+// değil vurgu taşıyor; hangi bölüm olduğu zaten satırın/çubuğun etiketinde yazıyor.
+const OTHER_DEPT_COLOR = '#94A3B8'
 
 type Currency = 'TRY' | 'USD' | 'EUR'
 
@@ -279,36 +275,24 @@ export default function FaturaTakipPage() {
     }
   }
 
-  // Renk atama: "Genel" her zaman nötr gri (payı en büyük olduğu için canlı renk alırsa
-  // diğer bölümleri ezip grafiği okunaksız yapıyordu). Gerçek bölümler alfabetik SABİT sırayla
-  // doğrulanmış paletten renk alır (tutara göre sıralarsak veri değiştikçe renkler kayar).
-  // 8 palet renginden fazlası varsa fazlalar "Diğer" altında toplanır.
-  const departmentColor = useMemo(() => {
-    const map = new Map<string, string>()
-    map.set(GENEL_LABEL, GENEL_COLOR)
-    const real = (summary?.departments ?? [])
-      .filter((d) => d.label !== GENEL_LABEL)
-      .map((d) => d.label)
-      .sort((a, b) => a.localeCompare(b, 'tr'))
-    real.slice(0, PALETTE.length).forEach((label, i) => map.set(label, PALETTE[i]))
-    map.set('Diğer', '#64748b') // "endirekt"/personnel-reports ile aynı nötr slate
-    return map
-  }, [summary])
+  // Renk artık kimlik değil vurgu taşıyor: Sistem Geliştirme NAVY (ilerihub'ın marka rengi,
+  // bu ekranın asıl ilgi noktası), her gerçek bölüm aynı nötr gri. Hangi bölüm olduğu zaten
+  // çubuğun/satırın etiketinde yazıyor — renkten renge ayırt etmeye gerek yok.
+  function getDeptColor(label: string) {
+    return label === SG_LABEL ? NAVY : OTHER_DEPT_COLOR
+  }
 
-  // Grafikte gösterilecek seri sırası: Genel (atanmamış faturalar) BURADA YOK — o gerçek bir
-  // bölüm değil, kartlarda olduğu gibi burada da karşılaştırmaya girerse (tek başına toplamın
-  // %80+'i) gerçek bölümleri görünmez sliverlere eziyordu. Genel'in kendi ay bazında trendini
-  // görmek isteyen alttaki açılır listeden "Genel"i seçip izole edebilir. Gerçek bölümler
-  // alfabetik sırayla (en fazla 8 — palet kadar), taşanlar "Diğer" altında toplanır.
+  const OTHER_LABEL = 'Diğer bölümler'
+
+  // "Tüm Zamanlar" grafiğindeki seriler: Sistem Geliştirme (varsa) ve geri kalan tüm gerçek
+  // bölümlerin toplamı tek "Diğer bölümler" serisi olarak. Tek tek bölüm kırılımı için zaten
+  // alttaki tabloya bak — grafiğin işi burada sadece SG'nin payını zaman içinde göstermek.
   const chartSeries = useMemo(() => {
     if (!summary) return []
-    const real = summary.departments
-      .map((d) => d.label)
-      .filter((l) => l !== GENEL_LABEL)
-      .sort((a, b) => a.localeCompare(b, 'tr'))
-    const shown = real.slice(0, PALETTE.length)
-    const overflow = real.length > PALETTE.length
-    return [...shown, ...(overflow ? ['Diğer'] : [])]
+    const labels = summary.departments.map((d) => d.label)
+    const hasSG = labels.includes(SG_LABEL)
+    const hasOther = labels.some((l) => l !== GENEL_LABEL && l !== SG_LABEL)
+    return [...(hasSG ? [SG_LABEL] : []), ...(hasOther ? [OTHER_LABEL] : [])]
   }, [summary])
 
   // Grafik üstteki "Aylık / Tüm Zamanlar" seçimini takip eder — ayrı bir grafik-bölüm
@@ -318,13 +302,11 @@ export default function FaturaTakipPage() {
   const chartData = useMemo(() => {
     if (!summary) return []
     if (scopeMode === 'ALL') {
-      const shownSet = new Set(chartSeries)
       return summary.months.map((m) => {
-        const row: Record<string, string | number> = { ay: formatMonthLabel(m.key) }
-        for (const label of chartSeries) row[label] = 0
+        const row: Record<string, string | number> = { ay: formatMonthLabel(m.key), [SG_LABEL]: 0, [OTHER_LABEL]: 0 }
         for (const d of m.departments) {
           if (d.label === GENEL_LABEL) continue // atanmamış — bu karşılaştırmada yok
-          const key = shownSet.has(d.label) ? d.label : 'Diğer'
+          const key = d.label === SG_LABEL ? SG_LABEL : OTHER_LABEL
           row[key] = (Number(row[key]) || 0) + d.eur
         }
         return row
@@ -335,7 +317,7 @@ export default function FaturaTakipPage() {
     return m.departments
       .filter((d) => d.label !== GENEL_LABEL)
       .sort((a, b) => b.eur - a.eur)
-  }, [summary, scopeMode, scopeMonth, chartSeries])
+  }, [summary, scopeMode, scopeMonth])
 
   const totalCiro = useMemo(() => Object.values(revenues).reduce((s, v) => s + v, 0), [revenues])
 
@@ -507,7 +489,7 @@ export default function FaturaTakipPage() {
                       key={label}
                       dataKey={label}
                       stackId="a"
-                      fill={departmentColor.get(label) ?? PALETTE[i % PALETTE.length]}
+                      fill={getDeptColor(label)}
                       stroke="#fff"
                       strokeWidth={2}
                       radius={i === chartSeries.length - 1 ? [4, 4, 0, 0] : undefined}
@@ -530,7 +512,7 @@ export default function FaturaTakipPage() {
                   <Tooltip formatter={(v: number) => formatEur(v)} />
                   <Bar dataKey="eur" radius={[0, 4, 4, 0]} barSize={28}>
                     {chartData.map((entry: any) => (
-                      <Cell key={entry.label} fill={departmentColor.get(entry.label) ?? NAVY} />
+                      <Cell key={entry.label} fill={getDeptColor(entry.label)} />
                     ))}
                   </Bar>
                 </BarChart>

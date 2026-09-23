@@ -7,7 +7,7 @@
 // döner, ekran tarafı bu listeleri ilgili kaydın mevcut yönetim ekranına
 // link/yönlendirme olarak sunar.
 //
-// 14 madde → 11 kontrol / 12 sorgu (14, 14a+14b olarak ikiye bölündü; 8 ve 10
+// 14 madde → 13 kontrol (14, 14a+14b olarak ikiye bölündü; 8 ve 10
 // kurulamıyor, veri kaynağı yok — bkz. keşif raporu B.8/B.10; 12 kapasite
 // motoru main'e girene kadar yer tutucu — bkz. F).
 //

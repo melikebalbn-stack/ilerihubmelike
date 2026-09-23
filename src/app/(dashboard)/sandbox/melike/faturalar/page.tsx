@@ -327,18 +327,19 @@ export default function FaturaTakipPage() {
 
   const scopedMonthSummary = summary?.months.find((m) => m.key === scopeMonth) ?? null
 
+  // "Oran" bu sayfada TEK bir anlama gelir: € tutarının CİRO'ya bölünmesi — tablodaki
+  // "Ciro İçindeki Payı" sütunuyla aynı hesap, aynı payda. Daha önce kart farklı bir şey
+  // ölçüyordu (SG'nin toplam fatura içindeki payı, ciro hiç yoktu) — kafa karıştırıyordu.
   const cardTotals = useMemo(() => {
     if (scopeMode === 'MONTH' && scopedMonthSummary) {
-      const genel = scopedMonthSummary.genel
-      const sistemGelistirme = scopedMonthSummary.sistemGelistirme
-      const toplam = genel + sistemGelistirme
-      return { genel, sistemGelistirme, toplam, oran: toplam > 0 ? (sistemGelistirme / toplam) * 100 : 0 }
+      return { toplam: scopedMonthSummary.genel + scopedMonthSummary.sistemGelistirme, sistemGelistirme: scopedMonthSummary.sistemGelistirme }
     }
-    return summary?.totals ?? { genel: 0, sistemGelistirme: 0, toplam: 0, oran: 0 }
+    return { toplam: summary?.totals.toplam ?? 0, sistemGelistirme: summary?.totals.sistemGelistirme ?? 0 }
   }, [scopeMode, scopedMonthSummary, summary])
 
   const scopedDepartments = scopeMode === 'MONTH' && scopedMonthSummary ? scopedMonthSummary.departments : summary?.departments ?? []
   const scopedCiro = scopeMode === 'MONTH' ? revenues[scopeMonth] ?? 0 : totalCiro
+  const sgCiroOran = scopedCiro > 0 ? (cardTotals.sistemGelistirme / scopedCiro) * 100 : null
 
   const listMonths = useMemo(() => summary?.months.map((m) => m.key) ?? [], [summary])
 
@@ -460,8 +461,8 @@ export default function FaturaTakipPage() {
       <div className="grid grid-cols-2 gap-3">
         <SummaryCard label="Toplam (€)" value={formatEur(cardTotals.toplam)} color={NAVY} />
         <SummaryCard
-          label="Sistem Geliştirme / Toplam Fatura"
-          value={`${cardTotals.oran.toFixed(1)}%`}
+          label="Sistem Geliştirme — Ciro İçindeki Payı"
+          value={sgCiroOran == null ? '—' : formatPercent(sgCiroOran)}
           color="#993C1D"
         />
       </div>

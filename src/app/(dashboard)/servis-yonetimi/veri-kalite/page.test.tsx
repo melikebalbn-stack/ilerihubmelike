@@ -156,3 +156,47 @@ describe('VeriKaliteMerkeziPage — API hatası', () => {
     await waitFor(() => expect(screen.getByText('Sunucu hatası.')).toBeInTheDocument())
   })
 })
+
+// ----------------------------------------------------------------------------
+// 🔴 Excel export butonu — servis.export AYRI eksen (uç de AND istiyor)
+// ----------------------------------------------------------------------------
+describe('VeriKaliteMerkeziPage — Excel export butonu', () => {
+  const EXPORT_YOLU = '/api/servis-yonetimi/veri-kalite/export'
+
+  it('servis.export izni VARKEN buton render edilir ve href doğrudur', async () => {
+    mockSession(['servis.view', 'servis.export'])
+    global.fetch = vi.fn().mockResolvedValue(fetchOkYanit([])) as unknown as typeof fetch
+
+    render(<VeriKaliteMerkeziPage />)
+
+    const buton = await screen.findByText('Excel indir')
+    const bag = buton.closest('a')
+    expect(bag).toHaveAttribute('href', EXPORT_YOLU)
+    // Düz <a> olmalı — <Button asChild> bozuk olduğu için <button><a></a>
+    // üretirdi; o geçersiz HTML'i çoğaltmadığımızı sabitliyoruz.
+    expect(bag?.closest('button')).toBeNull()
+  })
+
+  it('🔴 servis.export izni YOKKEN buton HİÇ render edilmez (sayfa yine görünür)', async () => {
+    mockSession(['servis.view'])
+    global.fetch = vi.fn().mockResolvedValue(fetchOkYanit([])) as unknown as typeof fetch
+
+    render(<VeriKaliteMerkeziPage />)
+
+    // Sayfanın kendisi görünüyor — "grup kapalı olduğu için göremedi"
+    // yanlış-negatifi eleniyor.
+    expect(screen.getByText('Veri Kalite Merkezi')).toBeInTheDocument()
+    await waitFor(() => expect(global.fetch).toHaveBeenCalled())
+
+    expect(screen.queryByText('Excel indir')).not.toBeInTheDocument()
+    expect(document.querySelector(`a[href="${EXPORT_YOLU}"]`)).toBeNull()
+  })
+
+  it('hiç izni olmayan kullanıcıda ne sayfa ne buton render edilir', () => {
+    mockSession([])
+    render(<VeriKaliteMerkeziPage />)
+
+    expect(screen.getByText('Bu sayfayı görüntüleme yetkiniz yok.')).toBeInTheDocument()
+    expect(screen.queryByText('Excel indir')).not.toBeInTheDocument()
+  })
+})

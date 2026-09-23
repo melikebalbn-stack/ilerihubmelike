@@ -5,7 +5,8 @@ import { useSession } from 'next-auth/react'
 import Link from 'next/link'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { AlertTriangle, Ban, CheckCircle2, Loader2 } from 'lucide-react'
+import { buttonVariants } from '@/components/ui/button'
+import { AlertTriangle, Ban, CheckCircle2, Loader2, FileSpreadsheet } from 'lucide-react'
 
 // MASTER madde 43 — Veri Kalite Merkezi. SALT TESPİT yapar (madde 21):
 // hiçbir kaydı düzeltme/silme/pasifleştirme butonu YOK, yalnız ilgili
@@ -160,6 +161,9 @@ export default function VeriKaliteMerkeziPage() {
   const { data: session } = useSession()
   const permissions = session?.user?.permissions || []
   const canView = permissions.includes('servis.view')
+  // Dışa aktarım AYRI eksen: sayfayı görebilen herkes dosyayı indirememeli.
+  // Uç de aynı ikiliyi AND ile istiyor (requireAllPermissions).
+  const canExport = permissions.includes('servis.export')
 
   const [satirlar, setSatirlar] = useState<VeriKaliteSatiri[]>([])
   const [yukleniyor, setYukleniyor] = useState(true)
@@ -198,11 +202,25 @@ export default function VeriKaliteMerkeziPage() {
 
   return (
     <div className="space-y-6 p-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Veri Kalite Merkezi</h1>
-        <p className="text-sm text-muted-foreground">
-          Servis yönetimi verilerinde tutarsızlık taraması — salt tespit, hiçbir kayıt otomatik düzeltilmez.
-        </p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold">Veri Kalite Merkezi</h1>
+          <p className="text-sm text-muted-foreground">
+            Servis yönetimi verilerinde tutarsızlık taraması — salt tespit, hiçbir kayıt otomatik düzeltilmez.
+          </p>
+        </div>
+        {/* Düz <a> + buttonVariants — <Button asChild> KULLANILMIYOR: button.tsx'te
+            asChild yalnız tip olarak tanımlı, gövdede okunmuyor, bu yüzden
+            <button><a></a></button> (geçersiz HTML) üretiyor. Görsel sonuç aynı. */}
+        {canExport && (
+          <a
+            href="/api/servis-yonetimi/veri-kalite/export"
+            className={buttonVariants({ variant: 'outline', size: 'sm' })}
+          >
+            <FileSpreadsheet className="mr-2 h-4 w-4" />
+            Excel indir
+          </a>
+        )}
       </div>
       {yukleniyor ? (
         <div className="flex justify-center py-12">

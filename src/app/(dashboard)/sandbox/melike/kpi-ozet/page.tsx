@@ -14,7 +14,7 @@ import {
 } from 'recharts'
 
 const NAVY = '#1B4F72'
-const IK_ORG_UNIT_ID = 'cmrzg1kr600037jpe4ge6rxe0'
+const GENEL_ID = 'GENEL'
 
 interface Departman {
   id: string
@@ -60,7 +60,7 @@ function oranBgRengi(oran: number): string {
 
 export default function KpiOzetPage() {
   const [departmanlar, setDepartmanlar] = useState<Departman[]>([])
-  const [secilenDepartmanId, setSecilenDepartmanId] = useState<string>(IK_ORG_UNIT_ID)
+  const [secilenDepartmanId, setSecilenDepartmanId] = useState<string>(GENEL_ID)
   const [ozet, setOzet] = useState<DepartmanOzeti[] | null>(null)
   const [mevcutYillar, setMevcutYillar] = useState<number[]>([])
   const [secilenYil, setSecilenYil] = useState<number | null>(null)
@@ -131,6 +131,7 @@ export default function KpiOzetPage() {
           <Select value={secilenDepartmanId} onValueChange={setSecilenDepartmanId}>
             <SelectTrigger className="w-full sm:w-80 mt-1"><SelectValue /></SelectTrigger>
             <SelectContent>
+              <SelectItem value={GENEL_ID}>Şirket Geneli</SelectItem>
               {departmanlar.map(d => (
                 <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
               ))}
@@ -152,42 +153,45 @@ export default function KpiOzetPage() {
         )}
       </div>
 
-      {/* Genel özet — şirket geneli TEK rakam/grafik, departman seçimine bağlı değil, her zaman görünür */}
-      <Card>
-        <CardHeader className="pb-2 flex flex-row items-center justify-between">
-          <div>
-            <CardTitle className="text-base">Genel Özet — Şirket Geneli</CardTitle>
-            <p className="text-xs text-muted-foreground">{secilenYil} yılı, tüm departmanların tüm KPI'ları — çeyrek çeyrek gidişat</p>
-          </div>
-          {genelToplam != null && (
-            <div className="text-right">
-              <p className="text-xs text-muted-foreground">Genel başarı</p>
-              <p className="text-3xl font-bold" style={{ color: oranRengi(genelToplam) }}>%{genelToplam}</p>
+      {/* Şirket geneli — sadece "Şirket Geneli" seçiliyken görünür */}
+      {secilenDepartmanId === GENEL_ID && (
+        <Card>
+          <CardHeader className="pb-2 flex flex-row items-center justify-between">
+            <div>
+              <CardTitle className="text-base">Genel Özet — Şirket Geneli</CardTitle>
+              <p className="text-xs text-muted-foreground">{secilenYil} yılı, tüm departmanların tüm KPI'ları — çeyrek çeyrek gidişat</p>
             </div>
-          )}
-        </CardHeader>
-        <CardContent>
-          {!genelCeyrekTrend ? (
-            <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
-          ) : (
-            <ResponsiveContainer width="100%" height={220}>
-              <LineChart
-                data={genelCeyrekTrend.ceyrekler.map(c => ({ ad: `Ç${c.ceyrek}`, Oran: c.oran }))}
-                margin={{ left: 4, right: 8, top: 4, bottom: 4 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="ad" tick={{ fontSize: 12 }} />
-                <YAxis tick={{ fontSize: 12 }} domain={[0, 100]} />
-                <Tooltip formatter={(v: number) => `%${v}`} />
-                <Line type="monotone" dataKey="Oran" stroke={NAVY} strokeWidth={2} dot={{ r: 4 }} connectNulls />
-              </LineChart>
-            </ResponsiveContainer>
-          )}
-        </CardContent>
-      </Card>
+            {genelToplam != null && (
+              <div className="text-right">
+                <p className="text-xs text-muted-foreground">Genel başarı</p>
+                <p className="text-3xl font-bold" style={{ color: oranRengi(genelToplam) }}>%{genelToplam}</p>
+              </div>
+            )}
+          </CardHeader>
+          <CardContent>
+            {!genelCeyrekTrend ? (
+              <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+            ) : (
+              <ResponsiveContainer width="100%" height={220}>
+                <LineChart
+                  data={genelCeyrekTrend.ceyrekler.map(c => ({ ad: `Ç${c.ceyrek}`, Oran: c.oran }))}
+                  margin={{ left: 4, right: 8, top: 4, bottom: 4 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="ad" tick={{ fontSize: 12 }} />
+                  <YAxis tick={{ fontSize: 12 }} domain={[0, 100]} />
+                  <Tooltip formatter={(v: number) => `%${v}`} />
+                  <Line type="monotone" dataKey="Oran" stroke={NAVY} strokeWidth={2} dot={{ r: 4 }} connectNulls />
+                </LineChart>
+              </ResponsiveContainer>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
-      {/* Departmana özel detay — seçime göre değişir */}
-      {!ozet ? (
+      {/* Departmana özel detay — bir departman seçiliyken görünür */}
+      {secilenDepartmanId !== GENEL_ID && (
+      !ozet ? (
         <div className="flex justify-center py-12">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
         </div>
@@ -197,6 +201,14 @@ export default function KpiOzetPage() {
         </p>
       ) : (
         <>
+          <button
+            type="button"
+            onClick={() => setSecilenDepartmanId(GENEL_ID)}
+            className="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
+          >
+            ← Şirket Geneline dön
+          </button>
+
           <Card>
             <CardContent className="pt-6 flex items-center justify-between">
               <div>
@@ -268,6 +280,7 @@ export default function KpiOzetPage() {
             </CardContent>
           </Card>
         </>
+      )
       )}
     </div>
   )

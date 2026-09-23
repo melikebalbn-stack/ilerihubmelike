@@ -18,6 +18,10 @@ export interface HareketSatiri {
   bolum: string
   gorev: string
   tarih: string
+  /** Yalnız çıkanlarda dolu — EmploymentPeriod.exitReason (serbest metin). */
+  cikisSebebi?: string | null
+  /** Yalnız çıkanlarda dolu — EmploymentPeriod.exitParty (İŞÇİ / İŞVEREN). */
+  cikisTarafi?: string | null
 }
 
 export interface HaftalikPersonelRaporu {
@@ -99,12 +103,17 @@ export async function getHaftalikPersonelRaporu(referans = new Date()): Promise<
     }),
   ])
 
-  const satir = (p: { sicilNo: string | null; adSoyad: string; bolum: string; gorev: string }, tarih: Date): HareketSatiri => ({
+  const satir = (
+    p: { sicilNo: string | null; adSoyad: string; bolum: string; gorev: string },
+    tarih: Date,
+    cikis?: { exitReason: string | null; exitParty: string | null },
+  ): HareketSatiri => ({
     sicilNo: p.sicilNo,
     adSoyad: p.adSoyad,
     bolum: p.bolum,
     gorev: p.gorev,
     tarih: trTarih(tarih),
+    ...(cikis ? { cikisSebebi: cikis.exitReason, cikisTarafi: cikis.exitParty } : {}),
   })
 
   return {
@@ -114,6 +123,8 @@ export async function getHaftalikPersonelRaporu(referans = new Date()): Promise<
     haftaAnahtari,
     tarihMetni: `${trTarih(gunBasi)} – ${trTarih(gunSonu)}`,
     girenler: girisDonemleri.map(d => satir(d.personnel, d.girisTarihi)),
-    cikanlar: cikisDonemleri.map(d => satir(d.personnel, d.cikisTarihi!)),
+    cikanlar: cikisDonemleri.map(d =>
+      satir(d.personnel, d.cikisTarihi!, { exitReason: d.exitReason, exitParty: d.exitParty }),
+    ),
   }
 }

@@ -28,8 +28,9 @@ export async function GET() {
     // aynı fonksiyonu kullanır, böylece ekran ile mail aynı sayıyı gösterir.
     const { tumBolumler: _tumBolumler, ...rapor } = hesaplaPersonelRaporu(await topluPersonelVerisi())
 
-    // tumBolumler yalnız mail şablonu için hesaplanır; uç noktanın yanıt şekli
-    // DEĞİŞMEZ (ekran tarafında karşılığı yok).
+    // tumBolumler yalnız mail şablonu için hesaplanır; ekran tarafında karşılığı yok.
+    // imalatTablosu / ofisTablosu (GMY tabloları) yanıta DAHİL — ekran da mailde
+    // görünen aynı çekirdek sayıları gösterir.
     return NextResponse.json(rapor)
   } catch (error) {
     console.error('Rapor verisi alınırken hata:', error)

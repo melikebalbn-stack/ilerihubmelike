@@ -35,7 +35,7 @@ async function main() {
   const opts = {
     baslik: 'Haftalık Personel Raporu',
     sayfaUrl: ileriHubUrl('/personnel/reports'),
-    bolumLimiti: 12,
+    // bolumLimiti verilmez → cron ile birebir aynı çıktı (tüm bölümler).
   }
   const html = buildPersonnelWeeklyHtml(veri, opts)
   const text = buildPersonnelWeeklyText(veri, opts)
@@ -44,11 +44,14 @@ async function main() {
   writeFileSync(CIKTI, html, 'utf8')
   chmodSync(CIKTI, 0o600)
 
-  const { ozet, cinsiyetDagilimi, tumBolumler } = veri.rapor
+  const { ozet, cinsiyetDagilimi, tumBolumler, imalatTablosu, ofisTablosu } = veri.rapor
   console.log('Önizleme :', CIKTI)
   console.log('Hafta    :', veri.tarihMetni)
   console.log('Özet     :', `toplam ${ozet.toplamCalisan} · beyaz ${ozet.beyazYaka} · mavi ${ozet.maviYaka} · gri ${ozet.griYaka} · K/E ${cinsiyetDagilimi.kadin}/${cinsiyetDagilimi.erkek}`)
-  console.log('Bölüm    :', `${tumBolumler.length} bölüm (mailde ilk ${opts.bolumLimiti})`)
+  console.log('Dir/End  :', `${ozet.direkt} / ${ozet.endirekt}`)
+  console.log('İmalat   :', `${imalatTablosu.sutunlar.length} sütun · toplam ${imalatTablosu.satirlar.find(s => s.ad === 'TOPLAM')?.genelToplam ?? 0}`)
+  console.log('Ofis     :', `${ofisTablosu.sutunlar.length} sütun · toplam ${ofisTablosu.satir.genelToplam}`)
+  console.log('Bölüm    :', `${tumBolumler.length} bölüm (mailde tümü)`)
   console.log('Hareket  :', `giren ${veri.girenler.length} · çıkan ${veri.cikanlar.length}`)
 
   if (!hedef) {

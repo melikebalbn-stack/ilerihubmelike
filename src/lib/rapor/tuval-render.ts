@@ -5,8 +5,9 @@
  * kendi gövdesi (tuval sayfaları başlık bloğu istemez), bicimle (tr-TR), ifade motoru (koşullu biçim),
  * gorunum.ts toplamHesapla (oran ortalaması kuralı dahil), gorunum-html cubukGrafikSvg.
  *
- * ÖLÇEK: tuval 640px = sayfa İÇİ genişlik. Tüm konum/boyutlar mm'ye çevrilir (CSS transform YOK) —
- * yazdırmada ekrandaki yerleşim birebir korunur.
+ * ÖLÇEK: 1px = TUVAL_MM_PX mm (sabit, yönden bağımsız). Tuvalin genişliği sayfa yönü/kenarlarıyla
+ * birlikte değişir (dikey ≈640px, yatay ≈950px), ölçek değişmez — tasarımcıdaki yerleşim baskıda
+ * birebir aynıdır (CSS transform YOK).
  *
  * SAYFALAMA: bant yükseklikleri bilindiği için sayfalar BURADA bölünür (thead/tfoot ile tarayıcıya
  * bırakılmaz). Nedeni: {sayfa}/{toplamSayfa} yer tutucuları ve sayfaSayisi ancak böyle kesin olur;
@@ -17,10 +18,7 @@ import { ifadeCalistir, ifadeDerle, type DerlenmisIfade } from './ifade'
 import { hesaplananlariEkle, toplamHesapla, type Satir } from './gorunum'
 import { cubukGrafikSvg } from './gorunum-html'
 import { esc, yazdirmaCss, type RenderBaglam } from './render'
-import { TUVAL_GENISLIK, type AltToplamFn, type Bicim, type HesaplananAlan, type KosulluBicim, type SablonParametre, type TuvalBant, type TuvalBantId, type TuvalOge, type TuvalTasarim } from './tipler'
-
-/** A4 kâğıt ölçüleri (mm). */
-const A4 = { g: 210, y: 297 }
+import { A4_MM, TUVAL_MM_PX, tuvalGenislik, type AltToplamFn, type Bicim, type HesaplananAlan, type KosulluBicim, type SablonParametre, type TuvalBant, type TuvalBantId, type TuvalOge, type TuvalTasarim } from './tipler'
 
 export interface TuvalRenderBaglam extends RenderBaglam {
   parametreler?: Record<string, unknown>
@@ -30,8 +28,10 @@ export interface TuvalRenderBaglam extends RenderBaglam {
   /** alan → (ham değer → Türkçe gösterim); yalnız gösterimde. */
   degerEtiketleri?: Record<string, Record<string, string>>
   raporAdi?: string
-  /** Logo öğesi için veri/URL; yoksa çerçeveli "LOGO" yazısı çizilir. */
+  /** Logo öğesi için veri/URL (data: URI tercih edilir); yoksa çerçeveli "LOGO" yazısı çizilir. */
   logoUrl?: string
+  /** Yüklenen görseller: öğedeki url → gömülü data URI. Yazdırmada dış URL çözülmeyebilir. */
+  gorseller?: Record<string, string>
 }
 
 export interface TuvalRenderSonuc { html: string; sayfaSayisi: number; satirSayisi: number }
@@ -75,12 +75,12 @@ export function tuvalRender(tasarim: TuvalTasarim, hamSatirlar: Satir[], baglam:
   const oranlar = oranHaritasi(baglam.hesaplananAlanlar)
   const yatay = tasarim.sayfa.yon === 'yatay'
   const [ust, sag, alt, sol] = tasarim.sayfa.kenar
-  const sayfaG = yatay ? A4.y : A4.g
-  const sayfaY = yatay ? A4.g : A4.y
+  const sayfaG = yatay ? A4_MM.y : A4_MM.g
+  const sayfaY = yatay ? A4_MM.g : A4_MM.y
   const icerikG = sayfaG - sol - sag
   const icerikY = sayfaY - ust - alt
-  /** px → mm ölçeği: 640px tuval = sayfa içi genişlik. */
-  const o = icerikG / TUVAL_GENISLIK
+  /** px → mm ölçeği: SABİT (yön/kenar tuval genişliğini değiştirir, ölçeği değil). */
+  const o = TUVAL_MM_PX
   const mm = (px: number) => `${(px * o).toFixed(2)}mm`
   const pt = (px: number) => `${(px * o * 2.8346).toFixed(2)}pt`
   const icerikYPx = icerikY / o
@@ -170,7 +170,9 @@ export function tuvalRender(tasarim: TuvalTasarim, hamSatirlar: Satir[], baglam:
 
   const ogeCiz = (e: TuvalOge, b: BantOrnegi, sayfaNo: number): string => {
     const temel = `left:${mm(e.x)};top:${mm(e.y)};width:${mm(e.w)};height:${mm(e.h)}`
-    const yaziStili = `font-size:${pt(e.size ?? 11)};${e.kalin ? 'font-weight:700;' : ''}text-align:${HIZA_CSS[e.hiza ?? 'sol']};${e.renk ? `color:${e.renk};` : ''}`
+    const zemin = e.zemin ? `background:${e.zemin};` : ''
+    const dikey = e.dikeyHiza && e.dikeyHiza !== 'ust' ? `display:flex;flex-direction:column;justify-content:${e.dikeyHiza === 'orta' ? 'center' : 'flex-end'};` : ''
+    const yaziStili = `font-size:${pt(e.size ?? 11)};${e.kalin ? 'font-weight:700;' : ''}text-align:${HIZA_CSS[e.hiza ?? 'sol']};${e.renk ? `color:${e.renk};` : ''}${zemin}${dikey}`
     switch (e.tip) {
       case 'metin':
         return `<div class="o" style="${temel};${yaziStili}">${esc(yerTutucu(e.metin, b, sayfaNo))}</div>`
@@ -186,14 +188,17 @@ export function tuvalRender(tasarim: TuvalTasarim, hamSatirlar: Satir[], baglam:
         const sinif = kosulSinifi(e.kosulluBicim, derli, { ...(b.satir ?? {}), [e.alan]: deger }, baglam.parametreler)
         return `<div class="o${sinif}" style="${temel};${yaziStili}">${esc(metin)}</div>`
       }
-      case 'gorsel':
-        return baglam.logoUrl
-          ? `<img class="o" src="${esc(baglam.logoUrl)}" alt="logo" style="${temel};object-fit:contain">`
+      case 'gorsel': {
+        const kaynak = e.kaynak === 'yukleme' ? (e.url ? (baglam.gorseller?.[e.url] ?? e.url) : '') : (baglam.logoUrl ?? '')
+        const uyum = (e.oraniKoru ?? true) ? 'contain' : 'fill'
+        return kaynak
+          ? `<img class="o" src="${esc(kaynak)}" alt="" style="${temel};${zemin}object-fit:${uyum};object-position:${HIZA_CSS[e.hiza ?? 'sol']} top">`
           : `<div class="o logo" style="${temel};font-size:${pt((e.size ?? 11))}">LOGO</div>`
+      }
       case 'cizgi':
         return `<div class="o" style="left:${mm(e.x)};top:${mm(e.y)};width:${mm(e.w)};height:0;border-top:${Math.max(0.2, (e.kalinlik ?? 1.5) * o).toFixed(2)}mm solid ${e.renk ?? '#1B4F72'}"></div>`
       case 'kutu':
-        return `<div class="o" style="${temel};border:${Math.max(0.2, (e.kalinlik ?? 1.5) * o).toFixed(2)}mm solid ${e.renk ?? '#1B4F72'}"></div>`
+        return `<div class="o" style="${temel};${zemin}border:${Math.max(0.2, (e.kalinlik ?? 1.5) * o).toFixed(2)}mm solid ${e.renk ?? '#1B4F72'}"></div>`
       case 'tablo': {
         const kolonlar = e.kolonlar ?? []
         const toplamG = kolonlar.reduce((t, k) => t + (k.genislik || 1), 0) || 1
@@ -271,29 +276,31 @@ export function listedenTuval(icerik: { kolonlar: { alan: string; baslik: string
   const eksik = kolonlar.filter((k) => k.genislik === undefined).length
   const kalanPay = eksik ? Math.max(0, 100 - verilen) / eksik : 0
   const grupAlani = icerik.gruplar?.[0]?.alan
+  const sayfa = { boyut: 'A4' as const, yon: (kolonlar.length > 7 ? 'yatay' : 'dikey') as 'dikey' | 'yatay', kenar: [15, 15, 15, 15] as [number, number, number, number] }
+  const G = tuvalGenislik(sayfa)
   const toplamVar = kolonlar.some((k) => k.altToplam && k.altToplam !== 'yok')
 
   // Kolon genişlikleri yüzde → px (640 tuval genişliği).
   let x = 0
   const yerler = kolonlar.map((k) => {
     const yuzde = k.genislik ?? kalanPay
-    const w = Math.max(40, Math.round((yuzde / 100) * TUVAL_GENISLIK))
+    const w = Math.max(40, Math.round((yuzde / 100) * G))
     const yer = { alan: k.alan, x, w, hiza: k.hiza ?? (k.bicim && k.bicim !== 'metin' && !k.bicim.startsWith('gg') ? ('sag' as const) : ('sol' as const)) }
     x += w
     return yer
   })
 
   const ogeler: TuvalOge[] = [
-    { id: yeniId(), bant: 'rb', tip: 'metin', metin: icerik.baslik ?? '{rapor.ad}', x: 0, y: 8, w: 420, h: 24, size: 17, kalin: true },
-    { id: yeniId(), bant: 'rb', tip: 'metin', metin: '{bugun}', x: 470, y: 12, w: 170, h: 16, size: 10, hiza: 'sag' },
+    { id: yeniId(), bant: 'rb', tip: 'metin', metin: icerik.baslik ?? '{rapor.ad}', x: 0, y: 8, w: Math.round(G * 0.65), h: 24, size: 17, kalin: true },
+    { id: yeniId(), bant: 'rb', tip: 'metin', metin: '{bugun}', x: G - 170, y: 12, w: 170, h: 16, size: 10, hiza: 'sag' },
     // Başlık satırı + altı çizgi
     ...kolonlar.map((k, i): TuvalOge => ({ id: yeniId(), bant: 'sb', tip: 'metin', metin: k.baslik, x: yerler[i].x, y: 5, w: yerler[i].w, h: 16, kalin: true, hiza: yerler[i].hiza })),
-    { id: yeniId(), bant: 'sb', tip: 'cizgi', x: 0, y: 24, w: TUVAL_GENISLIK, h: 2, kalinlik: 1.5 },
+    { id: yeniId(), bant: 'sb', tip: 'cizgi', x: 0, y: 24, w: G, h: 2, kalinlik: 1.5 },
     // Detay
     ...kolonlar.map((k, i): TuvalOge => ({ id: yeniId(), bant: 'dt', tip: 'alan', alan: k.alan, bicim: k.bicim, kosulluBicim: k.kosulluBicim, x: yerler[i].x, y: 3, w: yerler[i].w, h: 16, hiza: yerler[i].hiza })),
     // Sayfa altı
     { id: yeniId(), bant: 'sa', tip: 'metin', metin: '{rapor.ad} · {calistiran}', x: 0, y: 4, w: 320, h: 14, size: 9 },
-    { id: yeniId(), bant: 'sa', tip: 'metin', metin: 'Sayfa {sayfa} / {toplamSayfa}', x: 420, y: 4, w: 220, h: 14, size: 9, hiza: 'sag' },
+    { id: yeniId(), bant: 'sa', tip: 'metin', metin: 'Sayfa {sayfa} / {toplamSayfa}', x: G - 220, y: 4, w: 220, h: 14, size: 9, hiza: 'sag' },
   ]
   if (grupAlani) {
     ogeler.push({ id: yeniId(), bant: 'gb', tip: 'alan', alan: grupAlani, x: 0, y: 5, w: 300, h: 17, kalin: true, size: 11.5 })
@@ -314,7 +321,7 @@ export function listedenTuval(icerik: { kolonlar: { alan: string; baslik: string
   }
 
   return {
-    sayfa: { boyut: 'A4', yon: kolonlar.length > 7 ? 'yatay' : 'dikey', kenar: [15, 15, 15, 15] },
+    sayfa,
     bantlar: [
       { id: 'rb', yukseklik: 44 },
       { id: 'sb', yukseklik: 28 },

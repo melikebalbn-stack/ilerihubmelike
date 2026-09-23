@@ -4,7 +4,7 @@
  * geçmeli; grup ≤ 3; kod/ad/biçim değerleri makul.
  */
 import { ifadeDogrula } from './ifade'
-import { BANT_ADI, etkilesimliMi, TUVAL_GENISLIK, type Bicim, type EtkilesimliIcerik, type SablonIcerik, type SablonIcerikHer, type TuvalTasarim } from './tipler'
+import { BANT_ADI, etkilesimliMi, tuvalGenislik, type Bicim, type EtkilesimliIcerik, type SablonIcerik, type SablonIcerikHer, type TuvalTasarim } from './tipler'
 
 export const BICIMLER: Bicim[] = ['#.##0', '#.##0,00', '%0,0', '%0,00', 'gg.aa.yyyy', 'gg.aa.yyyy ss:dd', 'metin']
 const AD_DESENI = /^[A-Za-z_][A-Za-z0-9_]*$/
@@ -71,6 +71,8 @@ export function tuvalDogrula(t: TuvalTasarim | undefined, tumAlanlar: Set<string
     if (!(b.yukseklik >= 0) || b.yukseklik > 2000) h.push(`Tuval: '${b.id}' bant yüksekliği geçersiz`)
   }
   const bantlar = new Map((t.bantlar ?? []).map((b) => [b.id, b]))
+  // Sayfa genişliği yöne/kenarlara göre değişir (yatay ≈950px) — taşma buna göre ölçülür.
+  const genislik = t.sayfa ? tuvalGenislik(t.sayfa) : 640
   if (t.grup?.alan && !tumAlanlar.has(t.grup.alan)) h.push(`Tuval grup alanı geçersiz: '${t.grup.alan}'`)
   const kimlikler = new Set<string>()
   for (const e of t.ogeler ?? []) {
@@ -80,7 +82,7 @@ export function tuvalDogrula(t: TuvalTasarim | undefined, tumAlanlar: Set<string
     kimlikler.add(e.id)
     if (!bantlar.has(e.bant)) { h.push(`${ad}: bilinmeyen bant`); continue }
     if (e.x < 0 || e.y < 0 || e.w <= 0 || e.h < 0) h.push(`${ad}: konum/boyut geçersiz`)
-    if (e.x + e.w > TUVAL_GENISLIK + 1) h.push(`Uyarı: ${ad} sayfa genişliğini aşıyor (${e.x + e.w} > ${TUVAL_GENISLIK})`)
+    if (e.x + e.w > genislik + 1) h.push(`Uyarı: ${ad} sayfa genişliğini aşıyor (${e.x + e.w} > ${genislik})`)
     const bant = bantlar.get(e.bant)!
     if (e.y + e.h > bant.yukseklik + 1) h.push(`Uyarı: ${ad} bandın dışına taşıyor (${e.y + e.h} > ${bant.yukseklik})`)
     switch (e.tip) {

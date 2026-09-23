@@ -128,8 +128,9 @@ export interface TuvalBant {
 }
 
 export type TuvalHiza = 'sol' | 'orta' | 'sag'
+export type TuvalDikeyHiza = 'ust' | 'orta' | 'alt'
 
-/** Tüm öğelerin ortak alanları. Konum/boyut px (640 = sayfa içi genişlik). */
+/** Tüm öğelerin ortak alanları. Konum/boyut px (1px = TUVAL_MM_PX mm — yönden BAĞIMSIZ). */
 export interface TuvalOgeOrtak {
   id: string
   bant: TuvalBantId
@@ -141,8 +142,12 @@ export interface TuvalOgeOrtak {
   size?: number
   kalin?: boolean
   hiza?: TuvalHiza
-  /** CSS rengi (#1B4F72 gibi). */
+  /** Dikey hizalama (varsayılan 'ust'). */
+  dikeyHiza?: TuvalDikeyHiza
+  /** Yazı rengi (#1B4F72 gibi); çizgi/kutu için çizgi rengi. */
   renk?: string
+  /** Arka plan rengi; yoksa saydam. Kutu öğesinde dolgu rengidir. */
+  zemin?: string
 }
 
 export type TuvalOge =
@@ -150,7 +155,8 @@ export type TuvalOge =
   | (TuvalOgeOrtak & { tip: 'metin'; metin: string })
   | (TuvalOgeOrtak & { tip: 'alan'; alan: string; bicim?: Bicim; kosulluBicim?: KosulluBicim[] })
   | (TuvalOgeOrtak & { tip: 'toplam'; fn: AltToplamFn; alan: string; oraniPay?: string; oraniPayda?: string; bicim?: Bicim; kosulluBicim?: KosulluBicim[] })
-  | (TuvalOgeOrtak & { tip: 'gorsel'; kaynak: 'logo' })
+  /** gorsel: 'logo' → kurum logosu (sunucu çözer); 'yukleme' → url ile yüklenmiş görsel. */
+  | (TuvalOgeOrtak & { tip: 'gorsel'; kaynak: 'logo' | 'yukleme'; url?: string; dosyaId?: string; oraniKoru?: boolean })
   | (TuvalOgeOrtak & { tip: 'cizgi'; kalinlik?: number })
   | (TuvalOgeOrtak & { tip: 'kutu'; kalinlik?: number })
   | (TuvalOgeOrtak & { tip: 'tablo'; kolonlar: { alan: string; baslik: string; genislik: number }[] })
@@ -164,8 +170,34 @@ export interface TuvalTasarim {
   grup?: { alan: string; baslik?: string }
 }
 
-/** Tuval birimi: sayfa içi genişlik bu kadar px sayılır (referans tasarımla aynı). */
+/** A4 kâğıt (mm). */
+export const A4_MM = { g: 210, y: 297 } as const
+
+/**
+ * Tuval birimi MUTLAKTIR: 1px = 0,28125 mm. (Dikey A4 + 15mm kenar → 180mm = 640px.)
+ * Yön/kenar değiştiğinde px→mm ölçeği DEĞİŞMEZ, tuvalin genişliği değişir; ekran ile baskı
+ * birebir örtüşsün diye (eskiden 640px "sayfa genişliği ne ise o" demekti → yatayda kayıyordu).
+ */
+export const TUVAL_MM_PX = 180 / 640
+
+/** Dikey A4 + 15mm kenar tuval genişliği — varsayılan/geri uyumluluk değeri. */
 export const TUVAL_GENISLIK = 640
+
+export type TuvalSayfa = TuvalTasarim['sayfa']
+
+/** Sayfa içi genişlik (px, 2'lik ızgaraya yuvarlı). */
+export function tuvalGenislik(sayfa: TuvalSayfa): number {
+  const g = sayfa.yon === 'yatay' ? A4_MM.y : A4_MM.g
+  const icerik = Math.max(20, g - (sayfa.kenar?.[3] ?? 0) - (sayfa.kenar?.[1] ?? 0))
+  return Math.round(icerik / TUVAL_MM_PX / 2) * 2
+}
+
+/** Sayfa içi yükseklik (px) — bant bütçesini göstermek için. */
+export function tuvalYukseklik(sayfa: TuvalSayfa): number {
+  const y = sayfa.yon === 'yatay' ? A4_MM.g : A4_MM.y
+  const icerik = Math.max(20, y - (sayfa.kenar?.[0] ?? 0) - (sayfa.kenar?.[2] ?? 0))
+  return Math.round(icerik / TUVAL_MM_PX / 2) * 2
+}
 
 export interface SablonIcerik {
   baslik: string

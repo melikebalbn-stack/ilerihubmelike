@@ -6,6 +6,9 @@
  *
  * Sürükleme/boyutlandırma: dnd-kit DEĞİL, düz pointer events (referanstaki gibi) — öğeler mutlak
  * konumlu, 2px ızgaraya oturur, ok tuşlarıyla kaydırılır (Shift = 10px), Delete ile silinir.
+ * Çoklu seçim: Ctrl/Cmd+tık veya bant içinde boş alandan seçim dikdörtgeni; 2+ seçimde hizalama/dağıtma.
+ * ÖLÇEK: tuval genişliği sayfa yönü + kenar boşluklarından hesaplanır (tuvalGenislik) — 1px sabit
+ * 0,28125 mm. Böylece ekrandaki tuval ile tuvalRender çıktısı aynı sayfayı gösterir.
  * Önizleme: gerçek veriyle tuvalRender → büyük pencerede iframe.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -20,22 +23,37 @@ import { NativeSelect } from '@/components/ui/select'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { DateField } from '@/components/ui/date-field'
-import { FileText, Loader2, Maximize2, Play, Plus, Save, Trash2 } from 'lucide-react'
+import {
+  AlignCenter, AlignCenterHorizontal, AlignCenterVertical, AlignEndHorizontal, AlignEndVertical,
+  AlignHorizontalSpaceAround, AlignLeft, AlignRight, AlignStartHorizontal, AlignStartVertical,
+  AlignVerticalSpaceAround, FileText, Loader2, Maximize2, MoveHorizontal, MoveVertical, Play, Plus, Save, Trash2, Upload,
+} from 'lucide-react'
 import { tuvalRender } from '@/lib/rapor/tuval-render'
 import { tuvalDogrula } from '@/lib/rapor/sablon-dogrula'
-import { BANT_ADI, TUVAL_GENISLIK, type AltToplamFn, type Bicim, type SablonIcerik, type SablonParametre, type TuvalBant, type TuvalBantId, type TuvalHiza, type TuvalOge, type TuvalTasarim } from '@/lib/rapor/tipler'
+import { hizala, yonDegistir as yonOlcekle, type HizaIsi } from '@/lib/rapor/tuval-hizala'
+import {
+  BANT_ADI, tuvalGenislik, tuvalYukseklik,
+  type AltToplamFn, type Bicim, type SablonIcerik, type SablonParametre, type TuvalBantId,
+  type TuvalDikeyHiza, type TuvalHiza, type TuvalOge, type TuvalTasarim,
+} from '@/lib/rapor/tipler'
 import type { VeriSetiAlan } from '@/lib/rapor/veri-seti-alanlar'
 import { GeriRozet } from '../../../_components/rozet-link'
 
 const NAVY = '#1B4F72'
 const CYAN = '#2AA5C7'
+/** Önizlemede kurum logosu (sunucu tarafı çalıştırmada base64 gömülür). */
+const LOGO_URL = '/ilerigrouplogo.png'
 const BICIMLER: (Bicim | '')[] = ['', '#.##0', '#.##0,00', '%0,0', '%0,00', 'gg.aa.yyyy', 'gg.aa.yyyy ss:dd', 'metin']
 const FN_SIMGE: Record<string, string> = { topla: 'Σ', ortalama: 'x̄', say: '#', enkucuk: '↓', enbuyuk: '↑', orani: '%' }
 const FN_AD: Record<string, string> = { topla: 'Toplam', ortalama: 'Ortalama', say: 'Say', enkucuk: 'Min', enbuyuk: 'Max', orani: 'Oran' }
 const BANT_SIRASI: TuvalBantId[] = ['rb', 'sb', 'gb', 'dt', 'gs', 'rs', 'sa']
 const TIP_ADI: Record<TuvalOge['tip'], string> = { metin: 'Metin', alan: 'Alan', toplam: 'Toplam alanı', gorsel: 'Görsel', cizgi: 'Çizgi', kutu: 'Kutu', tablo: 'Tablo', grafik: 'Grafik' }
+const YAZILI: TuvalOge['tip'][] = ['metin', 'alan', 'toplam']
+/** Hazır renk paleti (kurumsal + durum renkleri). */
+const PALET: [string, string][] = [['#0F172A', 'Siyah'], [NAVY, 'Lacivert'], ['#64748B', 'Gri'], ['#DC2626', 'Kırmızı'], ['#15803D', 'Yeşil'], ['#EA580C', 'Turuncu']]
 
 const izgara = (v: number) => Math.round(v / 2) * 2
+const hizaCss = (h?: TuvalHiza) => (h === 'orta' ? 'center' : h === 'sag' ? 'right' : 'left')
 
 interface Props {
   sablon: { id: string; kod: string; ad: string; aciklama: string; veriSetiId: string; veriSetiAd: string; durum: 'TASLAK' | 'YAYINDA' | 'ARSIV'; surum: number; izinAnahtari: string }
@@ -44,14 +62,39 @@ interface Props {
   tuval: TuvalTasarim
 }
 
+/** Palet + serbest seçici; "varsayılan" seçeneği rengi tamamen kaldırır. */
+function RenkSecici({ deger, onChange, bosEtiket }: { deger?: string; onChange: (v: string | undefined) => void; bosEtiket: string }) {
+  return (
+    <div className="flex items-center gap-1 flex-wrap">
+      <button type="button" onClick={() => onChange(undefined)} title={bosEtiket} className={`h-6 w-6 rounded border text-[9px] leading-none text-slate-400 ${deger ? 'border-slate-300' : 'border-[#2AA5C7] ring-2 ring-[#2AA5C7]/30'}`} style={{ backgroundImage: 'linear-gradient(45deg,#fff 45%,#e2e8f0 45%,#e2e8f0 55%,#fff 55%)' }}>✕</button>
+      {PALET.map(([renk, ad]) => (
+        <button key={renk} type="button" title={ad} onClick={() => onChange(renk)} className={`h-6 w-6 rounded border ${deger?.toLowerCase() === renk.toLowerCase() ? 'border-[#2AA5C7] ring-2 ring-[#2AA5C7]/30' : 'border-slate-300'}`} style={{ background: renk }} />
+      ))}
+      <input type="color" aria-label="Serbest renk" value={deger ?? '#000000'} onChange={(ev) => onChange(ev.target.value)} className="h-6 w-8 cursor-pointer rounded border border-slate-300 bg-white p-0.5" />
+    </div>
+  )
+}
+
+/** Küçük ikonlu araç düğmesi. */
+function AracDugme({ baslik, onClick, disabled, children }: { baslik: string; onClick: () => void; disabled?: boolean; children: React.ReactNode }) {
+  return (
+    <button type="button" title={baslik} aria-label={baslik} onClick={onClick} disabled={disabled}
+      className="inline-flex h-7 w-7 items-center justify-center rounded border border-slate-200 bg-white text-slate-700 hover:bg-[#DCEDF5] disabled:opacity-40 disabled:hover:bg-white">
+      {children}
+    </button>
+  )
+}
+
 export default function TuvalTasarimci({ sablon, icerik, alanlar, tuval: ilkTuval }: Props) {
   const router = useRouter()
   const [tuval, setTuval] = useState<TuvalTasarim>(ilkTuval)
-  const [seciliId, setSeciliId] = useState<string | null>(null)
+  const [secimler, setSecimler] = useState<string[]>([])
   const [surum, setSurum] = useState(sablon.surum)
   const [kaydediliyor, setKaydediliyor] = useState(false)
   const [hatalar, setHatalar] = useState<string[]>([])
+  const [yukleniyor, setYukleniyor] = useState(false)
   const sayacRef = useRef(1)
+  const dosyaRef = useRef<HTMLInputElement>(null)
 
   const parametreler: SablonParametre[] = useMemo(() => icerik.parametreler ?? [], [icerik.parametreler])
   const hesaplananlar = useMemo(() => icerik.hesaplananAlanlar ?? [], [icerik.hesaplananAlanlar])
@@ -61,7 +104,15 @@ export default function TuvalTasarimci({ sablon, icerik, alanlar, tuval: ilkTuva
   )
   const alanAdlari = useMemo(() => new Set(tumAlanlar.map((a) => a.ad)), [tumAlanlar])
   const alanBilgi = useCallback((ad: string) => tumAlanlar.find((a) => a.ad === ad), [tumAlanlar])
-  const secili = tuval.ogeler.find((e) => e.id === seciliId) ?? null
+
+  /** Sayfa yönü + kenar boşluklarından gelen tuval ölçüleri (px). */
+  const genislik = tuvalGenislik(tuval.sayfa)
+  const sayfaYukseklik = tuvalYukseklik(tuval.sayfa)
+  const bantToplam = tuval.bantlar.reduce((t, b) => t + b.yukseklik, 0)
+
+  const secililer = useMemo(() => secimler.map((id) => tuval.ogeler.find((e) => e.id === id)).filter(Boolean) as TuvalOge[], [secimler, tuval.ogeler])
+  const secili = secililer.length === 1 ? secililer[0] : null
+  const coklu = secililer.length > 1
   const bantOf = useCallback((id: TuvalBantId) => tuval.bantlar.find((b) => b.id === id) ?? { id, yukseklik: 0 }, [tuval.bantlar])
 
   // Doğrulama her değişiklikte (uyarılar da burada).
@@ -71,7 +122,9 @@ export default function TuvalTasarimci({ sablon, icerik, alanlar, tuval: ilkTuva
   const bosId = (ogeler: TuvalOge[]) => { let id = `o${sayacRef.current++}`; while (ogeler.some((e) => e.id === id)) id = `o${sayacRef.current++}`; return id }
   const yeniId = () => bosId(tuval.ogeler)
   const ogeGuncelle = (id: string, d: Partial<TuvalOge>) => setTuval((t) => ({ ...t, ogeler: t.ogeler.map((e) => (e.id === id ? ({ ...e, ...d } as TuvalOge) : e)) }))
-  const ogeSil = (id: string) => { setTuval((t) => ({ ...t, ogeler: t.ogeler.filter((e) => e.id !== id) })); setSeciliId((s) => (s === id ? null : s)) }
+  /** Seçili tüm öğelere aynı değişiklik (çoklu seçimde ortak özellikler). */
+  const secimeUygula = (d: Partial<TuvalOge>) => setTuval((t) => ({ ...t, ogeler: t.ogeler.map((e) => (secimler.includes(e.id) ? ({ ...e, ...d } as TuvalOge) : e)) }))
+  const ogeSil = (idler: string[]) => { setTuval((t) => ({ ...t, ogeler: t.ogeler.filter((e) => !idler.includes(e.id)) })); setSecimler((s) => s.filter((x) => !idler.includes(x))) }
   /** Öğe bandın altına taşarsa bandı büyüt (referanstaki growBand). */
   const bandiBuyut = (t: TuvalTasarim, e: TuvalOge): TuvalTasarim => {
     const b = t.bantlar.find((x) => x.id === e.bant)
@@ -80,16 +133,43 @@ export default function TuvalTasarimci({ sablon, icerik, alanlar, tuval: ilkTuva
   }
   const ogeEkle = (oge: TuvalOge, mesaj?: string) => {
     setTuval((t) => bandiBuyut({ ...t, ogeler: [...t.ogeler, oge] }, oge))
-    setSeciliId(oge.id)
+    setSecimler([oge.id])
     if (mesaj) toast(mesaj)
   }
 
-  // ── Sürükle / boyutlandır (pointer events) ────────────────────────────
-  const surukleRef = useRef<{ id: string; sx: number; sy: number; x0: number; y0: number; w0: number; h0: number; boyut: boolean } | null>(null)
+  // ── Sayfa ayarları ────────────────────────────────────────────────────
+  /**
+   * Yön değişince tuval genişliği değişir (dikey ≈640px, yatay ≈950px) — öğelerin x/w'si oranla
+   * ölçeklenir, böylece sağdakiler dışarı taşmaz ve yerleşim korunur.
+   */
+  function yonDegistir(yeniYon: 'dikey' | 'yatay') {
+    if (yeniYon === tuval.sayfa.yon) return
+    const { sayfa, ogeler, eski, yeni } = yonOlcekle(tuval, yeniYon)
+    setTuval((t) => ({ ...t, sayfa, ogeler }))
+    toast(`Sayfa ${yeniYon === 'yatay' ? 'YATAY' : 'DİKEY'} — genişlik ${eski} → ${yeni}px; öğe konumları %${Math.round((yeni / eski) * 100)} oranında ölçeklendi.`)
+  }
+  const kenarDegistir = (i: number, v: number) =>
+    setTuval((t) => ({ ...t, sayfa: { ...t.sayfa, kenar: t.sayfa.kenar.map((x, j) => (j === i ? Math.max(0, Math.min(60, v)) : x)) as [number, number, number, number] } }))
+  const bantYukseklik = (id: TuvalBantId, v: number) =>
+    setTuval((t) => ({ ...t, bantlar: t.bantlar.map((b) => (b.id === id ? { ...b, yukseklik: Math.max(0, Math.min(2000, izgara(v))) } : b)) }))
+
+  // ── Sürükle / boyutlandır (pointer events, çoklu seçim destekli) ──────
+  const surukleRef = useRef<{ ids: string[]; sx: number; sy: number; bas: Record<string, { x: number; y: number; w: number; h: number }>; boyut: boolean } | null>(null)
   const onPointerDown = (ev: React.PointerEvent, e: TuvalOge, boyut: boolean) => {
     ev.preventDefault(); ev.stopPropagation()
-    setSeciliId(e.id)
-    surukleRef.current = { id: e.id, sx: ev.clientX, sy: ev.clientY, x0: e.x, y0: e.y, w0: e.w, h0: e.h, boyut }
+    let ids = secimler
+    if (ev.ctrlKey || ev.metaKey) {
+      ids = secimler.includes(e.id) ? secimler.filter((x) => x !== e.id) : [...secimler, e.id]
+      setSecimler(ids)
+      if (!ids.includes(e.id)) return
+    } else if (!secimler.includes(e.id)) {
+      ids = [e.id]; setSecimler(ids)
+    }
+    const hedefler = boyut ? [e.id] : ids
+    surukleRef.current = {
+      ids: hedefler, sx: ev.clientX, sy: ev.clientY, boyut,
+      bas: Object.fromEntries(tuval.ogeler.filter((x) => hedefler.includes(x.id)).map((x) => [x.id, { x: x.x, y: x.y, w: x.w, h: x.h }])),
+    }
     ;(ev.target as Element).setPointerCapture?.(ev.pointerId)
   }
   useEffect(() => {
@@ -97,17 +177,58 @@ export default function TuvalTasarimci({ sablon, icerik, alanlar, tuval: ilkTuva
       const d = surukleRef.current
       if (!d) return
       setTuval((t) => {
-        const e = t.ogeler.find((x) => x.id === d.id)
-        if (!e) return t
+        const G = tuvalGenislik(t.sayfa)
         const dx = ev.clientX - d.sx, dy = ev.clientY - d.sy
-        const b = t.bantlar.find((x) => x.id === e.bant)!
-        const yeni: TuvalOge = d.boyut
-          ? { ...e, w: Math.max(8, Math.min(TUVAL_GENISLIK - e.x, izgara(d.w0 + dx))), h: Math.max(2, izgara(d.h0 + dy)) }
-          : { ...e, x: Math.max(0, Math.min(TUVAL_GENISLIK - e.w, izgara(d.x0 + dx))), y: Math.max(0, Math.min(Math.max(0, b.yukseklik - e.h), izgara(d.y0 + dy))) }
-        return bandiBuyut({ ...t, ogeler: t.ogeler.map((x) => (x.id === d.id ? yeni : x)) }, yeni)
+        let sonuc = t
+        for (const id of d.ids) {
+          const e = sonuc.ogeler.find((x) => x.id === id)
+          const b0 = d.bas[id]
+          if (!e || !b0) continue
+          const b = sonuc.bantlar.find((x) => x.id === e.bant) ?? { yukseklik: 0 }
+          const yeni: TuvalOge = d.boyut
+            ? { ...e, w: Math.max(8, Math.min(G - e.x, izgara(b0.w + dx))), h: Math.max(2, izgara(b0.h + dy)) }
+            : { ...e, x: Math.max(0, Math.min(G - e.w, izgara(b0.x + dx))), y: Math.max(0, Math.min(Math.max(0, b.yukseklik - e.h), izgara(b0.y + dy))) }
+          sonuc = bandiBuyut({ ...sonuc, ogeler: sonuc.ogeler.map((x) => (x.id === id ? yeni : x)) }, yeni)
+        }
+        return sonuc
       })
     }
     const birak = () => { surukleRef.current = null }
+    document.addEventListener('pointermove', hareket)
+    document.addEventListener('pointerup', birak)
+    return () => { document.removeEventListener('pointermove', hareket); document.removeEventListener('pointerup', birak) }
+  }, [])
+
+  // ── Seçim dikdörtgeni (bant içinde boş alandan sürükle) ───────────────
+  const [secimKutusu, setSecimKutusu] = useState<{ bant: TuvalBantId; x0: number; y0: number; x1: number; y1: number } | null>(null)
+  const kutuRef = useRef<{ bant: TuvalBantId; kutu: DOMRect; x0: number; y0: number; x1: number; y1: number; ekle: boolean } | null>(null)
+  const ogelerRef = useRef(tuval.ogeler)
+  ogelerRef.current = tuval.ogeler
+  const kutuBaslat = (ev: React.PointerEvent, bantId: TuvalBantId) => {
+    if (ev.button !== 0) return
+    const kutu = (ev.currentTarget as HTMLElement).getBoundingClientRect()
+    const x0 = ev.clientX - kutu.left, y0 = ev.clientY - kutu.top
+    kutuRef.current = { bant: bantId, kutu, x0, y0, x1: x0, y1: y0, ekle: ev.ctrlKey || ev.metaKey }
+    setSecimKutusu({ bant: bantId, x0, y0, x1: x0, y1: y0 })
+    if (!kutuRef.current.ekle) setSecimler([])
+  }
+  useEffect(() => {
+    const hareket = (ev: PointerEvent) => {
+      const d = kutuRef.current
+      if (!d) return
+      d.x1 = ev.clientX - d.kutu.left; d.y1 = ev.clientY - d.kutu.top
+      setSecimKutusu({ bant: d.bant, x0: d.x0, y0: d.y0, x1: d.x1, y1: d.y1 })
+    }
+    const birak = () => {
+      const d = kutuRef.current
+      kutuRef.current = null
+      setSecimKutusu(null)
+      if (!d) return
+      const sol = Math.min(d.x0, d.x1), sag = Math.max(d.x0, d.x1), ust = Math.min(d.y0, d.y1), alt = Math.max(d.y0, d.y1)
+      if (sag - sol <= 3 && alt - ust <= 3) return // tık: yalnız seçimi temizler
+      const kapsanan = ogelerRef.current.filter((e) => e.bant === d.bant && e.x < sag && e.x + e.w > sol && e.y < alt && e.y + Math.max(e.h, 2) > ust).map((e) => e.id)
+      setSecimler((s) => (d.ekle ? [...s, ...kapsanan.filter((x) => !s.includes(x))] : kapsanan))
+    }
     document.addEventListener('pointermove', hareket)
     document.addEventListener('pointerup', birak)
     return () => { document.removeEventListener('pointermove', hareket); document.removeEventListener('pointerup', birak) }
@@ -127,27 +248,38 @@ export default function TuvalTasarimci({ sablon, icerik, alanlar, tuval: ilkTuva
     return () => { document.removeEventListener('pointermove', hareket); document.removeEventListener('pointerup', birak) }
   }, [])
 
-  // Klavye: ok tuşları (Shift = 10px), Delete
+  // Klavye: ok tuşları (Shift = 10px) — seçili TÜM öğeler; Delete → toplu sil
   useEffect(() => {
     const tus = (ev: KeyboardEvent) => {
-      if (!seciliId || /INPUT|SELECT|TEXTAREA/.test((document.activeElement?.tagName ?? ''))) return
-      if (ev.key === 'Delete' || ev.key === 'Backspace') { ogeSil(seciliId); ev.preventDefault(); return }
+      if (!secimler.length || /INPUT|SELECT|TEXTAREA/.test(document.activeElement?.tagName ?? '')) return
+      if (ev.key === 'Delete' || ev.key === 'Backspace') { ogeSil(secimler); ev.preventDefault(); return }
       const adim = ev.shiftKey ? 10 : 2
       const yon: Record<string, [number, number]> = { ArrowLeft: [-adim, 0], ArrowRight: [adim, 0], ArrowUp: [0, -adim], ArrowDown: [0, adim] }
       const m = yon[ev.key]
       if (!m) return
       setTuval((t) => {
-        const e = t.ogeler.find((x) => x.id === seciliId)
-        if (!e) return t
-        const b = t.bantlar.find((x) => x.id === e.bant)!
-        const yeni = { ...e, x: Math.max(0, Math.min(TUVAL_GENISLIK - e.w, e.x + m[0])), y: Math.max(0, Math.min(Math.max(0, b.yukseklik - e.h), e.y + m[1])) }
-        return { ...t, ogeler: t.ogeler.map((x) => (x.id === seciliId ? yeni : x)) }
+        const G = tuvalGenislik(t.sayfa)
+        return {
+          ...t,
+          ogeler: t.ogeler.map((e) => {
+            if (!secimler.includes(e.id)) return e
+            const b = t.bantlar.find((x) => x.id === e.bant) ?? { yukseklik: 0 }
+            return { ...e, x: Math.max(0, Math.min(G - e.w, e.x + m[0])), y: Math.max(0, Math.min(Math.max(0, b.yukseklik - e.h), e.y + m[1])) }
+          }),
+        }
       })
       ev.preventDefault()
     }
     document.addEventListener('keydown', tus)
     return () => document.removeEventListener('keydown', tus)
-  }, [seciliId]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [secimler]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Toplu hizalama / dağıtma (saf mantık: lib/rapor/tuval-hizala.ts) ─
+  function topluHizala(is: HizaIsi) {
+    if (secililer.length < 2) return
+    setTuval((t) => ({ ...t, ogeler: hizala(t.ogeler, secimler, is, tuvalGenislik(t.sayfa)) }))
+    if (is === 'yatayDagit' || is === 'dikeyDagit') toast(`${secililer.length} öğe eşit aralıkla dağıtıldı`)
+  }
 
   // ── Paletten sürükle-bırak (HTML5 dnd, referanstaki gibi) ─────────────
   const [uzerinde, setUzerinde] = useState<TuvalBantId | null>(null)
@@ -157,7 +289,7 @@ export default function TuvalTasarimci({ sablon, icerik, alanlar, tuval: ilkTuva
     try { veri = JSON.parse(ev.dataTransfer.getData('text/plain')) } catch { return }
     const kutu = (ev.currentTarget as HTMLElement).getBoundingClientRect()
     const b = bantOf(bantId)
-    const x = izgara(Math.max(0, Math.min(TUVAL_GENISLIK - 110, ev.clientX - kutu.left - 10)))
+    const x = izgara(Math.max(0, Math.min(genislik - 110, ev.clientX - kutu.left - 10)))
     const y = izgara(Math.max(0, Math.min(Math.max(0, b.yukseklik - 17), ev.clientY - kutu.top - 8)))
     if (veri.tip === 'alan' && veri.alan) {
       const bilgi = alanBilgi(veri.alan)
@@ -177,13 +309,13 @@ export default function TuvalTasarimci({ sablon, icerik, alanlar, tuval: ilkTuva
     const ilkMetin = tumAlanlar.find((a) => a.tip === 'metin')?.ad ?? tumAlanlar[0]?.ad ?? ''
     const yeni: Record<string, TuvalOge> = {
       metin: { ...ortak, tip: 'metin', metin: 'Yeni metin', x: 12, y: 4, w: 160, h: 16 },
-      tablo: { ...ortak, tip: 'tablo', kolonlar: tumAlanlar.slice(0, 4).map((a) => ({ alan: a.ad, baslik: a.etiket, genislik: 1 })), x: 0, y: b.yukseklik + 2, w: 614, h: 74, size: 9 },
-      gorsel: { ...ortak, tip: 'gorsel', kaynak: 'logo', x: 520, y: 10, w: 90, h: 36 },
+      tablo: { ...ortak, tip: 'tablo', kolonlar: tumAlanlar.slice(0, 4).map((a) => ({ alan: a.ad, baslik: a.etiket, genislik: 1 })), x: 0, y: b.yukseklik + 2, w: genislik - 26, h: 74, size: 9 },
+      gorsel: { ...ortak, tip: 'gorsel', kaynak: 'logo', oraniKoru: true, x: genislik - 120, y: 10, w: 90, h: 36 },
       grafik: { ...ortak, tip: 'grafik', grafikTipi: 'sutun', grupla: ilkMetin, deger: ilkSayi, fn: 'topla', x: 0, y: b.yukseklik + 2, w: 300, h: 90 },
-      cizgi: { ...ortak, tip: 'cizgi', x: 0, y: 2, w: TUVAL_GENISLIK, h: 0, kalinlik: 1.5 },
+      cizgi: { ...ortak, tip: 'cizgi', x: 0, y: 2, w: genislik, h: 0, kalinlik: 1.5 },
       kutu: { ...ortak, tip: 'kutu', x: 12, y: 2, w: 200, h: Math.max(10, b.yukseklik - 6), kalinlik: 1.5 },
-      sayfa: { ...ortak, tip: 'metin', metin: 'Sayfa {sayfa} / {toplamSayfa}', x: 240, y: 4, w: 180, h: 15, size: 9.5, hiza: 'orta' },
-      tarih: { ...ortak, tip: 'metin', metin: '{bugun}', x: 500, y: 30, w: 140, h: 16, size: 10, hiza: 'sag' },
+      sayfa: { ...ortak, tip: 'metin', metin: 'Sayfa {sayfa} / {toplamSayfa}', x: izgara(genislik / 2 - 90), y: 4, w: 180, h: 15, size: 9.5, hiza: 'orta' },
+      tarih: { ...ortak, tip: 'metin', metin: '{bugun}', x: genislik - 140, y: 30, w: 140, h: 16, size: 10, hiza: 'sag' },
     }
     ogeEkle(yeni[tip], `${TIP_ADI[yeni[tip].tip]} eklendi → ${BANT_ADI[bantId]}`)
   }
@@ -219,6 +351,21 @@ export default function TuvalTasarimci({ sablon, icerik, alanlar, tuval: ilkTuva
     toast(eklenen ? `${FN_SIMGE[fn]} ${FN_AD[fn]}(${bilgi?.etiket ?? e.alan}) → ${tuval.grup?.alan ? 'Grup Sonu + ' : ''}Rapor Sonu` : 'Bu toplam zaten var.')
   }
 
+  // ── Görsel yükleme (mevcut desen: akademi sertifika logosu ucu) ───────
+  async function gorselYukle(dosya: File, id: string) {
+    setYukleniyor(true)
+    try {
+      const fd = new FormData()
+      fd.append('file', dosya)
+      const r = await fetch('/api/raporlar/logo', { method: 'POST', body: fd })
+      const d = await r.json()
+      if (!r.ok) throw new Error(d.error ?? `HTTP ${r.status}`)
+      ogeGuncelle(id, { kaynak: 'yukleme', url: d.url, dosyaId: d.dosyaId } as Partial<TuvalOge>)
+      toast.success(`${d.ad} yüklendi`)
+    } catch (e) { toast.error(e instanceof Error ? e.message : String(e)) }
+    finally { setYukleniyor(false) }
+  }
+
   // ── Önizleme ──────────────────────────────────────────────────────────
   const [onizBuyuk, setOnizBuyuk] = useState(false)
   const [onizHtml, setOnizHtml] = useState<string | null>(null)
@@ -238,9 +385,11 @@ export default function TuvalTasarimci({ sablon, icerik, alanlar, tuval: ilkTuva
         parametreTanimlari: parametreler,
         degerEtiketleri: Object.fromEntries(alanlar.filter((a) => a.degerEtiketleri).map((a) => [a.ad, a.degerEtiketleri!])),
         raporAdi: icerik.baslik || sablon.ad, raporKodu: sablon.kod,
+        // Önizlemede tarayıcı URL'leri çözer; sunucu çalıştırmasında base64 gömülür.
+        logoUrl: LOGO_URL,
       })
       setOnizHtml(cikti.html)
-      setOnizBilgi(`${cikti.satirSayisi.toLocaleString('tr-TR')} satır · ${cikti.sayfaSayisi} sayfa`)
+      setOnizBilgi(`${cikti.satirSayisi.toLocaleString('tr-TR')} satır · ${cikti.sayfaSayisi} sayfa · A4 ${tuval.sayfa.yon}`)
       setOnizBuyuk(true)
     } catch (e) { setOnizHata(e instanceof Error ? e.message : String(e)) }
     finally { setOnizleniyor(false) }
@@ -269,7 +418,11 @@ export default function TuvalTasarimci({ sablon, icerik, alanlar, tuval: ilkTuva
       case 'metin': return e.metin
       case 'alan': return `{${e.alan}}`
       case 'toplam': return `${FN_SIMGE[e.fn] ?? 'Σ'} {${e.alan}}`
-      case 'gorsel': return <span className="w-full h-full border-[1.5px] border-[#1B4F72] text-[#1B4F72] flex items-center justify-center font-bold text-[12px] tracking-wider">LOGO</span>
+      case 'gorsel':
+        return e.kaynak === 'yukleme' && e.url
+          // eslint-disable-next-line @next/next/no-img-element
+          ? <img src={e.url} alt="" draggable={false} className="w-full h-full" style={{ objectFit: (e.oraniKoru ?? true) ? 'contain' : 'fill', objectPosition: `${hizaCss(e.hiza)} top` }} />
+          : <span className="w-full h-full border-[1.5px] border-[#1B4F72] text-[#1B4F72] flex items-center justify-center font-bold text-[12px] tracking-wider">LOGO</span>
       case 'cizgi': case 'kutu': return ''
       case 'tablo': return (
         <table className="w-full text-[9px] border-collapse">
@@ -285,6 +438,30 @@ export default function TuvalTasarimci({ sablon, icerik, alanlar, tuval: ilkTuva
 
   const surukleBaslat = (ev: React.DragEvent, veri: object) => ev.dataTransfer.setData('text/plain', JSON.stringify(veri))
 
+  /** Metin/alan/toplam için hizalama düğme satırları (tekil + çoklu seçimde ortak). */
+  const hizaSatiri = (uygula: (d: Partial<TuvalOge>) => void, mevcut?: TuvalHiza, mevcutDikey?: TuvalDikeyHiza) => (
+    <div className="grid grid-cols-2 gap-2">
+      <div className="space-y-1">
+        <Label className="text-[11px]">Yatay</Label>
+        <div className="flex gap-1">
+          {([['sol', AlignLeft, 'Sola'], ['orta', AlignCenter, 'Ortaya'], ['sag', AlignRight, 'Sağa']] as const).map(([v, Ikon, ad]) => (
+            <button key={v} type="button" title={ad} aria-label={ad} onClick={() => uygula({ hiza: v })}
+              className={`inline-flex h-7 w-7 items-center justify-center rounded border ${(mevcut ?? 'sol') === v ? 'border-[#2AA5C7] bg-[#DCEDF5]' : 'border-slate-200 bg-white hover:bg-slate-50'}`}><Ikon className="h-3.5 w-3.5" /></button>
+          ))}
+        </div>
+      </div>
+      <div className="space-y-1">
+        <Label className="text-[11px]">Dikey</Label>
+        <div className="flex gap-1">
+          {([['ust', AlignStartHorizontal, 'Üste'], ['orta', AlignCenterHorizontal, 'Ortaya'], ['alt', AlignEndHorizontal, 'Alta']] as const).map(([v, Ikon, ad]) => (
+            <button key={v} type="button" title={ad} aria-label={ad} onClick={() => uygula({ dikeyHiza: v })}
+              className={`inline-flex h-7 w-7 items-center justify-center rounded border ${(mevcutDikey ?? 'ust') === v ? 'border-[#2AA5C7] bg-[#DCEDF5]' : 'border-slate-200 bg-white hover:bg-slate-50'}`}><Ikon className="h-3.5 w-3.5" /></button>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+
   return (
     <div className="space-y-3">
       {/* ÜST */}
@@ -297,7 +474,7 @@ export default function TuvalTasarimci({ sablon, icerik, alanlar, tuval: ilkTuva
             <Badge className="bg-slate-100 text-slate-700 hover:bg-slate-100">Hazır Rapor · Tuval</Badge>
             <Badge variant="outline" className="font-normal">sürüm {surum}</Badge>
           </h1>
-          <p className="text-sm text-muted-foreground mt-1"><span className="font-mono">{sablon.kod}</span> · veri seti: <span className="font-mono">{sablon.veriSetiAd}</span></p>
+          <p className="text-sm text-muted-foreground mt-1"><span className="font-mono">{sablon.kod}</span> · veri seti: <span className="font-mono">{sablon.veriSetiAd}</span> · A4 {tuval.sayfa.yon} ({genislik}×{sayfaYukseklik}px)</p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={onizle} disabled={onizleniyor}>{onizleniyor ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Play className="h-4 w-4 mr-1.5" />}Önizle</Button>
@@ -322,7 +499,23 @@ export default function TuvalTasarimci({ sablon, icerik, alanlar, tuval: ilkTuva
               <button key={fn} type="button" onClick={() => formulEkle(fn)} className="inline-flex items-center gap-1.5 rounded border border-slate-200 bg-white px-2 py-1 text-xs hover:bg-[#DCEDF5]" title={`${FN_AD[fn]} — Detay bandındaki sayısal alan seçiliyken`}><span className="font-bold" style={{ color: CYAN }}>{FN_SIMGE[fn]}</span>{FN_AD[fn]}</button>
             ))}
           </div>
-          <span className="text-[11px] text-muted-foreground ml-auto">Soldan alanı banda sürükle · öğeyi taşı · köşeden boyutlandır · <b>Σ</b> ile grup+rapor toplamı · ok tuşları / Delete</span>
+          {/* HİZALA — yalnız 2+ öğe seçiliyken etkin */}
+          <div className="flex items-center gap-1 flex-wrap" aria-label="Hizalama">
+            <span className="text-[10.5px] text-muted-foreground mr-1 tracking-wide">HİZALA{coklu ? ` (${secililer.length})` : ''}</span>
+            <AracDugme baslik="Sola hizala" disabled={!coklu} onClick={() => topluHizala('sol')}><AlignStartVertical className="h-4 w-4" /></AracDugme>
+            <AracDugme baslik="Yatayda ortala" disabled={!coklu} onClick={() => topluHizala('yatayOrta')}><AlignCenterVertical className="h-4 w-4" /></AracDugme>
+            <AracDugme baslik="Sağa hizala" disabled={!coklu} onClick={() => topluHizala('sag')}><AlignEndVertical className="h-4 w-4" /></AracDugme>
+            <span className="w-px h-5 bg-slate-200 mx-0.5" />
+            <AracDugme baslik="Üste hizala" disabled={!coklu} onClick={() => topluHizala('ust')}><AlignStartHorizontal className="h-4 w-4" /></AracDugme>
+            <AracDugme baslik="Dikeyde ortala" disabled={!coklu} onClick={() => topluHizala('dikeyOrta')}><AlignCenterHorizontal className="h-4 w-4" /></AracDugme>
+            <AracDugme baslik="Alta hizala" disabled={!coklu} onClick={() => topluHizala('alt')}><AlignEndHorizontal className="h-4 w-4" /></AracDugme>
+            <span className="w-px h-5 bg-slate-200 mx-0.5" />
+            <AracDugme baslik="Yatayda eşit aralıkla dağıt" disabled={secililer.length < 3} onClick={() => topluHizala('yatayDagit')}><AlignHorizontalSpaceAround className="h-4 w-4" /></AracDugme>
+            <AracDugme baslik="Dikeyde eşit aralıkla dağıt" disabled={secililer.length < 3} onClick={() => topluHizala('dikeyDagit')}><AlignVerticalSpaceAround className="h-4 w-4" /></AracDugme>
+            <AracDugme baslik="Aynı genişlik (ilk seçilene göre)" disabled={!coklu} onClick={() => topluHizala('ayniGenislik')}><MoveHorizontal className="h-4 w-4" /></AracDugme>
+            <AracDugme baslik="Aynı yükseklik (ilk seçilene göre)" disabled={!coklu} onClick={() => topluHizala('ayniYukseklik')}><MoveVertical className="h-4 w-4" /></AracDugme>
+          </div>
+          <span className="text-[11px] text-muted-foreground ml-auto">Ctrl+tık veya boş alandan sürükle = çoklu seçim · ok tuşları / Delete · <b>Σ</b> ile grup+rapor toplamı</span>
         </CardContent>
       </Card>
 
@@ -333,7 +526,7 @@ export default function TuvalTasarimci({ sablon, icerik, alanlar, tuval: ilkTuva
         </div>
       )}
 
-      <div className="grid gap-3 xl:grid-cols-[220px_1fr_280px]">
+      <div className="grid gap-3 xl:grid-cols-[220px_1fr_300px]">
         {/* SOL — alan paleti */}
         <aside className="bg-white border rounded-lg p-3 max-h-[calc(100vh-10rem)] overflow-auto">
           <h4 className="m-0 mb-1.5 text-[11px] font-semibold text-slate-500 tracking-wide">ALANLAR · {sablon.veriSetiAd}</h4>
@@ -382,7 +575,7 @@ export default function TuvalTasarimci({ sablon, icerik, alanlar, tuval: ilkTuva
 
         {/* ORTA — tuval */}
         <main className="overflow-auto bg-[#E9EDF1] rounded-lg p-4">
-          <div className="bg-white border border-slate-300 shadow-sm w-max mx-auto" onPointerDown={() => setSeciliId(null)}>
+          <div className="bg-white border border-slate-300 shadow-sm w-max mx-auto">
             {BANT_SIRASI.map((bantId) => {
               const b = bantOf(bantId)
               const grupEki = bantId === 'gb' || bantId === 'gs' ? (tuval.grup?.alan ? ` · ${alanBilgi(tuval.grup.alan)?.etiket ?? tuval.grup.alan}` : ' · grupsuz') : ''
@@ -399,17 +592,20 @@ export default function TuvalTasarimci({ sablon, icerik, alanlar, tuval: ilkTuva
                   </div>
                   <div
                     className={`relative shrink-0 ${uzerinde === bantId ? 'bg-[#DCEDF5]' : ''}`}
-                    style={{ width: TUVAL_GENISLIK, height: Math.max(b.yukseklik, 8) }}
+                    style={{ width: genislik, height: Math.max(b.yukseklik, 8) }}
+                    onPointerDown={(ev) => kutuBaslat(ev, bantId)}
                     onDragOver={(ev) => { ev.preventDefault(); setUzerinde(bantId) }}
                     onDragLeave={() => setUzerinde((u) => (u === bantId ? null : u))}
                     onDrop={(ev) => birak(ev, bantId)}
                   >
                     {tuval.ogeler.filter((e) => e.bant === bantId).map((e) => {
-                      const sec = e.id === seciliId
+                      const sec = secimler.includes(e.id)
                       const stil: React.CSSProperties = {
                         left: e.x, top: e.y, width: e.w, height: e.h, fontSize: e.size ?? 11,
-                        fontWeight: e.kalin ? 700 : 400, textAlign: (e.hiza === 'orta' ? 'center' : e.hiza === 'sag' ? 'right' : 'left'),
-                        color: e.renk, ...(e.tip === 'cizgi' ? { borderTop: `${e.kalinlik ?? 1.5}px solid ${e.renk ?? NAVY}`, height: 0 } : {}),
+                        fontWeight: e.kalin ? 700 : 400, textAlign: hizaCss(e.hiza) as React.CSSProperties['textAlign'],
+                        color: e.renk, background: e.zemin,
+                        ...(e.dikeyHiza && e.dikeyHiza !== 'ust' ? { display: 'flex', flexDirection: 'column' as const, justifyContent: e.dikeyHiza === 'orta' ? 'center' : 'flex-end' } : {}),
+                        ...(e.tip === 'cizgi' ? { borderTop: `${e.kalinlik ?? 1.5}px solid ${e.renk ?? NAVY}`, height: 0 } : {}),
                         ...(e.tip === 'kutu' ? { border: `${e.kalinlik ?? 1.5}px solid ${e.renk ?? NAVY}` } : {}),
                       }
                       const sinif = e.tip === 'alan' ? 'font-mono text-[#1B4F72] bg-[#2AA5C7]/10' : e.tip === 'toplam' ? 'font-mono text-[#1B4F72] font-semibold bg-[#1B4F72]/[0.07]' : ''
@@ -417,61 +613,116 @@ export default function TuvalTasarimci({ sablon, icerik, alanlar, tuval: ilkTuva
                         <div
                           key={e.id}
                           onPointerDown={(ev) => onPointerDown(ev, e, false)}
-                          className={`absolute overflow-hidden whitespace-nowrap px-0.5 leading-tight cursor-move border border-dashed ${sec ? 'border-solid border-[#2AA5C7] ring-2 ring-[#2AA5C7]/25' : 'border-transparent hover:border-slate-300'} ${sinif}`}
+                          className={`absolute overflow-hidden whitespace-nowrap px-0.5 leading-tight cursor-move border border-dashed ${sec ? 'border-solid border-[#2AA5C7] ring-2 ring-[#2AA5C7]/25' : 'border-transparent hover:border-slate-300'} ${e.zemin ? '' : sinif}`}
                           style={stil}
                           title={`${TIP_ADI[e.tip]} · ${e.x},${e.y} ${e.w}×${e.h}`}
                         >
                           {ogeIcerik(e)}
-                          {sec && <span onPointerDown={(ev) => onPointerDown(ev, e, true)} className="absolute -right-px -bottom-px w-2.5 h-2.5 bg-[#2AA5C7] cursor-nwse-resize" />}
+                          {sec && !coklu && <span onPointerDown={(ev) => onPointerDown(ev, e, true)} className="absolute -right-px -bottom-px w-2.5 h-2.5 bg-[#2AA5C7] cursor-nwse-resize" />}
                         </div>
                       )
                     })}
+                    {secimKutusu?.bant === bantId && (
+                      <div className="absolute border border-[#2AA5C7] bg-[#2AA5C7]/10 pointer-events-none"
+                        style={{ left: Math.min(secimKutusu.x0, secimKutusu.x1), top: Math.min(secimKutusu.y0, secimKutusu.y1), width: Math.abs(secimKutusu.x1 - secimKutusu.x0), height: Math.abs(secimKutusu.y1 - secimKutusu.y0) }} />
+                    )}
                   </div>
                 </div>
               )
             })}
           </div>
+          <p className="text-[11px] text-muted-foreground text-center mt-2">
+            Sayfa gövdesi {sayfaYukseklik}px · bantlar toplamı {bantToplam}px
+            {bantToplam > sayfaYukseklik && <span className="text-amber-700"> — detay bandı sayfaya sığmıyor, sayfalara bölünecek</span>}
+          </p>
         </main>
 
         {/* SAĞ — özellikler */}
         <aside className="bg-white border rounded-lg p-3 max-h-[calc(100vh-10rem)] overflow-auto text-sm">
-          {!secili ? (
+          {coklu ? (
             <>
-              <h4 className="m-0 mb-2 text-[11px] font-semibold text-slate-500 tracking-wide">ÖZELLİKLER</h4>
-              <div className="text-xs text-muted-foreground leading-relaxed">
-                Bir öğe seçin.
-                <ol className="list-decimal ml-4 my-1.5 space-y-0.5">
-                  <li>Soldan bir sayı alanını <b>Detay</b> bandına sürükleyin</li>
-                  <li>Bırakılan alanı seçin</li>
-                  <li>Üstte <b>Σ Toplam</b>&apos;a basın → grup ve rapor sonuna toplam eklenir</li>
-                </ol>
-                Tablo, görsel, grafik için üstteki <b>EKLE</b> düğmelerini kullanın.
-              </div>
-              <div className="mt-4 space-y-2 border-t pt-3">
-                <h4 className="m-0 text-[11px] font-semibold text-slate-500 tracking-wide">SAYFA</h4>
+              <h4 className="m-0 mb-2 text-[11px] font-semibold text-slate-500 tracking-wide">{secililer.length} ÖĞE SEÇİLİ</h4>
+              <p className="text-[11px] text-muted-foreground mb-2">Hizalama/dağıtma üstteki <b>HİZALA</b> grubunda. Aşağıdakiler seçili tüm öğelere uygulanır.</p>
+              <div className="space-y-2">
+                {hizaSatiri(secimeUygula)}
+                <div className="space-y-1"><Label className="text-[11px]">Yazı rengi</Label><RenkSecici deger={undefined} bosEtiket="Varsayılan" onChange={(v) => secimeUygula({ renk: v })} /></div>
+                <div className="space-y-1"><Label className="text-[11px]">Arka plan</Label><RenkSecici deger={undefined} bosEtiket="Saydam" onChange={(v) => secimeUygula({ zemin: v })} /></div>
                 <div className="grid grid-cols-2 gap-2">
-                  <div className="space-y-1"><Label className="text-[11px]">Yön</Label>
-                    <NativeSelect className="h-8 text-xs" value={tuval.sayfa.yon} onChange={(ev) => setTuval((t) => ({ ...t, sayfa: { ...t.sayfa, yon: ev.target.value as 'dikey' | 'yatay' } }))}>
-                      <option value="dikey">A4 Dikey</option><option value="yatay">A4 Yatay</option>
-                    </NativeSelect>
+                  <div className="space-y-1"><Label className="text-[11px]">Yazı boyutu</Label>
+                    <Input className="h-8 text-xs" type="number" step="0.5" placeholder="—" onChange={(ev) => { const v = Number(ev.target.value); if (v) secimeUygula({ size: v }) }} />
                   </div>
-                  <div className="space-y-1"><Label className="text-[11px]">Gruplama</Label>
-                    <NativeSelect className="h-8 text-xs" value={tuval.grup?.alan ?? ''} onChange={(ev) => setTuval((t) => ({ ...t, grup: ev.target.value ? { alan: ev.target.value } : undefined }))}>
-                      <option value="">Yok</option>{tumAlanlar.map((a) => <option key={a.ad} value={a.ad}>{a.etiket}</option>)}
-                    </NativeSelect>
+                  <div className="space-y-1"><Label className="text-[11px]">Kalınlık</Label>
+                    <div className="flex gap-1">
+                      <Button variant="outline" size="sm" className="h-8 text-xs flex-1 font-bold" onClick={() => secimeUygula({ kalin: true })}>K</Button>
+                      <Button variant="outline" size="sm" className="h-8 text-xs flex-1" onClick={() => secimeUygula({ kalin: false })}>normal</Button>
+                    </div>
                   </div>
                 </div>
-                <div className="space-y-1"><Label className="text-[11px]">Kenar boşlukları (mm: üst, sağ, alt, sol)</Label>
-                  <div className="grid grid-cols-4 gap-1">
-                    {tuval.sayfa.kenar.map((k, i) => (
-                      <Input key={i} className="h-8 text-xs" type="number" value={k} onChange={(ev) => setTuval((t) => ({ ...t, sayfa: { ...t.sayfa, kenar: t.sayfa.kenar.map((x, j) => (j === i ? Number(ev.target.value) || 0 : x)) as [number, number, number, number] } }))} />
+                <div className="space-y-1"><Label className="text-[11px]">Bant</Label>
+                  <NativeSelect className="h-8 text-xs" value="" onChange={(ev) => ev.target.value && secimeUygula({ bant: ev.target.value as TuvalBantId })}>
+                    <option value="">Taşı…</option>{BANT_SIRASI.map((b) => <option key={b} value={b}>{BANT_ADI[b]}</option>)}
+                  </NativeSelect>
+                </div>
+                <Button variant="outline" size="sm" className="w-full text-red-600 border-red-200 hover:bg-red-50" onClick={() => ogeSil(secimler)}><Trash2 className="h-3.5 w-3.5 mr-1.5" />{secililer.length} öğeyi sil</Button>
+              </div>
+            </>
+          ) : !secili ? (
+            <>
+              <h4 className="m-0 mb-2 text-[11px] font-semibold text-slate-500 tracking-wide">SAYFA AYARLARI</h4>
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <Label className="text-[11px]">Yön</Label>
+                  <div className="flex gap-1">
+                    {([['dikey', 'A4 Dikey'], ['yatay', 'A4 Yatay']] as const).map(([v, ad]) => (
+                      <button key={v} type="button" onClick={() => yonDegistir(v)}
+                        className={`flex-1 rounded border px-2 py-1.5 text-xs ${tuval.sayfa.yon === v ? 'border-[#2AA5C7] bg-[#DCEDF5] font-medium text-[#1B4F72]' : 'border-slate-200 bg-white hover:bg-slate-50'}`}>{ad}</button>
                     ))}
                   </div>
+                  <p className="text-[10px] text-muted-foreground">Yön değişince öğeler yeni genişliğe orantılı ölçeklenir.</p>
                 </div>
-                <label className="flex items-center gap-2 text-xs pt-1">
+                <div className="space-y-1">
+                  <Label className="text-[11px]">Kenar boşlukları (mm)</Label>
+                  <div className="grid grid-cols-4 gap-1">
+                    {(['Üst', 'Sağ', 'Alt', 'Sol'] as const).map((ad, i) => (
+                      <div key={ad} className="space-y-0.5">
+                        <span className="block text-[9.5px] text-slate-500">{ad}</span>
+                        <Input className="h-8 text-xs" type="number" min={0} max={60} value={tuval.sayfa.kenar[i]} onChange={(ev) => kenarDegistir(i, Number(ev.target.value) || 0)} />
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">Sayfa içi alan: {genislik}×{sayfaYukseklik}px</p>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[11px]">Gruplama alanı</Label>
+                  <NativeSelect className="h-8 text-xs" value={tuval.grup?.alan ?? ''} onChange={(ev) => setTuval((t) => ({ ...t, grup: ev.target.value ? { alan: ev.target.value, baslik: t.grup?.baslik } : undefined }))}>
+                    <option value="">Yok</option>{tumAlanlar.map((a) => <option key={a.ad} value={a.ad}>{a.etiket}</option>)}
+                  </NativeSelect>
+                </div>
+                {tuval.grup?.alan && (
+                  <div className="space-y-1">
+                    <Label className="text-[11px]">Grup başlığı ifadesi</Label>
+                    <Input className="h-8 text-xs font-mono" placeholder={`{${tuval.grup.alan}}`} value={tuval.grup.baslik ?? ''}
+                      onChange={(ev) => setTuval((t) => ({ ...t, grup: { alan: t.grup!.alan, baslik: ev.target.value || undefined } }))} />
+                    <p className="text-[10px] text-muted-foreground">Grup Başı bandında <b>{'{grup}'}</b> yer tutucusu grubun değerini basar.</p>
+                  </div>
+                )}
+                <label className="flex items-center gap-2 text-xs">
                   <Checkbox checked={!!bantOf('gb').yeniSayfa} onCheckedChange={(v) => setTuval((t) => ({ ...t, bantlar: t.bantlar.map((b) => (b.id === 'gb' ? { ...b, yeniSayfa: v === true } : b)) }))} />
                   Her grup yeni sayfada başlasın
                 </label>
+                <div className="space-y-1 border-t pt-2">
+                  <Label className="text-[11px]">Bant yükseklikleri (px)</Label>
+                  {BANT_SIRASI.map((b) => (
+                    <div key={b} className="flex items-center gap-2">
+                      <span className="text-[11px] text-slate-600 flex-1 truncate">{BANT_ADI[b]}</span>
+                      <Input className="h-7 w-20 text-xs" type="number" min={0} step={2} value={bantOf(b).yukseklik} onChange={(ev) => bantYukseklik(b, Number(ev.target.value) || 0)} />
+                    </div>
+                  ))}
+                  <p className="text-[10px] text-muted-foreground">0 = bant basılmaz. Bant etiketinin alt kenarından sürükleyerek de ayarlanır.</p>
+                </div>
+                <div className="text-[11px] text-muted-foreground border-t pt-2 leading-relaxed">
+                  Bir öğe seçin; <b>Ctrl+tık</b> veya bant içinde boş alandan sürükleyerek çoklu seçim yapın.
+                </div>
               </div>
             </>
           ) : (
@@ -510,6 +761,36 @@ export default function TuvalTasarimci({ sablon, icerik, alanlar, tuval: ilkTuva
                     )}
                   </>
                 )}
+                {secili.tip === 'gorsel' && (
+                  <>
+                    <div className="space-y-1"><Label className="text-[11px]">Kaynak</Label>
+                      <NativeSelect className="h-8 text-xs" value={secili.kaynak} onChange={(ev) => ogeGuncelle(secili.id, { kaynak: ev.target.value as 'logo' | 'yukleme' } as Partial<TuvalOge>)}>
+                        <option value="logo">Kurum logosu (varsayılan)</option>
+                        <option value="yukleme">Yüklenen görsel</option>
+                      </NativeSelect>
+                    </div>
+                    {secili.kaynak === 'yukleme' && (
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <input ref={dosyaRef} type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" className="hidden"
+                            onChange={(ev) => { const f = ev.target.files?.[0]; if (f) gorselYukle(f, secili.id); ev.target.value = '' }} />
+                          <Button variant="outline" size="sm" className="h-8 text-xs" disabled={yukleniyor} onClick={() => dosyaRef.current?.click()}>
+                            {yukleniyor ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <Upload className="h-3.5 w-3.5 mr-1.5" />}Dosya seç
+                          </Button>
+                          <span className="text-[10px] text-muted-foreground">PNG/JPG/WEBP/SVG · ≤2 MB</span>
+                        </div>
+                        {secili.url && (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={secili.url} alt="Yüklenen görsel önizlemesi" className="mt-1 max-h-20 border rounded bg-slate-50 object-contain" />
+                        )}
+                      </div>
+                    )}
+                    <label className="flex items-center gap-2 text-xs">
+                      <Checkbox checked={secili.oraniKoru ?? true} onCheckedChange={(v) => ogeGuncelle(secili.id, { oraniKoru: v === true } as Partial<TuvalOge>)} />
+                      En-boy oranını koru
+                    </label>
+                  </>
+                )}
                 {secili.tip === 'tablo' && (
                   <div className="space-y-1"><Label className="text-[11px]">Kolonlar (alan adları, virgülle)</Label>
                     <Input className="h-8 text-xs font-mono" value={secili.kolonlar.map((k) => k.alan).join(', ')}
@@ -533,18 +814,32 @@ export default function TuvalTasarimci({ sablon, icerik, alanlar, tuval: ilkTuva
                     </div>
                   ))}
                 </div>
-                {['metin', 'alan', 'toplam'].includes(secili.tip) && (
+                {YAZILI.includes(secili.tip) && (
                   <>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="space-y-1"><Label className="text-[11px]">Yazı boyutu</Label>
-                        <Input className="h-8 text-xs" type="number" step="0.5" value={secili.size ?? 11} onChange={(ev) => ogeGuncelle(secili.id, { size: Number(ev.target.value) || 11 })} />
-                      </div>
-                      <div className="space-y-1"><Label className="text-[11px]">Hizalama</Label>
-                        <NativeSelect className="h-8 text-xs" value={secili.hiza ?? 'sol'} onChange={(ev) => ogeGuncelle(secili.id, { hiza: ev.target.value as TuvalHiza })}><option value="sol">Sola</option><option value="orta">Orta</option><option value="sag">Sağa</option></NativeSelect>
-                      </div>
+                    <div className="space-y-1"><Label className="text-[11px]">Yazı boyutu</Label>
+                      <Input className="h-8 text-xs" type="number" step="0.5" value={secili.size ?? 11} onChange={(ev) => ogeGuncelle(secili.id, { size: Number(ev.target.value) || 11 })} />
                     </div>
+                    {hizaSatiri((d) => ogeGuncelle(secili.id, d), secili.hiza, secili.dikeyHiza)}
                     <label className="flex items-center gap-2 text-xs"><Checkbox checked={!!secili.kalin} onCheckedChange={(v) => ogeGuncelle(secili.id, { kalin: v === true })} />Kalın</label>
+                    <div className="space-y-1"><Label className="text-[11px]">Yazı rengi</Label>
+                      <RenkSecici deger={secili.renk} bosEtiket="Varsayılan (siyah)" onChange={(v) => ogeGuncelle(secili.id, { renk: v })} />
+                    </div>
                   </>
+                )}
+                {secili.tip === 'gorsel' && (
+                  <div className="space-y-1"><Label className="text-[11px]">Yatay hizalama</Label>
+                    <div className="flex gap-1">
+                      {([['sol', AlignLeft, 'Sola'], ['orta', AlignCenter, 'Ortaya'], ['sag', AlignRight, 'Sağa']] as const).map(([v, Ikon, ad]) => (
+                        <button key={v} type="button" title={ad} aria-label={ad} onClick={() => ogeGuncelle(secili.id, { hiza: v })}
+                          className={`inline-flex h-7 w-7 items-center justify-center rounded border ${(secili.hiza ?? 'sol') === v ? 'border-[#2AA5C7] bg-[#DCEDF5]' : 'border-slate-200 bg-white hover:bg-slate-50'}`}><Ikon className="h-3.5 w-3.5" /></button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {secili.tip !== 'cizgi' && (
+                  <div className="space-y-1"><Label className="text-[11px]">{secili.tip === 'kutu' ? 'Dolgu rengi' : 'Arka plan rengi'}</Label>
+                    <RenkSecici deger={secili.zemin} bosEtiket="Saydam" onChange={(v) => ogeGuncelle(secili.id, { zemin: v })} />
+                  </div>
                 )}
                 {(secili.tip === 'alan' || secili.tip === 'toplam') && (
                   <>
@@ -570,9 +865,10 @@ export default function TuvalTasarimci({ sablon, icerik, alanlar, tuval: ilkTuva
                   </>
                 )}
                 {(secili.tip === 'cizgi' || secili.tip === 'kutu') && (
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
                     <div className="space-y-1"><Label className="text-[11px]">Kalınlık</Label><Input className="h-8 text-xs" type="number" step="0.5" value={secili.kalinlik ?? 1.5} onChange={(ev) => ogeGuncelle(secili.id, { kalinlik: Number(ev.target.value) || 1 } as Partial<TuvalOge>)} /></div>
-                    <div className="space-y-1"><Label className="text-[11px]">Renk</Label><Input className="h-8 text-xs" value={secili.renk ?? NAVY} onChange={(ev) => ogeGuncelle(secili.id, { renk: ev.target.value })} /></div>
+                    <Label className="text-[11px]">Çizgi rengi</Label>
+                    <RenkSecici deger={secili.renk} bosEtiket="Varsayılan (lacivert)" onChange={(v) => ogeGuncelle(secili.id, { renk: v })} />
                   </div>
                 )}
                 <div className="space-y-1"><Label className="text-[11px]">Bant</Label>
@@ -580,7 +876,7 @@ export default function TuvalTasarimci({ sablon, icerik, alanlar, tuval: ilkTuva
                     {BANT_SIRASI.map((b) => <option key={b} value={b}>{BANT_ADI[b]}</option>)}
                   </NativeSelect>
                 </div>
-                <Button variant="outline" size="sm" className="w-full text-red-600 border-red-200 hover:bg-red-50" onClick={() => ogeSil(secili.id)}><Trash2 className="h-3.5 w-3.5 mr-1.5" />Öğeyi sil</Button>
+                <Button variant="outline" size="sm" className="w-full text-red-600 border-red-200 hover:bg-red-50" onClick={() => ogeSil([secili.id])}><Trash2 className="h-3.5 w-3.5 mr-1.5" />Öğeyi sil</Button>
               </div>
             </>
           )}

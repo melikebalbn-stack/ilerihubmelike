@@ -23,6 +23,7 @@ const OgeOrtak = {
   bant: z.enum(['rb', 'sb', 'gb', 'dt', 'gs', 'rs', 'sa']),
   x: z.number(), y: z.number(), w: z.number(), h: z.number(),
   size: z.number().optional(), kalin: z.boolean().optional(), hiza: HizaSchema.optional(), renk: z.string().max(32).optional(),
+  dikeyHiza: z.enum(['ust', 'orta', 'alt']).optional(), zemin: z.string().max(32).optional(),
 }
 const ToplamFnSchema = z.enum(['topla', 'ortalama', 'say', 'enbuyuk', 'enkucuk', 'orani', 'yok'])
 
@@ -34,7 +35,7 @@ export const TuvalSchema = z.object({
     z.object({ ...OgeOrtak, tip: z.literal('metin'), metin: z.string().max(500) }),
     z.object({ ...OgeOrtak, tip: z.literal('alan'), alan: z.string(), bicim: BicimSchema.optional(), kosulluBicim: z.array(KosulluBicimSchema).optional() }),
     z.object({ ...OgeOrtak, tip: z.literal('toplam'), fn: ToplamFnSchema, alan: z.string(), oraniPay: z.string().optional(), oraniPayda: z.string().optional(), bicim: BicimSchema.optional(), kosulluBicim: z.array(KosulluBicimSchema).optional() }),
-    z.object({ ...OgeOrtak, tip: z.literal('gorsel'), kaynak: z.literal('logo') }),
+    z.object({ ...OgeOrtak, tip: z.literal('gorsel'), kaynak: z.enum(['logo', 'yukleme']), url: z.string().max(500).optional(), dosyaId: z.string().max(120).optional(), oraniKoru: z.boolean().optional() }),
     z.object({ ...OgeOrtak, tip: z.literal('cizgi'), kalinlik: z.number().optional() }),
     z.object({ ...OgeOrtak, tip: z.literal('kutu'), kalinlik: z.number().optional() }),
     z.object({ ...OgeOrtak, tip: z.literal('tablo'), kolonlar: z.array(z.object({ alan: z.string(), baslik: z.string(), genislik: z.number() })) }),

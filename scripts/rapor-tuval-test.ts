@@ -7,7 +7,8 @@
 import { writeFileSync, statSync } from 'fs'
 import { tuvalRender, listedenTuval } from '../src/lib/rapor/tuval-render'
 import { tuvalDogrula } from '../src/lib/rapor/sablon-dogrula'
-import { TUVAL_GENISLIK, type TuvalTasarim } from '../src/lib/rapor/tipler'
+import { TUVAL_GENISLIK, TUVAL_MM_PX, tuvalGenislik, tuvalYukseklik, type TuvalOge, type TuvalTasarim } from '../src/lib/rapor/tipler'
+import { hizala, yonDegistir } from '../src/lib/rapor/tuval-hizala'
 
 let ok = 0, hata = 0
 const test = (ad: string, kosul: boolean, detay?: unknown) => { kosul ? ok++ : hata++; console.log(`${kosul ? '✓' : '✗'} ${ad}${kosul ? '' : `   → ${JSON.stringify(detay)}`}`) }
@@ -143,6 +144,66 @@ test('listedenTuval: genişlik toplamı ≈ 640', Math.abs(cevrilen.ogeler.filte
 test('listedenTuval çıktısı doğrulamadan geçer', tuvalDogrula(cevrilen, tumAlanlar).length === 0, tuvalDogrula(cevrilen, tumAlanlar))
 const cevrilenR = tuvalRender(cevrilen, satirlar, { hesaplananAlanlar, raporAdi: 'Liste' })
 test('listedenTuval render: sayfa üretildi', cevrilenR.sayfaSayisi >= 1 && cevrilenR.html.includes('Genel toplam'))
+
+// ── Yön / ölçek (kullanıcı testi: tuval yatay, önizleme dikey çıkıyordu) ──
+console.log('— yön, ölçek, renk, görsel, hizalama —')
+test('tuvalGenislik: dikey 640, yatay 950 (15mm kenar)', tuvalGenislik({ boyut: 'A4', yon: 'dikey', kenar: [15, 15, 15, 15] }) === 640 && tuvalGenislik({ boyut: 'A4', yon: 'yatay', kenar: [15, 15, 15, 15] }) === 950, [tuvalGenislik({ boyut: 'A4', yon: 'dikey', kenar: [15, 15, 15, 15] }), tuvalGenislik({ boyut: 'A4', yon: 'yatay', kenar: [15, 15, 15, 15] })])
+test('kenar boşluğu tuval genişliğini değiştirir (10mm → 676px)', tuvalGenislik({ boyut: 'A4', yon: 'dikey', kenar: [10, 10, 10, 10] }) === 676, tuvalGenislik({ boyut: 'A4', yon: 'dikey', kenar: [10, 10, 10, 10] }))
+test('tuvalYukseklik: dikey 950, yatay 640', tuvalYukseklik({ boyut: 'A4', yon: 'dikey', kenar: [15, 15, 15, 15] }) === 950 && tuvalYukseklik({ boyut: 'A4', yon: 'yatay', kenar: [15, 15, 15, 15] }) === 640)
+
+const olcekTasarim: TuvalTasarim = { sayfa: { boyut: 'A4', yon: 'dikey', kenar: [15, 15, 15, 15] }, bantlar: [{ id: 'dt', yukseklik: 20 }], ogeler: [{ id: 'z1', bant: 'dt', tip: 'metin', metin: 'X', x: 100, y: 2, w: 200, h: 16 }] }
+const dikeyMm = /left:([\d.]+)mm;top:[\d.]+mm;width:([\d.]+)mm/.exec(tuvalRender(olcekTasarim, [{}], {}).html)
+const yatayAyni = tuvalRender({ ...olcekTasarim, sayfa: { ...olcekTasarim.sayfa, yon: 'yatay' } }, [{}], {}).html
+const yatayMm = /left:([\d.]+)mm;top:[\d.]+mm;width:([\d.]+)mm/.exec(yatayAyni)
+test('px→mm ölçeği yöne göre DEĞİŞMEZ (aynı öğe aynı mm)', dikeyMm?.[1] === yatayMm?.[1] && dikeyMm?.[2] === yatayMm?.[2], [dikeyMm?.slice(1), yatayMm?.slice(1)])
+test('1px = 0,28125mm (100px → 28,13mm)', dikeyMm?.[1] === (100 * TUVAL_MM_PX).toFixed(2), dikeyMm?.[1])
+
+const cevrildi = yonDegistir(olcekTasarim, 'yatay')
+test('yön değişince x/w orantılı ölçeklenir (640→950)', cevrildi.eski === 640 && cevrildi.yeni === 950 && cevrildi.ogeler[0].x === 148 && cevrildi.ogeler[0].w === 296, cevrildi.ogeler[0])
+test('ölçeklenen öğe yeni sayfa genişliğine sığar', cevrildi.ogeler[0].x + cevrildi.ogeler[0].w <= cevrildi.yeni)
+const yatayTasarim: TuvalTasarim = { ...olcekTasarim, sayfa: { ...olcekTasarim.sayfa, yon: 'yatay' }, ogeler: [{ ...olcekTasarim.ogeler[0], x: 700, w: 200 }] }
+test('yatayda 900px öğe taşma uyarısı ÜRETMEZ (dikeyde üretir)', tuvalDogrula(yatayTasarim, new Set(['x'])).length === 0 && tuvalDogrula({ ...yatayTasarim, sayfa: { ...yatayTasarim.sayfa, yon: 'dikey' } }, new Set(['x'])).some((x) => x.includes('sayfa genişliğini aşıyor')))
+
+// ── Renk / zemin / dikey hizalama ──
+const renkTasarim: TuvalTasarim = { sayfa: { boyut: 'A4', yon: 'dikey', kenar: [15, 15, 15, 15] }, bantlar: [{ id: 'dt', yukseklik: 30 }], ogeler: [
+  { id: 'r1', bant: 'dt', tip: 'metin', metin: 'Renkli', x: 0, y: 0, w: 100, h: 20, renk: '#DC2626', zemin: '#FEF3C7', dikeyHiza: 'orta' },
+  { id: 'r2', bant: 'dt', tip: 'kutu', x: 120, y: 0, w: 100, h: 20, renk: '#1B4F72', zemin: '#DCEDF5' },
+] }
+const renkli = tuvalRender(renkTasarim, [{}], {}).html
+test('yazı rengi + arka plan basılır', renkli.includes('color:#DC2626;') && renkli.includes('background:#FEF3C7;'))
+test('dikey hizalama flex ile uygulanır', renkli.includes('justify-content:center'))
+test('kutu dolgu rengi basılır', renkli.includes('background:#DCEDF5;border:'))
+
+// ── Görsel: logo + yükleme (base64 gömme) ──
+const gorselTasarim: TuvalTasarim = { sayfa: { boyut: 'A4', yon: 'dikey', kenar: [15, 15, 15, 15] }, bantlar: [{ id: 'rb', yukseklik: 50 }], ogeler: [
+  { id: 'g1', bant: 'rb', tip: 'gorsel', kaynak: 'logo', x: 0, y: 0, w: 80, h: 40 },
+  { id: 'g2', bant: 'rb', tip: 'gorsel', kaynak: 'yukleme', url: '/uploads/rapor/logolar/abc.png', x: 100, y: 0, w: 80, h: 40, oraniKoru: false },
+] }
+const gorselHtml = tuvalRender(gorselTasarim, [{}], { logoUrl: 'data:image/png;base64,AAA', gorseller: { '/uploads/rapor/logolar/abc.png': 'data:image/png;base64,BBB' } }).html
+test('logo data URI olarak gömülür', gorselHtml.includes('src="data:image/png;base64,AAA"'))
+test('yüklenen görsel data URI ile değiştirilir', gorselHtml.includes('src="data:image/png;base64,BBB"'))
+test('oraniKoru=false → object-fit:fill', gorselHtml.includes('object-fit:fill'))
+test('logo yoksa çerçeveli LOGO kutusu', tuvalRender(gorselTasarim, [{}], {}).html.includes('class="o logo"'))
+
+// ── Çoklu seçim: hizalama / dağıtma / aynı boyut ──
+const cok: TuvalOge[] = [
+  { id: 'h1', bant: 'dt', tip: 'metin', metin: 'a', x: 10, y: 4, w: 60, h: 16 },
+  { id: 'h2', bant: 'dt', tip: 'metin', metin: 'b', x: 100, y: 10, w: 40, h: 20 },
+  { id: 'h3', bant: 'dt', tip: 'metin', metin: 'c', x: 300, y: 30, w: 80, h: 12 },
+]
+const secim = ['h1', 'h2', 'h3']
+test('sola hizala: hepsi min x', hizala(cok, secim, 'sol', 640).every((e) => e.x === 10))
+test('sağa hizala: sağ kenarlar eşit', hizala(cok, secim, 'sag', 640).every((e) => e.x + e.w === 380))
+test('alta hizala: alt kenarlar eşit', hizala(cok, secim, 'alt', 640).every((e) => e.y + e.h === 42))
+const dagit = hizala(cok, secim, 'yatayDagit', 640)
+const bosluklar = [dagit[1].x - (dagit[0].x + dagit[0].w), dagit[2].x - (dagit[1].x + dagit[1].w)]
+test('yatay dağıt: aralıklar eşit (±2px ızgara)', Math.abs(bosluklar[0] - bosluklar[1]) <= 2, bosluklar)
+test('aynı genişlik: ilk seçilene göre', hizala(cok, secim, 'ayniGenislik', 640).every((e) => e.w === 60))
+test('aynı yükseklik: ilk seçilene göre', hizala(cok, secim, 'ayniYukseklik', 640).every((e) => e.h === 16))
+test('tek seçimde hizalama değişiklik yapmaz', hizala(cok, ['h1'], 'sag', 640) === cok)
+test('hizalama seçili olmayana dokunmaz', hizala(cok, ['h1', 'h2'], 'sol', 640)[2].x === 300)
+test('hizalama sayfa dışına taşırmaz', hizala([{ ...cok[0], x: 600, w: 60 }, { ...cok[1], x: 0, w: 600 }], ['h1', 'h2'], 'sag', 640).every((e) => e.x + e.w <= 640))
+
 
 console.log('— boş veri —')
 const bos = tuvalRender(tasarim, [], { hesaplananAlanlar })

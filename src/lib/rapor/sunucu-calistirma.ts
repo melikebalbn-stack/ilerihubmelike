@@ -5,6 +5,7 @@
  * (ARSIV, TASLAK→rapor.tasarla, izinAnahtari) uygulanır.
  */
 import { NextResponse } from 'next/server'
+import nodePath from 'path'
 import { prisma } from '@/lib/prisma'
 import { getUserPermissions } from '@/lib/auth/get-user-permissions'
 import { PERMISSION_KEYS } from '@/lib/auth/permissions'
@@ -62,4 +63,47 @@ export async function calistirmaHatasiKaydet(kayit: RaporBaglami['kayit'], kod: 
   await prisma.raporCalistirma.create({ data: { ...kayit, parametreler: kayit.parametreler as object, sureMs, hata: mesaj.slice(0, 2000) } }).catch(() => {})
   console.error(`[rapor] ${kod} çalıştırma hatası:`, e)
   return mesaj
+}
+
+// ── Tuval görselleri ─────────────────────────────────────────────────────
+
+/** Kurum logosu adayları (ilki bulunan kullanılır); RAPOR_LOGO ile ezilebilir. */
+const LOGO_ADAYLARI = ['ilerigrouplogo.png', 'ilerihublogo.png']
+const YUKLEME_DESENI = /^\/uploads\/rapor\/logolar\/[A-Za-z0-9_-]+\.(png|jpg|jpeg|webp|svg)$/
+const MIME: Record<string, string> = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.svg': 'image/svg+xml' }
+
+async function dataUri(mutlakYol: string): Promise<string | undefined> {
+  try {
+    const { readFile } = await import('fs/promises')
+    const tur = MIME[nodePath.extname(mutlakYol).toLowerCase()]
+    if (!tur) return undefined
+    const veri = await readFile(mutlakYol)
+    if (veri.byteLength > 4 * 1024 * 1024) return undefined
+    return `data:${tur};base64,${veri.toString('base64')}`
+  } catch { return undefined }
+}
+
+/**
+ * Tuvaldeki görselleri data URI'ye çevirir — yazdırmada/PDF'te dış URL çözülmeyebilir.
+ * Yüklenen görseller yalnız public/uploads/rapor/logolar altından okunur (yol enjeksiyonu yok).
+ */
+export async function tuvalGorselleri(tuval: { ogeler?: { tip: string; kaynak?: string; url?: string }[] } | undefined): Promise<{ logoUrl?: string; gorseller: Record<string, string> }> {
+  const gorseller: Record<string, string> = {}
+  const gorselOgeler = (tuval?.ogeler ?? []).filter((e) => e.tip === 'gorsel')
+  if (!gorselOgeler.length) return { gorseller }
+
+  let logoUrl: string | undefined
+  if (gorselOgeler.some((e) => (e.kaynak ?? 'logo') === 'logo')) {
+    const adaylar = [process.env.RAPOR_LOGO, ...LOGO_ADAYLARI].filter(Boolean) as string[]
+    for (const a of adaylar) {
+      logoUrl = await dataUri(nodePath.join(process.cwd(), 'public', a))
+      if (logoUrl) break
+    }
+  }
+  for (const e of gorselOgeler) {
+    if (e.kaynak !== 'yukleme' || !e.url || gorseller[e.url] || !YUKLEME_DESENI.test(e.url)) continue
+    const veri = await dataUri(nodePath.join(process.cwd(), 'public', e.url.replace(/^\//, '')))
+    if (veri) gorseller[e.url] = veri
+  }
+  return { logoUrl, gorseller }
 }

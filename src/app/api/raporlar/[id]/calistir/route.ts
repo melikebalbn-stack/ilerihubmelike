@@ -9,7 +9,7 @@ import { tuvalRender } from '@/lib/rapor/tuval-render'
 import { veriSetiAlanlari } from '@/lib/rapor/veri-seti-alanlar'
 import { ifadeCalistir, ifadeDerle } from '@/lib/rapor/ifade'
 import { etkilesimliMi, type SablonIcerik } from '@/lib/rapor/tipler'
-import { calistirmaHatasiKaydet, calistirmaKaydet, raporBaglami } from '@/lib/rapor/sunucu-calistirma'
+import { calistirmaHatasiKaydet, calistirmaKaydet, raporBaglami, tuvalGorselleri } from '@/lib/rapor/sunucu-calistirma'
 
 export const dynamic = 'force-dynamic'
 
@@ -106,9 +106,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     // Tuval yerleşimi → serbest yerleşim motoru; 'liste' (veya yok) → mevcut bantlı tablo motoru.
     if (icerik.yerlesim === 'tuval' && icerik.tuval) {
       const degerEtiketleri = Object.fromEntries((await veriSetiAlanlari(tanim)).filter((a) => a.degerEtiketleri).map((a) => [a.ad, a.degerEtiketleri!]))
+      const { logoUrl, gorseller } = await tuvalGorselleri(icerik.tuval)
       const t = tuvalRender(icerik.tuval, veri.satirlar, {
         hesaplananAlanlar: icerik.hesaplananAlanlar, parametreler: degerler, parametreTanimlari: icerik.parametreler,
-        degerEtiketleri, raporAdi: icerik.baslik, raporKodu: sablon.kod, calistiran: calistiranAd,
+        degerEtiketleri, raporAdi: icerik.baslik, raporKodu: sablon.kod, calistiran: calistiranAd, logoUrl, gorseller,
       })
       const sureMs = Date.now() - t0
       await calistirmaKaydet(kayit, t.satirSayisi, sureMs)

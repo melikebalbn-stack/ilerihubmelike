@@ -295,16 +295,20 @@ export default function FaturaTakipPage() {
     return map
   }, [summary])
 
-  // Grafikte gösterilecek seri sırası: Genel önce (varsa), sonra gerçek bölümler alfabetik
-  // (en fazla 8 — palet kadar), taşanlar "Diğer" altında toplanır.
+  // Grafikte gösterilecek seri sırası: Genel (atanmamış faturalar) BURADA YOK — o gerçek bir
+  // bölüm değil, kartlarda olduğu gibi burada da karşılaştırmaya girerse (tek başına toplamın
+  // %80+'i) gerçek bölümleri görünmez sliverlere eziyordu. Genel'in kendi ay bazında trendini
+  // görmek isteyen alttaki açılır listeden "Genel"i seçip izole edebilir. Gerçek bölümler
+  // alfabetik sırayla (en fazla 8 — palet kadar), taşanlar "Diğer" altında toplanır.
   const chartSeries = useMemo(() => {
     if (!summary) return []
-    const labels = summary.departments.map((d) => d.label)
-    const hasGenel = labels.includes(GENEL_LABEL)
-    const real = labels.filter((l) => l !== GENEL_LABEL).sort((a, b) => a.localeCompare(b, 'tr'))
+    const real = summary.departments
+      .map((d) => d.label)
+      .filter((l) => l !== GENEL_LABEL)
+      .sort((a, b) => a.localeCompare(b, 'tr'))
     const shown = real.slice(0, PALETTE.length)
     const overflow = real.length > PALETTE.length
-    return [...(hasGenel ? [GENEL_LABEL] : []), ...shown, ...(overflow ? ['Diğer'] : [])]
+    return [...shown, ...(overflow ? ['Diğer'] : [])]
   }, [summary])
 
   const chartData = useMemo(() => {
@@ -315,6 +319,7 @@ export default function FaturaTakipPage() {
         const row: Record<string, string | number> = { ay: formatMonthLabel(m.key) }
         for (const label of chartSeries) row[label] = 0
         for (const d of m.departments) {
+          if (d.label === GENEL_LABEL) continue // atanmamış — bu karşılaştırmada yok
           const key = shownSet.has(d.label) ? d.label : 'Diğer'
           row[key] = (Number(row[key]) || 0) + d.eur
         }
@@ -472,8 +477,8 @@ export default function FaturaTakipPage() {
 
       <Card>
         <CardContent className="pt-6">
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <div className="text-sm font-semibold text-muted-foreground">Aylık € dağılımı</div>
+          <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+            <div className="text-sm font-semibold text-muted-foreground">Aylık € dağılımı — gerçek bölümler</div>
             <Select value={chartDept} onValueChange={setChartDept}>
               <SelectTrigger className="w-56">
                 <SelectValue />
@@ -488,6 +493,11 @@ export default function FaturaTakipPage() {
               </SelectContent>
             </Select>
           </div>
+          <p className="mb-3 text-xs text-muted-foreground/80">
+            "Genel" (bölüm atanmamış faturalar) burada yok — tek başına toplamın çoğunu kapladığı için
+            gerçek bölümleri görünmez kılıyordu; toplamı üstteki "Toplam (€)" kartında. Genel'in kendi
+            ay bazında trendini görmek için açılır listeden "Genel" seç.
+          </p>
           <div className="h-64 w-full">
             <ResponsiveContainer>
               <BarChart data={chartData}>

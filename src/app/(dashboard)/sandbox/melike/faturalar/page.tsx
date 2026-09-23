@@ -43,11 +43,13 @@ const GENEL_LABEL = 'Genel'
 // "Genel" en büyük payı aldığı için önceden en canlı rengi (lacivert) kapıp diğer bölümleri
 // eziyordu — artık her zaman nötr gri: dikkat çekmesin, asıl ilgi alanı olan bölümler öne çıksın.
 const GENEL_COLOR = '#9CA3AF'
-// Doğrulanmış kategorik palet — pembe ve turuncu tamamen çıkarıldı ("ileri hub'a uygun,
-// pembe turuncu asla istemiyorum"), sadece lacivert/yeşil/petrol/kırmızı/mor (kurumsal,
-// NAVY ile uyumlu) kaldı. Renk körlüğü güvenli, sabit sıra — bu sıralamayla
-// validate_palette.js: tüm kontroller PASS (en yakın komşu çift CVD ΔE 15.5, normal görüş ΔE 19.3).
-const PALETTE = ['#2a78d6', '#008300', '#0e93a8', '#e34948', '#4a3aa7']
+// Palet artık ilerihub'ın KENDİ uygulamasında zaten kullanılan renkler — icat değil, alıntı:
+// #2563eb "beyaz"/personnel-reports, #7c3aed "mavi"/personnel-reports, #14b8a6 "erkek"/personnel-reports,
+// #16a34a BAŞARILI/ifs-evaluation-report, #dc2626 BAŞARISIZ/ifs-evaluation-report. Pembe/turuncu
+// hiç yok. Bu sırayla validate_palette.js: tüm zorunlu kontroller PASS (CVD ΔE 16.6, normal görüş ΔE 33.3).
+// Teal (#14b8a6) beyaz yüzeyde kontrastı düşük (WARN) — bu yüzden rengin yanında zaten bir legend
+// ve altında tam etiketli "Bölüme göre dağılım" tablosu var, tek başına renge güvenilmiyor.
+const PALETTE = ['#2563eb', '#dc2626', '#14b8a6', '#7c3aed', '#16a34a']
 
 type Currency = 'TRY' | 'USD' | 'EUR'
 
@@ -289,7 +291,7 @@ export default function FaturaTakipPage() {
       .map((d) => d.label)
       .sort((a, b) => a.localeCompare(b, 'tr'))
     real.slice(0, PALETTE.length).forEach((label, i) => map.set(label, PALETTE[i]))
-    map.set('Diğer', '#78716C')
+    map.set('Diğer', '#64748b') // "endirekt"/personnel-reports ile aynı nötr slate
     return map
   }, [summary])
 

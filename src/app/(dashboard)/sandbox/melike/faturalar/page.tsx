@@ -430,13 +430,9 @@ export default function FaturaTakipPage() {
         </div>
       </div>
 
-      <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-800">
-        <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
-        <span>
-          EUR dönüşümü fatura tarihine göre <strong>TCMB Döviz Alış</strong> kurundan hesaplanır (sunucuda canlı
-          çekilir ve önbelleğe alınır). TCMB'nin yayın yapmadığı günlerde (hafta sonu/tatil) en yakın önceki iş
-          gününün kuru kullanılır.
-        </span>
+      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <AlertCircle className="h-3.5 w-3.5 flex-shrink-0" />
+        <span>€ karşılığı, fatura tarihindeki TCMB Döviz Alış kurundan otomatik hesaplanır.</span>
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
@@ -482,19 +478,22 @@ export default function FaturaTakipPage() {
 
       <Card>
         <CardContent className="pt-6">
-          <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
             <div className="text-sm font-semibold text-muted-foreground">
-              {scopeMode === 'MONTH' && scopedMonthSummary
-                ? `${formatMonthLabel(scopedMonthSummary.key)} — bölüme göre dağılım`
-                : 'Aylık € dağılımı — gerçek bölümler'}
+              Bölüme göre dağılım {scopeMode === 'MONTH' && scopedMonthSummary ? `— ${formatMonthLabel(scopedMonthSummary.key)}` : '— Tüm Zamanlar'}
             </div>
+            <button
+              onClick={() => downloadFile('/api/sandbox/melike/faturalar/export?type=summary')}
+              className="ml-auto flex items-center gap-1 text-xs font-medium text-[#1B4F72] hover:underline"
+              title="Bu tablonun sayısal, yuvarlanmamış Excel çıktısı — KPI dosyana çekmek için"
+            >
+              <Download className="h-3 w-3" /> KPI Özet İndir
+            </button>
           </div>
           <p className="mb-3 text-xs text-muted-foreground/80">
-            "Genel" (bölüm atanmamış faturalar) burada yok — tek başına toplamın çoğunu kapladığı için
-            gerçek bölümleri görünmez kılıyordu; toplamı üstteki "Toplam (€)" kartında. Üstteki
-            "Aylık / Tüm Zamanlar" ve ay seçimine göre değişir.
+            "Genel" (bölüm atanmamış faturalar) burada yok — toplamı üstteki "Toplam (€)" kartında.
           </p>
-          <div className="h-64 w-full">
+          <div className="mb-4 h-64 w-full">
             <ResponsiveContainer>
               <BarChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#EEE" />
@@ -531,17 +530,41 @@ export default function FaturaTakipPage() {
               </BarChart>
             </ResponsiveContainer>
           </div>
+          {!scopedDepartments.length ? (
+            <p className="py-2 text-sm text-muted-foreground">Bu kapsamda fatura kaydı yok.</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Bölüm</TableHead>
+                  <TableHead className="text-right">Toplam (₺)</TableHead>
+                  <TableHead className="text-right">Toplam (€)</TableHead>
+                  <TableHead className="text-right">Cironun Oranı</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {scopedDepartments.map((d) => {
+                  const deptCiroOran = scopedCiro > 0 ? (d.eur / scopedCiro) * 100 : null
+                  return (
+                    <TableRow key={d.label}>
+                      <TableCell style={{ color: d.label === SG_LABEL ? NAVY : undefined }}>{d.label}</TableCell>
+                      <TableCell className="text-right">{formatTL(d.tl)}</TableCell>
+                      <TableCell className="text-right font-semibold">{formatEur(d.eur)}</TableCell>
+                      <TableCell className="text-right" style={{ color: deptCiroOran == null ? '#BBB' : NAVY }}>
+                        {deptCiroOran == null ? '—' : formatPercent(deptCiroOran)}
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
 
       <Card>
         <CardContent className="pt-6">
-          <div className="text-sm font-semibold text-muted-foreground">Ciro karşılaştırması</div>
-          <p className="mb-3 text-xs text-muted-foreground/80">
-            {scopeMode === 'MONTH'
-              ? 'Seçili ayın cirosunu € olarak gir (üstteki ay seçici ile aynı ay).'
-              : 'Tüm zamanlar kapsamındasın — girilen tüm ayların ciro toplamı kullanılıyor.'}
-          </p>
+          <div className="mb-3 text-sm font-semibold text-muted-foreground">Ciro karşılaştırması</div>
           {!summary?.months.length ? (
             <p className="py-2 text-sm text-muted-foreground">Henüz fatura kaydı yok.</p>
           ) : scopeMode === 'ALL' ? (
@@ -585,55 +608,6 @@ export default function FaturaTakipPage() {
                 </div>
               )
             })()
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex items-center gap-2">
-            <div className="text-sm font-semibold text-muted-foreground">
-              Bölüme göre dağılım {scopeMode === 'MONTH' && scopedMonthSummary ? `— ${formatMonthLabel(scopedMonthSummary.key)}` : '— Tüm Zamanlar'}
-            </div>
-            <button
-              onClick={() => downloadFile('/api/sandbox/melike/faturalar/export?type=summary')}
-              className="flex items-center gap-1 text-xs font-medium text-[#1B4F72] hover:underline"
-              title="Bu tablonun sayısal, yuvarlanmamış Excel çıktısı — KPI dosyana çekmek için"
-            >
-              <Download className="h-3 w-3" /> KPI Özet İndir
-            </button>
-          </div>
-          <p className="mb-3 text-xs text-muted-foreground/80">
-            Üstteki "Aylık / Tüm Zamanlar" seçimine göre değişir. Cironun Oranı da aynı kapsamdaki ciroya göre.
-          </p>
-          {!scopedDepartments.length ? (
-            <p className="py-2 text-sm text-muted-foreground">Bu kapsamda fatura kaydı yok.</p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Bölüm</TableHead>
-                  <TableHead className="text-right">Toplam (₺)</TableHead>
-                  <TableHead className="text-right">Toplam (€)</TableHead>
-                  <TableHead className="text-right">Cironun Oranı</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {scopedDepartments.map((d) => {
-                  const deptCiroOran = scopedCiro > 0 ? (d.eur / scopedCiro) * 100 : null
-                  return (
-                    <TableRow key={d.label}>
-                      <TableCell style={{ color: d.label === SG_LABEL ? NAVY : undefined }}>{d.label}</TableCell>
-                      <TableCell className="text-right">{formatTL(d.tl)}</TableCell>
-                      <TableCell className="text-right font-semibold">{formatEur(d.eur)}</TableCell>
-                      <TableCell className="text-right" style={{ color: deptCiroOran == null ? '#BBB' : NAVY }}>
-                        {deptCiroOran == null ? '—' : formatPercent(deptCiroOran)}
-                      </TableCell>
-                    </TableRow>
-                  )
-                })}
-              </TableBody>
-            </Table>
           )}
         </CardContent>
       </Card>

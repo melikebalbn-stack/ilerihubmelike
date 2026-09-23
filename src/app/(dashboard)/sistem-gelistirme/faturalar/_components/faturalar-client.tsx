@@ -19,11 +19,12 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Plus, Search, AlertCircle, Trash2, Pencil, FileSpreadsheet, Download } from 'lucide-react'
+import { Plus, Search, AlertCircle, Trash2, Pencil, FileSpreadsheet, Download, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react'
 import {
   Bar,
   BarChart,
   CartesianGrid,
+  Cell,
   Legend,
   ResponsiveContainer,
   Tooltip,
@@ -34,6 +35,18 @@ import { InvoiceFormDialog, type EditableInvoice } from './InvoiceFormDialog'
 import { ImportDialog, downloadFile } from './ImportDialog'
 
 const NAVY = '#1B4F72'
+// DİKKAT: departmentName'in GERÇEK veritabanı değeriyle harfiyen aynı olmalı (Personnel.bolum
+// title-case üretiyor: "Sistem Geliştirme Müdürlüğü") — daha önce hardcode ALL-CAPS ("SİSTEM
+// GELİŞTİRME MÜDÜRLÜĞÜ") idi, hiçbir zaman eşleşmiyordu, bu yüzden "Sistem Geliştirme Oranı"
+// kartı sürekli %0 gösteriyordu (Toplam kartı yine de doğruydu çünkü o sadece toplama bakıyor).
+const SG_LABEL = 'Sistem Geliştirme Müdürlüğü'
+const GENEL_LABEL = 'Genel'
+// Renk mantığı değişti: bölüm sayısı kadar rastgele/rainbow renk seçmek yerine ilerihub'ın
+// tüm sayfalarda zaten kullandığı TEK marka rengi (lacivert, NAVY) esas alınıyor. Bu uygulamanın
+// bütün amacı zaten Sistem Geliştirme'yi öne çıkarmak — o yüzden "emphasis" yaklaşımı: asıl ilgi
+// noktası (Sistem Geliştirme) NAVY, diğer tüm gerçek bölümler tek bir nötr gri. Renk artık kimlik
+// değil vurgu taşıyor; hangi bölüm olduğu zaten satırın/çubuğun etiketinde yazıyor.
+const OTHER_DEPT_COLOR = '#94A3B8'
 
 type Currency = 'TRY' | 'USD' | 'EUR'
 
@@ -113,6 +126,20 @@ function formatMonthLabel(key: string) {
   const d = new Date(Number(y), Number(m) - 1, 1)
   return d.toLocaleDateString('tr-TR', { year: '2-digit', month: 'short' })
 }
+function formatDateTR(dateStr: string) {
+  const [y, m, d] = dateStr.slice(0, 10).split('-')
+  return `${d}.${m}.${y}`
+}
+
+type SortKey = 'date' | 'company' | 'invoiceNumber' | 'amountEUR' | 'department'
+type SortDir = 'asc' | 'desc'
+
+function invoiceDepartmentLabel(inv: Invoice): string {
+  if (inv.allocations.length > 0) {
+    return inv.allocations.map((a) => a.departmentName).join(', ')
+  }
+  return inv.departmentName ?? 'Genel'
+}
 
 export default function FaturalarClient() {
   const [invoices, setInvoices] = useState<Invoice[]>([])
@@ -123,10 +150,17 @@ export default function FaturalarClient() {
   const [editingInvoice, setEditingInvoice] = useState<EditableInvoice | null>(null)
   const [showImport, setShowImport] = useState(false)
   const [filter, setFilter] = useState('ALL') // 'ALL' | 'GENEL' | <orgUnitId>
-  const [selectedMonth, setSelectedMonth] = useState('')
   const [search, setSearch] = useState('')
   const [departments, setDepartments] = useState<Department[]>([])
 
+  // Kartlar / Bölüme göre dağılım için ortak kapsam: belirli bir ay ya da tüm zamanlar (kümülatif)
+  const [scopeMode, setScopeMode] = useState<'MONTH' | 'ALL'>('MONTH')
+  const [scopeMonth, setScopeMonth] = useState('')
+
+  // Fatura listesi: ay filtresi + sıralama
+  const [listMonthFilter, setListMonthFilter] = useState('ALL')
+  const [sortKey, setSortKey] = useState<SortKey>('date')
+  const [sortDir, setSortDir] = useState<SortDir>('desc')
 
   const loadInvoices = useCallback(async () => {
     const params = new URLSearchParams()
@@ -174,6 +208,13 @@ export default function FaturalarClient() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filter, search])
 
+  // Ay seçilmemişse (ilk yükleme) en son ayı varsayılan yap
+  useEffect(() => {
+    if (!scopeMonth && summary?.months.length) {
+      setScopeMonth(summary.months[summary.months.length - 1].key)
+    }
+  }, [summary, scopeMonth])
+
   async function handleDelete(id: string) {
     if (!confirm('Bu fatura kaydını silmek istediğine emin misin?')) return
     const res = await fetch(`/api/finans/faturalar/${id}`, { method: 'DELETE' })
@@ -208,23 +249,120 @@ export default function FaturalarClient() {
     })
   }
 
-  const chartData = useMemo(
-    () =>
-      (summary?.months ?? []).map((m) => ({
-        ay: formatMonthLabel(m.key),
-        Genel: m.genel,
-        'Sistem Geliştirme': m.sistemGelistirme,
-      })),
-    [summary]
-  )
+  function toggleSort(key: SortKey) {
+    if (sortKey === key) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortKey(key)
+      setSortDir('asc')
+    }
+  }
+
+  // Renk artık kimlik değil vurgu taşıyor: Sistem Geliştirme NAVY (ilerihub'ın marka rengi,
+  // bu ekranın asıl ilgi noktası), her gerçek bölüm aynı nötr gri. Hangi bölüm olduğu zaten
+  // çubuğun/satırın etiketinde yazıyor — renkten renge ayırt etmeye gerek yok.
+  function getDeptColor(label: string) {
+    return label === SG_LABEL ? NAVY : OTHER_DEPT_COLOR
+  }
+
+  const OTHER_LABEL = 'Diğer bölümler'
+
+  // "Tüm Zamanlar" grafiğindeki seriler: Sistem Geliştirme (varsa) ve geri kalan tüm gerçek
+  // bölümlerin toplamı tek "Diğer bölümler" serisi olarak. Tek tek bölüm kırılımı için zaten
+  // alttaki tabloya bak — grafiğin işi burada sadece SG'nin payını zaman içinde göstermek.
+  const chartSeries = useMemo(() => {
+    if (!summary) return []
+    const labels = summary.departments.map((d) => d.label)
+    const hasSG = labels.includes(SG_LABEL)
+    const hasOther = labels.some((l) => l !== GENEL_LABEL && l !== SG_LABEL)
+    return [...(hasSG ? [SG_LABEL] : []), ...(hasOther ? [OTHER_LABEL] : [])]
+  }, [summary])
+
+  // Grafik üstteki "Aylık / Tüm Zamanlar" seçimini takip eder — ayrı bir grafik-bölüm
+  // seçici YOKTU aslında burada, ama üstteki ay seçimiyle bağlantısız kaldığı için ay
+  // değiştirince grafik değişmiyor, kafa karıştırıyordu. Artık tek kaynak üstteki seçim:
+  // "Aylık" modunda seçili tek ayın bölüm kırılımı, "Tüm Zamanlar" modunda ayara göre trend.
+  const chartData = useMemo(() => {
+    if (!summary) return []
+    if (scopeMode === 'ALL') {
+      return summary.months.map((m) => {
+        const row: Record<string, string | number> = { ay: formatMonthLabel(m.key), [SG_LABEL]: 0, [OTHER_LABEL]: 0 }
+        for (const d of m.departments) {
+          if (d.label === GENEL_LABEL) continue // atanmamış — bu karşılaştırmada yok
+          const key = d.label === SG_LABEL ? SG_LABEL : OTHER_LABEL
+          row[key] = (Number(row[key]) || 0) + d.eur
+        }
+        return row
+      })
+    }
+    const m = summary.months.find((mm) => mm.key === scopeMonth)
+    if (!m) return []
+    return m.departments
+      .filter((d) => d.label !== GENEL_LABEL)
+      .sort((a, b) => b.eur - a.eur)
+  }, [summary, scopeMode, scopeMonth])
 
   const totalCiro = useMemo(() => Object.values(revenues).reduce((s, v) => s + v, 0), [revenues])
+
+  const scopedMonthSummary = summary?.months.find((m) => m.key === scopeMonth) ?? null
+
+  // "Oran" bu sayfada TEK bir anlama gelir: € tutarının CİRO'ya bölünmesi — tablodaki
+  // "Ciro İçindeki Payı" sütunuyla aynı hesap, aynı payda. Daha önce kart farklı bir şey
+  // ölçüyordu (SG'nin toplam fatura içindeki payı, ciro hiç yoktu) — kafa karıştırıyordu.
+  const cardTotals = useMemo(() => {
+    if (scopeMode === 'MONTH' && scopedMonthSummary) {
+      return { toplam: scopedMonthSummary.genel + scopedMonthSummary.sistemGelistirme, sistemGelistirme: scopedMonthSummary.sistemGelistirme }
+    }
+    return { toplam: summary?.totals.toplam ?? 0, sistemGelistirme: summary?.totals.sistemGelistirme ?? 0 }
+  }, [scopeMode, scopedMonthSummary, summary])
+
+  const scopedDepartments = scopeMode === 'MONTH' && scopedMonthSummary ? scopedMonthSummary.departments : summary?.departments ?? []
+  const scopedCiro = scopeMode === 'MONTH' ? revenues[scopeMonth] ?? 0 : totalCiro
+  const sgCiroOran = scopedCiro > 0 ? (cardTotals.sistemGelistirme / scopedCiro) * 100 : null
+
+  const listMonths = useMemo(() => summary?.months.map((m) => m.key) ?? [], [summary])
+
+  const displayedInvoices = useMemo(() => {
+    let rows = invoices
+    if (listMonthFilter !== 'ALL') {
+      rows = rows.filter((inv) => inv.invoiceDate.slice(0, 7) === listMonthFilter)
+    }
+    const sorted = [...rows].sort((a, b) => {
+      let cmp = 0
+      if (sortKey === 'date') cmp = a.invoiceDate.localeCompare(b.invoiceDate)
+      else if (sortKey === 'company') cmp = a.companyName.localeCompare(b.companyName, 'tr')
+      else if (sortKey === 'invoiceNumber') cmp = a.invoiceNumber.localeCompare(b.invoiceNumber, 'tr')
+      else if (sortKey === 'amountEUR') cmp = Number(a.amountEUR) - Number(b.amountEUR)
+      else if (sortKey === 'department') cmp = invoiceDepartmentLabel(a).localeCompare(invoiceDepartmentLabel(b), 'tr')
+      return sortDir === 'asc' ? cmp : -cmp
+    })
+    return sorted
+  }, [invoices, listMonthFilter, sortKey, sortDir])
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600" />
       </div>
+    )
+  }
+
+  function SortHead({ label, sortKeyName, className }: { label: string; sortKeyName: SortKey; className?: string }) {
+    const active = sortKey === sortKeyName
+    return (
+      <TableHead className={className}>
+        <button
+          onClick={() => toggleSort(sortKeyName)}
+          className="inline-flex items-center gap-1 hover:text-foreground"
+        >
+          {label}
+          {active ? (
+            sortDir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
+          ) : (
+            <ArrowUpDown className="h-3 w-3 opacity-40" />
+          )}
+        </button>
+      </TableHead>
     )
   }
 
@@ -255,87 +393,178 @@ export default function FaturalarClient() {
         </div>
       </div>
 
-      <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-800">
-        <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
-        <span>
-          EUR dönüşümü fatura tarihine göre <strong>TCMB Döviz Alış</strong> kurundan hesaplanır (sunucuda canlı
-          çekilir ve önbelleğe alınır). TCMB'nin yayın yapmadığı günlerde (hafta sonu/tatil) en yakın önceki iş
-          gününün kuru kullanılır.
-        </span>
+      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <AlertCircle className="h-3.5 w-3.5 flex-shrink-0" />
+        <span>€ karşılığı, fatura tarihindeki TCMB Döviz Alış kurundan otomatik hesaplanır.</span>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <SummaryCard label="Toplam (€)" value={formatEur(summary?.totals.toplam ?? 0)} color={NAVY} />
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex rounded-md border p-0.5 text-xs">
+          <button
+            onClick={() => setScopeMode('MONTH')}
+            className="rounded px-3 py-1.5 font-medium transition-colors"
+            style={scopeMode === 'MONTH' ? { backgroundColor: NAVY, color: 'white' } : { color: '#5F5E5A' }}
+          >
+            Aylık
+          </button>
+          <button
+            onClick={() => setScopeMode('ALL')}
+            className="rounded px-3 py-1.5 font-medium transition-colors"
+            style={scopeMode === 'ALL' ? { backgroundColor: NAVY, color: 'white' } : { color: '#5F5E5A' }}
+          >
+            Tüm Zamanlar (Kümülatif)
+          </button>
+        </div>
+        {scopeMode === 'MONTH' && summary?.months.length ? (
+          <Select value={scopeMonth} onValueChange={setScopeMonth}>
+            <SelectTrigger className="w-32">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {summary.months.map((m) => (
+                <SelectItem key={m.key} value={m.key}>
+                  {formatMonthLabel(m.key)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : null}
+      </div>
+
+      {/* Sadece Toplam ve Sistem Geliştirme Oranı — "Sistem Geliştirme" ve "Genel" kartları kaldırıldı:
+          "Genel" burada aslında Sistem Geliştirme dışındaki TÜM gerçek bölümleri (Mühendislik, Kalite vb.)
+          kapsıyordu, "atanmamış" değil — yanıltıcıydı. Doğru, bölüm bazlı kırılım aşağıdaki tabloda. */}
+      <div className="grid grid-cols-2 gap-3">
+        <SummaryCard label="Toplam (€)" value={formatEur(cardTotals.toplam)} color={NAVY} />
         <SummaryCard
-          label="Sistem Geliştirme (€)"
-          value={formatEur(summary?.totals.sistemGelistirme ?? 0)}
-          color="#0F6E56"
-        />
-        <SummaryCard label="Genel (€)" value={formatEur(summary?.totals.genel ?? 0)} color="#888780" />
-        <SummaryCard
-          label="Sistem Geliştirme Oranı"
-          value={`${(summary?.totals.oran ?? 0).toFixed(1)}%`}
+          label="Sistem Geliştirme — Ciro İçindeki Payı"
+          value={sgCiroOran == null ? '—' : formatPercent(sgCiroOran)}
           color="#993C1D"
         />
       </div>
 
       <Card>
         <CardContent className="pt-6">
-          <div className="mb-3 text-sm font-semibold text-muted-foreground">Aylık € dağılımı</div>
-          <div className="h-56 w-full">
-            <ResponsiveContainer>
-              <BarChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#EEE" />
-                <XAxis dataKey="ay" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} />
-                <Tooltip formatter={(v: number) => formatEur(v)} />
-                <Legend wrapperStyle={{ fontSize: 12 }} />
-                <Bar dataKey="Genel" stackId="a" fill="#B4B2A9" />
-                <Bar dataKey="Sistem Geliştirme" stackId="a" fill={NAVY} radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+          <div className="flex items-center gap-2">
+            <div className="text-sm font-semibold text-muted-foreground">
+              Bölüme göre dağılım {scopeMode === 'MONTH' && scopedMonthSummary ? `— ${formatMonthLabel(scopedMonthSummary.key)}` : '— Tüm Zamanlar'}
+            </div>
+            <button
+              onClick={() => downloadFile('/api/finans/faturalar/export?type=summary')}
+              className="ml-auto flex items-center gap-1 text-xs font-medium text-[#1B4F72] hover:underline"
+              title="Bu tablonun sayısal, yuvarlanmamış Excel çıktısı — KPI dosyana çekmek için"
+            >
+              <Download className="h-3 w-3" /> KPI Özet İndir
+            </button>
           </div>
+          <p className="mb-3 text-xs text-muted-foreground/80">
+            "Genel" (bölüm atanmamış faturalar) burada yok — toplamı üstteki "Toplam (€)" kartında.
+          </p>
+          {scopeMode === 'ALL' ? (
+            <div className="mb-4 h-64 w-full">
+              <ResponsiveContainer>
+                <BarChart data={chartData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#EEE" />
+                  <XAxis dataKey="ay" tick={{ fontSize: 11 }} />
+                  <YAxis tick={{ fontSize: 11 }} />
+                  <Tooltip formatter={(v: number) => formatEur(v)} />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                  {chartSeries.map((label, i) => (
+                    <Bar
+                      key={label}
+                      dataKey={label}
+                      stackId="a"
+                      fill={getDeptColor(label)}
+                      stroke="#fff"
+                      strokeWidth={2}
+                      radius={i === chartSeries.length - 1 ? [4, 4, 0, 0] : undefined}
+                    />
+                  ))}
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            // Bölüm adları uzun (ör. "İnsan Varlıkları Müdürlüğü") — dikey çubuk + eğik yazı
+            // kırpılıyordu (kart kenarından taşıp kesiliyordu). Yatay çubuğa çevrildi: isimler
+            // düz yazılıyor, kırpılma yok. dataviz skill'in de önerdiği şekil: uzun isimli
+            // kategoriler için yatay çubuk.
+            <div className="mb-4 w-full" style={{ height: Math.max(160, chartData.length * 48) }}>
+              <ResponsiveContainer>
+                <BarChart data={chartData} layout="vertical" margin={{ left: 8, right: 24, top: 4, bottom: 4 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#EEE" horizontal={false} />
+                  <XAxis type="number" tick={{ fontSize: 11 }} />
+                  <YAxis type="category" dataKey="label" tick={{ fontSize: 11 }} width={190} />
+                  <Tooltip formatter={(v: number) => formatEur(v)} />
+                  <Bar dataKey="eur" radius={[0, 4, 4, 0]} barSize={28}>
+                    {chartData.map((entry: any) => (
+                      <Cell key={entry.label} fill={getDeptColor(entry.label)} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+          {!scopedDepartments.length ? (
+            <p className="py-2 text-sm text-muted-foreground">Bu kapsamda fatura kaydı yok.</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Bölüm</TableHead>
+                  <TableHead className="text-right">Toplam (₺)</TableHead>
+                  <TableHead className="text-right">Toplam (€)</TableHead>
+                  <TableHead className="text-right">Ciro İçindeki Payı</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {scopedDepartments.map((d) => {
+                  const deptCiroOran = scopedCiro > 0 ? (d.eur / scopedCiro) * 100 : null
+                  return (
+                    <TableRow key={d.label}>
+                      <TableCell style={{ color: d.label === SG_LABEL ? NAVY : undefined }}>{d.label}</TableCell>
+                      <TableCell className="text-right">{formatTL(d.tl)}</TableCell>
+                      <TableCell className="text-right font-semibold">{formatEur(d.eur)}</TableCell>
+                      <TableCell className="text-right" style={{ color: deptCiroOran == null ? '#BBB' : NAVY }}>
+                        {deptCiroOran == null ? '—' : formatPercent(deptCiroOran)}
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
 
       <Card>
         <CardContent className="pt-6">
-          <div className="text-sm font-semibold text-muted-foreground">Ciro karşılaştırması</div>
-          <p className="mb-3 text-xs text-muted-foreground/80">Bir ay seç, o ayın cirosunu € olarak gir.</p>
+          <div className="mb-3 text-sm font-semibold text-muted-foreground">Ciro karşılaştırması</div>
           {!summary?.months.length ? (
             <p className="py-2 text-sm text-muted-foreground">Henüz fatura kaydı yok.</p>
+          ) : scopeMode === 'ALL' ? (
+            <div className="text-sm">
+              Tüm ayların ciro toplamı: <span className="font-semibold">{formatEur(totalCiro)}</span>
+              <span className="ml-2 text-xs text-muted-foreground">
+                (aylık girmek için üstten "Aylık" moduna geç)
+              </span>
+            </div>
           ) : (
             (() => {
-              const selectedSummary = summary.months.find((m) => m.key === selectedMonth) ?? summary.months[summary.months.length - 1]
-              const monthCiro = revenues[selectedSummary.key] ?? 0
-              const monthOran = monthCiro > 0 ? (selectedSummary.toplamEUR / monthCiro) * 100 : null
+              const m = scopedMonthSummary ?? summary.months[summary.months.length - 1]
+              const monthCiro = revenues[m.key] ?? 0
+              const monthOran = monthCiro > 0 ? (m.toplamEUR / monthCiro) * 100 : null
               return (
                 <div className="flex flex-wrap items-end gap-4">
                   <div className="space-y-1">
-                    <label className="text-xs text-muted-foreground">Ay</label>
-                    <Select value={selectedSummary.key} onValueChange={setSelectedMonth}>
-                      <SelectTrigger className="w-32">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {summary.months.map((m) => (
-                          <SelectItem key={m.key} value={m.key}>
-                            {formatMonthLabel(m.key)}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-1">
                     <label className="text-xs text-muted-foreground">Fatura Toplamı (€)</label>
-                    <div className="flex h-9 items-center text-sm font-semibold">{formatEur(selectedSummary.toplamEUR)}</div>
+                    <div className="flex h-9 items-center text-sm font-semibold">{formatEur(m.toplamEUR)}</div>
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs text-muted-foreground">Ciro (€)</label>
                     <Input
                       value={monthCiro > 0 ? formatThousands(String(monthCiro)) : ''}
-                      onChange={(e) => handleRevenueChange(selectedSummary.key, e.target.value.replace(/\D/g, ''))}
-                      onBlur={() => handleRevenueBlur(selectedSummary.key)}
+                      onChange={(e) => handleRevenueChange(m.key, e.target.value.replace(/\D/g, ''))}
+                      onBlur={() => handleRevenueBlur(m.key)}
                       placeholder="ciro gir"
                       inputMode="numeric"
                       className="h-9 w-40 text-right"
@@ -357,66 +586,30 @@ export default function FaturalarClient() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex items-center gap-2">
-            <div className="text-sm font-semibold text-muted-foreground">Bölüme göre dağılım</div>
-            <button
-              onClick={() => downloadFile('/api/finans/faturalar/export?type=summary')}
-              className="flex items-center gap-1 text-xs font-medium text-[#1B4F72] hover:underline"
-              title="Bu tablonun sayısal, yuvarlanmamış Excel çıktısı — KPI dosyana çekmek için"
-            >
-              <Download className="h-3 w-3" /> KPI Özet İndir
-            </button>
-          </div>
-          <p className="mb-3 text-xs text-muted-foreground/80">
-            Tüm zamanlar toplamı, bölüm bazında. Cironun Oranı, yukarıda girdiğin tüm ayların ciro toplamına göre.
-          </p>
-          {!summary?.departments.length ? (
-            <p className="py-2 text-sm text-muted-foreground">Henüz fatura kaydı yok.</p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Bölüm</TableHead>
-                  <TableHead className="text-right">Toplam (₺)</TableHead>
-                  <TableHead className="text-right">Toplam (€)</TableHead>
-                  <TableHead className="text-right">Cironun Oranı</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {summary.departments.map((d) => {
-                  const deptCiroOran = totalCiro > 0 ? (d.eur / totalCiro) * 100 : null
-                  return (
-                    <TableRow key={d.label}>
-                      <TableCell style={{ color: d.label === 'SİSTEM GELİŞTİRME MÜDÜRLÜĞÜ' ? NAVY : undefined }}>
-                        {d.label}
-                      </TableCell>
-                      <TableCell className="text-right">{formatTL(d.tl)}</TableCell>
-                      <TableCell className="text-right font-semibold">{formatEur(d.eur)}</TableCell>
-                      <TableCell className="text-right" style={{ color: deptCiroOran == null ? '#BBB' : NAVY }}>
-                        {deptCiroOran == null ? '—' : formatPercent(deptCiroOran)}
-                      </TableCell>
-                    </TableRow>
-                  )
-                })}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
-
       <div className="flex flex-wrap items-center gap-2">
         <Select value={filter} onValueChange={setFilter}>
           <SelectTrigger className="w-56">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="ALL">Tümü</SelectItem>
+            <SelectItem value="ALL">Tüm Bölümler</SelectItem>
             <SelectItem value="GENEL">Genel</SelectItem>
             {departments.map((d) => (
               <SelectItem key={d.id} value={d.id}>
                 {d.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={listMonthFilter} onValueChange={setListMonthFilter}>
+          <SelectTrigger className="w-32">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="ALL">Tüm Aylar</SelectItem>
+            {listMonths.map((key) => (
+              <SelectItem key={key} value={key}>
+                {formatMonthLabel(key)}
               </SelectItem>
             ))}
           </SelectContent>
@@ -436,12 +629,12 @@ export default function FaturalarClient() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Tarih</TableHead>
-              <TableHead>Firma</TableHead>
-              <TableHead>Fatura No</TableHead>
+              <SortHead label="Tarih" sortKeyName="date" />
+              <SortHead label="Firma" sortKeyName="company" />
+              <SortHead label="Fatura No" sortKeyName="invoiceNumber" />
               <TableHead className="text-right">Tutar</TableHead>
-              <TableHead className="text-right">€ Karşılığı</TableHead>
-              <TableHead>Bölüm</TableHead>
+              <SortHead label="€ Karşılığı" sortKeyName="amountEUR" className="text-right" />
+              <SortHead label="Bölüm" sortKeyName="department" />
               <TableHead className="w-10" />
             </TableRow>
           </TableHeader>
@@ -452,16 +645,16 @@ export default function FaturalarClient() {
                   Yükleniyor...
                 </TableCell>
               </TableRow>
-            ) : invoices.length === 0 ? (
+            ) : displayedInvoices.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={7} className="text-center text-muted-foreground py-6">
                   Kayıt yok
                 </TableCell>
               </TableRow>
             ) : (
-              invoices.map((inv) => (
+              displayedInvoices.map((inv) => (
                 <TableRow key={inv.id}>
-                  <TableCell>{inv.invoiceDate.slice(0, 10)}</TableCell>
+                  <TableCell>{formatDateTR(inv.invoiceDate)}</TableCell>
                   <TableCell className="max-w-[220px] truncate" title={inv.companyName}>
                     {inv.companyName}
                   </TableCell>

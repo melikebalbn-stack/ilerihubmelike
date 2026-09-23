@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
     // computeCalibrationStatus helper'ında (çift yönlü) — burada gerekmez.
     const now = new Date()
 
-    const devicesToUpdate: { id: string; status: CalibrationStatus }[] = []
+    const devicesToUpdate: { id: string; status: CalibrationStatus; updatedAt: Date }[] = []
 
     for (const device of devices) {
       // Manuel override edilen cihazları atla (IN_PROCESS, OUT_OF_ORDER)
@@ -75,7 +75,7 @@ export async function GET(request: NextRequest) {
       newStatus = computeCalibrationStatus(refDate, now)
 
       if (newStatus !== device.status) {
-        devicesToUpdate.push({ id: device.id, status: newStatus })
+        devicesToUpdate.push({ id: device.id, status: newStatus, updatedAt: device.updatedAt })
         device.status = newStatus
       }
     }
@@ -86,7 +86,12 @@ export async function GET(request: NextRequest) {
         devicesToUpdate.map((update) =>
           prisma.calibrationDevice.update({
             where: { id: update.id },
-            data: { status: update.status },
+            // updatedAt AÇIKÇA korunur: bu güncelleme SİSTEM kaynaklı (vadesi gelen
+            // cihazın durumu her listelemede yeniden hesaplanıyor). @updatedAt serbest
+            // bırakılırsa "son değişiklik tarihi" insan düzenlemesiymiş gibi ileri
+            // kayıyor ve izlenebilirlik kaydı yanıltıcı oluyordu (22.09 tespiti:
+            // 194 "değiştirilmiş" cihazın bir kısmı aslında bu senkron).
+            data: { status: update.status, updatedAt: update.updatedAt },
           })
         )
       )

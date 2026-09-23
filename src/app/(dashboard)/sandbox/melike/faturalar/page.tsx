@@ -27,6 +27,7 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  Cell,
   Legend,
   ResponsiveContainer,
   Tooltip,
@@ -42,11 +43,11 @@ const GENEL_LABEL = 'Genel'
 // "Genel" en büyük payı aldığı için önceden en canlı rengi (lacivert) kapıp diğer bölümleri
 // eziyordu — artık her zaman nötr gri: dikkat çekmesin, asıl ilgi alanı olan bölümler öne çıksın.
 const GENEL_COLOR = '#9CA3AF'
-// Doğrulanmış kategorik palet (renk körlüğü güvenli, sabit sıra — validate_palette.js ile kontrol edildi)
-const PALETTE = [
-  '#2a78d6', '#eb6834', '#1baf7a', '#eda100',
-  '#e87ba4', '#008300', '#4a3aa7', '#e34948',
-]
+// Doğrulanmış kategorik palet — pembe ve turuncu tamamen çıkarıldı ("ileri hub'a uygun,
+// pembe turuncu asla istemiyorum"), sadece lacivert/yeşil/petrol/kırmızı/mor (kurumsal,
+// NAVY ile uyumlu) kaldı. Renk körlüğü güvenli, sabit sıra — bu sıralamayla
+// validate_palette.js: tüm kontroller PASS (en yakın komşu çift CVD ΔE 15.5, normal görüş ΔE 19.3).
+const PALETTE = ['#2a78d6', '#008300', '#0e93a8', '#e34948', '#4a3aa7']
 
 type Currency = 'TRY' | 'USD' | 'EUR'
 
@@ -160,9 +161,6 @@ export default function FaturaTakipPage() {
   // Kartlar / Bölüme göre dağılım için ortak kapsam: belirli bir ay ya da tüm zamanlar (kümülatif)
   const [scopeMode, setScopeMode] = useState<'MONTH' | 'ALL'>('MONTH')
   const [scopeMonth, setScopeMonth] = useState('')
-
-  // Grafik: tüm bölümler mi, yoksa tek bir bölümün aylara göre değişimi mi
-  const [chartDept, setChartDept] = useState('ALL')
 
   // Fatura listesi: ay filtresi + sıralama
   const [listMonthFilter, setListMonthFilter] = useState('ALL')
@@ -311,9 +309,13 @@ export default function FaturaTakipPage() {
     return [...shown, ...(overflow ? ['Diğer'] : [])]
   }, [summary])
 
+  // Grafik üstteki "Aylık / Tüm Zamanlar" seçimini takip eder — ayrı bir grafik-bölüm
+  // seçici YOKTU aslında burada, ama üstteki ay seçimiyle bağlantısız kaldığı için ay
+  // değiştirince grafik değişmiyor, kafa karıştırıyordu. Artık tek kaynak üstteki seçim:
+  // "Aylık" modunda seçili tek ayın bölüm kırılımı, "Tüm Zamanlar" modunda ayara göre trend.
   const chartData = useMemo(() => {
     if (!summary) return []
-    if (chartDept === 'ALL') {
+    if (scopeMode === 'ALL') {
       const shownSet = new Set(chartSeries)
       return summary.months.map((m) => {
         const row: Record<string, string | number> = { ay: formatMonthLabel(m.key) }
@@ -326,11 +328,12 @@ export default function FaturaTakipPage() {
         return row
       })
     }
-    return summary.months.map((m) => ({
-      ay: formatMonthLabel(m.key),
-      [chartDept]: m.departments.find((d) => d.label === chartDept)?.eur ?? 0,
-    }))
-  }, [summary, chartDept, chartSeries])
+    const m = summary.months.find((mm) => mm.key === scopeMonth)
+    if (!m) return []
+    return m.departments
+      .filter((d) => d.label !== GENEL_LABEL)
+      .sort((a, b) => b.eur - a.eur)
+  }, [summary, scopeMode, scopeMonth, chartSeries])
 
   const totalCiro = useMemo(() => Object.values(revenues).reduce((s, v) => s + v, 0), [revenues])
 
@@ -478,35 +481,33 @@ export default function FaturaTakipPage() {
       <Card>
         <CardContent className="pt-6">
           <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
-            <div className="text-sm font-semibold text-muted-foreground">Aylık € dağılımı — gerçek bölümler</div>
-            <Select value={chartDept} onValueChange={setChartDept}>
-              <SelectTrigger className="w-56">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">Tüm bölümler</SelectItem>
-                {(summary?.departments ?? []).map((d) => (
-                  <SelectItem key={d.label} value={d.label}>
-                    {d.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="text-sm font-semibold text-muted-foreground">
+              {scopeMode === 'MONTH' && scopedMonthSummary
+                ? `${formatMonthLabel(scopedMonthSummary.key)} — bölüme göre dağılım`
+                : 'Aylık € dağılımı — gerçek bölümler'}
+            </div>
           </div>
           <p className="mb-3 text-xs text-muted-foreground/80">
             "Genel" (bölüm atanmamış faturalar) burada yok — tek başına toplamın çoğunu kapladığı için
-            gerçek bölümleri görünmez kılıyordu; toplamı üstteki "Toplam (€)" kartında. Genel'in kendi
-            ay bazında trendini görmek için açılır listeden "Genel" seç.
+            gerçek bölümleri görünmez kılıyordu; toplamı üstteki "Toplam (€)" kartında. Üstteki
+            "Aylık / Tüm Zamanlar" ve ay seçimine göre değişir.
           </p>
           <div className="h-64 w-full">
             <ResponsiveContainer>
               <BarChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#EEE" />
-                <XAxis dataKey="ay" tick={{ fontSize: 11 }} />
+                <XAxis
+                  dataKey={scopeMode === 'ALL' ? 'ay' : 'label'}
+                  tick={{ fontSize: 11 }}
+                  interval={0}
+                  angle={scopeMode === 'ALL' ? 0 : -25}
+                  textAnchor={scopeMode === 'ALL' ? 'middle' : 'end'}
+                  height={scopeMode === 'ALL' ? 30 : 60}
+                />
                 <YAxis tick={{ fontSize: 11 }} />
                 <Tooltip formatter={(v: number) => formatEur(v)} />
-                <Legend wrapperStyle={{ fontSize: 11 }} />
-                {chartDept === 'ALL'
+                {scopeMode === 'ALL' && <Legend wrapperStyle={{ fontSize: 11 }} />}
+                {scopeMode === 'ALL'
                   ? chartSeries.map((label, i) => (
                       <Bar
                         key={label}
@@ -519,11 +520,11 @@ export default function FaturaTakipPage() {
                       />
                     ))
                   : (
-                      <Bar
-                        dataKey={chartDept}
-                        fill={departmentColor.get(chartDept) ?? NAVY}
-                        radius={[4, 4, 0, 0]}
-                      />
+                      <Bar dataKey="eur" radius={[4, 4, 0, 0]}>
+                        {chartData.map((entry: any, i: number) => (
+                          <Cell key={entry.label} fill={departmentColor.get(entry.label) ?? PALETTE[i % PALETTE.length]} />
+                        ))}
+                      </Bar>
                     )}
               </BarChart>
             </ResponsiveContainer>

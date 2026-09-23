@@ -62,6 +62,7 @@ export function InvoiceFormDialog({ open, onOpenChange, onSaved, invoice }: Prop
   const [departments, setDepartments] = useState<Department[]>([])
   const [multiMode, setMultiMode] = useState(false)
   const [splitPercentages, setSplitPercentages] = useState<Record<string, string>>({})
+  const [deptSearch, setDeptSearch] = useState('')
 
   useEffect(() => {
     if (!open) {
@@ -70,6 +71,7 @@ export function InvoiceFormDialog({ open, onOpenChange, onSaved, invoice }: Prop
       setPreview(null)
       setMultiMode(false)
       setSplitPercentages({})
+      setDeptSearch('')
       return
     }
     fetch('/api/sandbox/melike/faturalar/departments')
@@ -197,7 +199,7 @@ export function InvoiceFormDialog({ open, onOpenChange, onSaved, invoice }: Prop
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-[#1B4F72]">{isEdit ? 'Faturayı Düzenle' : 'Yeni Fatura'}</DialogTitle>
         </DialogHeader>
@@ -301,20 +303,20 @@ export function InvoiceFormDialog({ open, onOpenChange, onSaved, invoice }: Prop
               </Select>
             ) : (
               <div className="space-y-2 rounded-md border p-2.5">
-                {[{ id: GENEL_KEY, name: 'Genel' }, ...departments].map((d) => {
-                  const checked = d.id in splitPercentages
+                {(() => {
+                  const genelChecked = GENEL_KEY in splitPercentages
                   return (
-                    <div key={d.id} className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 border-b pb-2">
                       <Checkbox
-                        checked={checked}
-                        onCheckedChange={(c) => toggleSplitDept(d.id, c === true)}
+                        checked={genelChecked}
+                        onCheckedChange={(c) => toggleSplitDept(GENEL_KEY, c === true)}
                       />
-                      <span className="flex-1 text-sm">{d.name}</span>
+                      <span className="flex-1 text-sm font-medium">Genel</span>
                       <Input
-                        disabled={!checked}
-                        value={splitPercentages[d.id] ?? ''}
+                        disabled={!genelChecked}
+                        value={splitPercentages[GENEL_KEY] ?? ''}
                         onChange={(e) =>
-                          setSplitPercentages((prev) => ({ ...prev, [d.id]: e.target.value }))
+                          setSplitPercentages((prev) => ({ ...prev, [GENEL_KEY]: e.target.value }))
                         }
                         placeholder="%"
                         inputMode="decimal"
@@ -322,7 +324,43 @@ export function InvoiceFormDialog({ open, onOpenChange, onSaved, invoice }: Prop
                       />
                     </div>
                   )
-                })}
+                })()}
+                <Input
+                  value={deptSearch}
+                  onChange={(e) => setDeptSearch(e.target.value)}
+                  placeholder={`Bölüm ara... (${departments.length} bölüm)`}
+                  className="h-8 text-xs"
+                />
+                <div className="max-h-52 space-y-2 overflow-y-auto pr-1">
+                  {departments
+                    .filter(
+                      (d) =>
+                        d.id in splitPercentages ||
+                        d.name.toLocaleLowerCase('tr').includes(deptSearch.toLocaleLowerCase('tr'))
+                    )
+                    .map((d) => {
+                      const checked = d.id in splitPercentages
+                      return (
+                        <div key={d.id} className="flex items-center gap-2">
+                          <Checkbox
+                            checked={checked}
+                            onCheckedChange={(c) => toggleSplitDept(d.id, c === true)}
+                          />
+                          <span className="flex-1 text-sm">{d.name}</span>
+                          <Input
+                            disabled={!checked}
+                            value={splitPercentages[d.id] ?? ''}
+                            onChange={(e) =>
+                              setSplitPercentages((prev) => ({ ...prev, [d.id]: e.target.value }))
+                            }
+                            placeholder="%"
+                            inputMode="decimal"
+                            className="h-8 w-20 text-right"
+                          />
+                        </div>
+                      )
+                    })}
+                </div>
                 <div
                   className="pt-1 text-right text-xs font-medium"
                   style={{ color: splitTotal > 100.5 || splitTotal <= 0 ? '#C0392B' : '#0F6E56' }}

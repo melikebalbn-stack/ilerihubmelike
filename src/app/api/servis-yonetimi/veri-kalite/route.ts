@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/auth/require-permission'
 import { veriKaliteRaporuGetir, type VeriKaliteRaporSatiri } from '@/lib/servis-yonetimi/veri-kalite'
+import { raporSiraliOlustur } from './_rapor-duzeni'
 
 // Yanıt boyutu sınırı — FAZ 1C göçü henüz koşulmadığı için şu an hiçbir
 // personelin servis ataması yok; bu durumda madde 1 tek başına ~1400 satır
@@ -16,58 +17,7 @@ import { veriKaliteRaporuGetir, type VeriKaliteRaporSatiri } from '@/lib/servis-
 // tanımlar, bkz. route.test.ts).
 const KAYIT_LIMIT = 200
 
-// MASTER madde 43'ün 14 anomalisinden salt okunur tespiti YAPILAMAYAN
-// üçü (8 vardiya, 10 adres, 12 kapasite — bkz. keşif raporu B.8/B.10/F)
-// burada "Bu Ay Ne Değişti?" API'sindeki kapsamDisi/not deseniyle
-// placeholder olarak döner — hata fırlatmaz, ekran normal bir kart
-// olarak render edebilir.
-type VeriKaliteKapsamDisiSatiri = {
-  kod: string
-  baslik: string
-  adet: 0
-  kayitlar: never[]
-  kirpildi: false
-  kapsamDisi: true
-  not: string
-}
 type VeriKaliteKirpilmisSatiri = VeriKaliteRaporSatiri & { kirpildi: boolean }
-type VeriKaliteApiSatiri = VeriKaliteKirpilmisSatiri | VeriKaliteKapsamDisiSatiri
-
-const VARDIYA_UYUMSUZLUGU: VeriKaliteKapsamDisiSatiri = {
-  kod: 'vardiya-uyumsuzlugu',
-  baslik: 'Vardiya uyumsuzluğu',
-  adet: 0,
-  kayitlar: [],
-  kirpildi: false,
-  kapsamDisi: true,
-  not:
-    "Personnel'de vardiya alanı yok, ServisSeferDilimi.grupKodu IproVardiya'ya kasıtlı olarak bağlı değil — " +
-    'güvenilir bir eşleştirme kurulamıyor (bkz. keşif raporu madde B.8).',
-}
-
-const ADRES_DEGISMIS: VeriKaliteKapsamDisiSatiri = {
-  kod: 'adres-degismis-servis-yeniden-degerlendirilmemis',
-  baslik: 'Adres değişmiş / servis yeniden değerlendirilmemiş',
-  adet: 0,
-  kayitlar: [],
-  kirpildi: false,
-  kapsamDisi: true,
-  not:
-    "Personnel için izlenebilir bir adres değişikliği kaynağı (audit/tarihçe) yok — madde 31'deki aynı açık " +
-    'sorun (bkz. keşif raporu madde B.10).',
-}
-
-const KAPASITE_ASIMI: VeriKaliteKapsamDisiSatiri = {
-  kod: 'kapasite-asimi',
-  baslik: 'Kapasite aşımı',
-  adet: 0,
-  kayitlar: [],
-  kirpildi: false,
-  kapsamDisi: true,
-  not:
-    "Kapasite motoru (servisKapasiteOzetiGetir) henüz main'e girmedi — bu kontrol motor main'e girdiğinde " +
-    'eklenecek (TODO, madde 43/12).',
-}
 
 // adet HER ZAMAN kırpılmamış gerçek toplamı taşır (veri-kalite.ts'ten
 // olduğu gibi geçer) — yalnız kayitlar dizisi KAYIT_LIMIT'e kırpılır.
@@ -80,45 +30,20 @@ function kirp(satir: VeriKaliteRaporSatiri): VeriKaliteKirpilmisSatiri {
   }
 }
 
-// Rapor dizisini MASTER'ın 1-14 sırasına göre dizer (kontrat: her kod
-// yalnız bir kez, eksik kod = kod/route arasında bozulmuş bir sözleşme —
-// bilerek fail-loud, salt tespitin "sessiz hata yutma" prensibinden
-// FARKLI: bu bir programlama hatası, veri anomalisi değil).
-function raporSiraliOlustur(rapor: VeriKaliteRaporSatiri[]): VeriKaliteApiSatiri[] {
-  const byKod = new Map(rapor.map(r => [r.kod, r]))
-  const al = (kod: string): VeriKaliteKirpilmisSatiri => {
-    const satir = byKod.get(kod)
-    if (!satir) throw new Error(`Veri kalite raporunda beklenen kontrol eksik: ${kod}`)
-    return kirp(satir)
-  }
-
-  return [
-    al('aktif-personel-servis-yok'),
-    al('pasif-personel-servis-aktif'),
-    al('mukerrer-aktif-servis'),
-    al('servis-var-arac-yok'),
-    al('servis-var-sofor-yok'),
-    al('guzergah-sefer-dilimi-tanimsiz'),
-    al('kapasitesi-eksik-arac'),
-    al('koordinatsiz-durak'),
-    VARDIYA_UYUMSUZLUGU,
-    al('cakisan-atamalar'),
-    ADRES_DEGISMIS,
-    al('suresi-bitmis-gecici-atama'),
-    KAPASITE_ASIMI,
-    al('tarih-cakismasi-arac-sofor'),
-    al('aktif-arac-pasif-firma'),
-    al('dis-firma-soforu-firmasiz'),
-  ]
-}
-
 export async function GET() {
   const { error } = await requirePermission('servis.view')
   if (error) return error
 
   try {
     const rapor = await veriKaliteRaporuGetir()
-    return NextResponse.json({ ok: true, data: raporSiraliOlustur(rapor) })
+    // Sıralama/yer tutucular ortak dosyada (kırpmasız); KAYIT_LIMIT kırpması
+    // EKRANA ÖZGÜ olduğu için burada, düzenin ÇIKTISI üzerinde uygulanır.
+    // Yer tutucular kirp()'ten GEÇMEZ — eskiden de geçmiyordu (al() yalnız
+    // gerçek kontrolleri sarıyordu), çıktı birebir korunur.
+    const data = raporSiraliOlustur(rapor).map(s =>
+      'kapsamDisi' in s ? s : kirp(s),
+    )
+    return NextResponse.json({ ok: true, data })
   } catch (err) {
     console.error('Veri kalite raporu alma hatası:', err)
     return NextResponse.json({ ok: false, message: 'Veri kalite raporu alınırken hata oluştu.' }, { status: 500 })

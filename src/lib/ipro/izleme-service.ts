@@ -119,6 +119,8 @@ export async function panoData(opts: { oee?: boolean } = {}): Promise<PanoData> 
         ifsPartDescription: true,
         ifsMachRunFactor: true, // canlı OEE performans IFS fallback'i (ölçülen ideal güvenilir değilse)
         ifsRunTimeCode: true,
+        kaynak: true, // MAS kaynaklı işte canlı OEE numaratörü uretimAdet'ten (ham PLC deltası değil)
+        uretimAdet: true,
         baslatildiAt: true,
       },
     }),

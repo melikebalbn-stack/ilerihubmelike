@@ -42,6 +42,10 @@ export type CanliOeeAcikIs = {
   // Ölçülen güvenilir ideal yoksa performans IFS planlı çevriminden hesaplanır (kapanış motoruyla aynı).
   ifsMachRunFactor?: number | null
   ifsRunTimeCode?: string | null
+  // MAS kaynaklı işte üretilen adet doğrudan MAS Amount'tan (uretimAdet = PLC absolute × CounterMultiplier);
+  // canlı OEE numaratörü ham PLC deltası yerine bunu kullanır (aksi halde çarpanı olan tezgahta yarı sayar).
+  kaynak?: string | null
+  uretimAdet?: number | null
 }
 
 /**
@@ -98,10 +102,14 @@ export async function tezgahlarinCanliOee(
       if (!baslar.length) return
       const bas = new Date(Math.min(...baslar.map((d) => d.getTime())))
       const cokluIs = isler.length > 1
-      const [{ toplam: uretilen }, durusSaniye] = await Promise.all([
-        isPenceresiDeltaToplami(prisma, tezgahKod, bas, simdi),
-        durusSaniyeCanli(prisma, tezgahId, bas, simdi),
-      ])
+      // Numaratör (üretilen): MAS kaynaklı işlerde log.uretimAdet (MAS Amount, çarpan dahil) — canlı OEE
+      // ham PLC deltası kullanınca çarpanı (2 gözlü kalıp vb.) olan tezgahta yarı sayıyordu. Kiosk/terminal
+      // (MAS olmayan) işlerde MEVCUT davranış: iş penceresi PLC Σdelta.
+      const masHepsi = isler.every((i) => i.kaynak === 'MAS' && i.uretimAdet != null)
+      const durusSaniye = await durusSaniyeCanli(prisma, tezgahId, bas, simdi)
+      const uretilen = masHepsi
+        ? isler.reduce((a, i) => a + (i.uretimAdet ?? 0), 0)
+        : (await isPenceresiDeltaToplami(prisma, tezgahKod, bas, simdi)).toplam
       const planliSaniye = planliSaniyeHesapla(bas, simdi, vardiyalar, tatilMap)
       // İdeal çevrim yalnız tek işte anlamlı (performance oradan gelir); çoklu işte hiç kullanılmaz.
       const ideal = !cokluIs && isler[0].ifsPartNo ? idealByKey.get(`${tezgahKod}|${isler[0].ifsPartNo}`) : undefined

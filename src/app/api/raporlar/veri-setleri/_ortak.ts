@@ -1,3 +1,4 @@
+import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { Prisma } from '@/generated/prisma'
 import { tanimDogrula } from '@/lib/rapor/veri-seti'
@@ -26,6 +27,20 @@ export const VeriSetiGovde = z.object({
   onbellekSn: z.number().int().min(0).max(86400).optional(),
   aktif: z.boolean().optional(),
 })
+
+/**
+ * Gövde çözümleme + doğrulama — POST (oluştur) ve PUT (güncelle) AYNI yolu kullanır.
+ * Hata varsa hazır NextResponse döner; başarıda doğrulanmış gövde.
+ */
+export async function veriSetiGovdesi(req: Request): Promise<{ veri: z.infer<typeof VeriSetiGovde>; hata?: undefined } | { veri?: undefined; hata: NextResponse }> {
+  const govde = VeriSetiGovde.safeParse(await req.json().catch(() => null))
+  if (!govde.success) {
+    return { hata: NextResponse.json({ error: govde.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ') }, { status: 400 }) }
+  }
+  const hatalar = tanimHatalari(govde.data.tanim as VeriSetiTanim)
+  if (hatalar.length) return { hata: NextResponse.json({ error: 'Tanım geçersiz', hatalar }, { status: 400 }) }
+  return { veri: govde.data }
+}
 
 /** zod + motor doğrulaması; hata listesi (boş = geçerli). */
 export function tanimHatalari(tanim: VeriSetiTanim): string[] {

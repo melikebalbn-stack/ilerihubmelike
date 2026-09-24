@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Clock, Database, FileBarChart2, FileSearch, LayoutGrid, List, Loader2, Plus, Search, Star, X } from 'lucide-react'
 import { RozetLink } from './rozet-link'
+import { apiGet, hataMetni } from './api'
 import { TUR_ADI } from '@/lib/rapor/tur-adlari'
 
 const NAVY = '#1B4F72'
@@ -59,9 +60,9 @@ export default function RaporListeClient() {
   const [favoriler, setFavoriler] = useState<Set<string>>(new Set())
 
   useEffect(() => {
-    fetch('/api/raporlar')
-      .then(async (r) => { const d = await r.json(); if (!r.ok) throw new Error(d.error ?? `HTTP ${r.status}`); setCevap(d) })
-      .catch((e: Error) => { setHata(e.message); setCevap({ sablonlar: [], tasarlayabilir: false, sonCalistirdiklarim: [], kategoriler: [], kullaniciId: '' }) })
+    apiGet<ListeCevabi>('/api/raporlar')
+      .then((d) => setCevap(d))
+      .catch((e) => { setHata(hataMetni(e)); setCevap({ sablonlar: [], tasarlayabilir: false, sonCalistirdiklarim: [], kategoriler: [], kullaniciId: '' }) })
     setGorunum(depoOku<'kart' | 'liste'>('raporlar.gorunum', 'kart'))
   }, [])
   // Favoriler kullanıcı bazlı anahtarda — kullanıcı kimliği listeyle gelir.

@@ -19,6 +19,7 @@ import { listedenTuval } from '@/lib/rapor/tuval-render'
 import { veriSetiParametreleri } from '@/lib/rapor/sablon-dogrula'
 import type { EtkilesimliIcerik, SablonIcerik, SablonParametre, VeriSetiTanim } from '@/lib/rapor/tipler'
 import { GeriRozet } from '../../../_components/rozet-link'
+import { apiGet, apiGonder, hataListesi, hataMetni } from '../../../_components/api'
 import { TUR_ACIKLAMA, TUR_ADI } from '@/lib/rapor/tur-adlari'
 
 const NAVY = '#1B4F72'
@@ -41,7 +42,9 @@ export default function YeniSablonSecim({ veriSetleri, kategoriler, belgeTasarim
 
   useEffect(() => {
     if (!veriSetiId) { setAlanlar(null); setTanim(null); return }
-    fetch(`/api/raporlar/veri-setleri/${veriSetiId}`).then(async (r) => { const d = await r.json(); if (!r.ok) throw new Error(d.error ?? `HTTP ${r.status}`); setAlanlar(d.alanlar ?? []); setTanim(d.veriSeti?.tanim ?? null) }).catch((e: Error) => setHata(e.message))
+    apiGet<{ alanlar?: { ad: string; veriTipi: string; etiket: string | null }[]; veriSeti?: { tanim?: VeriSetiTanim } }>(`/api/raporlar/veri-setleri/${veriSetiId}`)
+      .then((d) => { setAlanlar(d.alanlar ?? []); setTanim(d.veriSeti?.tanim ?? null) })
+      .catch((e) => setHata(hataMetni(e)))
   }, [veriSetiId])
 
   async function olustur() {
@@ -51,12 +54,10 @@ export default function YeniSablonSecim({ veriSetleri, kategoriler, belgeTasarim
       // Veri setindeki {p.x} yer tutucuları otomatik parametre olur (ad sezgisi: tarih/başlangıç/bitiş → tarih).
       const parametreler: SablonParametre[] = veriSetiParametreleri(tanim).map((p) => ({ ad: p, tip: /tarih|baslangic|bitis|date/i.test(p) ? 'tarih' : 'metin', etiket: p, zorunlu: true }))
       const icerik: EtkilesimliIcerik = { tur: 'etkilesimli', baslik: ad.trim(), kategori: kategori.trim() || undefined, parametreler, gorunum: varsayilanGorunum(alanlar) }
-      const r = await fetch('/api/raporlar/sablonlar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kod, ad, aciklama: '', veriSetiId, icerik, durum: 'TASLAK' }) })
-      const d = await r.json()
-      if (!r.ok) throw new Error([d.error, ...(d.hatalar ?? [])].filter(Boolean).join(' · '))
+      const d = await apiGonder<{ sablon: { id: string } }>('/api/raporlar/sablonlar', 'POST', { kod, ad, aciklama: '', veriSetiId, icerik, durum: 'TASLAK' })
       // Ön-ek olmayan hedef → soft-nav güvenli; yine de tam yükleme (yeni sayfa server verisi).
       window.location.href = `/raporlar/${d.sablon.id}`
-    } catch (e) { setHata(e instanceof Error ? e.message : String(e)); setOlusturuluyor(false) }
+    } catch (e) { setHata([hataMetni(e), ...hataListesi(e)].join(' · ')); setOlusturuluyor(false) }
   }
 
   /** Tuval yerleşimli Hazır Rapor: ilk 5 alan Detay bandına, başlıklar Sayfa Başlığına. */
@@ -80,11 +81,9 @@ export default function YeniSablonSecim({ veriSetleri, kategoriler, belgeTasarim
         kolonlar: secilen.map((a) => ({ alan: a.ad, baslik: a.etiket ?? a.ad })), // liste görünümü de geçerli kalsın
         yerlesim: 'tuval', tuval,
       }
-      const r = await fetch('/api/raporlar/sablonlar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kod, ad, aciklama: '', veriSetiId, icerik, durum: 'TASLAK' }) })
-      const d = await r.json()
-      if (!r.ok) throw new Error([d.error, ...(d.hatalar ?? [])].filter(Boolean).join(' · '))
+      const d = await apiGonder<{ sablon: { id: string } }>('/api/raporlar/sablonlar', 'POST', { kod, ad, aciklama: '', veriSetiId, icerik, durum: 'TASLAK' })
       window.location.href = `/raporlar/tasarim/${d.sablon.id}`
-    } catch (e) { setHata(e instanceof Error ? e.message : String(e)); setOlusturuluyor(false) }
+    } catch (e) { setHata([hataMetni(e), ...hataListesi(e)].join(' · ')); setOlusturuluyor(false) }
   }
 
   if (tur === 'belge' && belgeYerlesim === 'liste') return <>{belgeTasarim}</>

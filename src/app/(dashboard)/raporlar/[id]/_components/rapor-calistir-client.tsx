@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { DateField } from '@/components/ui/date-field'
 import { FileBarChart2, FileSpreadsheet, Loader2, PencilRuler, Play, Printer } from 'lucide-react'
 import { GeriRozet, RozetLink } from '../../_components/rozet-link'
+import { apiGonder, apiYanit, hataListesi, hataMetni } from '../../_components/api'
 import type { SablonParametre } from '@/lib/rapor/tipler'
 
 const NAVY = '#1B4F72'
@@ -36,16 +37,11 @@ export default function RaporCalistirClient({ sablon, parametreler, tasarlayabil
     setHata(null)
     setCalisiyor('EKRAN')
     try {
-      const r = await fetch(`/api/raporlar/${sablon.id}/calistir`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ parametreler: degerler, cikti: 'EKRAN' }),
-      })
-      const d = await r.json()
-      if (!r.ok) throw new Error(d.error ?? `HTTP ${r.status}`)
+      const d = await apiGonder<Sonuc>(`/api/raporlar/${sablon.id}/calistir`, 'POST', { parametreler: degerler, cikti: 'EKRAN' })
       setSonuc(d)
     } catch (e) {
       setSonuc(null)
-      setHata(e instanceof Error ? e.message : String(e))
+      setHata([hataMetni(e), ...hataListesi(e)].join(' · '))
     } finally {
       setCalisiyor(null)
     }
@@ -55,14 +51,10 @@ export default function RaporCalistirClient({ sablon, parametreler, tasarlayabil
     setHata(null)
     setCalisiyor('XLSX')
     try {
-      const r = await fetch(`/api/raporlar/${sablon.id}/calistir`, {
+      const r = await apiYanit(`/api/raporlar/${sablon.id}/calistir`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ parametreler: degerler, cikti: 'XLSX' }),
       })
-      if (!r.ok) {
-        const d = await r.json().catch(() => ({}))
-        throw new Error(d.error ?? `HTTP ${r.status}`)
-      }
       const blob = await r.blob()
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
@@ -73,7 +65,7 @@ export default function RaporCalistirClient({ sablon, parametreler, tasarlayabil
       a.remove()
       URL.revokeObjectURL(url)
     } catch (e) {
-      setHata(e instanceof Error ? e.message : String(e))
+      setHata(hataMetni(e))
     } finally {
       setCalisiyor(null)
     }

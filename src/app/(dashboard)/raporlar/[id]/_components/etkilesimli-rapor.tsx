@@ -25,6 +25,7 @@ import { gorunumHtml } from '@/lib/rapor/gorunum-html'
 import type { EtkilesimliIcerik, Gorunum, GorunumKolon, GorunumToplamFn, SablonParametre } from '@/lib/rapor/tipler'
 import type { VeriSetiAlan } from '@/lib/rapor/veri-seti-alanlar'
 import { GeriRozet, RozetLink } from '../../_components/rozet-link'
+import { apiGonder, apiYanit, hataListesi, hataMetni } from '../../_components/api'
 import { TUR_ADI } from '@/lib/rapor/tur-adlari'
 
 const NAVY = '#1B4F72'
@@ -147,13 +148,11 @@ export default function EtkilesimliRapor({ sablon, icerik, alanlar, tasarlayabil
   const calistir = useCallback(async () => {
     setYukleniyor(true); setHata(null)
     try {
-      const r = await fetch(`/api/raporlar/${sablon.id}/veri`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ parametreler: paramDegerleri }) })
-      const d = await r.json()
-      if (!r.ok) throw new Error(d.error ?? `HTTP ${r.status}`)
+      const d = await apiGonder<{ satirlar: Record<string, unknown>[]; sureMs: number; toplamSatir: number; uyari?: string }>(`/api/raporlar/${sablon.id}/veri`, 'POST', { parametreler: paramDegerleri })
       setVeri(d.satirlar)
       setVeriBilgi({ sureMs: d.sureMs, toplamSatir: d.toplamSatir, uyari: d.uyari })
       setKapali(new Set()); setAcilanSegmentler(new Set())
-    } catch (e) { setVeri(null); setHata(e instanceof Error ? e.message : String(e)) }
+    } catch (e) { setVeri(null); setHata(hataMetni(e)) }
     finally { setYukleniyor(false) }
   }, [sablon.id, paramDegerleri])
 
@@ -232,24 +231,18 @@ export default function EtkilesimliRapor({ sablon, icerik, alanlar, tasarlayabil
     if (!istek || aiCalisiyor) return
     setAiCalisiyor(true)
     try {
-      const r = await fetch(`/api/raporlar/${sablon.id}/ai`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ istek, mevcutGorunum: gorunum, ornekDegerler }),
-      })
-      const d = await r.json()
-      if (!r.ok) throw new Error(d.error ?? `HTTP ${r.status}`)
+      const d = await apiGonder<{ anlasilmadi?: boolean; gorunum?: Gorunum; aciklama?: string }>(`/api/raporlar/${sablon.id}/ai`, 'POST', { istek, mevcutGorunum: gorunum, ornekDegerler })
       if (d.anlasilmadi || !d.gorunum) {
         setAiSerit({ aciklama: d.aciklama ?? 'İstek anlaşılamadı.', uyari: true })
         return
       }
       setAiGecmis((y) => [...y, gorunum])
-      setGorunum(gorunumuHizala(d.gorunum as Gorunum, alanlar))
+      setGorunum(gorunumuHizala(d.gorunum, alanlar))
       setKapali(new Set()); setAcilanSegmentler(new Set())
       setAiSerit({ aciklama: d.aciklama ?? 'Görünüm güncellendi.', uyari: false })
       setAiIstek('')
     } catch (e) {
-      setAiSerit({ aciklama: e instanceof Error ? e.message : String(e), uyari: true })
+      setAiSerit({ aciklama: hataMetni(e), uyari: true })
     } finally {
       setAiCalisiyor(false)
     }
@@ -313,26 +306,20 @@ export default function EtkilesimliRapor({ sablon, icerik, alanlar, tasarlayabil
   async function excelIndir() {
     setExcelIniyor(true)
     try {
-      const r = await fetch(`/api/raporlar/${sablon.id}/excel`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ parametreler: paramDegerleri, gorunum }) })
-      if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error ?? `HTTP ${r.status}`) }
+      const r = await apiYanit(`/api/raporlar/${sablon.id}/excel`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ parametreler: paramDegerleri, gorunum }) })
       const url = URL.createObjectURL(await r.blob())
       const a = document.createElement('a'); a.href = url; a.download = `${sablon.kod}.xlsx`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url)
       toast.success('Excel indirildi — görünen kolonlar, gruplar ve toplamlarla')
-    } catch (e) { toast.error(e instanceof Error ? e.message : String(e)) }
+    } catch (e) { toast.error(hataMetni(e)) }
     finally { setExcelIniyor(false) }
   }
   async function gorunumuKaydet() {
     setKaydediliyor(true)
     try {
-      const r = await fetch(`/api/raporlar/sablonlar/${sablon.id}`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ kod: sablon.kod, ad: sablon.ad, aciklama: sablon.aciklama, veriSetiId: sablon.veriSetiId, durum: sablon.durum, izinAnahtari: sablon.izinAnahtari || null, icerik: { ...icerik, gorunum } }),
-      })
-      const d = await r.json()
-      if (!r.ok) throw new Error([d.error, ...(d.hatalar ?? [])].filter(Boolean).join(' · '))
+      const d = await apiGonder<{ sablon: { surum: number } }>(`/api/raporlar/sablonlar/${sablon.id}`, 'PUT', { kod: sablon.kod, ad: sablon.ad, aciklama: sablon.aciklama, veriSetiId: sablon.veriSetiId, durum: sablon.durum, izinAnahtari: sablon.izinAnahtari || null, icerik: { ...icerik, gorunum } })
       setKayitliGorunum(gorunum); setSurum(d.sablon.surum)
       toast.success(`Görünüm kaydedildi (sürüm ${d.sablon.surum}) — herkes bu görünümle açar`)
-    } catch (e) { toast.error(e instanceof Error ? e.message : String(e)) }
+    } catch (e) { toast.error([hataMetni(e), ...hataListesi(e)].join(' · ')) }
     finally { setKaydediliyor(false) }
   }
 

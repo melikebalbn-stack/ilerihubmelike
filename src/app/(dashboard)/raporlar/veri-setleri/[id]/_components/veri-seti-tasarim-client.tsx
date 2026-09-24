@@ -15,6 +15,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { ChevronDown, ChevronRight, Database, Download, List, Loader2, Maximize2, Pencil, Play, Plus, Save, Search, Sparkles, Trash2, X } from 'lucide-react'
 import type { Birlestirme, Kaynak, KaynakIfs, KaynakPostgres, VeriSetiTanim } from '@/lib/rapor/tipler'
 import { GeriRozet } from '../../../_components/rozet-link'
+import { apiGet, apiGonder, hataListesi, hataMetni } from '../../../_components/api'
 import { referansMi } from '@/lib/rapor/katalog-siniflama'
 
 const NAVY = '#1B4F72'
@@ -66,12 +67,8 @@ function takmaAdUret(taban: string, mevcut: Set<string>): string {
   for (let i = 2; ; i++) if (!mevcut.has(`${ad}${i}`)) return `${ad}${i}`
 }
 
-async function getJson<T>(url: string): Promise<T> {
-  const r = await fetch(url)
-  const d = await r.json()
-  if (!r.ok) throw new Error(d.error ?? `HTTP ${r.status}`)
-  return d as T
-}
+/** Tüm GET çağrıları ortak yardımcıdan geçer (405/HTML/boş yanıtta anlaşılır mesaj). */
+const getJson = <T,>(url: string) => apiGet<T>(url)
 
 /** "Contract eq 'X'" veya "Contract eq {p.x}" — parametreli hâl de site koşulu sayılır (mükerrer eklenmesin). */
 const CONTRACT_RE = /(?:^|\s+and\s+)?\bContract\s+eq\s+('[^']*'|\{p\.[A-Za-z_][A-Za-z0-9_]*\})(?:\s+and\s+)?/i
@@ -277,12 +274,10 @@ export default function VeriSetiTasarimClient({ katalogYukleyebilir, mevcut }: P
     setYukleniyor(`yukle:${projeksiyon}`)
     setSolHata(null)
     try {
-      const r = await fetch('/api/raporlar/katalog/yukle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projeksiyon }) })
-      const d = await r.json()
-      if (!r.ok) throw new Error(d.error ?? `HTTP ${r.status}`)
+      await apiGonder('/api/raporlar/katalog/yukle', 'POST', { projeksiyon })
       projeksiyonlariYukle()
       if (seciliProjeksiyon === projeksiyon) setEntityAra((s) => s + '')
-    } catch (e) { setSolHata(e instanceof Error ? e.message : String(e)) }
+    } catch (e) { setSolHata(hataMetni(e)) }
     finally { setYukleniyor(null) }
   }
 
@@ -323,7 +318,7 @@ export default function VeriSetiTasarimClient({ katalogYukleyebilir, mevcut }: P
       if (!e.entitySetleri.length) setSolHata(`${s.kaynakAd} › ${s.entity}: EntitySet adı $metadata'dan alınamadı; '${set}' varsayıldı — kaynak kartından düzeltin.`)
       ifsKaynakEkle(e, set, { projeksiyon: s.kaynakAd, ekAlan: s.alan || undefined })
       setKaynakTip('ifs'); setSeciliProjeksiyon(s.kaynakAd); setEntityAra(''); setSeciliEntity(e); setArama('')
-    } catch (e) { setSolHata(e instanceof Error ? e.message : String(e)) }
+    } catch (e) { setSolHata(hataMetni(e)) }
   }
 
   // ── Katalog değerleri (rapor_katalog_deger) ───────────────────────────
@@ -336,7 +331,7 @@ export default function VeriSetiTasarimClient({ katalogYukleyebilir, mevcut }: P
       const d = await getJson<{ degerler: { deger: string; etiket: string | null; kaynak: string }[]; not?: string }>(`/api/raporlar/katalog/degerler?kaynakAd=${encodeURIComponent(seciliProjeksiyon)}&entity=${encodeURIComponent(seciliEntity.entity)}&alan=${encodeURIComponent(alan)}`)
       setDegerSatirlari(d.degerler.map((x) => ({ deger: x.deger, etiket: x.etiket ?? '', kaynak: x.kaynak })))
       setDegerDurum({ not: d.not ?? null })
-    } catch (e) { setDegerDurum({ hata: e instanceof Error ? e.message : String(e) }) }
+    } catch (e) { setDegerDurum({ hata: hataMetni(e) }) }
   }
 
   /** AI önerileri kutulara yazılır — KAYDEDİLMEZ. Elle düzeltilmiş (ELLE) satırların üzerine yazılmaz. */
@@ -344,33 +339,26 @@ export default function VeriSetiTasarimClient({ katalogYukleyebilir, mevcut }: P
     if (!degerlerAlani) return
     setDegerDurum((d) => ({ ...d, aiCalisiyor: true, hata: null }))
     try {
-      const r = await fetch('/api/raporlar/katalog/degerler/ai', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kaynakAd: seciliProjeksiyon, entity: degerlerAlani.entity, alan: degerlerAlani.alan }) })
-      const d = await r.json()
-      if (!r.ok) throw new Error(d.error ?? `HTTP ${r.status}`)
+      const d = await apiGonder<{ cevriler?: Record<string, Record<string, string>>; not?: string }>('/api/raporlar/katalog/degerler/ai', 'POST', { kaynakAd: seciliProjeksiyon, entity: degerlerAlani.entity, alan: degerlerAlani.alan })
       const oneriler: Record<string, string> = d.cevriler?.[`${seciliProjeksiyon}|${degerlerAlani.entity}|${degerlerAlani.alan}`] ?? {}
       const sayi = Object.keys(oneriler).length
       setDegerSatirlari((l) => l.map((x) => (x.kaynak === 'ELLE' && x.etiket ? x : oneriler[x.deger] ? { ...x, etiket: oneriler[x.deger], kaynak: 'AI', degisti: true } : x)))
       setDegerDurum((s2) => ({ ...s2, aiCalisiyor: false, not: sayi ? `${sayi} öneri dolduruldu — kontrol edip Kaydet deyin.` : (d.not ?? 'Yeni öneri gelmedi.') }))
-    } catch (e) { setDegerDurum((s2) => ({ ...s2, aiCalisiyor: false, hata: e instanceof Error ? e.message : String(e) })) }
+    } catch (e) { setDegerDurum((s2) => ({ ...s2, aiCalisiyor: false, hata: hataMetni(e) })) }
   }
 
   async function degerleriKaydet() {
     if (!degerlerAlani) return
     setDegerDurum((d) => ({ ...d, kaydediliyor: true, hata: null }))
     try {
-      const r = await fetch('/api/raporlar/katalog/degerler', {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          kaynakAd: seciliProjeksiyon, entity: degerlerAlani.entity, alan: degerlerAlani.alan, eksikleriSil: true,
-          // Elle değiştirilen satır 'ELLE' olur → sonraki AI doldurmaları üzerine yazmaz.
-          degerler: degerSatirlari.map((x) => ({ deger: x.deger, etiket: x.etiket.trim() || null, kaynak: x.degisti && x.kaynak !== 'AI' ? 'ELLE' : (x.kaynak as 'ENUM' | 'AI' | 'ELLE') })),
-        }),
+      const d = await apiGonder<{ degerler: { deger: string; etiket: string | null; kaynak: string }[] }>('/api/raporlar/katalog/degerler', 'PUT', {
+        kaynakAd: seciliProjeksiyon, entity: degerlerAlani.entity, alan: degerlerAlani.alan, eksikleriSil: true,
+        // Elle değiştirilen satır 'ELLE' olur → sonraki AI doldurmaları üzerine yazmaz.
+        degerler: degerSatirlari.map((x) => ({ deger: x.deger, etiket: x.etiket.trim() || null, kaynak: x.degisti && x.kaynak !== 'AI' ? 'ELLE' : (x.kaynak as 'ENUM' | 'AI' | 'ELLE') })),
       })
-      const d = await r.json()
-      if (!r.ok) throw new Error(d.error ?? `HTTP ${r.status}`)
-      setDegerSatirlari((d.degerler as { deger: string; etiket: string | null; kaynak: string }[]).map((x) => ({ deger: x.deger, etiket: x.etiket ?? '', kaynak: x.kaynak })))
+      setDegerSatirlari(d.degerler.map((x) => ({ deger: x.deger, etiket: x.etiket ?? '', kaynak: x.kaynak })))
       setDegerDurum({ not: 'Kaydedildi.' })
-    } catch (e) { setDegerDurum((s2) => ({ ...s2, kaydediliyor: false, hata: e instanceof Error ? e.message : String(e) })) }
+    } catch (e) { setDegerDurum((s2) => ({ ...s2, kaydediliyor: false, hata: hataMetni(e) })) }
     finally { setDegerDurum((s2) => ({ ...s2, kaydediliyor: false })) }
   }
 
@@ -388,42 +376,39 @@ export default function VeriSetiTasarimClient({ katalogYukleyebilir, mevcut }: P
         for (const alan of k.select ?? []) hedefler.push({ kaynakAd: k.projeksiyon, entity, alan })
       }
       if (!hedefler.length) { setTopluAi({ acik: true, calisiyor: false, sonuc: 'IFS kaynağı/alanı bulunamadı.' }); return }
-      const r = await fetch('/api/raporlar/katalog/degerler/ai', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ alanlar: hedefler.slice(0, 40) }) })
-      const d = await r.json()
-      if (!r.ok) throw new Error(d.error ?? `HTTP ${r.status}`)
+      const d = await apiGonder<{ cevriler: Record<string, Record<string, string>>; gonderilenDeger?: number; atlanan?: number }>('/api/raporlar/katalog/degerler/ai', 'POST', { alanlar: hedefler.slice(0, 40) })
       // Öneriler doğrudan kaydedilir (toplu akışta tek tek onay pratik değil); kaynak='AI', ELLE satırlar korunur.
       let kaydedilen = 0
-      for (const [anahtar, cevri] of Object.entries(d.cevriler as Record<string, Record<string, string>>)) {
+      for (const [anahtar, cevri] of Object.entries(d.cevriler)) {
         const [kaynakAd, entity, alan] = anahtar.split('|')
         const mevcut = await getJson<{ degerler: { deger: string; etiket: string | null; kaynak: string }[] }>(`/api/raporlar/katalog/degerler?kaynakAd=${encodeURIComponent(kaynakAd)}&entity=${encodeURIComponent(entity)}&alan=${encodeURIComponent(alan)}`)
         const govde = mevcut.degerler.map((x) => (x.kaynak === 'ELLE' && x.etiket ? { deger: x.deger, etiket: x.etiket, kaynak: 'ELLE' as const } : cevri[x.deger] ? { deger: x.deger, etiket: cevri[x.deger], kaynak: 'AI' as const } : { deger: x.deger, etiket: x.etiket, kaynak: (x.kaynak as 'ENUM' | 'AI' | 'ELLE') }))
-        const pr = await fetch('/api/raporlar/katalog/degerler', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kaynakAd, entity, alan, degerler: govde }) })
-        if (pr.ok) kaydedilen += Object.keys(cevri).length
+        // Tek tek kaydet: biri patlarsa toplu akış sürsün, sayaç artmasın.
+        try {
+          await apiGonder('/api/raporlar/katalog/degerler', 'PUT', { kaynakAd, entity, alan, degerler: govde })
+          kaydedilen += Object.keys(cevri).length
+        } catch { /* bu alan atlandı */ }
       }
       setTopluAi({ acik: true, calisiyor: false, sonuc: `${kaydedilen} değer etiketlendi (${d.gonderilenDeger ?? 0} gönderildi, ${d.atlanan ?? 0} atlandı).` })
-    } catch (e) { setTopluAi({ acik: true, calisiyor: false, sonuc: e instanceof Error ? e.message : String(e) }) }
+    } catch (e) { setTopluAi({ acik: true, calisiyor: false, sonuc: hataMetni(e) }) }
   }
 
   /** Türkçe etiket kaydet (rapor.katalog). Boş → siler. */
   async function etiketKaydet(alan: string, etiket: string) {
     setEtiketDuzenle(null)
     try {
-      const r = await fetch('/api/raporlar/katalog/etiket', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kaynakAd: seciliProjeksiyon, entity: seciliEntity?.entity, alan, etiket: etiket.trim() || null }) })
-      const d = await r.json()
-      if (!r.ok) throw new Error(d.error ?? `HTTP ${r.status}`)
+      const d = await apiGonder<{ etiket: string | null }>('/api/raporlar/katalog/etiket', 'PATCH', { kaynakAd: seciliProjeksiyon, entity: seciliEntity?.entity, alan, etiket: etiket.trim() || null })
       setKatalogAlanlari((l) => l.map((a) => (a.alan === alan ? { ...a, etiket: d.etiket } : a)))
-    } catch (e) { setSolHata(e instanceof Error ? e.message : String(e)) }
+    } catch (e) { setSolHata(hataMetni(e)) }
   }
 
   /** Entity Türkçe etiketi kaydet (rapor.katalog). Boş → siler. */
   async function entityEtiketKaydet(entity: string, etiket: string) {
     setEntityEtiketDuzenle(null)
     try {
-      const r = await fetch('/api/raporlar/katalog/entity-etiket', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kaynakAd: seciliProjeksiyon, entity, etiket: etiket.trim() || null }) })
-      const d = await r.json()
-      if (!r.ok) throw new Error(d.error ?? `HTTP ${r.status}`)
+      const d = await apiGonder<{ etiket: string | null }>('/api/raporlar/katalog/entity-etiket', 'PATCH', { kaynakAd: seciliProjeksiyon, entity, etiket: etiket.trim() || null })
       setEntityler((l) => l.map((e) => (e.entity === entity ? { ...e, etiket: d.etiket } : e)))
-    } catch (e) { setSolHata(e instanceof Error ? e.message : String(e)) }
+    } catch (e) { setSolHata(hataMetni(e)) }
   }
 
   /** Arama sonuçları entity'ye göre gruplu; sıra: etiket eşleşmesi → ana tablo (referans değil) → alan sayısı. */
@@ -475,13 +460,11 @@ export default function VeriSetiTasarimClient({ katalogYukleyebilir, mevcut }: P
     setSqlDeneme((m) => ({ ...m, [k.ad]: { ...(m[k.ad] ?? { kolonlar: [], satirlar: [], toplamSatir: 0, sureMs: 0 }), calisiyor: true, hata: undefined } }))
     try {
       const degerler = Object.fromEntries((k.parametreler ?? []).map((p) => [p, paramDegerleri[p] ?? { tip: 'metin', deger: '' }]))
-      const r = await fetch('/api/raporlar/veri-setleri/sql-dene', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sorgu: k.sorgu, parametreler: k.parametreler ?? [], degerler }) })
-      const d = await r.json()
-      if (!r.ok) throw new Error(d.error ?? `HTTP ${r.status}`)
+      const d = await apiGonder<{ kolonlar: string[]; satirlar: Record<string, unknown>[]; toplamSatir: number; sureMs: number; uyari?: string }>('/api/raporlar/veri-setleri/sql-dene', 'POST', { sorgu: k.sorgu, parametreler: k.parametreler ?? [], degerler })
       setSqlDeneme((m) => ({ ...m, [k.ad]: { kolonlar: d.kolonlar, satirlar: d.satirlar, toplamSatir: d.toplamSatir, sureMs: d.sureMs, uyari: d.uyari } }))
       if (d.kolonlar.length) setKaynakAlanlari((m) => ({ ...m, [k.ad]: d.kolonlar }))
     } catch (e) {
-      setSqlDeneme((m) => ({ ...m, [k.ad]: { ...(m[k.ad] ?? { kolonlar: [], satirlar: [], toplamSatir: 0, sureMs: 0 }), calisiyor: false, hata: e instanceof Error ? e.message : String(e) } }))
+      setSqlDeneme((m) => ({ ...m, [k.ad]: { ...(m[k.ad] ?? { kolonlar: [], satirlar: [], toplamSatir: 0, sureMs: 0 }), calisiyor: false, hata: hataMetni(e) } }))
     }
   }
 
@@ -573,15 +556,14 @@ export default function VeriSetiTasarimClient({ katalogYukleyebilir, mevcut }: P
     setKaydediliyor(true)
     setKayitHata(null); setKayitHatalari([]); setKayitMesaj(null)
     try {
-      const r = await fetch(mevcut ? `/api/raporlar/veri-setleri/${mevcut.id}` : '/api/raporlar/veri-setleri', {
-        method: mevcut ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ad, aciklama, tanim }),
-      })
-      const d = await r.json()
-      if (!r.ok) { setKayitHata(d.error ?? `HTTP ${r.status}`); setKayitHatalari(d.hatalar ?? []); return }
+      const d = await apiGonder<{ veriSeti: { id: string } }>(
+        mevcut ? `/api/raporlar/veri-setleri/${mevcut.id}` : '/api/raporlar/veri-setleri',
+        mevcut ? 'PUT' : 'POST',
+        { ad, aciklama, tanim },
+      )
       setKayitMesaj('Kaydedildi')
       if (!mevcut) router.replace(`/raporlar/veri-setleri/${d.veriSeti.id}`)
-    } catch (e) { setKayitHata(e instanceof Error ? e.message : String(e)) }
+    } catch (e) { setKayitHata(hataMetni(e)); setKayitHatalari(hataListesi(e)) }
     finally { setKaydediliyor(false) }
   }
 
@@ -590,11 +572,9 @@ export default function VeriSetiTasarimClient({ katalogYukleyebilir, mevcut }: P
     setOnizlemeHata(null)
     try {
       const parametreler = Object.fromEntries(parametreAdlari.map((p) => [p, paramDegerleri[p] ?? { tip: 'metin', deger: '' }]))
-      const r = await fetch('/api/raporlar/veri-setleri/onizle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tanim, parametreler }) })
-      const d = await r.json()
-      if (!r.ok) { setOnizleme(null); setOnizlemeHata([d.error, ...(d.hatalar ?? [])].filter(Boolean).join(' · ')); return }
+      const d = await apiGonder<Onizleme>('/api/raporlar/veri-setleri/onizle', 'POST', { tanim, parametreler })
       setOnizleme(d)
-    } catch (e) { setOnizleme(null); setOnizlemeHata(e instanceof Error ? e.message : String(e)) }
+    } catch (e) { setOnizleme(null); setOnizlemeHata([hataMetni(e), ...hataListesi(e)].join(' · ')) }
     finally { setOnizleniyor(false) }
   }
 

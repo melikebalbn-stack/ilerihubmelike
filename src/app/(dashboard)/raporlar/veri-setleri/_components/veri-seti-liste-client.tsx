@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Database, Loader2, Plus, Trash2 } from 'lucide-react'
 import { GeriRozet, RozetLink } from '../../_components/rozet-link'
+import { apiGet, apiGonder, hataMetni } from '../../_components/api'
 
 const NAVY = '#1B4F72'
 
@@ -19,19 +20,19 @@ export default function VeriSetiListeClient() {
   const [hata, setHata] = useState<string | null>(null)
 
   const yukle = () => {
-    fetch('/api/raporlar/veri-setleri')
-      .then(async (r) => { const d = await r.json(); if (!r.ok) throw new Error(d.error ?? `HTTP ${r.status}`); setListe(d.veriSetleri ?? []) })
-      .catch((e: Error) => { setHata(e.message); setListe([]) })
+    apiGet<{ veriSetleri: VeriSeti[] }>('/api/raporlar/veri-setleri')
+      .then((d) => setListe(d.veriSetleri ?? []))
+      .catch((e) => { setHata(hataMetni(e)); setListe([]) })
   }
   useEffect(yukle, [])
 
   async function sil(v: VeriSeti) {
     if (!confirm(`'${v.ad}' veri seti silinsin mi?`)) return
-    const r = await fetch(`/api/raporlar/veri-setleri/${v.id}`, { method: 'DELETE' })
-    const d = await r.json().catch(() => ({}))
-    if (!r.ok) { setHata(d.error ?? `HTTP ${r.status}`); return }
-    setHata(null)
-    yukle()
+    try {
+      await apiGonder(`/api/raporlar/veri-setleri/${v.id}`, 'DELETE')
+      setHata(null)
+      yukle()
+    } catch (e) { setHata(hataMetni(e)) }
   }
 
   return (

@@ -25,6 +25,7 @@ import { BICIMLER, veriSetiParametreleri } from '@/lib/rapor/sablon-dogrula'
 import { listedenTuval } from '@/lib/rapor/tuval-render'
 import type { AltToplamFn, Bicim, GrupTanim, HesaplananAlan, Kolon, KosulluBicim, SablonIcerik, SablonParametre, VeriSetiTanim } from '@/lib/rapor/tipler'
 import { GeriRozet } from '../../../_components/rozet-link'
+import { apiGet, apiGonder, hataListesi, hataMetni } from '../../../_components/api'
 
 const NAVY = '#1B4F72'
 
@@ -144,9 +145,9 @@ export default function SablonTasarimClient({ veriSetleri, kategoriler = [], mev
 
   useEffect(() => {
     if (!veriSetiId) { setVsAlanlar([]); setVsTanim(null); return }
-    fetch(`/api/raporlar/veri-setleri/${veriSetiId}`)
-      .then(async (r) => { const d = await r.json(); if (!r.ok) throw new Error(d.error ?? `HTTP ${r.status}`); setVsAlanlar(d.alanlar ?? []); setVsTanim(d.veriSeti?.tanim ?? null); setVsHata(null) })
-      .catch((e: Error) => { setVsHata(e.message); setVsAlanlar([]); setVsTanim(null) })
+    apiGet<{ alanlar?: VeriSetiAlan[]; veriSeti?: { tanim?: VeriSetiTanim } }>(`/api/raporlar/veri-setleri/${veriSetiId}`)
+      .then((d) => { setVsAlanlar(d.alanlar ?? []); setVsTanim(d.veriSeti?.tanim ?? null); setVsHata(null) })
+      .catch((e) => { setVsHata(hataMetni(e)); setVsAlanlar([]); setVsTanim(null) })
   }, [veriSetiId])
 
   const vsAlanAdlari = useMemo(() => vsAlanlar.map((a) => a.ad), [vsAlanlar])
@@ -200,45 +201,34 @@ export default function SablonTasarimClient({ veriSetleri, kategoriler = [], mev
     setCevriliyor(true)
     try {
       const tuval = listedenTuval(icerik)
-      const r = await fetch(`/api/raporlar/sablonlar/${mevcut.id}`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ kod, ad, aciklama, veriSetiId, durum, izinAnahtari: mevcut.izinAnahtari || null, icerik: { ...icerik, yerlesim: 'tuval', tuval } }),
-      })
-      const d = await r.json()
-      if (!r.ok) throw new Error([d.error, ...(d.hatalar ?? [])].filter(Boolean).join(' · '))
+      const d = await apiGonder<{ sablon: { surum: number } }>(`/api/raporlar/sablonlar/${mevcut.id}`, 'PUT', { kod, ad, aciklama, veriSetiId, durum, izinAnahtari: mevcut.izinAnahtari || null, icerik: { ...icerik, yerlesim: 'tuval', tuval } })
       toast.success(`Tuvale çevrildi (sürüm ${d.sablon.surum})`)
       window.location.href = `/raporlar/tasarim/${mevcut.id}`
-    } catch (e) { toast.error(e instanceof Error ? e.message : String(e)); setCevriliyor(false) }
+    } catch (e) { toast.error([hataMetni(e), ...hataListesi(e)].join(' · ')); setCevriliyor(false) }
   }
 
   // ── Kaydet / önizle ───────────────────────────────────────────────────
   async function kaydet() {
     setKaydediliyor(true); setKayitHata(null); setKayitHatalari([]); setKayitMesaj(null)
     try {
-      const r = await fetch(mevcut ? `/api/raporlar/sablonlar/${mevcut.id}` : '/api/raporlar/sablonlar', {
-        method: mevcut ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ kod, ad, aciklama, veriSetiId, icerik, durum, izinAnahtari: mevcut?.izinAnahtari || null }),
-      })
-      const d = await r.json()
-      if (!r.ok) { setKayitHata(d.error ?? `HTTP ${r.status}`); setKayitHatalari(d.hatalar ?? []); return }
+      const d = await apiGonder<{ sablon: { id: string; surum: number } }>(
+        mevcut ? `/api/raporlar/sablonlar/${mevcut.id}` : '/api/raporlar/sablonlar',
+        mevcut ? 'PUT' : 'POST',
+        { kod, ad, aciklama, veriSetiId, icerik, durum, izinAnahtari: mevcut?.izinAnahtari || null },
+      )
       setKayitMesaj(mevcut ? `Kaydedildi (sürüm ${d.sablon.surum})` : 'Oluşturuldu')
       if (!mevcut) router.replace(`/raporlar/tasarim/${d.sablon.id}`)
-    } catch (e) { setKayitHata(e instanceof Error ? e.message : String(e)) }
+    } catch (e) { setKayitHata(hataMetni(e)); setKayitHatalari(hataListesi(e)) }
     finally { setKaydediliyor(false) }
   }
 
   async function onizle() {
     setOnizleniyor(true); setOnizHata(null)
     try {
-      const r = await fetch(`/api/raporlar/sablonlar/${mevcut?.id ?? 'yeni'}/onizle`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ parametreler: onizParam, icerik, veriSetiId }),
-      })
-      const d = await r.json()
-      if (!r.ok) { setOnizHtml(null); setOnizHata([d.error, ...(d.hatalar ?? [])].filter(Boolean).join(' · ')); return }
+      const d = await apiGonder<{ html: string; satirSayisi: number; toplamSatir: number; sureMs: number }>(`/api/raporlar/sablonlar/${mevcut?.id ?? 'yeni'}/onizle`, 'POST', { parametreler: onizParam, icerik, veriSetiId })
       setOnizHtml(d.html)
       setOnizBilgi(`${d.satirSayisi}/${d.toplamSatir} satır · ${d.sureMs} ms`)
-    } catch (e) { setOnizHtml(null); setOnizHata(e instanceof Error ? e.message : String(e)) }
+    } catch (e) { setOnizHtml(null); setOnizHata([hataMetni(e), ...hataListesi(e)].join(' · ')) }
     finally { setOnizleniyor(false) }
   }
 

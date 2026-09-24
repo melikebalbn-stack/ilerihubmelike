@@ -38,6 +38,7 @@ import {
 } from '@/lib/rapor/tipler'
 import type { VeriSetiAlan } from '@/lib/rapor/veri-seti-alanlar'
 import { GeriRozet } from '../../../_components/rozet-link'
+import { apiGonder, apiIstek, hataListesi, hataMetni } from '../../../_components/api'
 
 const NAVY = '#1B4F72'
 const CYAN = '#2AA5C7'
@@ -357,12 +358,10 @@ export default function TuvalTasarimci({ sablon, icerik, alanlar, tuval: ilkTuva
     try {
       const fd = new FormData()
       fd.append('file', dosya)
-      const r = await fetch('/api/raporlar/logo', { method: 'POST', body: fd })
-      const d = await r.json()
-      if (!r.ok) throw new Error(d.error ?? `HTTP ${r.status}`)
+      const d = await apiIstek<{ url: string; dosyaId: string; ad: string }>('/api/raporlar/logo', { method: 'POST', body: fd })
       ogeGuncelle(id, { kaynak: 'yukleme', url: d.url, dosyaId: d.dosyaId } as Partial<TuvalOge>)
       toast.success(`${d.ad} yüklendi`)
-    } catch (e) { toast.error(e instanceof Error ? e.message : String(e)) }
+    } catch (e) { toast.error(hataMetni(e)) }
     finally { setYukleniyor(false) }
   }
 
@@ -376,9 +375,7 @@ export default function TuvalTasarimci({ sablon, icerik, alanlar, tuval: ilkTuva
   async function onizle() {
     setOnizleniyor(true); setOnizHata(null)
     try {
-      const r = await fetch(`/api/raporlar/${sablon.id}/veri`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ parametreler: onizParam }) })
-      const d = await r.json()
-      if (!r.ok) throw new Error(d.error ?? `HTTP ${r.status}`)
+      const d = await apiGonder<{ satirlar: Record<string, unknown>[] }>(`/api/raporlar/${sablon.id}/veri`, 'POST', { parametreler: onizParam })
       const cikti = tuvalRender(tuval, d.satirlar, {
         hesaplananAlanlar: hesaplananlar,
         parametreler: Object.fromEntries(parametreler.map((p) => [p.ad, p.tip === 'tarih' && onizParam[p.ad] ? new Date(onizParam[p.ad]) : onizParam[p.ad]])),
@@ -391,7 +388,7 @@ export default function TuvalTasarimci({ sablon, icerik, alanlar, tuval: ilkTuva
       setOnizHtml(cikti.html)
       setOnizBilgi(`${cikti.satirSayisi.toLocaleString('tr-TR')} satır · ${cikti.sayfaSayisi} sayfa · A4 ${tuval.sayfa.yon}`)
       setOnizBuyuk(true)
-    } catch (e) { setOnizHata(e instanceof Error ? e.message : String(e)) }
+    } catch (e) { setOnizHata(hataMetni(e)) }
     finally { setOnizleniyor(false) }
   }
 
@@ -399,16 +396,11 @@ export default function TuvalTasarimci({ sablon, icerik, alanlar, tuval: ilkTuva
   async function kaydet() {
     setKaydediliyor(true)
     try {
-      const r = await fetch(`/api/raporlar/sablonlar/${sablon.id}`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ kod: sablon.kod, ad: sablon.ad, aciklama: sablon.aciklama, veriSetiId: sablon.veriSetiId, durum: sablon.durum, izinAnahtari: sablon.izinAnahtari || null, icerik: { ...icerik, yerlesim: 'tuval', tuval } }),
-      })
-      const d = await r.json()
-      if (!r.ok) throw new Error([d.error, ...(d.hatalar ?? [])].filter(Boolean).join(' · '))
+      const d = await apiGonder<{ sablon: { surum: number } }>(`/api/raporlar/sablonlar/${sablon.id}`, 'PUT', { kod: sablon.kod, ad: sablon.ad, aciklama: sablon.aciklama, veriSetiId: sablon.veriSetiId, durum: sablon.durum, izinAnahtari: sablon.izinAnahtari || null, icerik: { ...icerik, yerlesim: 'tuval', tuval } })
       setSurum(d.sablon.surum)
       toast.success(`Kaydedildi (sürüm ${d.sablon.surum})`)
       router.refresh()
-    } catch (e) { toast.error(e instanceof Error ? e.message : String(e)) }
+    } catch (e) { toast.error([hataMetni(e), ...hataListesi(e)].join(' · ')) }
     finally { setKaydediliyor(false) }
   }
 

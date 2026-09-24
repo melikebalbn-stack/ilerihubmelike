@@ -21,24 +21,19 @@ export function workCenterToTezgahKod(code: string | null | undefined): string |
 }
 
 /**
- * Üretim adedi: Amount > 0 ise Amount, değilse ReportedAmount. Sonra sayaç dönüşümü uygulanır:
- * ham × (CounterMultiplier || 1) / (CounterDivider || 1). Negatif/geçersiz → 0.
+ * Üretim adedi: Amount > 0 ise Amount, değilse ReportedAmount (HAM). Negatif/geçersiz → 0.
+ * NOT: CounterMultiplier/CounterDivider UYGULANMAZ — MAS'ın kendi ekranı da uygulamıyor; çarpım
+ * adedi şişiriyordu (ör. M002281575: Amount=422, Multiplier=2 → yanlış 844, MAS'ta 422). Sayaç
+ * çarpanı ham PLC sinyalini çevirmek içindir, MAS'ın raporladığı Amount zaten nihai adettir.
  */
 export function uretimAdedi(input: {
   amount?: number | null
   reportedAmount?: number | null
-  counterMultiplier?: number | null
-  counterDivider?: number | null
 }): number {
   const amount = Number(input.amount) || 0
   const reported = Number(input.reportedAmount) || 0
   const ham = amount > 0 ? amount : reported
-  const mult = Number(input.counterMultiplier)
-  const div = Number(input.counterDivider)
-  const m = Number.isFinite(mult) && mult > 0 ? mult : 1
-  const d = Number.isFinite(div) && div > 0 ? div : 1
-  const sonuc = (ham * m) / d
-  return Number.isFinite(sonuc) && sonuc > 0 ? sonuc : 0
+  return Number.isFinite(ham) && ham > 0 ? ham : 0
 }
 
 /** Bir üretimin (ProductionMaster) tek satıra indirgenmiş, IPRO'ya yazılabilir özeti. */

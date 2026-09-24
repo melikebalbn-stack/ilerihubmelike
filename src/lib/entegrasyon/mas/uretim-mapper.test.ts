@@ -46,14 +46,11 @@ describe('uretimAdedi', () => {
     expect(uretimAdedi({ amount: 0, reportedAmount: 50 })).toBe(50)
     expect(uretimAdedi({ amount: null, reportedAmount: 42 })).toBe(42)
   })
-  it('CounterMultiplier/Divider uygulanır', () => {
-    expect(uretimAdedi({ amount: 100, counterMultiplier: 2 })).toBe(200)
-    expect(uretimAdedi({ amount: 100, counterDivider: 4 })).toBe(25)
-    expect(uretimAdedi({ amount: 100, counterMultiplier: 3, counterDivider: 2 })).toBe(150)
-  })
-  it('geçersiz multiplier/divider → 1 (nötr)', () => {
-    expect(uretimAdedi({ amount: 100, counterMultiplier: 0, counterDivider: 0 })).toBe(100)
-    expect(uretimAdedi({ amount: 100, counterMultiplier: null, counterDivider: -1 })).toBe(100)
+  it('CounterMultiplier/Divider UYGULANMAZ — ham adet (MAS ekranıyla birebir)', () => {
+    // M002281575 regresyonu: Amount=422, Multiplier=2 → 844 DEĞİL, ham 422.
+    expect(uretimAdedi({ amount: 422, counterMultiplier: 2 } as never)).toBe(422)
+    expect(uretimAdedi({ amount: 100, counterMultiplier: 3, counterDivider: 2 } as never)).toBe(100)
+    expect(uretimAdedi({ amount: 100, counterDivider: 4 } as never)).toBe(100)
   })
   it('hiç adet yok → 0', () => {
     expect(uretimAdedi({ amount: 0, reportedAmount: 0 })).toBe(0)

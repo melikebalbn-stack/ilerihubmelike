@@ -8,6 +8,7 @@ import type { PrismaClient } from '@/generated/prisma'
 import { planliSaniyeHesapla } from '@/lib/ipro/oee-hesap'
 import { isPenceresiDeltaToplami } from '@/lib/ipro/faz2-delta'
 import { durusSaniyeCanli, oeeCanliBilesenleri, type OeeCanliSonuc } from '@/lib/ipro/oee-canli'
+import { cevrimSaniye } from '@/lib/ipro/cevrim-util'
 import { gecerliTatilTip, tarihAnahtari, type IproTatilTip } from '@/lib/ipro/takvim-util'
 
 /** Canlı OEE bileşenleri (açık iş varsa dolu; quality açık işte null → tam OEE iş kapanınca). */
@@ -23,7 +24,11 @@ export type OeeCanliKart = {
   idealGuvenilir: boolean
   ornekSayisi: number // X — güvenilirlik eşiği (X/esik)
   // Çoklu açık iş varsa performance/oee güvenilir atfedilemez → null; sebep burada (COKLU_IS).
+  // Tek işte performans IFS planlı çevrimden geldiyse 'PERF_IFS' (kapanış motoruyla aynı adlandırma).
   hesapKaynagi: string | null
+  // Performansta kullanılan ideal çevrim (sn/adet) + kaynağı — UI notu için.
+  idealSaniyeAdet: number | null
+  idealKaynak: 'OLCULEN' | 'IFS' | null
 }
 
 // İdeal güvenilirlik eşiği — oee-canli/ideal-cevrim ile hizalı (X/esik gösterimi).
@@ -34,6 +39,9 @@ export type CanliOeeAcikIs = {
   tezgahId: string
   ifsPartNo: string | null
   baslatildiAt: Date | null
+  // Ölçülen güvenilir ideal yoksa performans IFS planlı çevriminden hesaplanır (kapanış motoruyla aynı).
+  ifsMachRunFactor?: number | null
+  ifsRunTimeCode?: string | null
 }
 
 /**
@@ -97,18 +105,32 @@ export async function tezgahlarinCanliOee(
       const planliSaniye = planliSaniyeHesapla(bas, simdi, vardiyalar, tatilMap)
       // İdeal çevrim yalnız tek işte anlamlı (performance oradan gelir); çoklu işte hiç kullanılmaz.
       const ideal = !cokluIs && isler[0].ifsPartNo ? idealByKey.get(`${tezgahKod}|${isler[0].ifsPartNo}`) : undefined
-      const idealSaniyeAdet = ideal?.guvenilir ? ideal.idealSaniyeAdet : null
+      // İdeal çevrim seçimi (kapanış motoruyla aynı öncelik, FORMÜL aynı — yalnız kaynak damgası değişir):
+      //  1) ölçülen güvenilir ideal → 'OLCULEN', 2) yoksa IFS planlı çevrime (MachRunFactor→sn) düş → 'IFS',
+      //  3) ikisi de yoksa null → performance null. Çoklu işte HİÇBİRİ (idealKaynak null, performance null).
+      const ifsPlanSn = cokluIs ? null : cevrimSaniye(isler[0].ifsMachRunFactor, isler[0].ifsRunTimeCode)
+      let idealSaniyeAdet: number | null = null
+      let idealKaynak: 'OLCULEN' | 'IFS' | null = null
+      if (!cokluIs && ideal?.guvenilir) {
+        idealSaniyeAdet = ideal.idealSaniyeAdet
+        idealKaynak = 'OLCULEN'
+      } else if (ifsPlanSn != null) {
+        idealSaniyeAdet = ifsPlanSn
+        idealKaynak = 'IFS'
+      }
       const b = oeeCanliBilesenleri({ planliSaniye, durusSaniye, uretilen, idealSaniyeAdet })
       canliByTezgah.set(tezgahId, {
         ...b,
         performance: cokluIs ? null : b.performance,
         oeeCanli: cokluIs ? null : b.oeeCanli,
-        hesapKaynagi: cokluIs ? 'COKLU_IS' : null,
+        hesapKaynagi: cokluIs ? 'COKLU_IS' : idealKaynak === 'IFS' ? 'PERF_IFS' : null,
         planliSaniye,
         durusSaniye,
         uretilen,
         idealGuvenilir: !cokluIs && !!ideal?.guvenilir,
         ornekSayisi: cokluIs ? 0 : (ideal?.ornekSayisi ?? 0),
+        idealSaniyeAdet,
+        idealKaynak,
       })
     }),
   )

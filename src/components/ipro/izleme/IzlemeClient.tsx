@@ -39,6 +39,8 @@ type CanliOee = {
   idealGuvenilir: boolean
   ornekSayisi: number
   hesapKaynagi: string | null
+  idealSaniyeAdet: number | null
+  idealKaynak: 'OLCULEN' | 'IFS' | null
 }
 
 // OEE renk eşiği (görsel, OeePano ile hizalı): ≥%85 yeşil, ≥%60 amber, <%60 kırmızı, null gri.
@@ -97,6 +99,10 @@ function OeeSerit({ c, tv, esik }: { c: CanliOee | null; tv: boolean; esik: numb
       {c?.hesapKaynagi === 'COKLU_IS' ? (
         <p className={`mt-1 text-right text-[8px] ${tv ? 'text-amber-400' : 'text-amber-600'}`} title="çoklu açık iş — performans tek işe atfedilemez">
           çoklu iş · perf. yok
+        </p>
+      ) : c?.idealKaynak === 'IFS' ? (
+        <p className={`mt-1 text-right text-[8px] ${tv ? 'text-slate-400' : 'text-slate-400'}`} title="performans IFS planlı çevriminden">
+          IFS çevrim · {c.idealSaniyeAdet != null ? `${Math.round(c.idealSaniyeAdet)} sn` : '—'}
         </p>
       ) : c && !c.idealGuvenilir ? (
         <p className={`mt-1 text-right text-[8px] ${tv ? 'text-slate-500' : 'text-slate-400'}`} title="ideal çevrim güvenilirlik">
@@ -770,6 +776,8 @@ function DetayDialog({ tezgahId, canliOee, esik, onClose }: { tezgahId: string |
                     <p>• <b>Kalite</b> açık işte hesaplanmaz — iş bitince; <b>tam OEE iş kapanınca</b> motordan.</p>
                     {canliOee.hesapKaynagi === 'COKLU_IS' ? (
                       <p>• <b>Performans</b> hesaplanmadı — tezgahta <b>çoklu açık iş</b> var, üretim tek işe atfedilemez.</p>
+                    ) : canliOee.idealKaynak === 'IFS' ? (
+                      <p>• <b>Performans</b> <b>IFS planlı çevrim</b>den hesaplandı ({canliOee.idealSaniyeAdet != null ? `${Math.round(canliOee.idealSaniyeAdet)} sn` : '—'}) — ölçülen ideal biriktikçe (<b>{canliOee.ornekSayisi}/{esik}</b>) ona geçilir.</p>
                     ) : !canliOee.idealGuvenilir ? (
                       <p>• <b>Performans</b> için ideal çevrim güvenilir değil — veri birikiyor (<b>{canliOee.ornekSayisi}/{esik}</b>).</p>
                     ) : null}

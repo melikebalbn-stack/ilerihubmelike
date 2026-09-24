@@ -117,6 +117,8 @@ export async function panoData(opts: { oee?: boolean } = {}): Promise<PanoData> 
         ifsOperationNo: true,
         ifsPartNo: true,
         ifsPartDescription: true,
+        ifsMachRunFactor: true, // canlı OEE performans IFS fallback'i (ölçülen ideal güvenilir değilse)
+        ifsRunTimeCode: true,
         baslatildiAt: true,
       },
     }),

@@ -3,7 +3,6 @@ import { requireUser } from "@/lib/auth/require-user";
 import { prisma } from "@/lib/prisma";
 import { muhendislikDoldurSchema } from "@/app/api/proje-takip/_lib/muhendislik-schema";
 import { hesaplaYilHafta } from "@/lib/proje-takip/tarih-hesapla";
-import { resolveCanSeeProjeFiyat } from "@/lib/proje-takip/can-see-fiyat";
 
 export const dynamic = "force-dynamic";
 
@@ -28,7 +27,6 @@ export async function PATCH(
   const v = sonuc.data;
   const sevkiyatHesap = hesaplaYilHafta(v.sevkiyatTrh);
   const onayHesap = hesaplaYilHafta(v.onayTrh);
-  const canSeeFiyat = await resolveCanSeeProjeFiyat(user);
 
   const guncellenen = await prisma.projeTakip.update({
     where: { id },
@@ -46,13 +44,10 @@ export async function PATCH(
       onayHafta: onayHesap?.hafta ?? undefined,
       aciklama: v.aciklama,
       lokasyon: v.lokasyon,
-      // canSeeFiyat false ise bu 4 alan güncelleme datasından tamamen çıkarılır
-      // (undefined = Prisma dokunmaz, mevcut değer korunur) - body'de gelse bile
-      // sessizce yok sayılır, hata verilmez.
-      birimFiyat: canSeeFiyat ? v.birimFiyat : undefined,
-      birimFiyatParaBirimi: canSeeFiyat ? v.birimFiyatParaBirimi : undefined,
-      hedefYillik: canSeeFiyat ? v.hedefYillik : undefined,
-      kalipTutar: canSeeFiyat ? v.kalipTutar : undefined,
+      birimFiyat: v.birimFiyat,
+      birimFiyatParaBirimi: v.birimFiyatParaBirimi,
+      hedefYillik: v.hedefYillik,
+      kalipTutar: v.kalipTutar,
       kickOffStatu: v.kickOffStatu,
       poKalip: v.poKalip,
       kickoffCW: v.kickoffCW,

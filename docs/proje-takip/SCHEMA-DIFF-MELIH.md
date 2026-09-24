@@ -220,5 +220,9 @@ sadece `prisma generate` sonrası tipler oluşacak.
    olarak tanımlandılar, ileride bir input noktası açılırsa buradan `z.enum(...)`
    ile bağlanacak.
 
-**Bu paket henüz migrate edilmedi** — madde 1 (canSeeProjeFiyat + fiyat filtreleme
-GET route'u) netleşmeden migration atılmayacak, Nurgül'ün onayı bekleniyor.
+**Bu paket main ile senkron migration'la dev DB'ye uygulandı** (24 Eylül,
+`PENDING_proje_takip`) — `prisma.projeTakip`/`prisma.projeTakipLog` artık gerçek.
+
+**Fiyat görünürlüğü kısıtlaması Nurgül'ün kararıyla kaldırıldı (24 Eylül)** —
+fiyat alanları artık herkese açık. `canSeeProjeFiyat` helper'ı (`src/lib/proje-takip/can-see-fiyat.ts`)
+kodda duruyor ama hiçbir route'ta çağrılmıyor.

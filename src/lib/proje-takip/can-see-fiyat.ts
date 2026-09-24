@@ -2,6 +2,10 @@ import { prisma } from "@/lib/prisma";
 import { normalizeTr } from "@/lib/normalize-tr";
 
 /**
+ * Şu an kullanılmıyor - Nurgül'ün kararıyla fiyat görünürlüğü herkese açık
+ * (2026-09-24). İleride kısıtlama gerekirse bu helper tekrar route'lara
+ * bağlanabilir.
+ *
  * Melih Bey'in orijinal tasarımından sapma var — bkz. docs/proje-takip/SCHEMA-DIFF-MELIH.md
  * ("canSeeProjeFiyat" notu). "Yönetim" departman olarak DB'de karşılığı
  * olmadığı için GENEL MÜDÜRLÜK + unvanında "müdür" geçen herkes olarak

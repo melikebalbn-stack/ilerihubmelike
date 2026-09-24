@@ -34,15 +34,7 @@ type ProjeOzet = {
 
 type FormState = Partial<Record<keyof MuhendislikDoldurValues, string>>;
 
-const FIYAT_ALANLARI = ["birimFiyat", "birimFiyatParaBirimi", "hedefYillik", "kalipTutar"] as const;
-
-export function MuhendislikDoldurForm({
-  proje,
-  canSeeFiyat,
-}: {
-  proje: ProjeOzet;
-  canSeeFiyat: boolean;
-}) {
+export function MuhendislikDoldurForm({ proje }: { proje: ProjeOzet }) {
   const router = useRouter();
   const [adim, setAdim] = useState(0);
   const [values, setValues] = useState<FormState>({
@@ -77,19 +69,12 @@ export function MuhendislikDoldurForm({
 
     setGonderiliyor(true);
     try {
-      // canSeeFiyat=false ise fiyat alanları hiç gönderilmez - form onları zaten
-      // göstermiyor ama values state'inde kalmışsa bile PATCH'e sızmasın.
-      const gonderilecek = { ...sonuc.data };
-      if (!canSeeFiyat) {
-        for (const alan of FIYAT_ALANLARI) delete gonderilecek[alan];
-      }
-
       const res = await fetch(
         `/api/proje-takip/${proje.id}/muhendislik`,
         {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(gonderilecek),
+          body: JSON.stringify(sonuc.data),
         }
       );
       const data = await res.json();
@@ -186,37 +171,33 @@ export function MuhendislikDoldurForm({
 
           {adim === 2 && (
             <>
-              {canSeeFiyat && (
-                <>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-sm font-medium">Birim Fiyat</label>
-                      <Input type="number" step="0.01" value={values.birimFiyat ?? ""} onChange={(e) => alanGuncelle("birimFiyat", e.target.value)} />
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium">Para Birimi</label>
-                      <Select onValueChange={(v) => alanGuncelle("birimFiyatParaBirimi", v)}>
-                        <SelectTrigger><SelectValue placeholder="Seçin" /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="EUR">EUR</SelectItem>
-                          <SelectItem value="USD">USD</SelectItem>
-                          <SelectItem value="TRY">TRY</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-sm font-medium">Hedef/Yıllık</label>
-                      <Input type="number" value={values.hedefYillik ?? ""} onChange={(e) => alanGuncelle("hedefYillik", e.target.value)} />
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium">Kalıp Tutar</label>
-                      <Input type="number" value={values.kalipTutar ?? ""} onChange={(e) => alanGuncelle("kalipTutar", e.target.value)} />
-                    </div>
-                  </div>
-                </>
-              )}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-sm font-medium">Birim Fiyat</label>
+                  <Input type="number" step="0.01" value={values.birimFiyat ?? ""} onChange={(e) => alanGuncelle("birimFiyat", e.target.value)} />
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Para Birimi</label>
+                  <Select onValueChange={(v) => alanGuncelle("birimFiyatParaBirimi", v)}>
+                    <SelectTrigger><SelectValue placeholder="Seçin" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="EUR">EUR</SelectItem>
+                      <SelectItem value="USD">USD</SelectItem>
+                      <SelectItem value="TRY">TRY</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-sm font-medium">Hedef/Yıllık</label>
+                  <Input type="number" value={values.hedefYillik ?? ""} onChange={(e) => alanGuncelle("hedefYillik", e.target.value)} />
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Kalıp Tutar</label>
+                  <Input type="number" value={values.kalipTutar ?? ""} onChange={(e) => alanGuncelle("kalipTutar", e.target.value)} />
+                </div>
+              </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-sm font-medium">Kick Off/Statü</label>

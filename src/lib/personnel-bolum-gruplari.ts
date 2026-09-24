@@ -20,8 +20,14 @@
 /** Haritada karşılığı olmayan bölümlerin toplandığı sütun. */
 export const DIGER_SUTUN = 'DİĞER'
 
+/**
+ * Grup tanımı. Başlıklar mail ve ekranda AYNI — mail tablosu 23.09.2026'da
+ * döndürüldüğü için (satır = bölüm) tam adlar tek satıra sığıyor, kısaltma yok.
+ */
+export interface BolumGrubu { baslik: string; bolumler: string[] }
+
 /** İmalat tablosu (mavi + gri yaka): sütun başlığı → DepartmentDefinition adları. */
-export const IMALAT_GRUPLARI: { baslik: string; bolumler: string[] }[] = [
+export const IMALAT_GRUPLARI: BolumGrubu[] = [
   { baslik: 'LAZER', bolumler: ['Lazer & Daire Testere'] },
   { baslik: 'PRESHANE', bolumler: ['Preshane'] },
   { baslik: 'CNC VE MATKAP', bolumler: ['Talaşlı İmalat'] },
@@ -42,12 +48,15 @@ export const IMALAT_GRUPLARI: { baslik: string; bolumler: string[] }[] = [
  * Ofis tablosu (beyaz yaka): sütun başlığı → DepartmentDefinition adları.
  *
  * NOT: "Lojistik" ve "Planlama" ayrı bölüm olarak TANIMLI DEĞİL; GMY tablosunda
- * ayrı başlık olsalar da ILERIHub'da Fabrika Müdürlüğü altındalar → ÜRETİM'e girerler.
+ * ayrı başlık olsalar da ILERIHub'da Fabrika Müdürlüğü altındalar → FABRİKA MÜDÜRLÜĞÜ
+ * sütununa girerler. (23.09.2026 ölçümü: 10 beyaz yakalının bolumDetay kırılımı
+ * FABRİKAMÜDÜRLÜĞÜ 2 · ÜRETİM 1 · ÜRETİM PLANLAMA 4 · LOJİSTİK 3 — ayrıştırmak
+ * istenirse eşleme bolumDetay'a da bakmalı; şu an yalnız Personnel.bolum kullanılıyor.)
  * İmalat bölümlerinde çalışan beyaz yakalılar (Kalıphane, Prototip Atölye, İdari İşler)
  * GMY kararıyla KENDİ bölüm adlarıyla ayrı sütunda gösterilir.
  */
-export const OFIS_GRUPLARI: { baslik: string; bolumler: string[] }[] = [
-  { baslik: 'ÜRETİM', bolumler: ['Fabrika Müdürlüğü'] },
+export const OFIS_GRUPLARI: BolumGrubu[] = [
+  { baslik: 'FABRİKA MÜDÜRLÜĞÜ', bolumler: ['Fabrika Müdürlüğü'] },
   { baslik: 'SATINALMA', bolumler: ['Satınalma Müdürlüğü'] },
   { baslik: 'SATIŞ PAZARLAMA', bolumler: ['Satış & Pazarlama Müdürlüğü', 'Asansör Satış Pazarlama'] },
   { baslik: 'MUHASEBE', bolumler: ['Finans-Muhasebe Müdürlüğü'] },
@@ -68,7 +77,7 @@ export const OFIS_GRUPLARI: { baslik: string; bolumler: string[] }[] = [
 ]
 
 /** bölüm adı → sütun başlığı ters indeksi (aynı bölüm iki sütuna verilemez). */
-function tersIndeks(gruplar: { baslik: string; bolumler: string[] }[]): Map<string, string> {
+function tersIndeks(gruplar: BolumGrubu[]): Map<string, string> {
   const m = new Map<string, string>()
   for (const g of gruplar) {
     for (const b of g.bolumler) {

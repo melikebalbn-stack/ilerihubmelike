@@ -108,8 +108,8 @@ async function handle(req: NextRequest) {
 
   const baslik = 'Haftalık Personel Raporu'
   const konu = `${baslik} — ${veri.tarihMetni}`
-  // bolumLimiti VERİLMEZ → tüm bölümler listelenir. Eskiden 12'de kesiliyordu ve
-  // 28 bölümün 16'sı maile hiç girmiyordu (22.09.2026 ölçümü).
+  // bolumLimiti VERİLMEZ (24.09: alan zaten devre dışı — bölüm dağılımı listesi
+  // kaldırıldı, oran/çubuk tabloların içine taşındı).
   const opts = { baslik, sayfaUrl: ileriHubUrl('/personnel/reports') }
   const html = buildPersonnelWeeklyHtml(veri, opts)
   const text = buildPersonnelWeeklyText(veri, opts)

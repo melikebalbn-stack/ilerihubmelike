@@ -18,6 +18,7 @@ import path from 'path'
 import { getHaftalikPersonelRaporu } from '../src/lib/personnel-weekly-report'
 import { buildPersonnelWeeklyHtml, buildPersonnelWeeklyText } from '../src/lib/email-templates/personnel-weekly'
 import { ileriHubUrl } from '../src/lib/email-templates/akademi/_base'
+import { logoAttachments } from '../src/lib/email-templates/layout'
 import { sendEmail } from '../src/lib/email'
 
 const CIKTI = process.env.CIKTI ?? path.join(process.cwd(), 'uploads', 'personel-haftalik-mail-onizleme.html')
@@ -35,7 +36,7 @@ async function main() {
   const opts = {
     baslik: 'Haftalık Personel Raporu',
     sayfaUrl: ileriHubUrl('/personnel/reports'),
-    // bolumLimiti verilmez → cron ile birebir aynı çıktı (tüm bölümler).
+    // bolumLimiti verilmez → cron ile birebir aynı çıktı.
   }
   const html = buildPersonnelWeeklyHtml(veri, opts)
   const text = buildPersonnelWeeklyText(veri, opts)
@@ -59,11 +60,15 @@ async function main() {
     return
   }
 
+  // logoAttachments() ZORUNLU: şablon logoyu `cid:ilerihub-logo` ile gösteriyor.
+  // Eki geçmeyince Outlook "Bağlantılı resim görüntülenemiyor" kutusu çiziyordu
+  // (cron ucu bunu zaten geçiyordu, yalnız bu betik eksikti — 23.09.2026).
   const sonuc = await sendEmail(
     [{ email: hedef, name: hedef }],
     `[TEST] Haftalık Personel Raporu — ${veri.tarihMetni}`,
     text,
     html,
+    logoAttachments(),
   )
   console.log('\nGönderim :', hedef, sonuc.success ? 'OK' : `HATA: ${sonuc.error}`, sonuc.messageId ?? '')
   if (!sonuc.success) process.exit(1)

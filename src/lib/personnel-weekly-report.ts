@@ -18,6 +18,8 @@ export interface HareketSatiri {
   bolum: string
   gorev: string
   tarih: string
+  /** Dar mail sütunu için gg.aa.yyyy (uzun biçim 3 satıra sarıyordu). */
+  tarihKisa: string
   /** Yalnız çıkanlarda dolu — EmploymentPeriod.exitReason (serbest metin). */
   cikisSebebi?: string | null
   /** Yalnız çıkanlarda dolu — EmploymentPeriod.exitParty (İŞÇİ / İŞVEREN). */
@@ -84,6 +86,10 @@ export function oncekiHaftaAraligi(referans: Date): HaftaAraligi {
 const trTarih = (d: Date) =>
   d.toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric', timeZone: 'UTC' })
 
+/** gg.aa.yyyy — dar tablo sütunu için. */
+const trTarihKisa = (d: Date) =>
+  d.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' })
+
 export async function getHaftalikPersonelRaporu(referans = new Date()): Promise<HaftalikPersonelRaporu> {
   const { haftaBasi, haftaSonu, haftaAnahtari, gunBasi, gunSonu } = oncekiHaftaAraligi(referans)
   // girisTarihi/cikisTarihi @db.Date → takvim günü karşılaştırması (saat yok).
@@ -113,6 +119,7 @@ export async function getHaftalikPersonelRaporu(referans = new Date()): Promise<
     bolum: p.bolum,
     gorev: p.gorev,
     tarih: trTarih(tarih),
+    tarihKisa: trTarihKisa(tarih),
     ...(cikis ? { cikisSebebi: cikis.exitReason, cikisTarafi: cikis.exitParty } : {}),
   })
 

@@ -62,6 +62,25 @@ const GMY_ADI = "Genel Müdür Yardımcısı";
 export const MUAF_POZISYON_KODLARI = ["ORG-TF-GM", "ORG-TF-GMY"] as const;
 
 /**
+ * BÖLÜME ÖZEL ZİNCİR (Melih kararı 24.09.2026) — onay yapısı genel kuraldan
+ * farklı olan bölümler. Bu bölümlerde YAKA FARK ETMEZ:
+ *   1. değerlendirici = bölümün MÜDÜR YARDIMCISI
+ *   2. değerlendirici = bölümün MÜDÜRÜ
+ *   ayrı onay adımı YOK → müdür puanını verince İK kapanışına gider
+ *
+ * Genel kural (sorumlu1 → müdür yrd. → müdür) DİĞER bölümlerde AYNEN sürer.
+ *
+ * KOD ile eşlenir, AD ile DEĞİL: DepartmentDefinition.name değişebiliyor
+ * (ör. "Yatırım ve Teşvik" → "Stratejik Sektörler", 23.09.2026), OrgUnit.code
+ * sabit kalır. MUAF_POZISYON_KODLARI ile aynı gerekçe.
+ * Kişi adı GÖMÜLMEZ — müdür/müdür yrd. koltuk değiştirince zincir kendiliğinden
+ * yeni kişiye kurulur.
+ *
+ * ORG-TF-P0078 = Kalite Müdürlüğü (bugün: müdür yrd. Batuhan Çapar, müdür Sami Tekoğlu)
+ */
+export const OZEL_ZINCIR_ORG_KODLARI = ["ORG-TF-P0078"] as const;
+
+/**
  * Kişi muaf bir pozisyon kutusunda mı oturuyor?
  * YALNIZ ANA KOLTUKLARA bakar — kişi birden fazla koltukta olabilir; kurul ve
  * komite koltukları (ORG-KR-*) muafiyet üretmez.
@@ -159,7 +178,15 @@ export async function denemeZinciriCoz(db: Db, personnelId: string): Promise<Zin
       departmentId: true,
       bolum: true,
       department: {
-        select: { id: true, name: true, mudurId: true, mudurYardimcisiId: true, orgUnitId: true },
+        select: {
+          id: true,
+          name: true,
+          mudurId: true,
+          mudurYardimcisiId: true,
+          orgUnitId: true,
+          // Bölüme özel zincir kontrolü için — ad DEĞİL kod üzerinden eşlenir.
+          orgUnit: { select: { code: true } },
+        },
       },
     },
   });
@@ -201,6 +228,30 @@ export async function denemeZinciriCoz(db: Db, personnelId: string): Promise<Zin
   const yaka = (kisi.yakaRengi ?? "").toUpperCase();
   const atlananlar: string[] = [];
   const kendisi = (k: ZincirKisi | null) => !!k && k.personnelId === kisi.id;
+
+  // ── BÖLÜME ÖZEL ZİNCİR (bkz. OZEL_ZINCIR_ORG_KODLARI) ──
+  // Yalnız listedeki bölümlerde ve YALNIZ değerlendirilen kişi o bölümün müdürü
+  // ya da müdür yardımcısı DEĞİLSE uygulanır. Kişi o koltuklardan birindeyse
+  // genel kurala düşülür: orada zaten "değerlendirici kendisi → üst kademeye çık"
+  // (beyaz yakada GMY'ye kadar) mantığı var, onu kısa devre etmeyiz.
+  // Müdür yardımcısı koltuğu BOŞSA da genel kurala düşer — tek kişiye iki puan
+  // yazdırmak yerine mevcut akış işler (fail-closed kontrolleri orada).
+  const ozelBolum = !!dept.orgUnit?.code && (OZEL_ZINCIR_ORG_KODLARI as readonly string[]).includes(dept.orgUnit.code);
+  if (ozelBolum && mudurYrd && !kendisi(mudurYrd) && !kendisi(mudur)) {
+    return {
+      ok: true,
+      yakaRengi: yaka,
+      departmentId: dept.id,
+      departmentAdi: dept.name,
+      degerlendirici1: mudurYrd, // rol: MUDUR_YARDIMCISI
+      degerlendirici2: mudur, // rol: MUDUR → puanını verince onay YOK, İK'ya gider
+      onaylayan: null,
+      baslangicDurumu: "DEGERLENDIRICI1_BEKLIYOR",
+      atlananlar: [
+        `"${dept.name}" bölümüne özel zincir: 1. puan müdür yardımcısı, 2. puan müdür (sorumlu1/takım lideri adımı yok)`,
+      ],
+    };
+  }
 
   // ── MAVİ YAKA: iki puan ──
   if (yaka === "MAVI") {

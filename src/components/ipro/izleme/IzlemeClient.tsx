@@ -174,12 +174,25 @@ type Detay = {
   uretim: { gerceklesen: number; planlanan: number | null }
 }
 
-/** ms → "1s 12dk" / "12dk" / "45sn". Canlı süre için. */
+/** ms → "92 dk" (yalnız dakika). Negatif/gelecek/NaN → "—" (TZ sapması güvenliği). */
 function sureBicim(ms: number): string {
-  const dk = Math.floor(ms / 60000)
-  if (dk < 1) return `${Math.floor(ms / 1000)}sn`
-  if (dk < 60) return `${dk}dk`
-  return `${Math.floor(dk / 60)}s ${dk % 60}dk`
+  if (!(ms >= 0)) return '—'
+  return `${Math.floor(ms / 60000)} dk`
+}
+
+/** Dijital sayaç rozeti: monospace + tabular rakamlar, ince çerçeveli kutu, hafif kontrastlı zemin. */
+function DijitalSure({ deger, ton = 'yesil', tv = false, className = '' }: { deger: string; ton?: 'yesil' | 'kirmizi' | 'notr'; tv?: boolean; className?: string }) {
+  const renk =
+    ton === 'kirmizi'
+      ? `border-red-500/40 bg-red-500/15 ${tv ? 'text-red-300' : 'text-red-600'}`
+      : ton === 'yesil'
+        ? `border-emerald-500/40 bg-emerald-500/15 ${tv ? 'text-emerald-300' : 'text-emerald-600'}`
+        : `border-slate-400/40 bg-slate-500/10 ${tv ? 'text-slate-200' : 'text-slate-700'}`
+  return (
+    <span className={`inline-block rounded border px-1.5 py-0.5 font-mono font-semibold tabular-nums ${renk} ${className}`}>
+      {deger}
+    </span>
+  )
 }
 
 export function IzlemeClient() {
@@ -504,13 +517,13 @@ function Kart({ tezgah, tv, esik, onClick }: { tezgah: Tezgah; tv: boolean; esik
         <Satir etiket="Operasyon" deger={c.ifsOperationNo != null ? String(c.ifsOperationNo) : '—'} tv={tv} />
         <Satir etiket="Malzeme" deger={c.ifsPartDescription ?? c.ifsPartNo ?? '—'} tv={tv} baslik={c.ifsPartNo ?? undefined} />
         <Satir etiket="Duruş" deger="—" tv={tv} />
-        <p className="pt-0.5 text-xs font-semibold text-emerald-500">{sure}</p>
+        <div className="pt-0.5">{sure ? <DijitalSure deger={sure} ton="yesil" tv={tv} className="text-xs" /> : null}</div>
       </div>
     ) : durum === 'durusta' ? (
       <div className="mt-2 space-y-1">
         <p className="text-sm font-semibold text-red-500">DURUŞTA</p>
         <Satir etiket="Sebep" deger={tezgah.durus?.sebep ?? '—'} tv={tv} />
-        <p className="pt-0.5 text-xs font-semibold text-red-500">{durusSure}</p>
+        <div className="pt-0.5">{durusSure ? <DijitalSure deger={durusSure} ton="kirmizi" tv={tv} className="text-xs" /> : null}</div>
       </div>
     ) : (
       <p className={`mt-2 text-sm ${altMetin}`}>boşta</p>
@@ -635,7 +648,7 @@ function DetayDialog({ tezgahId, canliOee, esik, onClose }: { tezgahId: string |
                 <div className="text-xs font-semibold uppercase tracking-wider text-red-500">Duruşta</div>
                 <div className="mt-1 flex items-baseline justify-between">
                   <span className="text-xl font-bold text-red-700">{detay.durus?.sebep ?? 'Duruş'}</span>
-                  <span className="font-mono text-lg text-red-600">{durusSure}</span>
+                  {durusSure ? <DijitalSure deger={durusSure} ton="kirmizi" className="text-lg" /> : null}
                 </div>
               </div>
             ) : cokluIs ? (
@@ -649,9 +662,11 @@ function DetayDialog({ tezgahId, canliOee, esik, onClose }: { tezgahId: string |
                     <div key={is.id} className="rounded-lg border border-emerald-200 bg-emerald-50/50 p-3">
                       <div className="mb-1.5 flex items-baseline justify-between">
                         <span className="font-semibold text-slate-800">👤 {is.operator ?? '—'}</span>
-                        <span className="font-mono text-sm font-semibold text-emerald-600">
-                          {is.baslatildiAt ? sureBicim(Date.now() - new Date(is.baslatildiAt).getTime()) : '—'}
-                        </span>
+                        <DijitalSure
+                          deger={is.baslatildiAt ? sureBicim(Date.now() - new Date(is.baslatildiAt).getTime()) : '—'}
+                          ton="yesil"
+                          className="text-sm"
+                        />
                       </div>
                       <div className="grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-3">
                         <Alan2 e="İş emri" d={`${is.ifsOrderNo ?? '—'} · Op ${is.ifsOperationNo ?? '—'}`} />
@@ -669,7 +684,7 @@ function DetayDialog({ tezgahId, canliOee, esik, onClose }: { tezgahId: string |
               <div>
                 <div className="mb-3 flex items-baseline justify-between">
                   <span className="text-lg font-bold text-slate-800">👤 {aktif.operator ?? '—'}</span>
-                  <span className="font-mono text-2xl font-semibold text-emerald-600">{aktifSure}</span>
+                  <DijitalSure deger={aktifSure} ton="yesil" className="text-xl" />
                 </div>
                 <div className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3">
                   <Alan2 e="İş emri" d={`${aktif.ifsOrderNo ?? '—'} · Op ${aktif.ifsOperationNo ?? '—'}`} />

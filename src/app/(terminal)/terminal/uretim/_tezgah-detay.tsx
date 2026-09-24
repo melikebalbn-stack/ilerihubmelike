@@ -105,12 +105,24 @@ type Detay = {
   } | null
 }
 
-/** ms → "1s 12dk" / "12dk" / "45sn". Canlı süre için. */
+/** ms → "92 dk" (yalnız dakika). Negatif/gelecek/NaN → "—" (TZ sapması güvenliği). */
 function sureBicim(ms: number): string {
-  const dk = Math.floor(ms / 60000)
-  if (dk < 1) return `${Math.floor(ms / 1000)}sn`
-  if (dk < 60) return `${dk}dk`
-  return `${Math.floor(dk / 60)}s ${dk % 60}dk`
+  if (!(ms >= 0)) return '—'
+  return `${Math.floor(ms / 60000)} dk`
+}
+/** Dijital sayaç rozeti: monospace + tabular rakamlar, ince çerçeve, hafif kontrastlı zemin. */
+function DijitalSure({ deger, ton = 'yesil', className = '' }: { deger: string; ton?: 'yesil' | 'kirmizi' | 'notr'; className?: string }) {
+  const renk =
+    ton === 'kirmizi'
+      ? 'border-red-500/40 bg-red-500/15 text-red-600'
+      : ton === 'yesil'
+        ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-600'
+        : 'border-slate-400/40 bg-slate-500/10 text-slate-700'
+  return (
+    <span className={`inline-block rounded border px-1.5 py-0.5 font-mono font-semibold tabular-nums ${renk} ${className}`}>
+      {deger}
+    </span>
+  )
 }
 function dkBicim(dk: number): string {
   if (dk < 1) return '0dk'
@@ -342,7 +354,7 @@ export function TezgahDetayModal({
                 <div className="text-xs font-semibold uppercase tracking-wider text-red-500">Duruşta</div>
                 <div className="mt-1 flex items-baseline justify-between">
                   <span className="text-xl font-bold text-red-700">{detay.durus?.sebep ?? 'Duruş'}</span>
-                  <span className="font-mono text-lg text-red-600">{durusSure}</span>
+                  {durusSure ? <DijitalSure deger={durusSure} ton="kirmizi" className="text-lg" /> : null}
                 </div>
               </div>
             ) : cokluIs ? (
@@ -358,7 +370,7 @@ export function TezgahDetayModal({
                     <div key={is.id} className="rounded-lg border border-emerald-200 bg-emerald-50/40 p-3">
                       <div className="mb-1.5 flex items-baseline justify-between">
                         <span className="font-semibold text-slate-800">👤 {is.operator ?? '—'}</span>
-                        <span className="font-mono text-sm font-semibold text-emerald-600">{gecenSureBicim(is.baslatildiAt)}</span>
+                        <DijitalSure deger={gecenSureBicim(is.baslatildiAt)} ton="yesil" className="text-sm" />
                       </div>
                       <div className="grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-3">
                         <Alan2 e="İş emri" d={`${is.ifsOrderNo ?? '—'} · Op ${is.ifsOperationNo ?? '—'}`} />
@@ -401,7 +413,7 @@ export function TezgahDetayModal({
               <div>
                 <div className="mb-3 flex items-baseline justify-between">
                   <span className="text-lg font-bold text-slate-800">👤 {aktif.operator ?? '—'}</span>
-                  <span className="font-mono text-2xl font-semibold text-emerald-600">{aktifSure}</span>
+                  <DijitalSure deger={aktifSure} ton="yesil" className="text-xl" />
                 </div>
                 <div className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3">
                   <Alan2 e="İş emri" d={`${aktif.ifsOrderNo ?? '—'} · Op ${aktif.ifsOperationNo ?? '—'}`} />

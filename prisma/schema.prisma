@@ -13681,6 +13681,7 @@ enum ServisIslemHedefTipi {
   PERSONEL_ATAMA_DILIM
   SORUMLUSU
   PERSONEL_DURUM
+  SIKAYET
 }
 
 enum ServisIslemTuru {

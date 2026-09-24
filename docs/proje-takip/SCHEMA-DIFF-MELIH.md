@@ -150,8 +150,11 @@ sadece `prisma generate` sonrası tipler oluşacak.
   `Mühendislik Müdürlüğü` departmanındaki (aktif + User hesabı olan)
   herkese gider (`_lib/muhendislik-ekibi.ts`). `Mühendislik Müdürlüğü`
   değeri tahmin değil — sandbox dev DB'de canlı `SELECT bolum, COUNT(*)
-  FROM "Personnel" GROUP BY bolum` ile doğrulandı (49 aktif personel, 7
-  tanesinin User hesabı var). 2 kanal: email (`sendEmail`) + in-app
+  FROM "Personnel" GROUP BY bolum` ile doğrulandı. Mühendislik Müdürlüğü
+  departmanında 49 kayıt var (aktif+pasif), bunlardan 7'si aktif ve
+  hepsinin User hesabı var — `getMuhendislikEkibi()` bu 7 kişiyi
+  döndürüyor: Can Bayram Gülcan, Ertaç Çolak, Hatice Aslan, Mehmet Özmen,
+  Mehmet Şahin, Rahmi Orkun Kırçuvaloğlu, Şevval Ertaç. 2 kanal: email (`sendEmail`) + in-app
   (`prisma.notification.create`), push yok. Alıcı bulunamazsa (ör. atanan
   kişi silinmiş) `ProjeTakipLog`'a `BILDIRIM_BEKLIYOR` düşer, bulunursa
   `BILDIRIM_GONDERILDI`.

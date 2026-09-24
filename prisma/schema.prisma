@@ -9703,14 +9703,14 @@ model BolumDegisiklikTalep {
 
   // ── TALEP (müdür / müdür yrd. doldurur) ──
   acanUserId      String
-  acan            User               @relation("BolumTalepAcan", fields: [acanUserId], references: [id], onDelete: Cascade)
+  acan            User              @relation("BolumTalepAcan", fields: [acanUserId], references: [id], onDelete: Cascade)
   acanPersonnelId String? // koltuk sahibi Personnel (FK DEĞİL — sorumluId deseni)
   acanRol         BolumTalepAcanRol
   acanBolum       String? // açanın kendi bölümü — snapshot
   mevcutBolum     String // talep anındaki Personnel.bolum — snapshot
   hedefBolum      String
-  talepTarihi     DateTime  @default(now())
-  transferTarihi  DateTime? @db.Date // OPSİYONEL — boşsa İV onayda belirler
+  talepTarihi     DateTime          @default(now())
+  transferTarihi  DateTime?         @db.Date // OPSİYONEL — boşsa İV onayda belirler
 
   gerekceler        String[] // KISI_* / IS_* (department-transfer ile aynı sabitler)
   gerekceAciklamasi String?  @db.Text
@@ -16374,4 +16374,111 @@ model IzinHatirlatma {
 
   @@index([talepId])
   @@map("izin_hatirlatma")
+}
+
+// ── ProjeTakip: Syteline "Proje Takip Listesi" karşılığı (Melih onayı, 2026-09-22/23) ──
+// Detaylı gerekçeler: docs/proje-takip/SCHEMA-DIFF-MELIH.md
+// canSeeProjeFiyat (src/lib/proje-takip/can-see-fiyat.ts) fiyat alanlarının (prototipFiyati,
+// nre, birimFiyat, kalipTutar, hedefYillik) kimlere görünür olacağını kod seviyesinde
+// belirliyor - şemada yeni bir alan gerektirmiyor, sadece bu not.
+model ProjeTakip {
+  id      String @id @default(cuid())
+  projeNo String @unique // otomatik üretim: PRJ-2026-00001 (advisory-lock pattern, OR-2026 gibi)
+  siraNo  Int? // Syteline "Sıra No" - legacy import için opsiyonel
+
+  // ── SATIŞ TARAFI: proje açılışında dolduruluyor ──
+  musteriFirma       String
+  musteriYetkilisi   String?
+  musteriKod         String?
+  ileriKod           String? // mühendislik atayana kadar boş kalabilir
+  ileriTanim         String
+  grupKod            String?
+  kategori           String? // Proje / Müşteri / İleri / Offtheshelf ...
+  kalipFikstur       String? // KALIP YOK / MÜSTERİ / İLERİ
+  kalipKodu          String?
+  yillikAdet         Float?
+  minimumSipMiktari  Float?
+  numuneAdedi        String? // veride "TBD" gibi metin de geliyor, String tutuluyor
+  prototipFiyati     Decimal?  @db.Decimal(14, 2)
+  prototipParaBirimi String? // EUR/USD/TRY
+  nre                Decimal?  @db.Decimal(14, 2)
+  nreParaBirimi      String?
+  projeKalipFikstur  String?   @db.Text
+  projeBilgisi       String?   @db.Text
+  rfpNo              String?
+  rfpTarih           DateTime?
+  rfpAcilisHafta     Int? // rfpTarih'ten otomatik hesaplanır (bkz. tarih-hesapla.ts); yalnız legacy import'ta tarih yoksa elle doldurulur
+  yil                Int?
+
+  // ── MÜHENDİSLİK TARAFI: bildirim sonrası dolduruluyor ──
+  revizeTerminTrh      DateTime?
+  terminProjeTrh       DateTime?
+  poNumarasi           String?
+  projeDurumTipi       String? // NUMUNE / PROTOTYPE / SERI / PPAP / TASARIM / REVIZYON / YENIDEN_PPAP
+  sevkiyatTrh          DateTime?
+  sevkiyatYil          Int? // sevkiyatTrh'ten otomatik hesaplanır; yalnız legacy import'ta tarih yoksa elle doldurulur
+  sevkiyatHafta        Int? // sevkiyatTrh'ten otomatik hesaplanır; yalnız legacy import'ta tarih yoksa elle doldurulur
+  onayTrh              DateTime?
+  onayYil              Int? // onayTrh'ten otomatik hesaplanır; yalnız legacy import'ta tarih yoksa elle doldurulur
+  onayHafta            Int? // onayTrh'ten otomatik hesaplanır; yalnız legacy import'ta tarih yoksa elle doldurulur
+  aciklama             String?   @db.Text
+  lokasyon             String?
+  birimFiyat           Decimal?  @db.Decimal(14, 2)
+  birimFiyatParaBirimi String?
+  hedefYillik          Decimal?  @db.Decimal(14, 2)
+  kalipTutar           Decimal?  @db.Decimal(14, 2)
+  kickOffStatu         String?
+  poKalip              String?
+  kickoffCW            Int?
+  kickoffYil           Int?
+  istemeTrhCW          Int?
+  istemeTrhYil         Int?
+  sevkTrhCW            Int?
+  sevkYil              Int?
+  poTrhCW              Int?
+  poYil                Int?
+  poOngCW              Int?
+  poOngYil             Int?
+
+  // ── Syteline legacy / açıklaması netleşmemiş alanlar (veri kaybı olmasın diye tutuluyor) ──
+  legacyComboBox10      String?
+  legacyComboBox23      String?
+  legacyDateCombo5      DateTime?
+  legacyKullaniciStatic String? // C(KullaniciStatic) - kaydı giren/güncelleyen kişi (metin)
+
+  // ── İş akışı / durum ──
+  durum                           String    @default("YENI_DEVAM_EDEN")
+  // YENI_DEVAM_EDEN / TASARIM_YENI_DEVAM_EDEN / ONAY_BEKLEYEN_GONDERILEN / REVIZYON / ONAY_ALAN / IPTAL
+  // (bkz. api/_lib/sabitler.ts DURUM_DEGERLERI — tek kaynak)
+  muhendislikDoldurmaDurumu       String    @default("BEKLIYOR") // BEKLIYOR / TAMAMLANDI
+  muhendislikBildirimGonderildiMi Boolean   @default(false)
+  muhendislikBildirimTarihi       DateTime?
+
+  // ── Sorumlular (plain String, @relation yok - Personnel modeline dokunmuyoruz) ──
+  olusturanId          String // Satış temsilcisi - session.user.id
+  muhendislikSorumluId String? // atanan mühendis - session.user.id
+
+  loglar ProjeTakipLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([durum])
+  @@index([muhendislikSorumluId])
+  @@index([musteriFirma])
+  @@map("proje_takip")
+}
+
+model ProjeTakipLog {
+  id           String     @id @default(cuid())
+  projeTakipId String
+  projeTakip   ProjeTakip @relation(fields: [projeTakipId], references: [id])
+  islemTipi    String // OLUSTURULDU / MUHENDISLIK_DOLDURDU / DURUM_DEGISTI / BILDIRIM_GONDERILDI / BILDIRIM_BEKLIYOR
+  // (bkz. api/_lib/sabitler.ts LOG_ISLEM_TIPLERI — tek kaynak)
+  yapanId      String
+  detay        String?    @db.Text
+  createdAt    DateTime   @default(now())
+
+  @@index([projeTakipId])
+  @@map("proje_takip_log")
 }

@@ -219,6 +219,7 @@ const formsMenuItems = [
   { name: "IT Destek Talebi", icon: Headphones, href: "/it-support", roles: ["*"], subgroup: "genel" as FormAltGrup },
   { name: "Ziyaret Raporları", icon: FileText, href: "/forms/visit-reports", roles: ["*"], subgroup: "genel" as FormAltGrup },
   { name: "Toplantı Raporu", icon: Calendar, href: "/meetings", roles: ["*"], subgroup: "genel" as FormAltGrup },
+  { name: "Proje Takip", icon: ClipboardList, href: "/proje-takip/yeni", roles: ["*"], subgroup: "genel" as FormAltGrup },
   { name: "Mesai Formu", icon: Clock, href: "/forms/overtime", roles: ["*"], subgroup: "uretim" as FormAltGrup },
   // Mesai Performansı — mesai formunun raporu, aynı kitle. Görünürlük AYNEN
   // "herkes" (roles: ["*"]): sunucu kapısı `overtime.report` izni VEYA omurga

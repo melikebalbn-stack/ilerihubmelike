@@ -4,10 +4,6 @@ import { prisma } from "@/lib/prisma";
 import {
   Card, CardContent, CardHeader, CardTitle,
 } from "@/components/ui/card";
-import {
-  Table, TableHeader, TableRow, TableHead, TableBody, TableCell,
-} from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
 
 export const dynamic = "force-dynamic";
 
@@ -113,111 +109,79 @@ export default async function ProjeTakipRaporPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle style={{ color: ANA_RENK }}>Durum Dağılımı</CardTitle>
+          <CardTitle className="text-base font-medium" style={{ color: ANA_RENK }}>Durum Dağılımı</CardTitle>
         </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Durum</TableHead>
-                <TableHead className="text-right">Adet</TableHead>
-                <TableHead className="text-right">Oran</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {data.durumGrup.map((d) => (
-                <TableRow key={d.durum ?? "belirsiz"}>
-                  <TableCell>
-                    <Badge variant="outline">{d.durum ?? "Belirsiz"}</Badge>
-                  </TableCell>
-                  <TableCell className="text-right">{d._count._all}</TableCell>
-                  <TableCell className="text-right text-muted-foreground">
+        <CardContent className="p-0">
+          <div className="divide-y divide-border/60">
+            {data.durumGrup.map((d) => (
+              <div key={d.durum ?? "belirsiz"} className="flex items-center justify-between px-6 py-2.5 text-sm">
+                <span className="text-muted-foreground">{d.durum ?? "Belirsiz"}</span>
+                <span className="flex items-center gap-6">
+                  <span className="font-medium tabular-nums">{d._count._all}</span>
+                  <span className="text-xs text-muted-foreground tabular-nums w-12 text-right">
                     {yuzde(d._count._all)}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+                  </span>
+                </span>
+              </div>
+            ))}
+          </div>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle style={{ color: ANA_RENK }}>Proje Durum Tipi (Numune / Prototip / Seri...)</CardTitle>
+          <CardTitle className="text-base font-medium" style={{ color: ANA_RENK }}>Proje Durum Tipi (Numune / Prototip / Seri...)</CardTitle>
         </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Tip</TableHead>
-                <TableHead className="text-right">Adet</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {data.projeDurumTipiGrup.map((d) => (
-                <TableRow key={d.projeDurumTipi ?? "belirsiz"}>
-                  <TableCell>{d.projeDurumTipi ?? "Belirsiz"}</TableCell>
-                  <TableCell className="text-right">{d._count._all}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+        <CardContent className="p-0">
+          <div className="divide-y divide-border/60">
+            {data.projeDurumTipiGrup.map((d) => (
+              <div key={d.projeDurumTipi ?? "belirsiz"} className="flex items-center justify-between px-6 py-2.5 text-sm">
+                <span className="text-muted-foreground">{d.projeDurumTipi ?? "Belirsiz"}</span>
+                <span className="font-medium tabular-nums">{d._count._all}</span>
+              </div>
+            ))}
+          </div>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle style={{ color: ANA_RENK }}>Grup Kod Dağılımı (İlk 10)</CardTitle>
+          <CardTitle className="text-base font-medium" style={{ color: ANA_RENK }}>Grup Kod Dağılımı (İlk 10)</CardTitle>
         </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Grup Kod</TableHead>
-                <TableHead className="text-right">Adet</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {data.grupKodGrup.map((d) => (
-                <TableRow key={d.grupKod ?? "belirsiz"}>
-                  <TableCell>{d.grupKod ?? "Belirsiz"}</TableCell>
-                  <TableCell className="text-right">{d._count._all}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+        <CardContent className="p-0">
+          <div className="divide-y divide-border/60">
+            {data.grupKodGrup.map((d) => (
+              <div key={d.grupKod ?? "belirsiz"} className="flex items-center justify-between px-6 py-2.5 text-sm">
+                <span className="text-muted-foreground">{d.grupKod ?? "Belirsiz"}</span>
+                <span className="font-medium tabular-nums">{d._count._all}</span>
+              </div>
+            ))}
+          </div>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle style={{ color: ANA_RENK }}>Son Eklenen Projeler</CardTitle>
+          <CardTitle className="text-base font-medium" style={{ color: ANA_RENK }}>Son Eklenen Projeler</CardTitle>
         </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Proje No</TableHead>
-                <TableHead>Ürün</TableHead>
-                <TableHead>Müşteri</TableHead>
-                <TableHead>Durum</TableHead>
-                <TableHead className="text-right">Tarih</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {data.sonEklenenler.map((p) => (
-                <TableRow key={p.projeNo}>
-                  <TableCell className="font-medium">{p.projeNo}</TableCell>
-                  <TableCell>{p.ileriTanim}</TableCell>
-                  <TableCell>{p.musteriFirma}</TableCell>
-                  <TableCell><Badge variant="outline">{p.durum}</Badge></TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    {p.createdAt.toLocaleDateString("tr-TR")}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+        <CardContent className="p-0">
+          <div className="divide-y divide-border/60">
+            {data.sonEklenenler.map((p) => (
+              <a
+                key={p.projeNo}
+                href={`/proje-takip/${p.projeNo}`}
+                className="flex items-center justify-between gap-4 px-6 py-2.5 text-sm hover:bg-muted/40"
+              >
+                <span className="font-medium w-24 shrink-0">{p.projeNo}</span>
+                <span className="flex-1 truncate">{p.ileriTanim}</span>
+                <span className="flex-1 truncate text-muted-foreground">{p.musteriFirma}</span>
+                <span className="text-xs text-muted-foreground w-40 text-right">{p.durum}</span>
+                <span className="text-xs text-muted-foreground w-20 text-right">
+                  {p.createdAt.toLocaleDateString("tr-TR")}
+                </span>
+              </a>
+            ))}
+          </div>
         </CardContent>
       </Card>
     </div>

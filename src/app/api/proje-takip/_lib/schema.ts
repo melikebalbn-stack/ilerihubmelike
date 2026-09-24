@@ -17,7 +17,8 @@ export const yeniProjeSchema = z.object({
   yil: z.coerce.number().int().optional(),
   kalipFikstur: z.enum(["KALIP_YOK", "MUSTERI", "ILERI"]).optional(),
   kalipKodu: z.string().optional(),
-  muhendislikSorumluId: z.string().optional(), // boş bırakılırsa departmandaki herkese bildirim gider
+  // muhendislikSorumluId artık burada değil - proje sorumlusuz açılıyor,
+  // atama detay ekranında (proje-detay-schema.ts) yapılıyor
 
   // Adım 3: Miktar & Fiyat
   yillikAdet: z.coerce.number().optional(),

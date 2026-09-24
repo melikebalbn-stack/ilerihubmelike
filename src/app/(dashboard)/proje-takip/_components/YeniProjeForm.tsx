@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -8,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Building2, Package, Coins, FileText, CheckCircle2 } from "lucide-react";
+import { Building2, Package, Coins, FileText } from "lucide-react";
 import { yeniProjeSchema, type YeniProjeFormValues } from "@/app/api/proje-takip/_lib/schema";
 
 const ADIMLAR = [
@@ -29,19 +30,13 @@ const ADIM_ZORUNLU_ALANLAR: Record<number, (keyof YeniProjeFormValues)[]> = {
   3: [],
 };
 
-type MuhendisOzet = {
-  id: string;
-  name: string | null;
-  email: string;
-};
-
-export function YeniProjeForm({ muhendisler }: { muhendisler: MuhendisOzet[] }) {
+export function YeniProjeForm() {
+  const router = useRouter();
   const [adim, setAdim] = useState(0);
   const [form, setForm] = useState<FormState>({ yil: String(new Date().getFullYear()) });
   const [adimHatalari, setAdimHatalari] = useState<Record<string, string>>({});
   const [gonderiliyor, setGonderiliyor] = useState(false);
   const [hata, setHata] = useState<string | null>(null);
-  const [basarili, setBasarili] = useState<string | null>(null);
 
   function setField(key: keyof YeniProjeFormValues, value: string) {
     setForm((f) => ({ ...f, [key]: value }));
@@ -88,27 +83,11 @@ export function YeniProjeForm({ muhendisler }: { muhendisler: MuhendisOzet[] }) 
       );
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error ?? "Kayıt oluşturulamadı");
-      setBasarili(data.projeNo);
+      router.push(`/proje-takip/${data.projeNo}`);
     } catch (err) {
       setHata(err instanceof Error ? err.message : "Bilinmeyen hata");
-    } finally {
       setGonderiliyor(false);
     }
-  }
-
-  if (basarili) {
-    return (
-      <Card className="max-w-xl mx-auto mt-10">
-        <CardContent className="flex flex-col items-center gap-3 py-10">
-          <CheckCircle2 className="w-10 h-10" style={{ color: ANA_RENK }} />
-          <p className="text-lg font-medium">Proje oluşturuldu: {basarili}</p>
-          <p className="text-sm text-muted-foreground text-center">
-            Mühendisliğe bildirim ve e-posta gönderildi. Mühendislik ekibi
-            plant parametrelerini dolduracak.
-          </p>
-        </CardContent>
-      </Card>
-    );
   }
 
   const AktifIcon = ADIMLAR[adim].icon;
@@ -197,20 +176,6 @@ export function YeniProjeForm({ muhendisler }: { muhendisler: MuhendisOzet[] }) 
                     onChange={(e) => setField("ileriKod", e.target.value)}
                     placeholder="Mühendislik atayabilir, boş kalabilir"
                   />
-                </div>
-                <div>
-                  <label className="text-sm font-medium">Sorumlu Mühendis</label>
-                  <Select onValueChange={(v) => setField("muhendislikSorumluId", v)}>
-                    <SelectTrigger><SelectValue placeholder="Seçilmezse departmandaki herkese bildirim gider" /></SelectTrigger>
-                    <SelectContent>
-                      {muhendisler.map((m) => (
-                        <SelectItem key={m.id} value={m.id}>{m.name ?? m.email}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Boş bırakılırsa Mühendislik Müdürlüğü'ndeki herkese bildirim/e-posta gider.
-                  </p>
                 </div>
                 <div>
                   <label className="text-sm font-medium">RFP No</label>

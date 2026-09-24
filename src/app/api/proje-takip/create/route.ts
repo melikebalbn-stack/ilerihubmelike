@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
       yil: v.yil,
       kalipFikstur: v.kalipFikstur,
       kalipKodu: v.kalipKodu,
-      muhendislikSorumluId: v.muhendislikSorumluId,
+      muhendislikSorumluId: null, // proje sorumlusuz açılıyor, atama detay ekranında yapılıyor
       yillikAdet: v.yillikAdet,
       minimumSipMiktari: v.minimumSipMiktari,
       numuneAdedi: v.numuneAdedi,

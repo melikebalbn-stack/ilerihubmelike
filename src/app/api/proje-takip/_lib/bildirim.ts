@@ -65,7 +65,7 @@ async function createProjeAcildiInAppNotification(
       title: "Yeni Proje Açıldı",
       message: `${proje.projeNo} — ${proje.ileriTanim} (${proje.musteriFirma}) için plant parametrelerini doldurmanız gerekiyor.`,
       type: "INFO",
-      link: `/proje-takip/muhendislik/${proje.projeNo}`,
+      link: `/proje-takip/${proje.projeNo}`,
     },
   });
 }

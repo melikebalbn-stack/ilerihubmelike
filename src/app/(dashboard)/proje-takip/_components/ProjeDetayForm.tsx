@@ -1,0 +1,478 @@
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import {
+  projeDetaySchema,
+  type ProjeDetayValues,
+} from "@/app/api/proje-takip/_lib/proje-detay-schema";
+import { DURUM_DEGERLERI } from "@/app/api/proje-takip/_lib/sabitler";
+import type { MuhendislikKisi } from "@/app/api/proje-takip/_lib/muhendislik-ekibi";
+import type { ProjeTakip } from "@/generated/prisma";
+
+const ANA_RENK = "#1B4F72";
+
+type FormState = Partial<Record<keyof ProjeDetayValues, string>>;
+
+function tarihStr(d: Date | null): string {
+  return d ? d.toISOString().slice(0, 10) : "";
+}
+
+function sayiStr(n: { toString(): string } | number | null): string {
+  return n === null || n === undefined ? "" : String(n);
+}
+
+function baslangicDegerleri(proje: ProjeTakip): FormState {
+  return {
+    musteriFirma: proje.musteriFirma,
+    musteriYetkilisi: proje.musteriYetkilisi ?? "",
+    musteriKod: proje.musteriKod ?? "",
+    ileriTanim: proje.ileriTanim,
+    ileriKod: proje.ileriKod ?? "",
+    grupKod: proje.grupKod ?? "",
+    kategori: proje.kategori ?? "",
+    kalipFikstur: proje.kalipFikstur ?? "",
+    kalipKodu: proje.kalipKodu ?? "",
+    yillikAdet: sayiStr(proje.yillikAdet),
+    minimumSipMiktari: sayiStr(proje.minimumSipMiktari),
+    numuneAdedi: proje.numuneAdedi ?? "",
+    rfpNo: proje.rfpNo ?? "",
+    rfpTarih: tarihStr(proje.rfpTarih),
+    yil: sayiStr(proje.yil),
+    projeKalipFikstur: proje.projeKalipFikstur ?? "",
+    projeBilgisi: proje.projeBilgisi ?? "",
+
+    revizeTerminTrh: tarihStr(proje.revizeTerminTrh),
+    terminProjeTrh: tarihStr(proje.terminProjeTrh),
+    poNumarasi: proje.poNumarasi ?? "",
+    projeDurumTipi: proje.projeDurumTipi ?? "",
+    sevkiyatTrh: tarihStr(proje.sevkiyatTrh),
+    onayTrh: tarihStr(proje.onayTrh),
+    aciklama: proje.aciklama ?? "",
+    lokasyon: proje.lokasyon ?? "",
+    birimFiyat: sayiStr(proje.birimFiyat),
+    birimFiyatParaBirimi: proje.birimFiyatParaBirimi ?? "",
+    hedefYillik: sayiStr(proje.hedefYillik),
+    kalipTutar: sayiStr(proje.kalipTutar),
+    kickOffStatu: proje.kickOffStatu ?? "",
+    poKalip: proje.poKalip ?? "",
+    prototipFiyati: sayiStr(proje.prototipFiyati),
+    prototipParaBirimi: proje.prototipParaBirimi ?? "",
+    nre: sayiStr(proje.nre),
+    nreParaBirimi: proje.nreParaBirimi ?? "",
+
+    kickoffCW: sayiStr(proje.kickoffCW),
+    kickoffYil: sayiStr(proje.kickoffYil),
+    istemeTrhCW: sayiStr(proje.istemeTrhCW),
+    istemeTrhYil: sayiStr(proje.istemeTrhYil),
+    sevkTrhCW: sayiStr(proje.sevkTrhCW),
+    sevkYil: sayiStr(proje.sevkYil),
+    poTrhCW: sayiStr(proje.poTrhCW),
+    poYil: sayiStr(proje.poYil),
+    poOngCW: sayiStr(proje.poOngCW),
+    poOngYil: sayiStr(proje.poOngYil),
+
+    muhendislikSorumluId: proje.muhendislikSorumluId ?? "",
+    durum: proje.durum,
+  };
+}
+
+export function ProjeDetayForm({
+  proje,
+  projeSorumlusuAdi,
+  muhendisler,
+}: {
+  proje: ProjeTakip;
+  projeSorumlusuAdi: string;
+  muhendisler: MuhendislikKisi[];
+}) {
+  const router = useRouter();
+  const [values, setValues] = useState<FormState>(() => baslangicDegerleri(proje));
+  const [hatalar, setHatalar] = useState<Record<string, string>>({});
+  const [gonderiliyor, setGonderiliyor] = useState(false);
+  const [genelHata, setGenelHata] = useState<string | null>(null);
+  const [kaydedildi, setKaydedildi] = useState(false);
+  const [bildirimGonderiliyor, setBildirimGonderiliyor] = useState(false);
+  const [bildirimSonuc, setBildirimSonuc] = useState<string | null>(null);
+
+  function alanGuncelle(key: keyof ProjeDetayValues, value: string) {
+    setValues((v) => ({ ...v, [key]: value }));
+    setKaydedildi(false);
+  }
+
+  async function kaydet() {
+    setGenelHata(null);
+    setKaydedildi(false);
+    const sonuc = projeDetaySchema.safeParse(values);
+    if (!sonuc.success) {
+      const alanHatalari: Record<string, string> = {};
+      sonuc.error.issues.forEach((i) => {
+        alanHatalari[i.path[0] as string] = i.message;
+      });
+      setHatalar(alanHatalari);
+      return;
+    }
+    setHatalar({});
+
+    setGonderiliyor(true);
+    try {
+      const res = await fetch(`/api/proje-takip/${proje.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(sonuc.data),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error ?? "Kayıt güncellenemedi");
+      setKaydedildi(true);
+      router.refresh();
+    } catch (e) {
+      setGenelHata(e instanceof Error ? e.message : "Bilinmeyen hata");
+    } finally {
+      setGonderiliyor(false);
+    }
+  }
+
+  // Kaydet'ten bağımsız: son kaydedilmiş (DB'deki) proje verisiyle bildirimi
+  // yeniden/manuel tetikler. Bu ekrandaki kaydedilmemiş değişiklikleri kullanmaz.
+  async function bildirimGonder() {
+    setBildirimSonuc(null);
+    setBildirimGonderiliyor(true);
+    try {
+      const res = await fetch(`/api/proje-takip/${proje.id}/bildirim-gonder`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error ?? "Bildirim gönderilemedi");
+      setBildirimSonuc("Bildirim gönderildi.");
+    } catch (e) {
+      setBildirimSonuc(e instanceof Error ? e.message : "Bilinmeyen hata");
+    } finally {
+      setBildirimGonderiliyor(false);
+    }
+  }
+
+  return (
+    <div className="max-w-5xl mx-auto py-8">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-6">
+        <div>
+          <p className="text-sm text-muted-foreground">{proje.projeNo}</p>
+          <h1 className="text-xl font-semibold" style={{ color: ANA_RENK }}>
+            {proje.ileriTanim}
+          </h1>
+        </div>
+        <div className="w-full md:w-56">
+          <label className="text-sm font-medium">Durum</label>
+          <Select value={values.durum} onValueChange={(v) => alanGuncelle("durum", v)}>
+            <SelectTrigger><SelectValue placeholder="Seçin" /></SelectTrigger>
+            <SelectContent>
+              {DURUM_DEGERLERI.map((d) => (
+                <SelectItem key={d} value={d}>{d}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <Card>
+          <CardHeader>
+            <CardTitle style={{ color: ANA_RENK }}>Proje Bilgileri</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <label className="text-sm font-medium">Müşteri Firma</label>
+              <Input value={values.musteriFirma ?? ""} onChange={(e) => alanGuncelle("musteriFirma", e.target.value)} />
+              {hatalar.musteriFirma && <p className="text-sm text-red-500">{hatalar.musteriFirma}</p>}
+            </div>
+            <div>
+              <label className="text-sm font-medium">Müşteri Yetkilisi</label>
+              <Input value={values.musteriYetkilisi ?? ""} onChange={(e) => alanGuncelle("musteriYetkilisi", e.target.value)} />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Müşteri Kodu</label>
+              <Input value={values.musteriKod ?? ""} onChange={(e) => alanGuncelle("musteriKod", e.target.value)} />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Proje Sorumlusu</label>
+              <p className="text-sm py-2">{projeSorumlusuAdi}</p>
+            </div>
+            <div>
+              <label className="text-sm font-medium">İleri Tanım (Ürün Adı)</label>
+              <Input value={values.ileriTanim ?? ""} onChange={(e) => alanGuncelle("ileriTanim", e.target.value)} />
+              {hatalar.ileriTanim && <p className="text-sm text-red-500">{hatalar.ileriTanim}</p>}
+            </div>
+            <div>
+              <label className="text-sm font-medium">İleri Kod</label>
+              <Input value={values.ileriKod ?? ""} onChange={(e) => alanGuncelle("ileriKod", e.target.value)} />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Grup Kod</label>
+              <Input value={values.grupKod ?? ""} onChange={(e) => alanGuncelle("grupKod", e.target.value)} />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Kategori</label>
+              <Input value={values.kategori ?? ""} onChange={(e) => alanGuncelle("kategori", e.target.value)} />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Kalıp/Fikstür</label>
+              <Select value={values.kalipFikstur} onValueChange={(v) => alanGuncelle("kalipFikstur", v)}>
+                <SelectTrigger><SelectValue placeholder="Seçin" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="KALIP_YOK">KALIP YOK</SelectItem>
+                  <SelectItem value="MUSTERI">MÜSTERİ</SelectItem>
+                  <SelectItem value="ILERI">İLERİ</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-sm font-medium">Kalıp Kodu</label>
+              <Input value={values.kalipKodu ?? ""} onChange={(e) => alanGuncelle("kalipKodu", e.target.value)} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-medium">Yıllık Adet</label>
+                <Input type="number" value={values.yillikAdet ?? ""} onChange={(e) => alanGuncelle("yillikAdet", e.target.value)} />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Min. Sip. Miktarı</label>
+                <Input type="number" value={values.minimumSipMiktari ?? ""} onChange={(e) => alanGuncelle("minimumSipMiktari", e.target.value)} />
+              </div>
+            </div>
+            <div>
+              <label className="text-sm font-medium">Numune Adedi</label>
+              <Input value={values.numuneAdedi ?? ""} onChange={(e) => alanGuncelle("numuneAdedi", e.target.value)} />
+            </div>
+            <div>
+              <label className="text-sm font-medium">RFP No</label>
+              <Input value={values.rfpNo ?? ""} onChange={(e) => alanGuncelle("rfpNo", e.target.value)} />
+            </div>
+            <div>
+              <label className="text-sm font-medium">RFP Tarih</label>
+              <Input type="date" value={values.rfpTarih ?? ""} onChange={(e) => alanGuncelle("rfpTarih", e.target.value)} />
+              <p className="text-xs text-muted-foreground mt-1">
+                RFP Açılış Hafta: {proje.rfpAcilisHafta ?? "—"} (otomatik hesaplanır)
+              </p>
+            </div>
+            <div>
+              <label className="text-sm font-medium">Yıl</label>
+              <Input type="number" value={values.yil ?? ""} onChange={(e) => alanGuncelle("yil", e.target.value)} />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Proje Kalıp-Fikstür Notu</label>
+              <Textarea rows={3} value={values.projeKalipFikstur ?? ""} onChange={(e) => alanGuncelle("projeKalipFikstur", e.target.value)} />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Proje Bilgisi</label>
+              <Textarea rows={3} value={values.projeBilgisi ?? ""} onChange={(e) => alanGuncelle("projeBilgisi", e.target.value)} />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle style={{ color: ANA_RENK }}>Plant Parametreleri</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <label className="text-sm font-medium">Sorumlu Mühendis</label>
+              <div className="flex items-center gap-2">
+                <div className="flex-1">
+                  <Select value={values.muhendislikSorumluId} onValueChange={(v) => alanGuncelle("muhendislikSorumluId", v)}>
+                    <SelectTrigger><SelectValue placeholder="Atanmamış" /></SelectTrigger>
+                    <SelectContent>
+                      {muhendisler.map((m) => (
+                        <SelectItem key={m.id} value={m.id}>{m.name ?? m.email}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button type="button" variant="outline" size="sm" onClick={bildirimGonder} disabled={bildirimGonderiliyor}>
+                  {bildirimGonderiliyor ? "Gönderiliyor..." : "Bildirim Gönder"}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                Boş bırakılırsa Mühendislik Müdürlüğü'ndeki herkese bildirim/e-posta gider.
+                &quot;Bildirim Gönder&quot; en son kaydedilmiş sorumluya göre çalışır — önce Kaydet&apos;e basın.
+              </p>
+              {bildirimSonuc && <p className="text-xs text-muted-foreground mt-1">{bildirimSonuc}</p>}
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-medium">Revize Termin Tarihi</label>
+                <Input type="date" value={values.revizeTerminTrh ?? ""} onChange={(e) => alanGuncelle("revizeTerminTrh", e.target.value)} />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Termin/Proje Tarihi</label>
+                <Input type="date" value={values.terminProjeTrh ?? ""} onChange={(e) => alanGuncelle("terminProjeTrh", e.target.value)} />
+              </div>
+            </div>
+            <div>
+              <label className="text-sm font-medium">PO Numarası</label>
+              <Input value={values.poNumarasi ?? ""} onChange={(e) => alanGuncelle("poNumarasi", e.target.value)} />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Proje Durum Tipi</label>
+              <Select value={values.projeDurumTipi} onValueChange={(v) => alanGuncelle("projeDurumTipi", v)}>
+                <SelectTrigger><SelectValue placeholder="Seçin" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="NUMUNE">NUMUNE</SelectItem>
+                  <SelectItem value="PROTOTYPE">PROTOTYPE</SelectItem>
+                  <SelectItem value="SERI">SERİ</SelectItem>
+                  <SelectItem value="PPAP">PPAP</SelectItem>
+                  <SelectItem value="TASARIM">TASARIM</SelectItem>
+                  <SelectItem value="REVIZYON">REVİZYON</SelectItem>
+                  <SelectItem value="YENIDEN_PPAP">Yeniden PPAP</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-sm font-medium">Sevkiyat Tarihi</label>
+              <Input type="date" value={values.sevkiyatTrh ?? ""} onChange={(e) => alanGuncelle("sevkiyatTrh", e.target.value)} />
+              <p className="text-xs text-muted-foreground mt-1">
+                Yıl/Hafta: {proje.sevkiyatYil ?? "—"} / {proje.sevkiyatHafta ?? "—"} (otomatik hesaplanır)
+              </p>
+            </div>
+            <div>
+              <label className="text-sm font-medium">Onay Tarihi</label>
+              <Input type="date" value={values.onayTrh ?? ""} onChange={(e) => alanGuncelle("onayTrh", e.target.value)} />
+              <p className="text-xs text-muted-foreground mt-1">
+                Yıl/Hafta: {proje.onayYil ?? "—"} / {proje.onayHafta ?? "—"} (otomatik hesaplanır)
+              </p>
+            </div>
+            <div>
+              <label className="text-sm font-medium">Açıklama</label>
+              <Textarea rows={3} value={values.aciklama ?? ""} onChange={(e) => alanGuncelle("aciklama", e.target.value)} />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Lokasyon</label>
+              <Input value={values.lokasyon ?? ""} onChange={(e) => alanGuncelle("lokasyon", e.target.value)} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-medium">Birim Fiyat</label>
+                <Input type="number" step="0.01" value={values.birimFiyat ?? ""} onChange={(e) => alanGuncelle("birimFiyat", e.target.value)} />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Para Birimi</label>
+                <Select value={values.birimFiyatParaBirimi} onValueChange={(v) => alanGuncelle("birimFiyatParaBirimi", v)}>
+                  <SelectTrigger><SelectValue placeholder="Seçin" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="EUR">EUR</SelectItem>
+                    <SelectItem value="USD">USD</SelectItem>
+                    <SelectItem value="TRY">TRY</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-medium">Hedef/Yıllık</label>
+                <Input type="number" value={values.hedefYillik ?? ""} onChange={(e) => alanGuncelle("hedefYillik", e.target.value)} />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Kalıp Tutar</label>
+                <Input type="number" value={values.kalipTutar ?? ""} onChange={(e) => alanGuncelle("kalipTutar", e.target.value)} />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-medium">Kick Off/Statü</label>
+                <Input value={values.kickOffStatu ?? ""} onChange={(e) => alanGuncelle("kickOffStatu", e.target.value)} />
+              </div>
+              <div>
+                <label className="text-sm font-medium">PO Kalıp</label>
+                <Input value={values.poKalip ?? ""} onChange={(e) => alanGuncelle("poKalip", e.target.value)} />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-medium">Prototip Fiyatı</label>
+                <Input type="number" step="0.01" value={values.prototipFiyati ?? ""} onChange={(e) => alanGuncelle("prototipFiyati", e.target.value)} />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Para Birimi</label>
+                <Select value={values.prototipParaBirimi} onValueChange={(v) => alanGuncelle("prototipParaBirimi", v)}>
+                  <SelectTrigger><SelectValue placeholder="Seçin" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="EUR">EUR</SelectItem>
+                    <SelectItem value="USD">USD</SelectItem>
+                    <SelectItem value="TRY">TRY</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-medium">NRE</label>
+                <Input type="number" step="0.01" value={values.nre ?? ""} onChange={(e) => alanGuncelle("nre", e.target.value)} />
+              </div>
+              <div>
+                <label className="text-sm font-medium">NRE Para Birimi</label>
+                <Select value={values.nreParaBirimi} onValueChange={(v) => alanGuncelle("nreParaBirimi", v)}>
+                  <SelectTrigger><SelectValue placeholder="Seçin" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="EUR">EUR</SelectItem>
+                    <SelectItem value="USD">USD</SelectItem>
+                    <SelectItem value="TRY">TRY</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-medium">Kickoff CW / Yıl</label>
+                <div className="flex gap-2">
+                  <Input type="number" placeholder="CW" value={values.kickoffCW ?? ""} onChange={(e) => alanGuncelle("kickoffCW", e.target.value)} />
+                  <Input type="number" placeholder="Yıl" value={values.kickoffYil ?? ""} onChange={(e) => alanGuncelle("kickoffYil", e.target.value)} />
+                </div>
+              </div>
+              <div>
+                <label className="text-sm font-medium">İsteme Trh CW / Yıl</label>
+                <div className="flex gap-2">
+                  <Input type="number" placeholder="CW" value={values.istemeTrhCW ?? ""} onChange={(e) => alanGuncelle("istemeTrhCW", e.target.value)} />
+                  <Input type="number" placeholder="Yıl" value={values.istemeTrhYil ?? ""} onChange={(e) => alanGuncelle("istemeTrhYil", e.target.value)} />
+                </div>
+              </div>
+              <div>
+                <label className="text-sm font-medium">Sevk Trh CW / Yıl</label>
+                <div className="flex gap-2">
+                  <Input type="number" placeholder="CW" value={values.sevkTrhCW ?? ""} onChange={(e) => alanGuncelle("sevkTrhCW", e.target.value)} />
+                  <Input type="number" placeholder="Yıl" value={values.sevkYil ?? ""} onChange={(e) => alanGuncelle("sevkYil", e.target.value)} />
+                </div>
+              </div>
+              <div>
+                <label className="text-sm font-medium">PO Trh CW / Yıl</label>
+                <div className="flex gap-2">
+                  <Input type="number" placeholder="CW" value={values.poTrhCW ?? ""} onChange={(e) => alanGuncelle("poTrhCW", e.target.value)} />
+                  <Input type="number" placeholder="Yıl" value={values.poYil ?? ""} onChange={(e) => alanGuncelle("poYil", e.target.value)} />
+                </div>
+              </div>
+              <div>
+                <label className="text-sm font-medium">PO Öng. CW / Yıl</label>
+                <div className="flex gap-2">
+                  <Input type="number" placeholder="CW" value={values.poOngCW ?? ""} onChange={(e) => alanGuncelle("poOngCW", e.target.value)} />
+                  <Input type="number" placeholder="Yıl" value={values.poOngYil ?? ""} onChange={(e) => alanGuncelle("poOngYil", e.target.value)} />
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="flex items-center justify-end gap-3 mt-6">
+        {kaydedildi && <p className="text-sm text-emerald-600">Kaydedildi.</p>}
+        {genelHata && <p className="text-sm text-red-500">{genelHata}</p>}
+        <Button type="button" onClick={kaydet} disabled={gonderiliyor} style={{ backgroundColor: ANA_RENK }}>
+          {gonderiliyor ? "Kaydediliyor..." : "Kaydet"}
+        </Button>
+      </div>
+    </div>
+  );
+}

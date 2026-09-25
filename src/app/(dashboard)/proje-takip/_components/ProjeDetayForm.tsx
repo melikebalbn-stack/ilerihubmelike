@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -21,15 +22,18 @@ const ANA_RENK = "#1B4F72";
 
 type FormState = Partial<Record<keyof ProjeDetayValues, string>>;
 
-function tarihStr(d: Date | null): string {
+function tarihStr(d: Date | null | undefined): string {
   return d ? d.toISOString().slice(0, 10) : "";
 }
 
-function sayiStr(n: { toString(): string } | number | null): string {
+function sayiStr(n: { toString(): string } | number | null | undefined): string {
   return n === null || n === undefined ? "" : String(n);
 }
 
-function baslangicDegerleri(proje: ProjeTakip): FormState {
+function baslangicDegerleri(proje: ProjeTakip | null): FormState {
+  if (!proje) {
+    return { yil: String(new Date().getFullYear()) };
+  }
   return {
     musteriFirma: proje.musteriFirma,
     musteriYetkilisi: proje.musteriYetkilisi ?? "",
@@ -89,11 +93,12 @@ export function ProjeDetayForm({
   projeSorumlusuAdi,
   muhendisler,
 }: {
-  proje: ProjeTakip;
+  proje: ProjeTakip | null;
   projeSorumlusuAdi: string;
   muhendisler: MuhendislikKisi[];
 }) {
   const router = useRouter();
+  const yeniMi = proje === null;
   const [values, setValues] = useState<FormState>(() => baslangicDegerleri(proje));
   const [hatalar, setHatalar] = useState<Record<string, string>>({});
   const [gonderiliyor, setGonderiliyor] = useState(false);
@@ -101,6 +106,8 @@ export function ProjeDetayForm({
   const [kaydedildi, setKaydedildi] = useState(false);
   const [bildirimGonderiliyor, setBildirimGonderiliyor] = useState(false);
   const [bildirimSonuc, setBildirimSonuc] = useState<string | null>(null);
+  const [tamamlaniyor, setTamamlaniyor] = useState(false);
+  const [muhendislikDurumu, setMuhendislikDurumu] = useState(proje?.muhendislikDoldurmaDurumu ?? "BEKLIYOR");
 
   function alanGuncelle(key: keyof ProjeDetayValues, value: string) {
     setValues((v) => ({ ...v, [key]: value }));
@@ -123,6 +130,18 @@ export function ProjeDetayForm({
 
     setGonderiliyor(true);
     try {
+      if (yeniMi) {
+        const res = await fetch("/api/proje-takip/create", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(sonuc.data),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.error ?? "Kayıt oluşturulamadı");
+        router.push(`/proje-takip/${data.projeNo}`);
+        return;
+      }
+
       const res = await fetch(`/api/proje-takip/${proje.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -134,14 +153,16 @@ export function ProjeDetayForm({
       router.refresh();
     } catch (e) {
       setGenelHata(e instanceof Error ? e.message : "Bilinmeyen hata");
-    } finally {
       setGonderiliyor(false);
+      return;
     }
+    setGonderiliyor(false);
   }
 
   // Kaydet'ten bağımsız: son kaydedilmiş (DB'deki) proje verisiyle bildirimi
   // yeniden/manuel tetikler. Bu ekrandaki kaydedilmemiş değişiklikleri kullanmaz.
   async function bildirimGonder() {
+    if (!proje) return;
     setBildirimSonuc(null);
     setBildirimGonderiliyor(true);
     try {
@@ -158,25 +179,58 @@ export function ProjeDetayForm({
     }
   }
 
+  async function muhendislikTamamla() {
+    if (!proje) return;
+    setTamamlaniyor(true);
+    try {
+      const res = await fetch(`/api/proje-takip/${proje.id}/tamamla`, {
+        method: "PATCH",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error ?? "İşlem yapılamadı");
+      setMuhendislikDurumu("TAMAMLANDI");
+      router.refresh();
+    } catch (e) {
+      setGenelHata(e instanceof Error ? e.message : "Bilinmeyen hata");
+    } finally {
+      setTamamlaniyor(false);
+    }
+  }
+
   return (
-    <div className="max-w-5xl mx-auto py-8">
+    <div className="max-w-7xl mx-auto py-8 px-4">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-6">
         <div>
-          <p className="text-sm text-muted-foreground">{proje.projeNo}</p>
-          <h1 className="text-xl font-semibold" style={{ color: ANA_RENK }}>
-            {proje.ileriTanim}
-          </h1>
+          {yeniMi ? (
+            <h1 className="text-xl font-semibold" style={{ color: ANA_RENK }}>Yeni Proje Aç</h1>
+          ) : (
+            <>
+              <p className="text-sm text-muted-foreground">{proje.projeNo}</p>
+              <h1 className="text-xl font-semibold" style={{ color: ANA_RENK }}>
+                {proje.ileriTanim}
+              </h1>
+            </>
+          )}
         </div>
-        <div className="w-full md:w-56">
-          <label className="text-sm font-medium">Durum</label>
-          <Select value={values.durum} onValueChange={(v) => alanGuncelle("durum", v)}>
-            <SelectTrigger><SelectValue placeholder="Seçin" /></SelectTrigger>
-            <SelectContent>
-              {DURUM_DEGERLERI.map((d) => (
-                <SelectItem key={d} value={d}>{d}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <div className="flex items-end gap-3">
+          {!yeniMi && (
+            <Badge variant="outline" className={muhendislikDurumu === "TAMAMLANDI" ? "text-emerald-600" : "text-amber-600"}>
+              {muhendislikDurumu === "TAMAMLANDI" ? "✓ Tamamlandı" : "⏳ Mühendisliği Bekliyor"}
+            </Badge>
+          )}
+          {!yeniMi && (
+            <div className="w-full md:w-56">
+              <label className="text-sm font-medium">Durum</label>
+              <Select value={values.durum} onValueChange={(v) => alanGuncelle("durum", v)}>
+                <SelectTrigger><SelectValue placeholder="Seçin" /></SelectTrigger>
+                <SelectContent>
+                  {DURUM_DEGERLERI.map((d) => (
+                    <SelectItem key={d} value={d}>{d}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
         </div>
       </div>
 
@@ -199,10 +253,12 @@ export function ProjeDetayForm({
               <label className="text-sm font-medium">Müşteri Kodu</label>
               <Input value={values.musteriKod ?? ""} onChange={(e) => alanGuncelle("musteriKod", e.target.value)} />
             </div>
-            <div>
-              <label className="text-sm font-medium">Proje Sorumlusu</label>
-              <p className="text-sm py-2">{projeSorumlusuAdi}</p>
-            </div>
+            {!yeniMi && (
+              <div>
+                <label className="text-sm font-medium">Proje Sorumlusu</label>
+                <p className="text-sm py-2">{projeSorumlusuAdi}</p>
+              </div>
+            )}
             <div>
               <label className="text-sm font-medium">İleri Tanım (Ürün Adı)</label>
               <Input value={values.ileriTanim ?? ""} onChange={(e) => alanGuncelle("ileriTanim", e.target.value)} />
@@ -256,9 +312,11 @@ export function ProjeDetayForm({
             <div>
               <label className="text-sm font-medium">RFP Tarih</label>
               <Input type="date" value={values.rfpTarih ?? ""} onChange={(e) => alanGuncelle("rfpTarih", e.target.value)} />
-              <p className="text-xs text-muted-foreground mt-1">
-                RFP Açılış Hafta: {proje.rfpAcilisHafta ?? "—"} (otomatik hesaplanır)
-              </p>
+              {!yeniMi && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  RFP Açılış Hafta: {proje.rfpAcilisHafta ?? "—"} (otomatik hesaplanır)
+                </p>
+              )}
             </div>
             <div>
               <label className="text-sm font-medium">Yıl</label>
@@ -276,16 +334,13 @@ export function ProjeDetayForm({
         </Card>
 
         <Card>
-          <CardHeader>
-            <CardTitle style={{ color: ANA_RENK }}>Plant Parametreleri</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-4 pt-6">
             <div>
               <label className="text-sm font-medium">Sorumlu Mühendis</label>
               <div className="flex items-center gap-2">
                 <div className="flex-1">
                   <Select value={values.muhendislikSorumluId} onValueChange={(v) => alanGuncelle("muhendislikSorumluId", v)}>
-                    <SelectTrigger><SelectValue placeholder="Atanmamış" /></SelectTrigger>
+                    <SelectTrigger><SelectValue placeholder="— Sorumlu Mühendis —" /></SelectTrigger>
                     <SelectContent>
                       {muhendisler.map((m) => (
                         <SelectItem key={m.id} value={m.id}>{m.name ?? m.email}</SelectItem>
@@ -293,14 +348,12 @@ export function ProjeDetayForm({
                     </SelectContent>
                   </Select>
                 </div>
-                <Button type="button" variant="outline" size="sm" onClick={bildirimGonder} disabled={bildirimGonderiliyor}>
-                  {bildirimGonderiliyor ? "Gönderiliyor..." : "Bildirim Gönder"}
-                </Button>
+                {!yeniMi && (
+                  <Button type="button" variant="outline" size="sm" onClick={bildirimGonder} disabled={bildirimGonderiliyor}>
+                    {bildirimGonderiliyor ? "Gönderiliyor..." : "Bildirim Gönder"}
+                  </Button>
+                )}
               </div>
-              <p className="text-xs text-muted-foreground mt-1">
-                Boş bırakılırsa Mühendislik Müdürlüğü'ndeki herkese bildirim/e-posta gider.
-                &quot;Bildirim Gönder&quot; en son kaydedilmiş sorumluya göre çalışır — önce Kaydet&apos;e basın.
-              </p>
               {bildirimSonuc && <p className="text-xs text-muted-foreground mt-1">{bildirimSonuc}</p>}
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -335,16 +388,20 @@ export function ProjeDetayForm({
             <div>
               <label className="text-sm font-medium">Sevkiyat Tarihi</label>
               <Input type="date" value={values.sevkiyatTrh ?? ""} onChange={(e) => alanGuncelle("sevkiyatTrh", e.target.value)} />
-              <p className="text-xs text-muted-foreground mt-1">
-                Yıl/Hafta: {proje.sevkiyatYil ?? "—"} / {proje.sevkiyatHafta ?? "—"} (otomatik hesaplanır)
-              </p>
+              {!yeniMi && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Yıl/Hafta: {proje.sevkiyatYil ?? "—"} / {proje.sevkiyatHafta ?? "—"} (otomatik hesaplanır)
+                </p>
+              )}
             </div>
             <div>
               <label className="text-sm font-medium">Onay Tarihi</label>
               <Input type="date" value={values.onayTrh ?? ""} onChange={(e) => alanGuncelle("onayTrh", e.target.value)} />
-              <p className="text-xs text-muted-foreground mt-1">
-                Yıl/Hafta: {proje.onayYil ?? "—"} / {proje.onayHafta ?? "—"} (otomatik hesaplanır)
-              </p>
+              {!yeniMi && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Yıl/Hafta: {proje.onayYil ?? "—"} / {proje.onayHafta ?? "—"} (otomatik hesaplanır)
+                </p>
+              )}
             </div>
             <div>
               <label className="text-sm font-medium">Açıklama</label>
@@ -467,10 +524,17 @@ export function ProjeDetayForm({
       </div>
 
       <div className="flex items-center justify-end gap-3 mt-6">
+        {!yeniMi && muhendislikDurumu === "BEKLIYOR" && (
+          <Button type="button" variant="outline" onClick={muhendislikTamamla} disabled={tamamlaniyor}>
+            {tamamlaniyor ? "İşleniyor..." : "Mühendislik Girişini Tamamla"}
+          </Button>
+        )}
         {kaydedildi && <p className="text-sm text-emerald-600">Kaydedildi.</p>}
         {genelHata && <p className="text-sm text-red-500">{genelHata}</p>}
         <Button type="button" onClick={kaydet} disabled={gonderiliyor} style={{ backgroundColor: ANA_RENK }}>
-          {gonderiliyor ? "Kaydediliyor..." : "Kaydet"}
+          {gonderiliyor
+            ? "Kaydediliyor..."
+            : yeniMi ? "Kaydet ve Mühendisliğe Gönder" : "Kaydet"}
         </Button>
       </div>
     </div>

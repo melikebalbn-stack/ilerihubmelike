@@ -3,10 +3,10 @@ import { sendEmail } from "@/lib/email";
 import { getMuhendislikEkibi, type MuhendislikKisi } from "./muhendislik-ekibi";
 
 /**
- * Alıcı seçimi (2026-09-21'de kararlaştırıldı):
- * - proje.muhendislikSorumluId doluysa → SADECE o kişiye.
- * - boşsa → Mühendislik Müdürlüğü'ndeki (aktif, User hesabı olan) herkese.
- * 2 kanal: email + in-app notification (push yok, taslakta da yoktu).
+ * Alıcı seçimi (2026-09-24'te değişti): Sorumlu Mühendis seçili olsun
+ * olmasın, HER ZAMAN getMuhendislikEkibi()'ndeki tüm departmana gider —
+ * atama artık sadece organizasyonel bir etiket, bildirim hedeflemesini
+ * etkilemiyor. 2 kanal: email + in-app notification (push yok).
  */
 
 type ProjeOzet = {
@@ -14,7 +14,6 @@ type ProjeOzet = {
   projeNo: string;
   ileriTanim: string;
   musteriFirma: string;
-  muhendislikSorumluId: string | null;
 };
 
 const esc = (s: string): string =>
@@ -71,17 +70,7 @@ async function createProjeAcildiInAppNotification(
 }
 
 export async function projeAcildiBildirimGonder(proje: ProjeOzet) {
-  let alicilar: MuhendislikKisi[];
-
-  if (proje.muhendislikSorumluId) {
-    const atanan = await prisma.user.findUnique({
-      where: { id: proje.muhendislikSorumluId },
-      select: { id: true, name: true, email: true },
-    });
-    alicilar = atanan ? [atanan] : [];
-  } else {
-    alicilar = await getMuhendislikEkibi();
-  }
+  const alicilar = await getMuhendislikEkibi();
 
   if (alicilar.length === 0) {
     console.warn(`[proje-takip] ${proje.projeNo} için bildirim alıcısı bulunamadı`);
@@ -111,16 +100,12 @@ export async function projeAcildiBildirimGonder(proje: ProjeOzet) {
     }
   });
 
-  const hedef = proje.muhendislikSorumluId
-    ? `atanan mühendis (${alicilar[0].email})`
-    : `Mühendislik Müdürlüğü (${alicilar.length} kişi)`;
-
   await prisma.projeTakipLog.create({
     data: {
       projeTakipId: proje.id,
       islemTipi: "BILDIRIM_GONDERILDI",
       yapanId: "SYSTEM",
-      detay: `${hedef} kişiye/kişilere bildirim ve e-posta gönderildi.`,
+      detay: `Mühendislik Müdürlüğü (${alicilar.length} kişi) kişiye/kişilere bildirim ve e-posta gönderildi.`,
     },
   });
 }

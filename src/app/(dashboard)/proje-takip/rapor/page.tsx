@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import {
   Card, CardContent, CardHeader, CardTitle,
 } from "@/components/ui/card";
+import { FolderKanban, Hourglass, CheckCircle2, CalendarDays } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -69,42 +70,40 @@ export default async function ProjeTakipRaporPage() {
   const data = await getRaporVerisi();
   const yuzde = (n: number) => data.toplam > 0 ? `%${((n / data.toplam) * 100).toFixed(1)}` : "%0";
 
+  const KARTLAR = [
+    { label: "Toplam Proje", deger: data.toplam, icon: FolderKanban, renk: ANA_RENK },
+    { label: "Mühendislik Bekliyor", deger: data.bekleyen, icon: Hourglass, renk: "#B45309" },
+    { label: "Tamamlanan", deger: data.tamamlanan, icon: CheckCircle2, renk: "#059669" },
+    { label: "Bu Ay Açılan", deger: data.buAyAcilan, icon: CalendarDays, renk: ANA_RENK },
+  ];
+
   return (
-    <div className="max-w-5xl mx-auto py-8 space-y-6">
+    <div className="max-w-6xl mx-auto py-8 px-4 space-y-6">
       <div>
-        <h1 className="text-xl font-semibold" style={{ color: ANA_RENK }}>
-          Proje Takip Raporu
-        </h1>
-        <p className="text-sm text-muted-foreground">
+        <h1 className="text-3xl font-bold text-foreground">Proje Takip Raporu</h1>
+        <p className="text-sm text-muted-foreground mt-1">
           {new Date().toLocaleDateString("tr-TR", { day: "2-digit", month: "long", year: "numeric" })} itibarıyla
         </p>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-2xl font-semibold">{data.toplam}</p>
-            <p className="text-sm text-muted-foreground">Toplam Proje</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-2xl font-semibold text-amber-600">{data.bekleyen}</p>
-            <p className="text-sm text-muted-foreground">Mühendislik Bekliyor</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-2xl font-semibold text-emerald-600">{data.tamamlanan}</p>
-            <p className="text-sm text-muted-foreground">Tamamlanan</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-2xl font-semibold" style={{ color: ANA_RENK }}>{data.buAyAcilan}</p>
-            <p className="text-sm text-muted-foreground">Bu Ay Açılan</p>
-          </CardContent>
-        </Card>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {KARTLAR.map((k) => {
+          const Icon = k.icon;
+          return (
+            <div key={k.label} className="rounded-lg border p-4 flex items-center gap-3">
+              <div
+                className="w-9 h-9 rounded-md flex items-center justify-center shrink-0"
+                style={{ backgroundColor: `${k.renk}1A` }}
+              >
+                <Icon className="w-5 h-5" style={{ color: k.renk }} />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xl font-semibold leading-tight">{k.deger}</p>
+                <p className="text-xs text-muted-foreground truncate">{k.label}</p>
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       <Card>
@@ -114,13 +113,11 @@ export default async function ProjeTakipRaporPage() {
         <CardContent className="p-0">
           <div className="divide-y divide-border/60">
             {data.durumGrup.map((d) => (
-              <div key={d.durum ?? "belirsiz"} className="flex items-center justify-between px-6 py-2.5 text-sm">
-                <span className="text-muted-foreground">{d.durum ?? "Belirsiz"}</span>
-                <span className="flex items-center gap-6">
-                  <span className="font-medium tabular-nums">{d._count._all}</span>
-                  <span className="text-xs text-muted-foreground tabular-nums w-12 text-right">
-                    {yuzde(d._count._all)}
-                  </span>
+              <div key={d.durum ?? "belirsiz"} className="grid grid-cols-[1fr_60px_60px] items-center gap-2 px-6 py-2.5 text-sm">
+                <span className="text-muted-foreground truncate">{d.durum ?? "Belirsiz"}</span>
+                <span className="font-medium tabular-nums text-right">{d._count._all}</span>
+                <span className="text-xs text-muted-foreground tabular-nums text-right">
+                  {yuzde(d._count._all)}
                 </span>
               </div>
             ))}
@@ -135,9 +132,9 @@ export default async function ProjeTakipRaporPage() {
         <CardContent className="p-0">
           <div className="divide-y divide-border/60">
             {data.projeDurumTipiGrup.map((d) => (
-              <div key={d.projeDurumTipi ?? "belirsiz"} className="flex items-center justify-between px-6 py-2.5 text-sm">
-                <span className="text-muted-foreground">{d.projeDurumTipi ?? "Belirsiz"}</span>
-                <span className="font-medium tabular-nums">{d._count._all}</span>
+              <div key={d.projeDurumTipi ?? "belirsiz"} className="grid grid-cols-[1fr_60px] items-center gap-2 px-6 py-2.5 text-sm">
+                <span className="text-muted-foreground truncate">{d.projeDurumTipi ?? "Belirsiz"}</span>
+                <span className="font-medium tabular-nums text-right">{d._count._all}</span>
               </div>
             ))}
           </div>
@@ -151,9 +148,9 @@ export default async function ProjeTakipRaporPage() {
         <CardContent className="p-0">
           <div className="divide-y divide-border/60">
             {data.grupKodGrup.map((d) => (
-              <div key={d.grupKod ?? "belirsiz"} className="flex items-center justify-between px-6 py-2.5 text-sm">
-                <span className="text-muted-foreground">{d.grupKod ?? "Belirsiz"}</span>
-                <span className="font-medium tabular-nums">{d._count._all}</span>
+              <div key={d.grupKod ?? "belirsiz"} className="grid grid-cols-[1fr_60px] items-center gap-2 px-6 py-2.5 text-sm">
+                <span className="text-muted-foreground truncate">{d.grupKod ?? "Belirsiz"}</span>
+                <span className="font-medium tabular-nums text-right">{d._count._all}</span>
               </div>
             ))}
           </div>

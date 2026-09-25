@@ -14014,6 +14014,8 @@ model ServisDurak {
 
   guzergahlar       ServisGuzergahDurak[]
   personelAtamalari ServisPersonelAtama[]
+  // MASTER madde 46 — ters ilişki (DB kolonu EKLEMEZ, Prisma iki ucu da ister)
+  sikayetler        ServisSikayet[]
 
   @@index([aktif])
   @@index([il, ilce])
@@ -14573,6 +14575,10 @@ model ServisSikayet {
   arac       ServisArac?        @relation(fields: [aracId], references: [id], onDelete: Restrict)
   soforId    String?
   sofor      ServisSofor?       @relation(fields: [soforId], references: [id], onDelete: Restrict)
+  /// Şikâyetin ilgili olduğu durak. Nullable: çalışan bildirdiğinde
+  /// bilinmeyebilir, İV sonradan tamamlar. TEK KOLONLU FK (composite DEĞİL).
+  durakId    String?
+  durak      ServisDurak?       @relation(fields: [durakId], references: [id], onDelete: Restrict)
 
   // ── ANLIK KOPYA (delil) — olay anındaki değerler, sonradan GÜNCELLENMEZ ───
   plaka          String?
@@ -14623,6 +14629,7 @@ model ServisSikayet {
   @@index([kategori])
   @@index([bildirimTarihi])
   @@index([dilimId])
+  @@index([durakId])
   @@index([sikayetciPersonnelId])
   @@index([sorumluId])
   @@index([createdById])

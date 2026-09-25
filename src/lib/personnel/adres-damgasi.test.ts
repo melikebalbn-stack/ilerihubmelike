@@ -85,12 +85,31 @@ describe('adresDegisimDamgasi — karşılaştırma normalleştirmesi', () => {
     expect(adresDegisimDamgasi('Güzeltepe', 'Guzeltepe')).toHaveProperty('ikametAdresiDegisimTarihi')
   })
 
-  // 🔴 İ/I vakası BİLEREK test edilmedi — Melih'in kararı bekleniyor.
-  // toLocaleUpperCase('tr-TR') noktalı/noktasız i'yi ayrı harf olarak korur,
-  // yani "İstiklal" ve "ISTIKLAL" FARKLI sayılır ve damga BASILIR. Harf
-  // katlaması semantik bir karardır ("iş"/"ış" gibi gerçek farkları da
-  // birleştirir), kendiliğinden eklenmedi. Karar gelince tek satırlık test
-  // buraya eklenecek.
+})
+
+// ----------------------------------------------------------------------------
+// 🔴 KARAR (Melih, 25.09.2026): İ/I KATLAMASI YAPILMAZ.
+//
+// Aşağıdaki iki test "şimdilik böyle" değil, KARARIN KENDİSİDİR. Damganın
+// basılması BEKLENEN davranıştır; hata sanıp "düzeltmeyin".
+//
+// Gerekçe: katlamasız hata YANLIŞ POZİTİFTİR (adres değişmediği hâlde damga
+// atılır — görünür ve ucuz). Katlamalı hata YANLIŞ NEGATİFTİR ("iş" ile "ış"
+// aynı sayılır, damga hiç atılmaz, kişi yanlış serviste kalır, kimse fark
+// etmez). Sessiz hata görünür hataya tercih edilmez.
+// ----------------------------------------------------------------------------
+describe('adresDegisimDamgasi — İ/I katlaması YAPILMAZ (karar, hata değil)', () => {
+  it('KARAR: "İstiklal Cd. 3" ile "ISTIKLAL CD. 3" FARKLI sayılır → damga VAR (beklenen davranış)', () => {
+    expect(adresDegisimDamgasi('İstiklal Cd. 3', 'ISTIKLAL CD. 3')).toHaveProperty('ikametAdresiDegisimTarihi')
+  })
+
+  it('KARAR: "iş merkezi" ile "ış merkezi" FARKLI sayılır → damga VAR (katlama bunları birleştirirdi)', () => {
+    expect(adresDegisimDamgasi('iş merkezi', 'ış merkezi')).toHaveProperty('ikametAdresiDegisimTarihi')
+  })
+
+  it('aynı harflerle yazılmış İ/İ çifti ise damga YOK — büyük/küçük harf duyarsızlığı korunuyor', () => {
+    expect(adresDegisimDamgasi('İstiklal Cd. 3', 'İSTİKLAL CD. 3')).toEqual({})
+  })
 })
 
 describe('adresDegisimDamgasi — saklanan değere DOKUNMAZ', () => {

@@ -21,11 +21,20 @@
  *
  * Türkçe'ye duyarlı büyütme (`tr-TR`) + çoklu boşluğu teke indirme.
  *
- * 🔴 BİLİNEN SINIR — İ/I: `toLocaleUpperCase('tr-TR')` noktalı ve noktasız
- * i'yi AYRI harfler olarak korur ("İstiklal" → İSTİKLAL, "ISTIKLAL" →
- * ISTIKLAL). Yani bu iki yazım FARKLI sayılır ve damga basılır. Harf
- * katlaması (İ/I/ı/i → I) BİLEREK EKLENMEDİ: semantik bir karardır ve
- * "iş"/"ış" gibi gerçek anlam farklarını da birleştirir. Karar Melih'te.
+ * 🔴 KARAR — İ/I KATLAMASI YAPILMAZ (Melih, 25.09.2026).
+ * `toLocaleUpperCase('tr-TR')` noktalı ve noktasız i'yi AYRI harfler olarak
+ * korur ("İstiklal" → İSTİKLAL, "ISTIKLAL" → ISTIKLAL), dolayısıyla bu iki
+ * yazım FARKLI sayılır ve damga BASILIR. Bu bir eksiklik değil, bilinçli
+ * tercihtir:
+ *
+ *   Katlamasız hata YANLIŞ POZİTİFTİR — adres değişmediği hâlde damga
+ *   atılır; görünür ve ucuzdur.
+ *   Katlamalı hata YANLIŞ NEGATİFTİR — "iş" ile "ış" aynı sayılır, damga
+ *   hiç atılmaz, kişi yanlış serviste kalır ve kimse fark etmez.
+ *
+ * Sessiz hata görünür hataya tercih edilmez. Bu yüzden buraya
+ * `.replace(/[İIıi]/g, 'I')` benzeri bir katlama EKLENMESİN — karar
+ * adres-damgasi.test.ts'te iki vakayla sabitlenmiştir.
  */
 function karsilastirmaIcinNormalize(deger: string | null | undefined): string | null {
   if (typeof deger !== 'string') return null

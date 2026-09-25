@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireSession } from '@/lib/auth/require-session'
-import { canManageFif } from '@/lib/quality/fif-access'
+import { canManageFif, isFifKss } from '@/lib/quality/fif-access'
+import { fifZinciriCoz } from '@/lib/quality/fif-zincir'
 import { gecisYapabilirMi, type FifGecisCtx, type FifGecisState } from '@/lib/quality/fif-durum'
 import { fifDurumBildir } from '@/lib/quality/fif-bildirim'
 import { FifDurum, FifSonuc } from '@/generated/prisma'
@@ -17,7 +18,9 @@ const girdi = z.object({
 /** Red geçişleri: redNedeni (aciklama) zorunlu. */
 const RED_GECISLERI: Array<[FifDurum, FifDurum]> = [
   [FifDurum.ONAY_BEKLIYOR, FifDurum.TASLAK],
+  [FifDurum.KSS_KAYIT_BEKLIYOR, FifDurum.TASLAK],
   [FifDurum.KAPATMA_BEKLIYOR, FifDurum.FAALIYET],
+  [FifDurum.KSS_KAPANIS_BEKLIYOR, FifDurum.FAALIYET],
 ]
 
 /**
@@ -50,17 +53,38 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
   }
 
-  const ctx: FifGecisCtx = { userId, isManage: canManageFif(session), sorumluBolumMudurUserId }
+  const ctx: FifGecisCtx = {
+    userId,
+    isManage: canManageFif(session),
+    sorumluBolumMudurUserId,
+    isKss: isFifKss(session),
+  }
   const state: FifGecisState = {
     durum: fif.durum, createdById: fif.createdById, hazirlayanUserId: fif.hazirlayanUserId,
     yayinlayanOnaylayanUserId: fif.yayinlayanOnaylayanUserId, sorumluOnaylayanUserId: fif.sorumluOnaylayanUserId,
     izlemeSorumlusuUserId: fif.izlemeSorumlusuUserId, takipSorumlusuUserId: fif.takipSorumlusuUserId,
-    sorumluBolumId: fif.sorumluBolumId, uygunsuzlukTanimi: fif.uygunsuzlukTanimi, tur: fif.tur,
+    sorumluBolumId: fif.sorumluBolumId, kssUserId: fif.kssUserId,
+    uygunsuzlukTanimi: fif.uygunsuzlukTanimi, tur: fif.tur,
+    yayilimVarMi: fif.yayilimVarMi, yayilimAciklama: fif.yayilimAciklama,
     faaliyetler: fif.faaliyetler, etkinlikler: fif.etkinlikler,
   }
 
   const karar = gecisYapabilirMi(ctx, state, hedef)
   if (!karar.ok) return NextResponse.json({ error: karar.sebep }, { status: 403 })
+
+  // ZİNCİR SNAPSHOT'I (FAZ B): form onaya giderken aktörler omurgadan çözülür ve
+  // kayda yazılır. FAIL-CLOSED — KSS ya da bölüm müdürü çözülemezse form ilerlemez.
+  let zincirYazimi: { sorumluOnaylayanUserId?: string; yayinlayanOnaylayanUserId?: string; kssUserId: string } | null = null
+  if (hedef === FifDurum.ONAY_BEKLIYOR) {
+    const z = await fifZinciriCoz(prisma, { sorumluBolumId: fif.sorumluBolumId, yayinlayanBolumId: fif.yayinlayanBolumId })
+    if (!z.ok) return NextResponse.json({ error: z.sebep }, { status: 400 })
+    zincirYazimi = {
+      // Elle seçilmiş onaylayan varsa KORUNUR; boşsa omurgadan doldurulur.
+      ...(fif.sorumluOnaylayanUserId ? {} : z.sorumluOnaylayan ? { sorumluOnaylayanUserId: z.sorumluOnaylayan.userId } : {}),
+      ...(fif.yayinlayanOnaylayanUserId ? {} : z.yayinlayanOnaylayan ? { yayinlayanOnaylayanUserId: z.yayinlayanOnaylayan.userId } : {}),
+      kssUserId: z.kss.userId,
+    }
+  }
 
   const isRed = RED_GECISLERI.some(([f, t]) => f === fif.durum && t === hedef)
   const isReopen = fif.durum === FifDurum.ETKINLIK && hedef === FifDurum.FAALIYET
@@ -75,6 +99,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       data: {
         durum: hedef,
         ...(hedef === FifDurum.KAPATMA_BEKLIYOR ? { kapatmaTarihi: new Date() } : {}),
+        // KSS kaydı aldı (adım 3): kayıt anı damgalanır.
+        ...(fif.durum === FifDurum.KSS_KAYIT_BEKLIYOR && hedef === FifDurum.FAALIYET
+          ? { kayitTarihi: new Date(), ...(userId ? { kssUserId: userId } : {}) }
+          : {}),
+        ...(zincirYazimi ?? {}),
         ...(isRed ? { redNedeni: aciklama } : {}),
       },
     })

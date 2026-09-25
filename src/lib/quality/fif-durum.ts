@@ -15,6 +15,8 @@ export type FifGecisCtx = {
   isManage: boolean
   /** Sorumlu bölümün müdürünün User id'si (DB'den çözülür; yoksa null). */
   sorumluBolumMudurUserId?: string | null
+  /** `fif.kss` izni — KSS adımlarının kapısı. manage BU ADIMLARDA YETMEZ (FAZ B kararı). */
+  isKss?: boolean
 }
 
 /** Geçiş kararı için gereken FİF alanları (DB'siz test edilebilir). */
@@ -27,7 +29,12 @@ export type FifGecisState = {
   izlemeSorumlusuUserId: string | null
   takipSorumlusuUserId: string | null
   sorumluBolumId: string | null
+  /** KSS snapshot'ı (zincir çözümünden). Adım sahipliği izin VEYA bu alanla kurulur. */
+  kssUserId?: string | null
   uygunsuzlukTanimi: string | null
+  /** KSS kapanış kontrolünde bakılır: "yayılım var" ise açıklama zorunlu. */
+  yayilimVarMi?: boolean | null
+  yayilimAciklama?: string | null
   tur: string | null
   faaliyetler: { hedefTarih: Date | string | null }[]
   etkinlikler: { madde: string; uygun: boolean | null }[]
@@ -45,6 +52,16 @@ function esitVeyaManage(ctx: FifGecisCtx, userId: string | null): boolean {
 }
 function hazirlayanMi(ctx: FifGecisCtx, s: FifGecisState): boolean {
   return esitVeyaManage(ctx, s.createdById) || esitVeyaManage(ctx, s.hazirlayanUserId)
+}
+
+/**
+ * KSS adımının sahibi mi. FAZ B kararı: `fif.manage` (Kalite ekibi) KSS yerine
+ * GEÇMEZ — aksi hâlde ayrı rol açmanın anlamı kalmaz. İzin (`fif.kss`) ya da
+ * forma snapshot'lanmış kssUserId eşleşmesi gerekir.
+ */
+function kssMi(ctx: FifGecisCtx, s: FifGecisState): boolean {
+  if (ctx.isKss) return true
+  return !!ctx.userId && ctx.userId === (s.kssUserId ?? null)
 }
 
 /** Bir geçişin izin + ön koşul kuralı. */
@@ -72,8 +89,20 @@ export const FIF_GECISLER: GecisKural[] = [
     onKosul: zorunluAlanlarTam,
   },
   {
-    from: FifDurum.ONAY_BEKLIYOR, to: FifDurum.FAALIYET, etiket: 'Onayla',
+    // Açan bölüm müdürü onayladı → KSS kayda alır (11 adım, adım 2 → 3).
+    from: FifDurum.ONAY_BEKLIYOR, to: FifDurum.KSS_KAYIT_BEKLIYOR, etiket: 'Onayla',
     izinli: (c, s) => esitVeyaManage(c, s.yayinlayanOnaylayanUserId),
+  },
+  {
+    // ADIM 3: KSS kaydı alır, sorumlu bölüme yönlendirir → faaliyet planlama başlar.
+    from: FifDurum.KSS_KAYIT_BEKLIYOR, to: FifDurum.FAALIYET, etiket: 'Kayda Al ve Yönlendir',
+    izinli: (c, s) => kssMi(c, s),
+    onKosul: (s) => (s.sorumluBolumId ? OK : no('Sorumlu bölüm atanmadan kayda alınamaz')),
+  },
+  {
+    // KSS eksik/yanlış bilgi görürse forma geri gönderir (red gerekçesi zorunlu — uçta).
+    from: FifDurum.KSS_KAYIT_BEKLIYOR, to: FifDurum.TASLAK, etiket: 'Reddet (eksik bilgi)',
+    izinli: (c, s) => kssMi(c, s),
   },
   {
     from: FifDurum.ONAY_BEKLIYOR, to: FifDurum.TASLAK, etiket: 'Reddet',
@@ -93,12 +122,30 @@ export const FIF_GECISLER: GecisKural[] = [
     },
   },
   {
-    from: FifDurum.KAPATMA_BEKLIYOR, to: FifDurum.ETKINLIK, etiket: 'Kapatmayı Onayla',
-    izinli: (c, s) => esitVeyaManage(c, s.sorumluOnaylayanUserId),
+    // ADIM 10 (FAZ B kararı): kapatmayı UYGUNSUZLUĞU AÇAN taraf onaylar.
+    // Eskiden sorumlu bölüm müdüründeydi; FAALIYET→KAPATMA_BEKLIYOR geçişini de
+    // sorumlu taraf yaptığı için iki adım aynı elde toplanıyor, bağımsız
+    // doğrulama kalmıyordu. sorumluOnaylayan "faaliyet tamamlandı" adımında kalır.
+    from: FifDurum.KAPATMA_BEKLIYOR, to: FifDurum.KSS_KAPANIS_BEKLIYOR, etiket: 'Kapatmayı Onayla',
+    izinli: (c, s) => esitVeyaManage(c, s.yayinlayanOnaylayanUserId),
   },
   {
     from: FifDurum.KAPATMA_BEKLIYOR, to: FifDurum.FAALIYET, etiket: 'Reddet',
-    izinli: (c, s) => esitVeyaManage(c, s.sorumluOnaylayanUserId),
+    izinli: (c, s) => esitVeyaManage(c, s.yayinlayanOnaylayanUserId),
+  },
+  {
+    // ADIM 9: KSS kapanış kontrolü — yayılım + KYS/risk kararı girildikten sonra
+    // etkinlik izlemeye geçer.
+    from: FifDurum.KSS_KAPANIS_BEKLIYOR, to: FifDurum.ETKINLIK, etiket: 'Kapanışı Onayla',
+    izinli: (c, s) => kssMi(c, s),
+    onKosul: (s) =>
+      s.yayilimVarMi && !(s.yayilimAciklama ?? '').trim()
+        ? no('Yayılım "var" işaretli — açıklama zorunlu')
+        : OK,
+  },
+  {
+    from: FifDurum.KSS_KAPANIS_BEKLIYOR, to: FifDurum.FAALIYET, etiket: 'Reddet (yeniden faaliyet)',
+    izinli: (c, s) => kssMi(c, s),
   },
   {
     from: FifDurum.ETKINLIK, to: FifDurum.KAPANDI, etiket: 'Kapat (Etkin)',

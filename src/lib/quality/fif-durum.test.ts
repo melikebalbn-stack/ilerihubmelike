@@ -8,6 +8,7 @@ const SORUMLU_ONAY = 'uSorumluOnay'
 const IZLEME = 'uIzleme'
 const TAKIP = 'uTakip'
 const MUDUR = 'uMudur'
+const KSS = 'uKss'
 const YABANCI = 'uYabanci'
 
 function baseState(over: Partial<FifGecisState> = {}): FifGecisState {
@@ -20,6 +21,7 @@ function baseState(over: Partial<FifGecisState> = {}): FifGecisState {
     izlemeSorumlusuUserId: IZLEME,
     takipSorumlusuUserId: TAKIP,
     sorumluBolumId: 'dept1',
+    kssUserId: KSS,
     uygunsuzlukTanimi: 'Tespit metni',
     tur: 'DUZELTICI',
     faaliyetler: [],
@@ -28,6 +30,8 @@ function baseState(over: Partial<FifGecisState> = {}): FifGecisState {
   }
 }
 const ctx = (userId: string | null, isManage = false, mudur: string | null = MUDUR): FifGecisCtx => ({ userId, isManage, sorumluBolumMudurUserId: mudur })
+/** `fif.kss` izinli bağlam (KSS adımları için). */
+const kssCtx = (userId: string | null = KSS): FifGecisCtx => ({ userId, isManage: false, sorumluBolumMudurUserId: MUDUR, isKss: true })
 
 describe('fif-durum — TASLAK → ONAY_BEKLIYOR', () => {
   it('hazırlayan gönderebilir', () => {
@@ -45,13 +49,16 @@ describe('fif-durum — TASLAK → ONAY_BEKLIYOR', () => {
   })
 })
 
-describe('fif-durum — ONAY_BEKLIYOR → FAALIYET / TASLAK(red)', () => {
+describe('fif-durum — ONAY_BEKLIYOR → KSS_KAYIT_BEKLIYOR / TASLAK(red)', () => {
   const st = () => baseState({ durum: FifDurum.ONAY_BEKLIYOR })
-  it('yayınlayan onaylayan onaylar', () => {
-    expect(gecisYapabilirMi(ctx(YAYINLAYAN), st(), FifDurum.FAALIYET).ok).toBe(true)
+  it('yayınlayan onaylayan onaylar → KSS kaydına düşer', () => {
+    expect(gecisYapabilirMi(ctx(YAYINLAYAN), st(), FifDurum.KSS_KAYIT_BEKLIYOR).ok).toBe(true)
+  })
+  it('onaydan doğrudan FAALIYET\'e ATLANAMAZ (KSS adımı zorunlu)', () => {
+    expect(gecisYapabilirMi(ctx(YAYINLAYAN), st(), FifDurum.FAALIYET).ok).toBe(false)
   })
   it('hazırlayan onaylayamaz', () => {
-    expect(gecisYapabilirMi(ctx(HAZIRLAYAN), st(), FifDurum.FAALIYET).ok).toBe(false)
+    expect(gecisYapabilirMi(ctx(HAZIRLAYAN), st(), FifDurum.KSS_KAYIT_BEKLIYOR).ok).toBe(false)
   })
   it('yayınlayan reddeder (→TASLAK)', () => {
     expect(gecisYapabilirMi(ctx(YAYINLAYAN), st(), FifDurum.TASLAK).ok).toBe(true)
@@ -82,16 +89,62 @@ describe('fif-durum — FAALIYET → KAPATMA_BEKLIYOR', () => {
   })
 })
 
-describe('fif-durum — KAPATMA_BEKLIYOR → ETKINLIK / FAALIYET(red)', () => {
+describe('fif-durum — KAPATMA_BEKLIYOR → KSS_KAPANIS_BEKLIYOR / FAALIYET(red)', () => {
   const st = () => baseState({ durum: FifDurum.KAPATMA_BEKLIYOR })
-  it('sorumlu onaylayan onaylar', () => {
-    expect(gecisYapabilirMi(ctx(SORUMLU_ONAY), st(), FifDurum.ETKINLIK).ok).toBe(true)
+  it('YAYINLAYAN bölüm müdürü kapatmayı onaylar (FAZ B kararı)', () => {
+    expect(gecisYapabilirMi(ctx(YAYINLAYAN), st(), FifDurum.KSS_KAPANIS_BEKLIYOR).ok).toBe(true)
   })
-  it('sorumlu onaylayan reddeder (→FAALIYET)', () => {
-    expect(gecisYapabilirMi(ctx(SORUMLU_ONAY), st(), FifDurum.FAALIYET).ok).toBe(true)
+  it('sorumlu onaylayan kapatmayı ONAYLAYAMAZ (kendi işini onaylama)', () => {
+    expect(gecisYapabilirMi(ctx(SORUMLU_ONAY), st(), FifDurum.KSS_KAPANIS_BEKLIYOR).ok).toBe(false)
+  })
+  it('yayınlayan reddeder (→FAALIYET)', () => {
+    expect(gecisYapabilirMi(ctx(YAYINLAYAN), st(), FifDurum.FAALIYET).ok).toBe(true)
+  })
+  it('kapatmadan doğrudan ETKINLIK\'e ATLANAMAZ (KSS kapanış kontrolü zorunlu)', () => {
+    expect(gecisYapabilirMi(ctx(YAYINLAYAN), st(), FifDurum.ETKINLIK).ok).toBe(false)
   })
   it('izleme sorumlusu bu adımı onaylayamaz', () => {
-    expect(gecisYapabilirMi(ctx(IZLEME), st(), FifDurum.ETKINLIK).ok).toBe(false)
+    expect(gecisYapabilirMi(ctx(IZLEME), st(), FifDurum.KSS_KAPANIS_BEKLIYOR).ok).toBe(false)
+  })
+})
+
+describe('fif-durum — KSS adımları (FAZ B)', () => {
+  const kayit = (over = {}) => baseState({ durum: FifDurum.KSS_KAYIT_BEKLIYOR, ...over })
+  const kapanis = (over = {}) => baseState({ durum: FifDurum.KSS_KAPANIS_BEKLIYOR, ...over })
+
+  it('KSS izniyle kayda alınır → FAALIYET', () => {
+    expect(gecisYapabilirMi(kssCtx(), kayit(), FifDurum.FAALIYET).ok).toBe(true)
+  })
+  it('forma snapshot\'lanmış KSS kullanıcısı da kayda alabilir (izin olmadan)', () => {
+    expect(gecisYapabilirMi(ctx(KSS), kayit(), FifDurum.FAALIYET).ok).toBe(true)
+  })
+  it('manage KSS adımını YAPAMAZ (fif.manage KSS yerine geçmez)', () => {
+    expect(gecisYapabilirMi(ctx(YABANCI, true), kayit(), FifDurum.FAALIYET).ok).toBe(false)
+  })
+  it('sorumlu bölüm atanmadan kayda alınamaz', () => {
+    const r = gecisYapabilirMi(kssCtx(), kayit({ sorumluBolumId: null }), FifDurum.FAALIYET)
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.sebep).toContain('Sorumlu bölüm')
+  })
+  it('KSS eksik bilgi görürse TASLAK\'a döndürür', () => {
+    expect(gecisYapabilirMi(kssCtx(), kayit(), FifDurum.TASLAK).ok).toBe(true)
+  })
+  it('kapanış kontrolünü KSS onaylar → ETKINLIK', () => {
+    expect(gecisYapabilirMi(kssCtx(), kapanis(), FifDurum.ETKINLIK).ok).toBe(true)
+  })
+  it('yayılım "var" ama açıklama boşsa kapanış onaylanamaz', () => {
+    const r = gecisYapabilirMi(kssCtx(), kapanis({ yayilimVarMi: true, yayilimAciklama: '  ' }), FifDurum.ETKINLIK)
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.sebep).toContain('Yayılım')
+  })
+  it('yayılım açıklaması doluysa geçer', () => {
+    expect(gecisYapabilirMi(kssCtx(), kapanis({ yayilimVarMi: true, yayilimAciklama: 'Diğer hatlarda kontrol edildi' }), FifDurum.ETKINLIK).ok).toBe(true)
+  })
+  it('KSS kapanışı reddederse faaliyete döner', () => {
+    expect(gecisYapabilirMi(kssCtx(), kapanis(), FifDurum.FAALIYET).ok).toBe(true)
+  })
+  it('yayınlayan müdür KSS kapanış adımını yapamaz', () => {
+    expect(gecisYapabilirMi(ctx(YAYINLAYAN), kapanis(), FifDurum.ETKINLIK).ok).toBe(false)
   })
 })
 

@@ -14837,8 +14837,8 @@ model DenemeDegerlendirmeLog {
   /// durum gecisi. Gecmis ekraninda satiri ayirt etmek icin okunur.
   olayTipi  DenemeLogOlayTipi?
   aktorId   String?
-  aktor     User?        @relation("DenemeLogAktor", fields: [aktorId], references: [id])
-  aciklama  String?      @db.Text
+  aktor     User?              @relation("DenemeLogAktor", fields: [aktorId], references: [id])
+  aciklama  String?            @db.Text
 
   createdAt DateTime @default(now())
 
@@ -15087,8 +15087,12 @@ enum FifTur {
 enum FifDurum {
   TASLAK
   ONAY_BEKLIYOR
+  /// KSS kayda alır: kayıt no/dağıtım kontrolü, sorumlu bölüm ataması (11 adım — adım 3).
+  KSS_KAYIT_BEKLIYOR
   FAALIYET
   KAPATMA_BEKLIYOR
+  /// KSS kapanış kontrolü: yayılım + KYS/risk kararı (11 adım — adım 9).
+  KSS_KAPANIS_BEKLIYOR
   ETKINLIK
   KAPANDI
   IPTAL
@@ -15154,6 +15158,12 @@ model Fif {
   yayinlayanOnaylayanUserId String?
   uygulamaSorumlusuUserId   String?
   takipSorumlusuUserId      String?
+
+  /// KSS (Kalite Sistem Sorumlusu) — kaydı alan/kapanışı kontrol eden kullanıcı.
+  /// Zincir çözümünde `fif.kss` izninden snapshot'lanır (fif-zincir.ts).
+  kssUserId   String?
+  /// KSS'nin kaydı aldığı an (adım 3). Kayıt no zaten oluşturmada verilir.
+  kayitTarihi DateTime?
 
   denetlemeAdi      String?
   uygunsuzlukTanimi String?   @db.Text

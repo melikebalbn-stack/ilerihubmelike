@@ -89,6 +89,8 @@ type FifBildirimGirdi = {
   sorumluOnaylayanUserId: string | null
   izlemeSorumlusuUserId: string | null
   takipSorumlusuUserId: string | null
+  /** KSS snapshot'ı (FAZ B) — KSS adımlarının bildirimi buraya gider. */
+  kssUserId?: string | null
 }
 
 const KONU = (kayitNo: string, olay: string) => `[FİF ${kayitNo}] ${olay}`
@@ -128,7 +130,14 @@ export async function fifDurumBildir(
       break
     }
     case FifDurum.KAPATMA_BEKLIYOR:
-      await push(await aliciCoz(fif.sorumluOnaylayanUserId), 'Kapatma onayı bekleniyor', 'FİF kapatma onayınıza sunuldu.')
+      // FAZ B: kapatmayı YAYINLAYAN (uygunsuzluğu açan) bölüm müdürü onaylar.
+      await push(await aliciCoz(fif.yayinlayanOnaylayanUserId), 'Kapatma onayı bekleniyor', 'FİF kapatma onayınıza sunuldu.')
+      break
+    case FifDurum.KSS_KAYIT_BEKLIYOR:
+      await push(await aliciCoz(fif.kssUserId ?? null), 'Kaydınız bekleniyor', 'Onaylanan bir FİF kayda alınmayı ve sorumlu bölüme yönlendirilmeyi bekliyor.')
+      break
+    case FifDurum.KSS_KAPANIS_BEKLIYOR:
+      await push(await aliciCoz(fif.kssUserId ?? null), 'Kapanış kontrolü bekleniyor', 'FİF kapanış kontrolü (yayılım + KYS/risk kararı) bekliyor.')
       break
     case FifDurum.ETKINLIK: {
       const takip = await aliciCoz(fif.takipSorumlusuUserId)

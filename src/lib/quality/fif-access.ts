@@ -46,6 +46,12 @@ export type FifScopeRecord = {
 export type FifUserContext = {
   userId: string | null
   isManage: boolean
+  /**
+   * `fif.kss` — KSS TÜM FİF'leri GÖRÜR (adımları her formda gelebilir) ama
+   * manage yetkisi ALMAZ: başka rollerin onay adımlarını yapamaz. Görünürlük ile
+   * yetki bilinçli olarak ayrıldı.
+   */
+  isKss: boolean
   deptIds: string[]
 }
 
@@ -54,7 +60,7 @@ export type FifUserContext = {
  * bağlamda görünür/düzenlenebilir olup olmadığını döner.
  */
 export function fifRecordInScope(ctx: FifUserContext, r: FifScopeRecord): boolean {
-  if (ctx.isManage) return true
+  if (ctx.isManage || ctx.isKss) return true
   if (!ctx.userId) return false
   if (r.createdById === ctx.userId) return true
   if (r.hazirlayanUserId === ctx.userId) return true
@@ -91,9 +97,10 @@ async function kullaniciBolumIdleri(userId: string): Promise<string[]> {
 export async function getFifUserContext(session: Session | null | undefined): Promise<FifUserContext> {
   const userId = session?.user?.id ?? null
   const isManage = canManageFif(session)
-  if (!userId || isManage) return { userId, isManage, deptIds: [] }
+  const isKss = isFifKss(session)
+  if (!userId || isManage || isKss) return { userId, isManage, isKss, deptIds: [] }
   const deptIds = await kullaniciBolumIdleri(userId)
-  return { userId, isManage, deptIds }
+  return { userId, isManage, isKss, deptIds }
 }
 
 /**
@@ -102,7 +109,7 @@ export async function getFifUserContext(session: Session | null | undefined): Pr
  */
 export async function fifWhereForUser(session: Session | null | undefined): Promise<Prisma.FifWhereInput> {
   const ctx = await getFifUserContext(session)
-  if (ctx.isManage) return {}
+  if (ctx.isManage || ctx.isKss) return {}
   if (!ctx.userId) return { id: '__no_access__' } // hiçbir kayda eşleşmez
   const or: Prisma.FifWhereInput[] = [
     { createdById: ctx.userId },

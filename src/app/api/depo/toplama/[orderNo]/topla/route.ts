@@ -12,7 +12,6 @@ import {
   getStokSatirlari,
   issueSatir,
   modifyManuelRezerv,
-  normalizeIsEmriNo,
   reserveSatir,
   type SatirAnahtar,
 } from '@/lib/ifs/tuketim'
@@ -63,7 +62,8 @@ export async function POST(
   if (error) return error
 
   const { orderNo: ham } = await params
-  const orderNo = normalizeIsEmriNo(decodeURIComponent(ham))
+  // İstemci IFS'in kendi OrderNo'sunu (baslik.orderNo) gönderir → normalize ETME (M002280179 soyulmasın).
+  const orderNo = decodeURIComponent(ham).trim()
 
   let payload: unknown
   try {

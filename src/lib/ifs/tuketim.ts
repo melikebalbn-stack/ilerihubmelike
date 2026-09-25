@@ -120,9 +120,10 @@ async function mainPost(
 }
 
 /**
- * İş emri barkodunu normalize eder. TODO: IFS iş emri barkod formatı netleşince
- * kesinleşecek. Şimdilik: 'M' + uzun sayısal (eski format M002232828) → baştaki
- * harf ve sıfırlar soyulur; düz sayı aynen kalır.
+ * İş emri barkodunu normalize eder: 'M' + uzun sayısal (M002232828) → baştaki harf ve
+ * sıfırlar soyulur; düz sayı aynen kalır. TEK BAŞINA ÇÖZÜMLEME İÇİN KULLANMA — Syteline
+ * senkronu job'ı IFS'e olduğu gibi yazar (OrderNo 'M002280179'); ham değer önce denenmeli.
+ * Bkz. isEmriBaslikCoz (ham → yoksa normalize).
  */
 export function normalizeIsEmriNo(ham: string): string {
   const s = (ham ?? '').trim()
@@ -131,6 +132,16 @@ export function normalizeIsEmriNo(ham: string): string {
     return rakam || s
   }
   return s
+}
+
+/** İş emri başlığını çözer: önce ham değer (M002280179), bulunamazsa normalize edilmiş değer. */
+export async function isEmriBaslikCoz(ham: string): Promise<IsEmriBaslik | null> {
+  const s = (ham ?? '').trim()
+  if (!s) return null
+  const bulunan = await getIsEmriBaslik(s)
+  if (bulunan) return bulunan
+  const n = normalizeIsEmriNo(s)
+  return n !== s ? getIsEmriBaslik(n) : null
 }
 
 interface RawShopOrd {

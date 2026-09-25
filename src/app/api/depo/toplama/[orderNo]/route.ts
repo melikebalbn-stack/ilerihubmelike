@@ -2,10 +2,9 @@ import { NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/auth/require-permission'
 import {
   getFifoKirilim,
-  getIsEmriBaslik,
   getRezervKirilimSatir,
   getToplamaListesi,
-  normalizeIsEmriNo,
+  isEmriBaslikCoz,
 } from '@/lib/ifs/tuketim'
 
 export const runtime = 'nodejs'
@@ -21,10 +20,11 @@ export async function GET(
   if (error) return error
 
   const { orderNo: ham } = await params
-  const orderNo = normalizeIsEmriNo(decodeURIComponent(ham))
+  const orderNo = decodeURIComponent(ham).trim()
 
   try {
-    const baslik = await getIsEmriBaslik(orderNo)
+    // Ham değer önce (M002280179 IFS'te aynen), bulunamazsa normalize edilmiş değer.
+    const baslik = await isEmriBaslikCoz(orderNo)
     if (!baslik) {
       return NextResponse.json(
         { ok: false, error: `İş emri bulunamadı: ${orderNo}` },

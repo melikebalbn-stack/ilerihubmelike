@@ -5,7 +5,8 @@ import { canManageFif, isFifKss } from '@/lib/quality/fif-access'
 import { fifZinciriCoz } from '@/lib/quality/fif-zincir'
 import { gecisYapabilirMi, type FifGecisCtx, type FifGecisState } from '@/lib/quality/fif-durum'
 import { fifDurumBildir } from '@/lib/quality/fif-bildirim'
-import { FifDurum, FifSonuc } from '@/generated/prisma'
+import { FifDurum, FifSonuc, FifEtkinlikMadde } from '@/generated/prisma'
+import { addMonths } from 'date-fns'
 import { z } from 'zod'
 
 export const dynamic = 'force-dynamic'
@@ -107,6 +108,23 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         ...(isRed ? { redNedeni: aciklama } : {}),
       },
     })
+    // ETKİNLİK GÖREVİ (FAZ C): kapanıştan 3 AY sonrası planlanır — iki madde
+    // (KAPATMA + TEKRAR_ETMEME) yoksa oluşturulur, planlananTarih'i BOŞ olanlara
+    // tarih yazılır (elle girilmiş tarih EZİLMEZ). Takvim ayı: addMonths, 30 gün
+    // DEĞİL (30 Kasım + 3 ay = 28/29 Şubat taşması doğru hesaplanır).
+    if (hedef === FifDurum.ETKINLIK) {
+      const temel = fif.kapatmaTarihi ?? new Date()
+      const planTarihi = addMonths(temel, 3)
+      for (const madde of [FifEtkinlikMadde.KAPATMA, FifEtkinlikMadde.TEKRAR_ETMEME]) {
+        const mevcut = await tx.fifEtkinlik.findFirst({ where: { fifId: id, madde }, select: { id: true, planlananTarih: true } })
+        if (!mevcut) {
+          await tx.fifEtkinlik.create({ data: { fifId: id, madde, planlananTarih: planTarihi } })
+        } else if (!mevcut.planlananTarih) {
+          await tx.fifEtkinlik.update({ where: { id: mevcut.id }, data: { planlananTarih: planTarihi } })
+        }
+      }
+    }
+
     // Yeniden açılış: faaliyet satırları sonuc=YT (yapılamadı/termin) işaretlenir.
     if (isReopen) {
       await tx.fifFaaliyet.updateMany({ where: { fifId: id }, data: { sonuc: FifSonuc.YT } })

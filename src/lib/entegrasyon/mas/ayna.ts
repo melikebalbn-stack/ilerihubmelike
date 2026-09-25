@@ -314,6 +314,12 @@ export async function runMasAyna(opts: { dryRun?: boolean; limit?: number | null
     try {
       const mevcut = await prisma.iproMachineDowntime.findFirst({ where: { tezgahId: tz.id, kaynak: KAYNAK, bitis: null }, select: { id: true } })
       if (!mevcut) {
+        // MAS DEVRALIR: aynı tezgahta açık OTO (otomatik) duruş varsa kapat — sebepli MAS kaydı öncelikli
+        // (partial unique tezgah başına tek açık duruşa izin verir; OTO kapatılmadan MAS açılamaz).
+        await prisma.iproMachineDowntime.updateMany({
+          where: { tezgahId: tz.id, kaynak: 'OTO', bitis: null },
+          data: { bitis: d.baslangic ?? simdi },
+        })
         await prisma.iproMachineDowntime.create({
           data: {
             tezgahId: tz.id, durusSebebiId: sebepId, baslangic: d.baslangic ?? simdi, kaynak: KAYNAK,

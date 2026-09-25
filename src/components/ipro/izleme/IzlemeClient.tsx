@@ -87,14 +87,17 @@ function Halka({ deger, boyut = 58, kalinlik = 7, etiket }: { deger: number | nu
 
 // Bir tezgahın 4 halkası (Kullan./Perf./Kalite/OEE). 4 eşit sütun grid — hücreler min-w-0 ile
 // taşmayı keser, halkalar kartın içine sığar. Veri yoksa boş halka + tire. Güvenilirlik notu alt satır.
-function OeeSerit({ c, tv, esik }: { c: CanliOee | null; tv: boolean; esik: number }) {
+function OeeSerit({ c, tv, esik, sade = false }: { c: CanliOee | null; tv: boolean; esik: number; sade?: boolean }) {
+  // sade = boşta tezgah: halkalar küçük + soluk (dikkat çekmesin). Aktif/duruşta: bir tık büyük halkalar.
+  const boyut = sade ? 42 : 66
+  const kalinlik = sade ? 5 : 8
   return (
-    <div className="mt-2 border-t pt-2">
-      <div className="grid grid-cols-4 gap-1">
-        <div className="min-w-0"><Halka deger={c?.availability ?? null} etiket="Kullan." /></div>
-        <div className="min-w-0"><Halka deger={c?.performance ?? null} etiket="Perf." /></div>
-        <div className="min-w-0"><Halka deger={null} etiket="Kalite" /></div>
-        <div className="min-w-0"><Halka deger={c?.oeeCanli ?? null} etiket="OEE" /></div>
+    <div className={`mt-2.5 border-t pt-2.5 ${sade ? 'opacity-45' : ''}`}>
+      <div className={`grid grid-cols-4 ${sade ? 'gap-1' : 'gap-1.5'}`}>
+        <div className="min-w-0"><Halka deger={c?.availability ?? null} etiket="Kullan." boyut={boyut} kalinlik={kalinlik} /></div>
+        <div className="min-w-0"><Halka deger={c?.performance ?? null} etiket="Perf." boyut={boyut} kalinlik={kalinlik} /></div>
+        <div className="min-w-0"><Halka deger={null} etiket="Kalite" boyut={boyut} kalinlik={kalinlik} /></div>
+        <div className="min-w-0"><Halka deger={c?.oeeCanli ?? null} etiket="OEE" boyut={boyut} kalinlik={kalinlik} /></div>
       </div>
       {c?.hesapKaynagi === 'COKLU_IS' ? (
         <p className={`mt-1 text-right text-[8px] ${tv ? 'text-amber-400' : 'text-amber-600'}`} title="çoklu açık iş — performans tek işe atfedilemez">
@@ -422,7 +425,7 @@ export function IzlemeClient() {
           <p>Filtreye uyan tezgah yok.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
           {gosterilen.map((t) => (
             <Kart key={t.id} tezgah={t} tv={tvModu} esik={pano?.esik ?? 50} onClick={() => setSeciliId(t.id)} />
           ))}
@@ -499,7 +502,7 @@ function Kart({ tezgah, tv, esik, onClick }: { tezgah: Tezgah; tv: boolean; esik
   // Tek görünüm: çalışan künyesi (durum) + canlı OEE halka şeridi. 2+ iş → kompakt liste.
   const kunye =
     cokluIs ? (
-      <div className="mt-2 space-y-1">
+      <div className="mt-2 space-y-1.5">
         <p className={`text-xs font-semibold ${anaMetin}`}>{isler.length} açık iş</p>
         {isler.slice(0, 2).map((is, i) => (
           <div key={i} className="border-l-2 border-emerald-500/60 pl-1.5">
@@ -517,7 +520,7 @@ function Kart({ tezgah, tv, esik, onClick }: { tezgah: Tezgah; tv: boolean; esik
         ) : null}
       </div>
     ) : durum === 'calisiyor' && c ? (
-      <div className="mt-2 space-y-1">
+      <div className="mt-2 space-y-1.5">
         <p className={`truncate text-sm font-medium ${anaMetin}`}>{c.adSoyad ?? c.sicilNo ?? '—'}</p>
         <Satir etiket="İş emri" deger={c.ifsOrderNo ?? '—'} tv={tv} />
         <Satir etiket="Operasyon" deger={c.ifsOperationNo != null ? String(c.ifsOperationNo) : '—'} tv={tv} />
@@ -526,7 +529,7 @@ function Kart({ tezgah, tv, esik, onClick }: { tezgah: Tezgah; tv: boolean; esik
         <div className="pt-0.5">{sure ? <DijitalSure deger={sure} ton="yesil" tv={tv} className="text-xs" /> : null}</div>
       </div>
     ) : durum === 'durusta' ? (
-      <div className="mt-2 space-y-1">
+      <div className="mt-2 space-y-1.5">
         <p className="text-sm font-semibold text-red-500">DURUŞTA</p>
         <Satir etiket="Sebep" deger={tezgah.durus?.sebep ?? '—'} tv={tv} />
         <div className="pt-0.5">{durusSure ? <DijitalSure deger={durusSure} ton="kirmizi" tv={tv} className="text-xs" /> : null}</div>
@@ -539,19 +542,20 @@ function Kart({ tezgah, tv, esik, onClick }: { tezgah: Tezgah; tv: boolean; esik
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-xl border p-3 text-left transition-colors hover:ring-2 hover:ring-[#1B4F72]/40 ${kenar} ${tvYesil} ${tvKirmizi}`}
+      className={`rounded-xl border p-4 text-left transition-colors hover:ring-2 hover:ring-[#1B4F72]/40 ${kenar} ${tvYesil} ${tvKirmizi}`}
     >
-      <div className="flex items-center justify-between">
-        <span className={`text-lg font-bold ${anaMetin}`}>{tezgah.kod}</span>
-        <span className="flex items-center gap-1">
+      <div className="flex items-start justify-between gap-2">
+        <span className={`text-lg font-bold leading-tight ${anaMetin}`}>{tezgah.kod}</span>
+        <span className="mt-1 flex shrink-0 items-center gap-1">
           {tezgah.sinyalli && <Signal className={`h-3.5 w-3.5 ${altMetin}`} />}
           <span className={`h-2.5 w-2.5 rounded-full ${nokta}`} />
         </span>
       </div>
-      <p className={`truncate text-xs ${altMetin}`}>{tezgah.ad}</p>
+      {/* Tezgah adı tam görünsün — kesme yok; uzunsa 2 satıra sarar. */}
+      <p className={`mt-0.5 line-clamp-2 min-h-[2.1em] text-xs leading-snug ${altMetin}`}>{tezgah.ad}</p>
 
       {kunye}
-      <OeeSerit c={tezgah.canliOee ?? null} tv={tv} esik={esik} />
+      <OeeSerit c={tezgah.canliOee ?? null} tv={tv} esik={esik} sade={durum === 'bosta'} />
     </button>
   )
 }

@@ -425,16 +425,17 @@ export async function tezgahDetay(tezgahId: string): Promise<TezgahDetay | null>
   const yuvarla = (n: number) => Math.round(n)
 
   // Üretim ilerleme: İŞ EMRİ KÜMÜLATİF — referans (ifsOrderNo, ifsOperationNo) için TÜM IproProductionLog
-  // kayıtlarının uretimAdet toplamı (açık + kapalı, tüm oturumlar). Tek oturum/master değil (MAS Amount tek
-  // master'ı verir; iş emri toplamı tüm master'ların = 216 gibi). Referans: aktif iş; yoksa son kapanan.
+  // kayıtlarının qtyComplete toplamı (açık + kapalı, tüm oturumlar). Tek oturum/master değil. qtyComplete
+  // seçildi çünkü MAS Amount toplamıyla birebir tutuyor (245=245); uretimAdet bazı eski/sinyalli kayıtta sapar.
+  // Referans: aktif iş; yoksa son kapanan.
   const refIs = aktif ?? kapananlar[0]
   let gerceklesen = 0
   if (refIs?.ifsOrderNo) {
     const agg = await prisma.iproProductionLog.aggregate({
       where: { ifsOrderNo: refIs.ifsOrderNo, ifsOperationNo: refIs.ifsOperationNo },
-      _sum: { uretimAdet: true },
+      _sum: { qtyComplete: true },
     })
-    gerceklesen = agg._sum.uretimAdet ?? 0
+    gerceklesen = agg._sum.qtyComplete ?? 0
   }
   const planlanan = aktif?.ifsQtyDue ?? refIs?.ifsQtyDue ?? null
 

@@ -343,8 +343,10 @@ export function IzlemeClient() {
     >
       {/* Kart nabız animasyonu — hafif box-shadow halkası (reflow yok); reduced-motion'da kapalı. */}
       <style>{`
-        @keyframes iproNabizYesil { 0%,100%{box-shadow:0 0 0 0 rgba(16,185,129,0)} 50%{box-shadow:0 0 0 3px rgba(16,185,129,0.20)} }
-        @keyframes iproNabizKirmizi { 0%,100%{box-shadow:0 0 0 0 rgba(225,29,72,0)} 50%{box-shadow:0 0 0 3px rgba(225,29,72,0.20)} }
+        /* Zemin nabzı: inset box-shadow yıkaması TÜM kart içini kaplar (yarı saydam → hem açık hem
+           TV/dark temada çalışır, sabit renk gerekmez). Açık↔koyu gidip gelir, uzaktan fark edilir. */
+        @keyframes iproNabizYesil { 0%,100%{box-shadow:inset 0 0 0 9999px rgba(16,185,129,0)} 50%{box-shadow:inset 0 0 0 9999px rgba(16,185,129,0.22)} }
+        @keyframes iproNabizKirmizi { 0%,100%{box-shadow:inset 0 0 0 9999px rgba(225,29,72,0)} 50%{box-shadow:inset 0 0 0 9999px rgba(225,29,72,0.22)} }
         .ipro-nabiz-yesil{animation:iproNabizYesil 2.6s ease-in-out infinite}
         .ipro-nabiz-kirmizi{animation:iproNabizKirmizi 2.6s ease-in-out infinite}
         @media (prefers-reduced-motion: reduce){.ipro-nabiz-yesil,.ipro-nabiz-kirmizi{animation:none}}

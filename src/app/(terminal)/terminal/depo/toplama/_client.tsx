@@ -51,6 +51,8 @@ function fmtDate(iso: string): string {
   return y && m && d ? `${d}.${m}.${y}` : iso
 }
 const normLoc = (x: string) => x.trim().toLocaleLowerCase('tr')
+// "80010003 · HALAT TUTUCU" — ad boşsa ya da kodla aynıysa yalnız kod.
+const urunMetni = (kod: string, ad?: string) => (ad && ad !== kod ? `${kod} · ${ad}` : kod)
 
 // /topla response kirilim'ini kalıcı 'nereden çıktı' satırlarına çevirir (loc→ad, fifo'dan).
 function kirilimToSon(
@@ -719,10 +721,11 @@ export function MalzemeToplamaClient() {
         {step === 'LISTE' && (
           <div className="flex min-w-0 flex-col leading-tight">
             <h1 className="truncate text-base font-semibold">
-              İE {baslik?.orderNo} · {baslik?.urunAdi || baslik?.urunKodu}
+              İE {baslik?.orderNo} · Ürün {baslik?.urunKodu}
+              {baslik?.urunAdi && baslik.urunAdi !== baslik.urunKodu ? ` ${baslik.urunAdi}` : ''}
             </h1>
             <span className="text-xs text-muted-foreground">
-              {satirlar.length} kalem · {tamamlanan} toplandı
+              Toplanacak malzemeler ({satirlar.length} kalem) · {tamamlanan} toplandı
             </span>
           </div>
         )}
@@ -1284,6 +1287,7 @@ function KalemKart({ s, durum, sonCikis, vurgu, onSelect }: { s: ToplamaSatirDet
       <div className="flex min-h-16 items-start gap-3 rounded-2xl border border-emerald-300 bg-emerald-50 p-4 text-emerald-800">
         <Check className="h-6 w-6 shrink-0 text-emerald-600" />
         <div className="min-w-0">
+          <div className="text-[10px] font-medium uppercase tracking-wide opacity-70">Malzeme</div>
           <div className="font-semibold">{s.partNo}</div>
           <div className="text-sm">{s.gerekli} {s.birim} · toplandı</div>
           <SonCikisSatirlari sonCikis={sonCikis} />
@@ -1294,6 +1298,7 @@ function KalemKart({ s, durum, sonCikis, vurgu, onSelect }: { s: ToplamaSatirDet
   if (s.stokYok) {
     return (
       <div className="flex flex-col gap-1 rounded-2xl border border-red-300 bg-red-50 p-4 text-red-800">
+        <div className="text-[10px] font-medium uppercase tracking-wide opacity-70">Malzeme</div>
         <div className="flex items-center gap-2">
           <AlertTriangle className="h-5 w-5 shrink-0 text-red-600" />
           <span className="min-w-0 truncate font-semibold">
@@ -1321,6 +1326,7 @@ function KalemKart({ s, durum, sonCikis, vurgu, onSelect }: { s: ToplamaSatirDet
       )}
       style={hata ? undefined : { borderColor: TERMINAL_ACCENT }}
     >
+      <div className="-mb-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Malzeme</div>
       <div className="flex items-start justify-between gap-2">
         <span className="flex min-w-0 items-center gap-2">
           <span className="min-w-0 font-semibold">{s.partNo}</span>
@@ -1392,7 +1398,7 @@ function BekleyenKart({ is, onSelect }: { is: BekleyenIs; onSelect: () => void }
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="font-semibold">İE {is.orderNo}</div>
-          <div className="truncate text-xs text-muted-foreground">{is.urunAdi}</div>
+          <div className="truncate text-xs text-muted-foreground">Ürün: {urunMetni(is.urunKodu, is.urunAdi)}</div>
         </div>
         <span className="shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold text-white" style={{ background: TERMINAL_ACCENT }}>
           {is.acikKalem} açık kalem
@@ -1419,7 +1425,7 @@ function PlanliKart({ is }: { is: BekleyenIs }) {
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="font-semibold text-muted-foreground">İE {is.orderNo}</div>
-          <div className="truncate text-xs text-muted-foreground">{is.urunAdi}</div>
+          <div className="truncate text-xs text-muted-foreground">Ürün: {urunMetni(is.urunKodu, is.urunAdi)}</div>
         </div>
         <span className="shrink-0 rounded-full bg-muted px-2.5 py-0.5 text-xs font-semibold text-muted-foreground">
           Serbest bırakılmadı

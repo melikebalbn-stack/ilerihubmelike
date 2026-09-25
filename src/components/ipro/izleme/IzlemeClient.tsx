@@ -92,7 +92,7 @@ function OeeSerit({ c, tv, esik, sade = false }: { c: CanliOee | null; tv: boole
   const boyut = sade ? 42 : 66
   const kalinlik = sade ? 5 : 8
   return (
-    <div className={`mt-2.5 border-t pt-2.5 ${sade ? 'opacity-45' : ''}`}>
+    <div className={`mt-auto border-t pt-2.5 ${sade ? 'opacity-45' : ''}`}>
       <div className={`grid grid-cols-4 ${sade ? 'gap-1' : 'gap-1.5'}`}>
         <div className="min-w-0"><Halka deger={c?.availability ?? null} etiket="Kullan." boyut={boyut} kalinlik={kalinlik} /></div>
         <div className="min-w-0"><Halka deger={c?.performance ?? null} etiket="Perf." boyut={boyut} kalinlik={kalinlik} /></div>
@@ -425,7 +425,7 @@ export function IzlemeClient() {
           <p>Filtreye uyan tezgah yok.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+        <div className="grid grid-cols-1 items-stretch gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
           {gosterilen.map((t) => (
             <Kart key={t.id} tezgah={t} tv={tvModu} esik={pano?.esik ?? 50} onClick={() => setSeciliId(t.id)} />
           ))}
@@ -542,7 +542,7 @@ function Kart({ tezgah, tv, esik, onClick }: { tezgah: Tezgah; tv: boolean; esik
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-xl border p-4 text-left transition-colors hover:ring-2 hover:ring-[#1B4F72]/40 ${kenar} ${tvYesil} ${tvKirmizi}`}
+      className={`flex h-full flex-col rounded-xl border p-4 text-left transition-colors hover:ring-2 hover:ring-[#1B4F72]/40 ${kenar} ${tvYesil} ${tvKirmizi}`}
     >
       <div className="flex items-start justify-between gap-2">
         <span className={`text-lg font-bold leading-tight ${anaMetin}`}>{tezgah.kod}</span>
@@ -554,7 +554,8 @@ function Kart({ tezgah, tv, esik, onClick }: { tezgah: Tezgah; tv: boolean; esik
       {/* Tezgah adı tam görünsün — kesme yok; uzunsa 2 satıra sarar. */}
       <p className={`mt-0.5 line-clamp-2 min-h-[2.1em] text-xs leading-snug ${altMetin}`}>{tezgah.ad}</p>
 
-      {kunye}
+      {/* Künye esner, boşluğu doldurur → ayraç + halka şeridi her kartta dipte hizalı (mt-auto). */}
+      <div className="flex-1">{kunye}</div>
       <OeeSerit c={tezgah.canliOee ?? null} tv={tv} esik={esik} sade={durum === 'bosta'} />
     </button>
   )

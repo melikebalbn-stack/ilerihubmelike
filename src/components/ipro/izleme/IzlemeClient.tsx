@@ -341,6 +341,14 @@ export function IzlemeClient() {
       ref={tvRef}
       className={tvModu ? 'ipro-izleme-tv fixed inset-0 z-50 overflow-auto bg-slate-950 p-6 text-slate-100' : ''}
     >
+      {/* Kart nabız animasyonu — hafif box-shadow halkası (reflow yok); reduced-motion'da kapalı. */}
+      <style>{`
+        @keyframes iproNabizYesil { 0%,100%{box-shadow:0 0 0 0 rgba(16,185,129,0)} 50%{box-shadow:0 0 0 3px rgba(16,185,129,0.20)} }
+        @keyframes iproNabizKirmizi { 0%,100%{box-shadow:0 0 0 0 rgba(225,29,72,0)} 50%{box-shadow:0 0 0 3px rgba(225,29,72,0.20)} }
+        .ipro-nabiz-yesil{animation:iproNabizYesil 2.6s ease-in-out infinite}
+        .ipro-nabiz-kirmizi{animation:iproNabizKirmizi 2.6s ease-in-out infinite}
+        @media (prefers-reduced-motion: reduce){.ipro-nabiz-yesil,.ipro-nabiz-kirmizi{animation:none}}
+      `}</style>
       {/* Gün özeti şeridi */}
       <div className="mb-4 flex flex-wrap items-center gap-4 rounded-xl bg-slate-900 px-5 py-4 text-slate-100">
         <Activity className="h-6 w-6 text-emerald-400" />
@@ -476,28 +484,32 @@ function Ozet({ etiket, deger, renk = '' }: { etiket: string; deger: number; ren
 function Kart({ tezgah, tv, esik, onClick }: { tezgah: Tezgah; tv: boolean; esik: number; onClick: () => void }) {
   const c = tezgah.calisan
   const durum = tezgah.durum
+  const isler = tezgah.isler ?? []
+  const cokluIs = durum === 'calisiyor' && isler.length > 1
+  // YEŞİL YALNIZ gerçek açık iş varken. durum='calisiyor' iş kaydı olmadan da (yalnız fiziksel/PLC
+  // hareket — calisan yok) oluşabiliyordu → kart yeşil ama künye "boşta" çelişkisi. Böyle kartlar nötr.
+  const calisiyorGercek = durum === 'calisiyor' && (!!c || isler.length > 0)
+  const durustaGercek = durum === 'durusta'
   const sure = c ? sureBicim(Date.now() - new Date(c.baslatildiAt).getTime()) : null
   const durusSure = tezgah.durus ? sureBicim(Date.now() - new Date(tezgah.durus.baslangicAt).getTime()) : null
 
-  // Renk mantığı: çalışıyor=yeşil, duruşta=kırmızı, boşta=gri. TV (dark) için ayrı tonlar.
+  // Renk mantığı: gerçek çalışıyor=yeşil, duruşta=kırmızı, aksi (boşta/fiziksel-only)=nötr gri.
   const kenar =
-    durum === 'calisiyor'
+    calisiyorGercek
       ? 'border-emerald-500/70 bg-emerald-50 dark:bg-emerald-950/40'
-      : durum === 'durusta'
+      : durustaGercek
         ? 'border-red-500/70 bg-red-50 dark:bg-red-950/40'
         : tv
           ? 'border-slate-700 bg-slate-900'
           : 'border-slate-200 bg-slate-50'
-  const tvYesil = tv && durum === 'calisiyor' ? 'bg-emerald-900/40 border-emerald-500/70' : ''
-  const tvKirmizi = tv && durum === 'durusta' ? 'bg-red-900/40 border-red-500/70' : ''
-  const nokta = durum === 'calisiyor' ? 'bg-emerald-500' : durum === 'durusta' ? 'bg-red-500' : 'bg-slate-300'
+  const tvYesil = tv && calisiyorGercek ? 'bg-emerald-900/40 border-emerald-500/70' : ''
+  const tvKirmizi = tv && durustaGercek ? 'bg-red-900/40 border-red-500/70' : ''
+  const nokta = calisiyorGercek ? 'bg-emerald-500' : durustaGercek ? 'bg-red-500' : 'bg-slate-300'
+  // Nabız: gerçek çalışıyor → hafif yeşil, duruşta → hafif kırmızı, aksi → yok (prefers-reduced-motion'da kapalı).
+  const nabiz = calisiyorGercek ? 'ipro-nabiz-yesil' : durustaGercek ? 'ipro-nabiz-kirmizi' : ''
   // Metin: TV'de her durumda açık renk (okunurluk). Işıklı zeminde koyu.
   const anaMetin = tv ? 'text-slate-100' : 'text-slate-900'
   const altMetin = tv ? 'text-slate-300' : 'text-slate-500'
-
-  // Çoklu açık iş (aynı tezgahta paralel iş emirleri): işleri alt alta kompakt listele.
-  const isler = tezgah.isler ?? []
-  const cokluIs = durum === 'calisiyor' && isler.length > 1
 
   // Tek görünüm: çalışan künyesi (durum) + canlı OEE halka şeridi. 2+ iş → kompakt liste.
   const kunye =
@@ -542,7 +554,7 @@ function Kart({ tezgah, tv, esik, onClick }: { tezgah: Tezgah; tv: boolean; esik
     <button
       type="button"
       onClick={onClick}
-      className={`flex h-full flex-col rounded-xl border p-4 text-left transition-colors hover:ring-2 hover:ring-[#1B4F72]/40 ${kenar} ${tvYesil} ${tvKirmizi}`}
+      className={`flex h-full flex-col rounded-xl border p-4 text-left transition-colors hover:ring-2 hover:ring-[#1B4F72]/40 ${kenar} ${tvYesil} ${tvKirmizi} ${nabiz}`}
     >
       <div className="flex items-start justify-between gap-2">
         <span className={`text-lg font-bold leading-tight ${anaMetin}`}>{tezgah.kod}</span>

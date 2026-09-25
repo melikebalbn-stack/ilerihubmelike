@@ -368,3 +368,107 @@ describe('KVKK — firma görünümü şikâyetçiyi HİÇ SEÇMEZ', () => {
     expect(mocks.findMany.mock.calls[0][0].orderBy).toEqual([{ bildirimTarihi: 'desc' }, { no: 'desc' }])
   })
 })
+
+// ----------------------------------------------------------------------------
+// Adım 2B — durakId (alan main'e girdi)
+// ----------------------------------------------------------------------------
+describe('durakId — oluşturma', () => {
+  it('durakId VERİLİNCE yazılır', async () => {
+    const iz: string[] = []
+    const tx = txClientKur(iz)
+    await sikayetOlustur({ ...GIRDI, durakId: 'd1' })
+    expect(tx.servisSikayet.create.mock.calls[0][0].data.durakId).toBe('d1')
+  })
+
+  it('durakId VERİLMEYİNCE null yazılır', async () => {
+    const iz: string[] = []
+    const tx = txClientKur(iz)
+    await sikayetOlustur(GIRDI)
+    expect(tx.servisSikayet.create.mock.calls[0][0].data.durakId).toBeNull()
+  })
+
+  it('🔴 durakId GELSE BİLE planlananSaat otomatik DOLDURULMAZ', async () => {
+    const iz: string[] = []
+    const tx = txClientKur(iz)
+    await sikayetOlustur({ ...GIRDI, durakId: 'd1', dilimId: 'dil1' })
+
+    const d = tx.servisSikayet.create.mock.calls[0][0].data
+    expect(d.durakId).toBe('d1')
+    expect(d.planlananSaat).toBeNull()
+    // Saat tablosuna hiç sorgu atılmadı
+    expect((tx as unknown as Record<string, unknown>).servisGuzergahDurakSaat).toBeUndefined()
+  })
+
+  it('durakId verilse de çağıranın planlananSaat\'i korunur', async () => {
+    const iz: string[] = []
+    const tx = txClientKur(iz)
+    await sikayetOlustur({ ...GIRDI, durakId: 'd1', planlananSaat: '07:15' })
+    expect(tx.servisSikayet.create.mock.calls[0][0].data.planlananSaat).toBe('07:15')
+  })
+})
+
+describe('durakId — filtre', () => {
+  it('where\'e girer', () => {
+    expect(sikayetWhereOlustur({ durakId: 'd1' }).durakId).toBe('d1')
+  })
+
+  it('verilmezse where\'de yok', () => {
+    expect(sikayetWhereOlustur({}).durakId).toBeUndefined()
+  })
+
+  it('İÇ görünümde filtre where\'e doğru iletilir', async () => {
+    mocks.findMany.mockResolvedValue([])
+    await sikayetListesiGetir({ durakId: 'd1' })
+    expect(mocks.findMany.mock.calls[0][0].where.durakId).toBe('d1')
+  })
+
+  it('FİRMA görünümünde de filtre where\'e doğru iletilir', async () => {
+    mocks.findMany.mockResolvedValue([])
+    await sikayetFirmaListesiGetir({ durakId: 'd1' })
+    expect(mocks.findMany.mock.calls[0][0].where.durakId).toBe('d1')
+  })
+})
+
+describe('durakId — select kapsamı (madde 23)', () => {
+  /** Durak select'inin alan adlarını döndürür. */
+  function durakAlanlari(select: Record<string, unknown>): string[] {
+    const durak = select.durak as { select: Record<string, unknown> } | undefined
+    return durak ? Object.keys(durak.select) : []
+  }
+
+  for (const [etiket, cagir] of [
+    ['iç görünüm', () => sikayetListesiGetir()],
+    ['firma görünümü', () => sikayetFirmaListesiGetir()],
+  ] as const) {
+    it(`${etiket}: durak YALNIZ id/kod/ad — konum alanları desen taramasıyla YOK`, async () => {
+      mocks.findMany.mockResolvedValue([])
+      await cagir()
+
+      const alanlar = durakAlanlari(mocks.findMany.mock.calls[0][0].select)
+      expect(alanlar.sort()).toEqual(['ad', 'id', 'kod'])
+      // Tek tek saymak yerine desen: konum/koordinat sızıntısı yakalanır
+      expect(alanlar.filter(a => /il|ilce|mahalle|enlem|boylam|adres|koordinat/i.test(a))).toEqual([])
+    })
+  }
+
+  it('durakId ham alan olarak her iki görünümde de var', async () => {
+    mocks.findMany.mockResolvedValue([])
+    await sikayetListesiGetir()
+    expect(mocks.findMany.mock.calls[0][0].select.durakId).toBe(true)
+
+    mocks.findMany.mockClear()
+    await sikayetFirmaListesiGetir()
+    expect(mocks.findMany.mock.calls[0][0].select.durakId).toBe(true)
+  })
+})
+
+describe('durakId — KVKK regresyonu', () => {
+  it('🔴 firma görünümünün select\'i HÂLÂ /sikayetci/i desenini içermiyor', async () => {
+    mocks.findMany.mockResolvedValue([])
+    await sikayetFirmaListesiGetir({ durakId: 'd1' })
+
+    const select = mocks.findMany.mock.calls[0][0].select
+    expect(Object.keys(select).filter(k => /sikayetci/i.test(k))).toEqual([])
+    expect(Object.keys(FIRMA_GORUNUMU_SELECT).filter(k => /sikayetci/i.test(k))).toEqual([])
+  })
+})

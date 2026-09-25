@@ -11,9 +11,9 @@
 // yerine "hiç seçmeme" tercih edildi — maskelenen veri yine de sunucudan geçer,
 // bir log/hata ayıklama çıktısına düşebilir.
 //
-// durakId BU ADIMDA YOK: alan dev/elif/servis-sikayet-durak dalında, main'e
-// girmedi (Ders 72). Girince create imzası, filtre ve rapor kırılımı birlikte
-// ayrı bir adımda eklenecek.
+// durak: her iki görünümde de YALNIZ { id, kod, ad } seçilir. il/ilce/mahalle
+// ve koordinat BİLEREK YOK — şikâyeti çözmek için gerekmiyor, kapsamı
+// gereksiz genişletirdi (madde 23).
 import { prisma } from '@/lib/prisma'
 import type { Prisma, ServisSikayetDurumu, ServisSikayetKategori, ServisSikayetKaynagi } from '@/generated/prisma'
 import { durumAlanlariniDogrula } from './sikayet-durum'
@@ -83,6 +83,9 @@ export interface SikayetOlusturGirdisi {
   firmaId?: string | null
   aracId?: string | null
   soforId?: string | null
+  /** Şikâyetin ilgili olduğu durak — opsiyonel, çalışan bildirdiğinde
+   *  bilinmeyebilir. planlananSaat'i TÜRETMEZ (aşağıya bakın). */
+  durakId?: string | null
 
   sikayetciPersonnelId?: string | null
   sorumluId?: string | null
@@ -90,10 +93,10 @@ export interface SikayetOlusturGirdisi {
 
   /**
    * Anlık kopya — ÇAĞIRANDAN gelir, türetilmez. ServisGuzergahDurakSaat
-   * durak BAŞINA saat tutuyor; güzergâh+dilim için N tane saat var ve
-   * ServisSikayet'te durak referansı bu adımda yok, dolayısıyla "hangi
-   * durağın saati" sorusunun şemadan tek bir cevabı YOK. Uydurmak yerine
-   * İV'nin girdiği değer saklanır.
+   * durak BAŞINA saat tutuyor. 🔴 durakId GELSE BİLE otomatik doldurma
+   * YAPILMAZ (Melih kararı: "İV elle girsin") — saat dilime göre değişir,
+   * olay anındaki tarifeyi kaydın kendisi taşımalı, sorgu anında yeniden
+   * türetilmemeli. Uydurmak yerine İV'nin girdiği değer saklanır.
    */
   planlananSaat?: string | null
 
@@ -193,6 +196,7 @@ export async function sikayetOlustur(girdi: SikayetOlusturGirdisi) {
         firmaId: girdi.firmaId ?? null,
         aracId: girdi.aracId ?? null,
         soforId: girdi.soforId ?? null,
+        durakId: girdi.durakId ?? null,
         sikayetciPersonnelId: girdi.sikayetciPersonnelId ?? null,
         sorumluId: girdi.sorumluId ?? null,
         termin: girdi.termin ?? null,
@@ -212,6 +216,7 @@ export async function sikayetOlustur(girdi: SikayetOlusturGirdisi) {
 export interface SikayetFiltresi {
   guzergahId?: string
   firmaId?: string
+  durakId?: string
   durum?: ServisSikayetDurumu
   kategori?: ServisSikayetKategori
   kaynak?: ServisSikayetKaynagi
@@ -226,6 +231,7 @@ export function sikayetWhereOlustur(filtre: SikayetFiltresi): Prisma.ServisSikay
 
   if (filtre.guzergahId) where.guzergahId = filtre.guzergahId
   if (filtre.firmaId) where.firmaId = filtre.firmaId
+  if (filtre.durakId) where.durakId = filtre.durakId
   if (filtre.durum) where.durum = filtre.durum
   if (filtre.kategori) where.kategori = filtre.kategori
   if (filtre.kaynak) where.kaynak = filtre.kaynak
@@ -260,6 +266,10 @@ const ORTAK_SELECT = {
   firmaId: true,
   aracId: true,
   soforId: true,
+  durakId: true,
+  // Konum bilgisi, kişisel veri değil — firma da "hangi durakta ne oldu"yu
+  // görmeli. il/ilce/mahalle/koordinat BİLEREK yok (madde 23).
+  durak: { select: { id: true, kod: true, ad: true } },
   plaka: true,
   soforAdSoyad: true,
   firmaAd: true,

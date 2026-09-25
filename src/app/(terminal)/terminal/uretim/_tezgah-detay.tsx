@@ -136,8 +136,6 @@ function gecenSureBicim(iso: string | null | undefined): string {
   return ms >= 0 ? sureBicim(ms) : '—'
 }
 const trTarih2 = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString('tr-TR') : '—')
-const trSaat = (iso: string | null) =>
-  iso ? new Date(iso).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) : '—'
 /** Türkçe ondalık (virgül). basamak: gösterilecek ondalık hane. */
 function trSayi(n: number, basamak = 1): string {
   return n.toLocaleString('tr-TR', { minimumFractionDigits: basamak, maximumFractionDigits: basamak })
@@ -256,10 +254,12 @@ export function TezgahDetayModal({
       const end = d.bitisAt ? new Date(d.bitisAt).getTime() : Date.now()
       return a + Math.max(0, (end - new Date(d.baslangicAt).getTime()) / 60000)
     }, 0) ?? 0
-  // Açık işte üretim = canlı PLC Σdelta (route'tan); kapalı/geçmişte mevcut gerceklesen.
+  // Canlı PLC Σdelta (route'tan) — çevrim/akış göstergeleri için (oturum bazlı).
   const canli = detay?.canliUretim ?? null
   const acikIsVar = !!aktif
-  const gerceklesenAdet = acikIsVar && canli ? canli.adet : (detay?.uretim.gerceklesen ?? 0)
+  // ÜRETİM İLERLEME çubuğu = İŞ EMRİ KÜMÜLATİF (detay.uretim.gerceklesen = tüm oturumların uretimAdet toplamı),
+  // tek oturumun canlı PLC'si DEĞİL. (Canlı OEE/çevrim ayrı, oturum bazlı kalır.)
+  const gerceklesenAdet = detay?.uretim.gerceklesen ?? 0
   const planlananAdet = detay?.uretim.planlanan ?? null
   const yuzde =
     planlananAdet && planlananAdet > 0
@@ -502,18 +502,14 @@ export function TezgahDetayModal({
                       style={{ width: `${yuzde ?? 0}%` }}
                     />
                   </div>
-                  <UretimAciklama acikIsVar={acikIsVar} canli={canli} />
-                </>
-              ) : acikIsVar ? (
-                canli?.seriVar ? (
-                  <p className="text-sm text-slate-600">
-                    {gerceklesenAdet} adet üretildi (canlı PLC, son sinyal {trSaat(canli.sonSinyal)})
+                  <p className="mt-1 text-xs text-slate-400">
+                    iş emri toplamı (tüm oturumlar){canli?.seriVar ? ` · bu oturum canlı ${canli.adet}` : ''}
                   </p>
-                ) : (
-                  <p className="text-sm text-amber-600">PLC sayacından sinyal gelmedi</p>
-                )
+                </>
               ) : (
-                <p className="text-sm text-slate-400">Planlanan adet yok — {gerceklesenAdet} adet üretildi (bugün).</p>
+                <p className="text-sm text-slate-400">
+                  Planlanan adet yok — iş emri toplamı {gerceklesenAdet} adet (tüm oturumlar).
+                </p>
               )}
             </section>
 
@@ -690,27 +686,6 @@ export function TezgahDetayModal({
 
 function SecBaslik({ children }: { children: ReactNode }) {
   return <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-slate-400">{children}</h3>
-}
-
-// Üretim ilerleme çubuğu altı açıklaması — açık işte canlı PLC / sinyal yok; kapalıda kapanan toplam.
-function UretimAciklama({
-  acikIsVar,
-  canli,
-}: {
-  acikIsVar: boolean
-  canli: { seriVar: boolean; sonSinyal: string | null } | null
-}) {
-  if (!acikIsVar) {
-    return <p className="mt-1 text-xs text-slate-400">bugün kapanan iyi toplamı</p>
-  }
-  if (canli?.seriVar) {
-    return (
-      <p className="mt-1 text-xs text-slate-400">
-        canlı PLC sayacından (son sinyal {trSaat(canli.sonSinyal)}) · onaylı adet iş bitince girilir
-      </p>
-    )
-  }
-  return <p className="mt-1 text-xs text-amber-600">PLC sayacından sinyal gelmedi</p>
 }
 
 // Çevrim kutusu — saniye birincil, altında adet/saat (Türkçe ondalık). Uyarıda amber.

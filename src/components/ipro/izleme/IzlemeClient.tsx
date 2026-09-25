@@ -721,10 +721,10 @@ function DetayDialog({ tezgahId, canliOee, esik, onClose }: { tezgahId: string |
                   <div className="h-3 overflow-hidden rounded-full bg-slate-100">
                     <div className="h-full rounded-full bg-emerald-500 transition-all duration-700" style={{ width: `${yuzde}%` }} />
                   </div>
-                  <p className="mt-1 text-xs text-slate-400">bugün kapanan iyi toplamı; poller gelince canlı sayaçla zenginleşir</p>
+                  <p className="mt-1 text-xs text-slate-400">iş emri toplamı (tüm oturumlar)</p>
                 </>
               ) : (
-                <p className="text-sm text-slate-400">Planlanan adet yok — {uret?.gerceklesen ?? 0} adet üretildi (bugün).</p>
+                <p className="text-sm text-slate-400">Planlanan adet yok — iş emri toplamı {uret?.gerceklesen ?? 0} adet (tüm oturumlar).</p>
               )}
             </section>
 

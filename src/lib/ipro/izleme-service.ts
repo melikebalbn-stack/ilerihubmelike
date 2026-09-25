@@ -307,7 +307,8 @@ export type TezgahDetay = {
   bugunDuruslar: TezgahDurusSatiri[] // bugün başlayan + hâlâ açık duruşlar, en yeni önce
   // Bugün (gün başından şimdiye) süre dağılımı — dakika. DB'den hesaplanır, IFS yok.
   sureDagilimi: { calismaDk: number; durusDk: number; bostaDk: number; elapsedDk: number }
-  // Üretim ilerleme — gerçekleşen (bugün kapananların iyi toplamı) / planlanan (aktif iş ifsQtyDue).
+  // Üretim ilerleme — gerçekleşen = iş emri+op KÜMÜLATİF (tüm logların uretimAdet toplamı, tek oturum değil)
+  // / planlanan (iş emri ifsQtyDue).
   uretim: { gerceklesen: number; planlanan: number | null }
 }
 
@@ -423,8 +424,19 @@ export async function tezgahDetay(tezgahId: string): Promise<TezgahDetay | null>
   const bostaDk = Math.max(0, elapsedDk - calismaDk - durusDk)
   const yuvarla = (n: number) => Math.round(n)
 
-  const gerceklesen =
-    kapananlar.reduce((a, s) => a + s.qtyComplete, 0) + aktifler.reduce((a, s) => a + s.qtyComplete, 0)
+  // Üretim ilerleme: İŞ EMRİ KÜMÜLATİF — referans (ifsOrderNo, ifsOperationNo) için TÜM IproProductionLog
+  // kayıtlarının uretimAdet toplamı (açık + kapalı, tüm oturumlar). Tek oturum/master değil (MAS Amount tek
+  // master'ı verir; iş emri toplamı tüm master'ların = 216 gibi). Referans: aktif iş; yoksa son kapanan.
+  const refIs = aktif ?? kapananlar[0]
+  let gerceklesen = 0
+  if (refIs?.ifsOrderNo) {
+    const agg = await prisma.iproProductionLog.aggregate({
+      where: { ifsOrderNo: refIs.ifsOrderNo, ifsOperationNo: refIs.ifsOperationNo },
+      _sum: { uretimAdet: true },
+    })
+    gerceklesen = agg._sum.uretimAdet ?? 0
+  }
+  const planlanan = aktif?.ifsQtyDue ?? refIs?.ifsQtyDue ?? null
 
   return {
     id: tezgah.id,
@@ -452,6 +464,6 @@ export async function tezgahDetay(tezgahId: string): Promise<TezgahDetay | null>
       bostaDk: yuvarla(bostaDk),
       elapsedDk: yuvarla(elapsedDk),
     },
-    uretim: { gerceklesen, planlanan: aktif?.ifsQtyDue ?? null },
+    uretim: { gerceklesen, planlanan },
   }
 }

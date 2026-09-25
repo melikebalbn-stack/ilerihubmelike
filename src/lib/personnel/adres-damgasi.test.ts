@@ -56,3 +56,51 @@ describe('adresDegisimDamgasi — TEK KAYNAK (put-govde.ts, import, personele-do
     expect(adresDegisimDamgasi('Eski Adres', '').ikametAdresiDegisimTarihi).toBeInstanceOf(Date)
   })
 })
+
+// ----------------------------------------------------------------------------
+// Melih düzeltmesi (25.09.2026): karşılaştırma büyük/küçük harf ve fazladan
+// boşluğa duyarsız. YALNIZ karşılaştırma için — saklanan adres DEĞİŞMEZ.
+// ----------------------------------------------------------------------------
+describe('adresDegisimDamgasi — karşılaştırma normalleştirmesi', () => {
+  it('yalnız BÜYÜK/KÜÇÜK harf farkı → damga YOK', () => {
+    expect(adresDegisimDamgasi('Atatürk Cd. 5', 'ATATÜRK CD. 5')).toEqual({})
+    expect(adresDegisimDamgasi('ATATÜRK CD. 5', 'atatürk cd. 5')).toEqual({})
+  })
+
+  it('yalnız ÇOKLU BOŞLUK farkı → damga YOK', () => {
+    expect(adresDegisimDamgasi('Atatürk Cd. 5', 'Atatürk  Cd. 5')).toEqual({})
+    expect(adresDegisimDamgasi('Atatürk Cd. 5', 'Atatürk\tCd.  5')).toEqual({})
+  })
+
+  it('harf + boşluk farkı BİRLİKTE → damga YOK', () => {
+    expect(adresDegisimDamgasi('Atatürk Cd. 5', '  atatürk   cd. 5  ')).toEqual({})
+  })
+
+  it('GERÇEK içerik farkı → damga VAR (normalleştirme gerçek değişikliği yutmuyor)', () => {
+    expect(adresDegisimDamgasi('Atatürk Cd. 5', 'Atatürk Cd. 6')).toHaveProperty('ikametAdresiDegisimTarihi')
+    expect(adresDegisimDamgasi('Atatürk Cd. 5', 'Cumhuriyet Cd. 5')).toHaveProperty('ikametAdresiDegisimTarihi')
+  })
+
+  it('Türkçe karakterler korunur — ü/ğ/ş farkı GERÇEK farktır', () => {
+    expect(adresDegisimDamgasi('Güzeltepe', 'Guzeltepe')).toHaveProperty('ikametAdresiDegisimTarihi')
+  })
+
+  // 🔴 İ/I vakası BİLEREK test edilmedi — Melih'in kararı bekleniyor.
+  // toLocaleUpperCase('tr-TR') noktalı/noktasız i'yi ayrı harf olarak korur,
+  // yani "İstiklal" ve "ISTIKLAL" FARKLI sayılır ve damga BASILIR. Harf
+  // katlaması semantik bir karardır ("iş"/"ış" gibi gerçek farkları da
+  // birleştirir), kendiliğinden eklenmedi. Karar gelince tek satırlık test
+  // buraya eklenecek.
+})
+
+describe('adresDegisimDamgasi — saklanan değere DOKUNMAZ', () => {
+  it('fonksiyon YALNIZ damga alanını döndürür, adres alanı DÖNMEZ', () => {
+    const sonuc = adresDegisimDamgasi('Eski Cd. 1', '  yeni   CD. 2  ')
+    expect(Object.keys(sonuc)).toEqual(['ikametAdresiDegisimTarihi'])
+    expect(sonuc).not.toHaveProperty('ikametAdresi')
+  })
+
+  it('no-op durumunda da hiçbir alan dönmez (adres asla yamalanmaz)', () => {
+    expect(Object.keys(adresDegisimDamgasi('Atatürk Cd. 5', 'ATATÜRK  CD. 5'))).toEqual([])
+  })
+})

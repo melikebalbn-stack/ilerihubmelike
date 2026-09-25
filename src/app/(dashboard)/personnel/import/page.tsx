@@ -15,7 +15,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { ArrowLeft, Download, Upload, FileSpreadsheet, Loader2, CheckCircle2, AlertCircle, RefreshCw } from "lucide-react"
+import { ArrowLeft, Download, Upload, FileSpreadsheet, Loader2, CheckCircle2, AlertCircle, RefreshCw, Info } from "lucide-react"
 import { toast } from "sonner"
 import * as XLSX from "xlsx"
 import { EXCEL_TEMPLATE_COLUMNS, EXCEL_COLUMN_MAP } from "@/lib/personnel-constants"
@@ -26,6 +26,9 @@ type ImportResult = {
   created: number
   updated: number
   errors: { row: number; message: string }[]
+  /** Uçtan gelen bilgi metni (boş hücre semantiği). Metin API'de tanımlı,
+   *  burada TEKRAR EDİLMEZ — tek kaynak route.ts'teki BOS_HUCRE_BILGISI. */
+  bilgi?: string
 }
 
 export default function PersonnelImportPage() {
@@ -367,6 +370,13 @@ export default function PersonnelImportPage() {
                 </div>
               )}
             </div>
+
+            {result.bilgi && (
+              <div className="flex items-start gap-2 rounded-lg bg-blue-50 p-4 text-sm text-blue-900">
+                <Info className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>{result.bilgi}</span>
+              </div>
+            )}
 
             {result.errors.length > 0 && (
               <div className="bg-red-50 rounded-lg p-4">

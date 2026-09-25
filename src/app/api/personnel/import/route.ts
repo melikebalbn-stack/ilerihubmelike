@@ -151,18 +151,32 @@ function parseBoolean(value: any): boolean {
 const BOS_HUCRE_BILGISI =
   'Boş bırakılan hücreler mevcut kayıtlardaki değerleri değiştirmez. Bir alanı temizlemek için ilgili personel kartını kullanın.'
 
-// Boş hücre = dokunma (Melih kararı, 22.09.2026) — ham değer undefined ise
-// (Excel hücresi boş/sütun satırda hiç yok) anahtar hiç eklenmez: CREATE'te
-// şema varsayılanı (nullable string → NULL, boolean → @default(false))
-// bugünkü açık değerle AYNI sonucu üretir, UPDATE'te mevcut değere
-// dokunulmaz. Alanı GERÇEKTEN temizleme ihtiyacı import'la DEĞİL, personel
-// kartından (ekrandan) karşılanır — "kolaylık olsun" diye buraya geri
-// null/false yazımı EKLENMESİN.
+// Boş hücre = dokunma (Melih kararı, 22.09.2026 · genelleştirme 25.09.2026).
+//
+// 🔴 KURAL TEK NOKTADA: `bosHucre()`. Hücre yoksa (undefined/null) VEYA
+// trim() sonrası boş kalıyorsa ("", " ", "\t") DOKUNULMAZ — anahtar data'ya
+// HİÇ EKLENMEZ. Eskiden " " ve "" metinde NULL, boolean'da false yazıyordu;
+// ikisi de yanlıştı: kullanıcı o hücreyi doldurmadı, "temizle" demedi.
+//
+// Anahtarın hiç eklenmemesi UPDATE'te mevcut değeri korur, CREATE'te şema
+// varsayılanını (nullable string → NULL, boolean → @default(false)) bırakır.
+// Alanı GERÇEKTEN temizleme ihtiyacı import'la DEĞİL, personel kartından
+// karşılanır — "kolaylık olsun" diye buraya geri null/false yazımı
+// EKLENMESİN.
+//
+// Kural alan alan tekrar EDİLMEZ; her iki atayıcı da bosHucre()'den geçer.
+function bosHucre(ham: unknown): boolean {
+  if (ham === undefined || ham === null) return true
+  return String(ham).trim() === ''
+}
+
 function opsiyonelMetinAta(obj: Record<string, unknown>, key: string, ham: unknown) {
-  if (ham !== undefined) obj[key] = (ham as { toString(): string }).toString().trim() || null
+  if (bosHucre(ham)) return
+  obj[key] = String(ham).trim()
 }
 function opsiyonelBoolAta(obj: Record<string, unknown>, key: string, ham: unknown) {
-  if (ham !== undefined) obj[key] = parseBoolean(ham)
+  if (bosHucre(ham)) return
+  obj[key] = parseBoolean(ham)
 }
 
 function parseDate(value: any): Date | null {
@@ -531,12 +545,16 @@ export async function POST(request: NextRequest) {
           delete personnelData.createdBy
           // Denetim izi: YAZMADAN ÖNCE hangi alanların gerçekten değiştiğini bul.
           // Yalnız alan ADI toplanır; eski/yeni DEĞER hiçbir yere yazılmaz (KVKK).
+          // İkamet adresi değişim damgası — TEK KAYNAK adresDegisimDamgasi()
+          // (bkz. adres-damgasi.ts, put-govde.ts ile aynı yardımcı).
+          // 🔴 degisenAlanlar hesabından ÖNCE uygulanır: damga da gerçek bir
+          // alan değişikliğidir ve import denetim izinde görünmelidir. Sonra
+          // uygulansaydı ikametAdresiDegisimTarihi sessizce izin dışında
+          // kalırdı — "adres değişti ama audit'te yok" durumu.
+          Object.assign(personnelData, adresDegisimDamgasi(existing.ikametAdresi, personnelData.ikametAdresi))
           const degisenAlanlar = Object.keys(personnelData).filter(
             (k) => k !== 'updatedBy' && !ayniMi((existing as Record<string, unknown>)[k], personnelData[k]),
           )
-          // İkamet adresi değişim damgası — TEK KAYNAK adresDegisimDamgasi()
-          // (bkz. adres-damgasi.ts, put-govde.ts ile aynı yardımcı).
-          Object.assign(personnelData, adresDegisimDamgasi(existing.ikametAdresi, personnelData.ikametAdresi))
           const updatedRecord = await prisma.personnel.update({
             where: { sicilNo },
             data: personnelData,

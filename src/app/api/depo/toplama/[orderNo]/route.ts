@@ -31,6 +31,17 @@ export async function GET(
         { status: 404 },
       )
     }
+    // Planned (serbest bırakılmamış) emir toplamaya AÇILMAZ — okutma/elle giriş/kart hepsi buradan geçer.
+    if (baslik.durum === 'Planned') {
+      return NextResponse.json(
+        {
+          ok: false,
+          code: 'PLANNED',
+          error: `İE ${baslik.orderNo} henüz serbest bırakılmadı — planlamaya bildirin`,
+        },
+        { status: 409 },
+      )
+    }
 
     const liste = await getToplamaListesi(baslik.orderNo, baslik.releaseNo, baslik.sequenceNo)
 

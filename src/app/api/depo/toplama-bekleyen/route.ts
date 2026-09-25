@@ -5,8 +5,9 @@ import { getBekleyenToplamaIsleri, getMalzemeninBekleyenIsleri } from '@/lib/ifs
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-// GET /api/depo/toplama-bekleyen?sayfa=0&boyut=25&q= → açık kalemli Released/Started emirler.
-// Guard: admin.system.manage. SADECE OKUMA. { ok, isler, toplam }.
+// GET /api/depo/toplama-bekleyen?sayfa=0&boyut=25&q= → açık kalemli Released/Started emirler
+// + (yalnız sayfa 0) Planned emirler. Guard: admin.system.manage. SADECE OKUMA.
+// { ok, isler, toplam, planlanan, planlananToplam }.
 export async function GET(request: Request) {
   const { error } = await requirePermission(['depo.terminal.use', 'admin.system.manage'])
   if (error) return error
@@ -23,8 +24,8 @@ export async function GET(request: Request) {
     const sayfa = Math.max(0, Number(sp.get('sayfa')) || 0)
     const boyut = Math.min(50, Math.max(1, Number(sp.get('boyut')) || 25))
     const q = sp.get('q') ?? undefined
-    const { isler, toplam } = await getBekleyenToplamaIsleri(sayfa, boyut, q)
-    return NextResponse.json({ ok: true, isler, toplam })
+    const { isler, toplam, planlanan, planlananToplam } = await getBekleyenToplamaIsleri(sayfa, boyut, q)
+    return NextResponse.json({ ok: true, isler, toplam, planlanan, planlananToplam })
   } catch (e) {
     const message = e instanceof Error ? e.message : 'IFS verisi alınamadı'
     return NextResponse.json({ ok: false, error: message }, { status: 502 })

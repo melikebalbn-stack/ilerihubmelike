@@ -37,6 +37,8 @@ export interface BekleyenIs {
   /** Malzeme modunda (getMalzemeninBekleyenIsleri): aranan parçanın bu emirdeki kalanı. */
   kalemKalan?: number
   kalemBirim?: string
+  /** 'planned' → IFS'te henüz serbest bırakılmamış (Planned); toplanamaz, kalem sayıları 0. */
+  durum?: 'planned'
 }
 
 export interface ToplamaSatiri {
@@ -177,32 +179,64 @@ interface RawShopOrdList extends RawShopOrd {
  * N+1 kaçınılmaz; emirler çekildikten sonra MaterialArray'ler chunk'lı (max 10 eşzamanlı) paralel.
  * acikKalem === 0 olan emirler ELENİR (toplanacak şeyi kalmamış).
  *
+ * Sıralama: en yeni önce — DateEntered desc, OrderNo desc. OrderNo string olduğundan tek
+ * başına 'M002280179' gibi eski formatları '286'nın önüne koyar; DateEntered (Edm.Date) asıl anahtar.
+ *
  * Sayfalama: $top/$skip + $count (toplam). `toplam` = ShopOrds filtresine uyan emir sayısı
  * (eleme ÖNCESİ); eleme yüzünden bir sayfa `boyut`'tan az gösterebilir — UI toplamı gösterir.
  * Arama (q): iş emri no (OrderNo eq) VEYA ürün kodu (startswith PartNo). N+1 yalnız görünen sayfa.
+ *
+ * Planned: yalnız sayfa 0'da ayrı sorguyla (aynı Contract/arama/sıralama, $top=25) çekilir;
+ * MaterialArray ÇEKİLMEZ, durum:'planned' ile döner. `toplam`a DAHİL DEĞİL.
  * TODO (b/c senaryoları): kişiye atama + aciliyet alanları — veri modeli hazır olunca rozet.
  */
 export async function getBekleyenToplamaIsleri(
   sayfa = 0,
   boyut = 25,
   q?: string,
-): Promise<{ isler: BekleyenIs[]; toplam: number }> {
+): Promise<{ isler: BekleyenIs[]; toplam: number; planlanan: BekleyenIs[]; planlananToplam: number }> {
   const { contract } = getIfsConfig()
   // Objstate bir enum tipi (ShopOrdState) → string literal değil, qualified enum literal.
   const ST = 'IfsApp.ShopOrderHandling.ShopOrdState'
-  let filter =
-    `Contract eq '${esc(contract)}' and (Objstate eq ${ST}'Released' or Objstate eq ${ST}'Started')`
+  let aramaFiltre = ''
   const aranan = (q ?? '').trim()
   if (aranan) {
     const e = esc(aranan)
-    filter += ` and (OrderNo eq '${e}' or startswith(PartNo,'${e}'))`
+    aramaFiltre = ` and (OrderNo eq '${e}' or startswith(PartNo,'${e}'))`
   }
-  const { status, body } = await mainGet<{ value?: RawShopOrdList[]; '@odata.count'?: number }>(
-    `ShopOrderHandling.svc/ShopOrds?$filter=${encodeURIComponent(filter)}` +
-      `&$select=OrderNo,ReleaseNo,SequenceNo,PartNo,PartDescription,RevisedQtyDue,Objstate,NeedDate,RevisedDueDate` +
-      `&$orderby=NeedDate&$count=true&$top=${boyut}&$skip=${sayfa * boyut}`,
-  )
-  if (status !== 200 || !Array.isArray(body?.value)) return { isler: [], toplam: 0 }
+  const sorgu = (durumFiltre: string, top: number, skip: number) =>
+    mainGet<{ value?: RawShopOrdList[]; '@odata.count'?: number }>(
+      `ShopOrderHandling.svc/ShopOrds?$filter=${encodeURIComponent(`Contract eq '${esc(contract)}' and ${durumFiltre}${aramaFiltre}`)}` +
+        `&$select=OrderNo,ReleaseNo,SequenceNo,PartNo,PartDescription,RevisedQtyDue,Objstate,NeedDate,RevisedDueDate` +
+        `&$orderby=${encodeURIComponent('DateEntered desc,OrderNo desc')}&$count=true&$top=${top}&$skip=${skip}`,
+    )
+
+  const [{ status, body }, planRes] = await Promise.all([
+    sorgu(`(Objstate eq ${ST}'Released' or Objstate eq ${ST}'Started')`, boyut, sayfa * boyut),
+    sayfa === 0 ? sorgu(`Objstate eq ${ST}'Planned'`, 25, 0) : null,
+  ])
+  const planHam = planRes?.status === 200 && Array.isArray(planRes.body?.value) ? planRes.body : null
+  const planlanan: BekleyenIs[] = planHam
+    ? (planHam.value ?? []).map((o) => {
+        const tarih = o.NeedDate ?? o.RevisedDueDate
+        return {
+          orderNo: str(o.OrderNo),
+          releaseNo: str(o.ReleaseNo),
+          sequenceNo: str(o.SequenceNo),
+          urunKodu: str(o.PartNo),
+          urunAdi: str(o.PartDescription) || str(o.PartNo),
+          miktar: num(o.RevisedQtyDue),
+          ihtiyacTarihi: tarih ? String(tarih).slice(0, 10) : undefined,
+          kalemSayisi: 0,
+          acikKalem: 0,
+          toplananKalem: 0,
+          durum: 'planned' as const,
+        }
+      })
+    : []
+  const planlananToplam = planHam ? Number(planHam['@odata.count'] ?? planlanan.length) || 0 : 0
+
+  if (status !== 200 || !Array.isArray(body?.value)) return { isler: [], toplam: 0, planlanan, planlananToplam }
   const toplam = Number(body['@odata.count'] ?? body.value.length) || 0
   const emirler = body.value
 
@@ -239,7 +273,7 @@ export async function getBekleyenToplamaIsleri(
       })
     }
   }
-  return { isler: sonuc, toplam }
+  return { isler: sonuc, toplam, planlanan, planlananToplam }
 }
 
 /**

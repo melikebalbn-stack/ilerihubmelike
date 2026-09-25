@@ -77,6 +77,9 @@ export function MalzemeToplamaClient() {
   const [bekleyenLoading, setBekleyenLoading] = useState(false)
   const [bekleyenToplam, setBekleyenToplam] = useState(0)
   const [bekleyenSayfa, setBekleyenSayfa] = useState(0)
+  // Serbest bırakılmamış (Planned) emirler — yalnız sayfa 0 ile gelir, tıklanamaz.
+  const [planlanan, setPlanlanan] = useState<BekleyenIs[]>([])
+  const [planlananToplam, setPlanlananToplam] = useState(0)
   const [dahaYukleniyor, setDahaYukleniyor] = useState(false)
   const [arama, setArama] = useState('')
   // Malzeme okutma (EL-8c): >1 iş için seçim listesi + LISTE'de vurgulanacak parça.
@@ -169,6 +172,11 @@ export function MalzemeToplamaClient() {
       try {
         const res = await fetch(`/api/depo/toplama/${encodeURIComponent(v)}`)
         const data = await res.json().catch(() => null)
+        // Planned emir: sessiz modda da uyar ve 'işlendi' say (malzeme çözümüne düşmesin).
+        if (data?.code === 'PLANNED') {
+          showError(data.error ?? `İE ${v} henüz serbest bırakılmadı — planlamaya bildirin`)
+          return true
+        }
         if (!res.ok || !data?.ok) {
           if (!opts?.sessiz) showError(data?.error ?? `İş emri bulunamadı: ${v}`)
           return false
@@ -276,12 +284,16 @@ export function MalzemeToplamaClient() {
           setBekleyen((prev) => (ekle && prev ? [...prev, ...yeni] : yeni))
           setBekleyenToplam(Number(data.toplam) || 0)
           setBekleyenSayfa(sayfa)
+          if (!ekle) {
+            setPlanlanan((data.planlanan ?? []) as BekleyenIs[])
+            setPlanlananToplam(Number(data.planlananToplam) || 0)
+          }
         } else {
-          if (!ekle) setBekleyen([])
+          if (!ekle) { setBekleyen([]); setPlanlanan([]); setPlanlananToplam(0) }
           showError(data?.error ?? 'Bekleyen işler alınamadı')
         }
       } catch {
-        if (!ekle) setBekleyen([])
+        if (!ekle) { setBekleyen([]); setPlanlanan([]); setPlanlananToplam(0) }
         showError('Bağlantı hatası — tekrar deneyin')
       } finally {
         if (ekle) setDahaYukleniyor(false)
@@ -831,7 +843,7 @@ export function MalzemeToplamaClient() {
                 <div key={i} className="h-20 animate-pulse rounded-2xl border bg-muted/40" />
               ))}
             </div>
-          ) : bekleyen.length === 0 ? (
+          ) : bekleyen.length === 0 && planlanan.length === 0 ? (
             <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed p-8 text-center text-sm text-muted-foreground">
               {arama.trim() ? `Eşleşen iş yok: ${arama.trim()}` : 'Bekleyen toplama işi yok'}
               <button type="button" onClick={() => void bekleyenYukle(0, arama.trim(), false)} className="flex items-center gap-1.5 text-sm underline underline-offset-2" style={{ color: TERMINAL_ACCENT }}>
@@ -840,6 +852,11 @@ export function MalzemeToplamaClient() {
             </div>
           ) : (
             <div className="flex flex-col gap-2">
+              {bekleyen.length === 0 && (
+                <div className="rounded-2xl border border-dashed p-4 text-center text-sm text-muted-foreground">
+                  {arama.trim() ? `Toplanabilir eşleşen iş yok: ${arama.trim()}` : 'Bekleyen toplama işi yok'}
+                </div>
+              )}
               {bekleyen.map((is) => (
                 <BekleyenKart key={`${is.orderNo}-${is.releaseNo}-${is.sequenceNo}`} is={is} onSelect={() => void isEmriOkut(is.orderNo)} />
               ))}
@@ -854,6 +871,18 @@ export function MalzemeToplamaClient() {
                   {dahaYukleniyor ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
                   Daha fazla göster ({bekleyenToplam - (bekleyenSayfa + 1) * BEKLEYEN_BOYUT})
                 </button>
+              )}
+
+              {/* Serbest bırakılmamış (Planned) — bilgi amaçlı, toplamaya açılmaz */}
+              {planlanan.length > 0 && (
+                <>
+                  <h2 className="mt-3 text-sm font-semibold text-muted-foreground">
+                    Serbest bırakılmamış · {planlananToplam}
+                  </h2>
+                  {planlanan.map((is) => (
+                    <PlanliKart key={`${is.orderNo}-${is.releaseNo}-${is.sequenceNo}`} is={is} />
+                  ))}
+                </>
               )}
             </div>
           )}
@@ -1381,5 +1410,22 @@ function BekleyenKart({ is, onSelect }: { is: BekleyenIs; onSelect: () => void }
         )}
       </div>
     </button>
+  )
+}
+
+function PlanliKart({ is }: { is: BekleyenIs }) {
+  return (
+    <div aria-disabled="true" className="flex w-full cursor-not-allowed flex-col gap-1 rounded-2xl border bg-muted/40 p-4 text-left opacity-70">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="font-semibold text-muted-foreground">İE {is.orderNo}</div>
+          <div className="truncate text-xs text-muted-foreground">{is.urunAdi}</div>
+        </div>
+        <span className="shrink-0 rounded-full bg-muted px-2.5 py-0.5 text-xs font-semibold text-muted-foreground">
+          Serbest bırakılmadı
+        </span>
+      </div>
+      {is.ihtiyacTarihi && <div className="text-xs text-muted-foreground">termin {fmtDate(is.ihtiyacTarihi)}</div>}
+    </div>
   )
 }

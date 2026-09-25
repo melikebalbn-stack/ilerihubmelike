@@ -166,6 +166,8 @@ export const PERMISSION_KEYS = {
   // === FİF — Faaliyet İstek Formu (KAL-FR-10) ===
   FIF_VIEW: 'fif.view',
   FIF_MANAGE: 'fif.manage',
+  /** Kalite Sistem Sorumlusu (KSS) — FİF kayıt/dağıtım ve kapanış kontrolü adımları. */
+  FIF_KSS: 'fif.kss',
 
   // === SERVİS YÖNETİMİ ===
   SERVIS_VIEW: 'servis.view',

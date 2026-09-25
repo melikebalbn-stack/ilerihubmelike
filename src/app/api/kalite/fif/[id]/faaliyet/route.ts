@@ -15,7 +15,12 @@ async function yetkiVeFif(id: string) {
   if (error) return { error }
   const fif = await prisma.fif.findUnique({
     where: { id },
-    select: { id: true, durum: true, createdById: true, hazirlayanUserId: true, sorumluBolumId: true, yayinlayanBolumId: true, ekTerminNedeni: true },
+    select: {
+      id: true, durum: true, createdById: true, hazirlayanUserId: true,
+      sorumluBolumId: true, yayinlayanBolumId: true, ekTerminNedeni: true,
+      // Paraf kuralı (FAZ A): satırı yalnız uygulama sorumlusu (veya manage) parafe eder.
+      uygulamaSorumlusuUserId: true,
+    },
   })
   if (!fif) return { error: NextResponse.json({ error: 'FİF bulunamadı' }, { status: 404 }) }
   if (!(await fifKapsamindaMi(session, fif))) {
@@ -30,7 +35,35 @@ async function yetkiVeFif(id: string) {
   if (!manage && fif.durum !== 'FAALIYET') {
     return { error: NextResponse.json({ error: 'Faaliyet satırları yalnız FAALIYET aşamasında düzenlenir' }, { status: 409 }) }
   }
-  return { error: null as null, durum: fif.durum, ekTerminNedeni: fif.ekTerminNedeni, userId }
+  return {
+    error: null as null,
+    durum: fif.durum,
+    ekTerminNedeni: fif.ekTerminNedeni,
+    userId,
+    uygulamaSorumlusuUserId: fif.uygulamaSorumlusuUserId,
+    manage,
+  }
+}
+
+
+/**
+ * PARAF (FAZ A — adım 6): faaliyet satırının parafı istemciden KABUL EDİLMEZ.
+ * `parafla=true` gönderildiğinde sunucu oturum kullanıcısını yazar; bunu yalnız
+ * formun UYGULAMA SORUMLUSU (ya da manage) yapabilir. Böylece "uygulama
+ * sorumlusu" alanı akışta gerçekten bir karşılık bulur (eskiden ölü alandı).
+ * `parafla=false` → paraf temizlenir (aynı yetki).
+ */
+function parafCoz(
+  body: unknown,
+  g: { userId: string | null; uygulamaSorumlusuUserId: string | null; manage: boolean },
+): { ok: true; veri: { parafUserId: string | null; parafTarihi: Date | null } | null } | { ok: false; sebep: string } {
+  const istek = (body as { parafla?: unknown } | null)?.parafla
+  if (typeof istek !== 'boolean') return { ok: true, veri: null } // paraf alanına dokunma
+  const yetkili = g.manage || (!!g.userId && g.userId === g.uygulamaSorumlusuUserId)
+  if (!yetkili) return { ok: false, sebep: 'Paraf yalnız uygulama sorumlusu tarafından atılabilir' }
+  return istek
+    ? { ok: true, veri: { parafUserId: g.userId, parafTarihi: new Date() } }
+    : { ok: true, veri: { parafUserId: null, parafTarihi: null } }
 }
 
 /** POST — yeni faaliyet satırı. */
@@ -47,11 +80,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const f = parsed.data
   const es = esKuraliGecerli(g.durum, f.sonuc ?? null, g.ekTerminNedeni)
   if (!es.ok) return NextResponse.json({ error: es.sebep }, { status: 400 })
+  const paraf = parafCoz(body, g)
+  if (!paraf.ok) return NextResponse.json({ error: paraf.sebep }, { status: 403 })
   const created = await prisma.fifFaaliyet.create({
     data: {
       fifId: id, sira: f.sira, aciklama: f.aciklama,
+      aksiyonTuru: f.aksiyonTuru ?? null,
       hedefTarih: f.hedefTarih ?? null, gerceklesenTarih: f.gerceklesenTarih ?? null,
-      sonuc: f.sonuc ?? null, parafUserId: f.parafUserId ?? null, parafTarihi: f.parafTarihi ?? null,
+      sonuc: f.sonuc ?? null,
+      ...(paraf.veri ?? {}),
     },
   })
   return NextResponse.json({ item: created }, { status: 201 })
@@ -85,6 +122,9 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   const es = esKuraliGecerli(g.durum, f.sonuc ?? null, esNeden)
   if (!es.ok) return NextResponse.json({ error: es.sebep }, { status: 400 })
 
+  const paraf = parafCoz(body, g)
+  if (!paraf.ok) return NextResponse.json({ error: paraf.sebep }, { status: 403 })
+
   const isES = f.sonuc === FifSonuc.ES
   if (isES && !f.hedefTarih) return NextResponse.json({ error: 'Ek süre için yeni hedef tarih zorunlu' }, { status: 400 })
 
@@ -93,8 +133,12 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       where: { id: faaliyetId },
       data: {
         sira: f.sira, aciklama: f.aciklama,
+        // aksiyonTuru KISMİ güncellemede korunur: ES ekranı (FifEklerPanel) bu alanı
+        // göndermiyor; `?? null` yazılsaydı her ES kaydında türü siliyor olurduk.
+        ...(f.aksiyonTuru !== undefined ? { aksiyonTuru: f.aksiyonTuru } : {}),
         hedefTarih: f.hedefTarih ?? null, gerceklesenTarih: f.gerceklesenTarih ?? null,
-        sonuc: f.sonuc ?? null, parafUserId: f.parafUserId ?? null, parafTarihi: f.parafTarihi ?? null,
+        sonuc: f.sonuc ?? null,
+        ...(paraf.veri ?? {}),
       },
     })
     if (isES) {

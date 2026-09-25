@@ -70,7 +70,17 @@ export default async function FifDetayPage({ params }: { params: Promise<{ id: s
     takipSorumlusuUserId: fif.takipSorumlusuUserId,
     denetlemeAdi: fif.denetlemeAdi, uygunsuzlukTanimi: fif.uygunsuzlukTanimi,
     standartMadde: fif.standartMadde, ekTerminNedeni: fif.ekTerminNedeni, kokNedenAnalizi: fif.kokNedenAnalizi,
-    faaliyetler: fif.faaliyetler.map((f) => ({ id: f.id, sira: f.sira, aciklama: f.aciklama, hedefTarih: f.hedefTarih ? f.hedefTarih.toISOString() : null })),
+    // Kapanış değerlendirmesi (Rev 3) — alanlar şemada vardı, ekrana FAZ A'da çıktı.
+    kysDegisikligi: fif.kysDegisikligi,
+    riskFirsatGuncelleme: fif.riskFirsatGuncelleme,
+    ogrenilenDers: fif.ogrenilenDers,
+    yayilimVarMi: fif.yayilimVarMi,
+    yayilimAciklama: fif.yayilimAciklama,
+    faaliyetler: fif.faaliyetler.map((f) => ({
+      id: f.id, sira: f.sira, aciklama: f.aciklama,
+      aksiyonTuru: f.aksiyonTuru,
+      hedefTarih: f.hedefTarih ? f.hedefTarih.toISOString() : null,
+    })),
   }
 
   return (
@@ -85,7 +95,7 @@ export default async function FifDetayPage({ params }: { params: Promise<{ id: s
         fifId={fif.id}
         durum={fif.durum}
         duzenlenebilir={altKayitDuzenlenebilir(ctx, fif.durum)}
-        faaliyetler={fif.faaliyetler.map((f) => ({ id: f.id, sira: f.sira, aciklama: f.aciklama, hedefTarih: f.hedefTarih ? f.hedefTarih.toISOString() : null, sonuc: f.sonuc }))}
+        faaliyetler={fif.faaliyetler.map((f) => ({ id: f.id, sira: f.sira, aciklama: f.aciklama, hedefTarih: f.hedefTarih ? f.hedefTarih.toISOString() : null, sonuc: f.sonuc, aksiyonTuru: f.aksiyonTuru }))}
         etkinlikler={fif.etkinlikler.map((e) => ({ madde: e.madde, planlananTarih: e.planlananTarih ? e.planlananTarih.toISOString() : null, gerceklesenTarih: e.gerceklesenTarih ? e.gerceklesenTarih.toISOString() : null, uygun: e.uygun }))}
         kokNedenler={fif.kokNedenler.map((k) => ({ kategori: k.kategori, aciklama: k.aciklama }))}
         besNedenler={fif.besNedenler.map((b) => ({ muhtemelSebep: b.muhtemelSebep, neden1: b.neden1, neden2: b.neden2, neden3: b.neden3, neden4: b.neden4, neden5: b.neden5 }))}

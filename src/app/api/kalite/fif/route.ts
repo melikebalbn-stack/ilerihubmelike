@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireSession } from '@/lib/auth/require-session'
 import { fifWhereForUser } from '@/lib/quality/fif-access'
-import { fifInput } from '@/lib/quality/fif-validators'
+import { fifInput, yayilimGecerli } from '@/lib/quality/fif-validators'
 import { generateNextFifNo } from '@/lib/quality/fif-no'
 import { normalizeTr } from '@/lib/normalize-tr'
 import { FifDurum, Prisma } from '@/generated/prisma'
@@ -88,6 +88,10 @@ export async function POST(request: NextRequest) {
     )
   }
   const d = parsed.data
+
+  // Yayılım kuralı (Rev 3): "var" işaretlendiyse açıklama zorunlu — TEK KAYNAK validator'da.
+  const yay = yayilimGecerli(d.yayilimVarMi, d.yayilimAciklama)
+  if (!yay.ok) return NextResponse.json({ error: yay.sebep }, { status: 400 })
   const tarih = d.tarih ?? new Date()
   const year = tarih.getFullYear()
 
@@ -116,11 +120,14 @@ export async function POST(request: NextRequest) {
         kysDegisikligi: d.kysDegisikligi ?? false,
         riskFirsatGuncelleme: d.riskFirsatGuncelleme ?? false,
         ogrenilenDers: d.ogrenilenDers ?? false,
+        yayilimVarMi: d.yayilimVarMi ?? false,
+        yayilimAciklama: d.yayilimAciklama ?? null,
         createdById: userId,
         faaliyetler: d.faaliyetler?.length
           ? { create: d.faaliyetler.map((f) => ({
               sira: f.sira,
               aciklama: f.aciklama,
+              aksiyonTuru: f.aksiyonTuru ?? null,
               hedefTarih: f.hedefTarih ?? null,
               gerceklesenTarih: f.gerceklesenTarih ?? null,
               sonuc: f.sonuc ?? null,

@@ -14,7 +14,7 @@ const KOK_KATEGORILER: { key: string; label: string }[] = [
   { key: 'YONETIM', label: 'Yönetim' }, { key: 'EMNIYET', label: 'Emniyet' }, { key: 'GUVENLIK', label: 'Güvenlik' },
 ]
 
-type Faaliyet = { id: string; sira: number; aciklama: string; hedefTarih: string | null; sonuc: string | null }
+type Faaliyet = { id: string; sira: number; aciklama: string; hedefTarih: string | null; sonuc: string | null; aksiyonTuru: string | null }
 type Etkinlik = { madde: string; planlananTarih: string | null; gerceklesenTarih: string | null; uygun: boolean | null }
 type KokNeden = { kategori: string; aciklama: string }
 type BesNeden = { muhtemelSebep: string; neden1: string | null; neden2: string | null; neden3: string | null; neden4: string | null; neden5: string | null }
@@ -162,7 +162,14 @@ export function FifEklerPanel({
           <div className="space-y-3">
             {faaliyetler.length === 0 ? <p className="text-xs text-slate-400">Faaliyet yok.</p> : faaliyetler.map((f) => (
               <div key={f.id} className="border rounded p-3 space-y-2">
-                <div className="text-sm">#{f.sira} — {f.aciklama}</div>
+                <div className="text-sm">
+                  #{f.sira} — {f.aciklama}
+                  {f.aksiyonTuru && (
+                    <span className="ml-2 rounded border px-1.5 py-0.5 text-[11px] text-slate-600">
+                      {f.aksiyonTuru === 'ACIL' ? 'Acil' : 'Kalıcı'}
+                    </span>
+                  )}
+                </div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                   <div>
                     <Label className="text-xs">Sonuç</Label>

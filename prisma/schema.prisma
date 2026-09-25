@@ -9531,10 +9531,10 @@ model Personnel {
   uygunsuzlukSorumluluklari     KaliteUygunsuzluk[]
 
   // Servis Yönetimi (FAZ 1/A) — ters ilişkiler (DB kolonu eklemez)
-  servisSoforKaydi  ServisSofor?
-  servisAtamalari   ServisPersonelAtama[]
-  servisSorumlulari ServisSorumlusu[]
-  servisDurumlari   ServisPersonelDurum[]
+  servisSoforKaydi               ServisSofor?
+  servisAtamalari                ServisPersonelAtama[]
+  servisSorumlulari              ServisSorumlusu[]
+  servisDurumlari                ServisPersonelDurum[]
   // MASTER madde 30 — gönderilmiş liste snapshot'larındaki satırları (ters uç)
   servisListesiRevizyonSatirlari ServisListesiRevizyonSatiri[]
 
@@ -13897,9 +13897,9 @@ model ServisFirma {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  araclar    ServisArac[]
-  soforler   ServisSofor[]
-  sikayetler ServisSikayet[]
+  araclar           ServisArac[]
+  soforler          ServisSofor[]
+  sikayetler        ServisSikayet[]
   // MASTER madde 30 — bu firmaya gönderilmiş liste revizyonları (ters uç)
   listeRevizyonlari ServisListesiRevizyonu[]
 
@@ -14422,24 +14422,34 @@ model ServisListesiRevizyonu {
   donemAy  Int
 
   revizyonNo Int
-  /** Görünen etiket — "REV.0", "REV.1". revizyonNo'dan türetilir, okunabilirlik için saklanır. */
+  /**
+   * Görünen etiket — "REV.0", "REV.1". revizyonNo'dan türetilir, okunabilirlik için saklanır.
+   */
   etiket     String
 
-  /** Listenin hangi tarih itibarıyla alındığı (madde 29'un point-in-time tarihi). */
+  /**
+   * Listenin hangi tarih itibarıyla alındığı (madde 29'un point-in-time tarihi).
+   */
   tarihItibariyla DateTime @db.Date
 
   olusturanId     String
   olusturan       User     @relation("ServisListesiRevizyonuOlusturan", fields: [olusturanId], references: [id], onDelete: Restrict)
   olusturmaTarihi DateTime @default(now())
 
-  /** Kullanıcının serbest metin gerekçesi ("neden REV.1"). */
-  degisiklikNotu String? @db.Text
-  /** Oluşturma ANINDA hesaplanan yapısal fark (güzergâh bazında eklenen/
-   *  çıkarılan/değişen personel). Çalışma anında hesaplanmaz: karşılaştırma
-   *  algoritması değişirse geçmiş belge de değişmiş olurdu — "sonradan
-   *  değişmemeli" kısıtına aykırı. */
+  /**
+   * Kullanıcının serbest metin gerekçesi ("neden REV.1").
+   */
+  degisiklikNotu  String? @db.Text
+  /**
+   * Oluşturma ANINDA hesaplanan yapısal fark (güzergâh bazında eklenen/
+   * çıkarılan/değişen personel). Çalışma anında hesaplanmaz: karşılaştırma
+   * algoritması değişirse geçmiş belge de değişmiş olurdu — "sonradan
+   * değişmemeli" kısıtına aykırı.
+   */
   degisiklikOzeti Json?
-  /** Listenin hangi filtrelerle üretildiği (güzergah/durak/bölüm/yerleşke…). */
+  /**
+   * Listenin hangi filtrelerle üretildiği (güzergah/durak/bölüm/yerleşke…).
+   */
   filtreOzeti     Json?
 
   parentId String?
@@ -15092,6 +15102,14 @@ enum FifSonuc {
 }
 
 /// Ek-1 kök neden balık kılçığı kategorileri (9 kategori, Rev 3).
+/// Faaliyet satırındaki aksiyonun türü (KAL-FR-10 Rev 3): ACİL = geçici/ilk
+/// müdahale, KALICI = kök nedeni ortadan kaldıran düzeltici aksiyon.
+/// Satır bazlı — bir FİF'te hem acil hem kalıcı aksiyon satırı olabilir.
+enum FifAksiyonTuru {
+  ACIL
+  KALICI
+}
+
 enum FifKokNedenKategori {
   INSAN
   MAKINE
@@ -15149,6 +15167,12 @@ model Fif {
   riskFirsatGuncelleme Boolean @default(false)
   ogrenilenDers        Boolean @default(false)
 
+  /// YAYILIM (Rev 3): aynı/benzer uygunsuzluk başka proses, hat veya ürünlerde
+  /// de olabilir mi — değerlendirildi mi ve sonucu ne. Kapanış değerlendirmesinin
+  /// parçası; "var" işaretlendiğinde açıklama beklenir (uygulama kuralı).
+  yayilimVarMi    Boolean @default(false)
+  yayilimAciklama String? @db.Text
+
   durum     FifDurum @default(TASLAK)
   /// Son red gerekçesi (ONAY_BEKLIYOR→TASLAK / KAPATMA_BEKLIYOR→FAALIYET). Faz 2.
   redNedeni String?  @db.Text
@@ -15170,11 +15194,13 @@ model Fif {
 }
 
 model FifFaaliyet {
-  id               String    @id @default(cuid())
+  id               String          @id @default(cuid())
   fifId            String
-  fif              Fif       @relation(fields: [fifId], references: [id], onDelete: Cascade)
+  fif              Fif             @relation(fields: [fifId], references: [id], onDelete: Cascade)
   sira             Int
-  aciklama         String    @db.Text
+  aciklama         String          @db.Text
+  /// Aksiyon türü (Rev 3): ACİL / KALICI. Nullable — geçmiş satırlarda boş kalır.
+  aksiyonTuru      FifAksiyonTuru?
   hedefTarih       DateTime?
   gerceklesenTarih DateTime?
   sonuc            FifSonuc?

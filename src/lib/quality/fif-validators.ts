@@ -10,7 +10,7 @@
  * Kullanıcı/bölüm alanları düz string id (audit deseni).
  */
 import { z } from 'zod'
-import { FifTur, FifSonuc, FifKokNedenKategori, FifEtkinlikMadde } from '@/generated/prisma'
+import { FifTur, FifSonuc, FifAksiyonTuru, FifKokNedenKategori, FifEtkinlikMadde } from '@/generated/prisma'
 
 /** Faz 1 zorunlu alanlar — tek liste; ileride buraya ekleyerek sıkılaştır. */
 export const FIF_ZORUNLU_ALANLAR = ['tur', 'sorumluBolumId', 'uygunsuzlukTanimi'] as const
@@ -27,6 +27,8 @@ const idOpsiyonel = z.string().min(1).nullable().optional()
 export const fifFaaliyetInput = z.object({
   sira: z.number().int().min(1),
   aciklama: z.string().trim().min(1, 'Faaliyet açıklaması zorunlu'),
+  /** Rev 3: satır bazlı aksiyon türü — ACİL (geçici müdahale) / KALICI (kök neden). */
+  aksiyonTuru: z.nativeEnum(FifAksiyonTuru).nullable().optional(),
   hedefTarih: z.coerce.date().nullable().optional(),
   gerceklesenTarih: z.coerce.date().nullable().optional(),
   sonuc: z.nativeEnum(FifSonuc).nullable().optional(),
@@ -85,6 +87,9 @@ export const fifInput = z.object({
   kysDegisikligi: z.boolean().optional(),
   riskFirsatGuncelleme: z.boolean().optional(),
   ogrenilenDers: z.boolean().optional(),
+  /** Rev 3 yayılım değerlendirmesi — "var" ise açıklama beklenir (yayilimGecerli). */
+  yayilimVarMi: z.boolean().optional(),
+  yayilimAciklama: bosStr,
 
   // ── alt kayıtlar (Faz 1: faaliyetler create ile birlikte kabul edilir) ──
   faaliyetler: z.array(fifFaaliyetInput).optional(),
@@ -93,3 +98,17 @@ export const fifInput = z.object({
   etkinlikler: z.array(fifEtkinlikInput).optional(),
 })
 export type FifInput = z.infer<typeof fifInput>
+
+/**
+ * Yayılım kuralı: "yayılım var" işaretlendiyse açıklama zorunlu. Saf fonksiyon —
+ * uç ve (ileride) durum geçişi AYNI kuralı çağırır.
+ */
+export function yayilimGecerli(
+  yayilimVarMi: boolean | null | undefined,
+  yayilimAciklama: string | null | undefined,
+): { ok: true } | { ok: false; sebep: string } {
+  if (yayilimVarMi && !(yayilimAciklama ?? '').trim()) {
+    return { ok: false, sebep: 'Yayılım var işaretlendiyse açıklama zorunlu' }
+  }
+  return { ok: true }
+}

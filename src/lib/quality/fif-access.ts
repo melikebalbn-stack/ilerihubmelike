@@ -16,6 +16,17 @@ import { canAccessKalite } from '@/lib/auth/kalite-access'
 import { prisma } from '@/lib/prisma'
 import type { Prisma } from '@/generated/prisma'
 
+/**
+ * KSS (Kalite Sistem Sorumlusu) kapısı — FİF'E ÖZEL, `canAccessKalite`'a
+ * DOKUNMAZ (o kapı RMA/uygunsuzluk ile paylaşılıyor; daraltmak regresyon riski).
+ * KSS adımlarını (kayıt/dağıtım, kapanış kontrolü — FAZ B) yalnız `fif.kss`
+ * izni olan kişi yapar; `fif.manage` (Kalite ekibi) KSS yerine GEÇMEZ.
+ * Bilinçli tercih: KSS rolü ayrı olmazsa 11 adımdaki KSS adımları ayrıştırılamaz.
+ */
+export function isFifKss(session: Session | null | undefined): boolean {
+  return (session?.user?.permissions ?? []).includes('fif.kss')
+}
+
 export function canManageFif(session: Session | null | undefined): boolean {
   const u = session?.user
   if (!u) return false

@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 
 /** Faz 1: Rev 3 sayfa sırasıyla bölümler; zorunluluk validator'da (tur+bölüm+tespit). */
 type Bolum = { id: string; name: string }
-type Faaliyet = { id?: string; sira: number; aciklama: string; hedefTarih: string }
+type Faaliyet = { id?: string; sira: number; aciklama: string; aksiyonTuru: string; hedefTarih: string }
 
 export type FifInitial = {
   id: string
@@ -31,7 +31,12 @@ export type FifInitial = {
   standartMadde: string | null
   ekTerminNedeni: string | null
   kokNedenAnalizi: string | null
-  faaliyetler: { id: string; sira: number; aciklama: string; hedefTarih: string | null }[]
+  kysDegisikligi: boolean
+  riskFirsatGuncelleme: boolean
+  ogrenilenDers: boolean
+  yayilimVarMi: boolean
+  yayilimAciklama: string | null
+  faaliyetler: { id: string; sira: number; aciklama: string; hedefTarih: string | null; aksiyonTuru: string | null }[]
 } | null
 
 const kartLabel = 'text-xs font-medium text-slate-600'
@@ -60,8 +65,18 @@ export function FifFormClient({ initial }: { initial: FifInitial }) {
   const [standartMadde, setStandartMadde] = useState(initial?.standartMadde ?? '')
   const [ekTerminNedeni, setEkTerminNedeni] = useState(initial?.ekTerminNedeni ?? '')
   const [kokNedenAnalizi, setKokNedenAnalizi] = useState(initial?.kokNedenAnalizi ?? '')
+  // Kapanış değerlendirmesi (Rev 3 son sayfa) — alanlar şemada vardı, ekranda YOKTU.
+  const [kysDegisikligi, setKysDegisikligi] = useState(initial?.kysDegisikligi ?? false)
+  const [riskFirsatGuncelleme, setRiskFirsatGuncelleme] = useState(initial?.riskFirsatGuncelleme ?? false)
+  const [ogrenilenDers, setOgrenilenDers] = useState(initial?.ogrenilenDers ?? false)
+  const [yayilimVarMi, setYayilimVarMi] = useState(initial?.yayilimVarMi ?? false)
+  const [yayilimAciklama, setYayilimAciklama] = useState(initial?.yayilimAciklama ?? '')
   const [faaliyetler, setFaaliyetler] = useState<Faaliyet[]>(
-    initial?.faaliyetler?.map((f) => ({ id: f.id, sira: f.sira, aciklama: f.aciklama, hedefTarih: f.hedefTarih?.slice(0, 10) ?? '' })) ?? [],
+    initial?.faaliyetler?.map((f) => ({
+      id: f.id, sira: f.sira, aciklama: f.aciklama,
+      aksiyonTuru: f.aksiyonTuru ?? '',
+      hedefTarih: f.hedefTarih?.slice(0, 10) ?? '',
+    })) ?? [],
   )
   const [kaydediyor, setKaydediyor] = useState(false)
   const [hata, setHata] = useState<string | null>(null)
@@ -94,7 +109,7 @@ export function FifFormClient({ initial }: { initial: FifInitial }) {
   }
 
   function addFaaliyet() {
-    setFaaliyetler((p) => [...p, { sira: p.length + 1, aciklama: '', hedefTarih: '' }])
+    setFaaliyetler((p) => [...p, { sira: p.length + 1, aciklama: '', aksiyonTuru: '', hedefTarih: '' }])
   }
   function updFaaliyet(i: number, patch: Partial<Faaliyet>) {
     setFaaliyetler((p) => p.map((f, idx) => (idx === i ? { ...f, ...patch } : f)))
@@ -121,8 +136,13 @@ export function FifFormClient({ initial }: { initial: FifInitial }) {
       standartMadde: standartMadde || null,
       ekTerminNedeni: ekTerminNedeni || null,
       kokNedenAnalizi: kokNedenAnalizi || null,
+      kysDegisikligi, riskFirsatGuncelleme, ogrenilenDers,
+      yayilimVarMi,
+      yayilimAciklama: yayilimAciklama || null,
       faaliyetler: faaliyetler.filter((f) => f.aciklama.trim()).map((f) => ({
-        sira: f.sira, aciklama: f.aciklama, hedefTarih: f.hedefTarih || null,
+        sira: f.sira, aciklama: f.aciklama,
+        aksiyonTuru: f.aksiyonTuru || null,
+        hedefTarih: f.hedefTarih || null,
       })),
     }
     try {
@@ -251,7 +271,20 @@ export function FifFormClient({ initial }: { initial: FifInitial }) {
         ) : faaliyetler.map((f, i) => (
           <div key={i} className="grid grid-cols-12 gap-2 items-end border-t pt-2">
             <div className="col-span-1"><Label className={kartLabel}>#</Label><Input className="mt-1 h-9" value={f.sira} readOnly /></div>
-            <div className="col-span-7"><Label className={kartLabel}>Açıklama</Label><Input className="mt-1 h-9" value={f.aciklama} onChange={(e) => updFaaliyet(i, { aciklama: e.target.value })} disabled={ro} /></div>
+            <div className="col-span-5"><Label className={kartLabel}>Açıklama</Label><Input className="mt-1 h-9" value={f.aciklama} onChange={(e) => updFaaliyet(i, { aciklama: e.target.value })} disabled={ro} /></div>
+            <div className="col-span-2">
+              <Label className={kartLabel}>Aksiyon Türü</Label>
+              <select
+                className="mt-1 h-9 w-full rounded-md border border-input bg-background px-2 text-sm disabled:opacity-50"
+                value={f.aksiyonTuru}
+                onChange={(e) => updFaaliyet(i, { aksiyonTuru: e.target.value })}
+                disabled={ro}
+              >
+                <option value="">—</option>
+                <option value="ACIL">Acil</option>
+                <option value="KALICI">Kalıcı</option>
+              </select>
+            </div>
             <div className="col-span-3"><Label className={kartLabel}>Hedef Tarih</Label><Input type="date" className="mt-1 h-9" value={f.hedefTarih} onChange={(e) => updFaaliyet(i, { hedefTarih: e.target.value })} disabled={ro} /></div>
             <div className="col-span-1">{!ro && <Button type="button" variant="ghost" size="sm" onClick={() => delFaaliyet(i)}>✕</Button>}</div>
           </div>
@@ -263,6 +296,45 @@ export function FifFormClient({ initial }: { initial: FifInitial }) {
         <h3 className={bolumBaslik}>Kök Neden Analizi</h3>
         <Textarea rows={2} value={kokNedenAnalizi} onChange={(e) => setKokNedenAnalizi(e.target.value)} disabled={ro} placeholder="Özet kök neden (Ek-1 balık kılçığı / 5 Neden Faz 3'te)" />
         <p className="text-[11px] text-slate-400">Ek-1 (balık kılçığı 9 kategori + 5 Neden) ve Ek-2 (öncesi/sonrası foto) Faz 3'te tamamlanacak.</p>
+      </div>
+
+      {/* 5. Kapanış değerlendirmesi (Rev 3 son sayfa) — FAZ B'de KSS'ye kilitlenecek. */}
+      <div className="rounded-md border bg-white p-4 space-y-3">
+        <h3 className={bolumBaslik}>Kapanış Değerlendirmesi</h3>
+        <div className="grid gap-2 sm:grid-cols-3">
+          {([
+            ['kys', 'KYS değişikliği gerekti', kysDegisikligi, setKysDegisikligi],
+            ['risk', 'Risk/fırsat güncellendi', riskFirsatGuncelleme, setRiskFirsatGuncelleme],
+            ['ders', 'Öğrenilen ders kaydedildi', ogrenilenDers, setOgrenilenDers],
+          ] as const).map(([key, etiket, deger, setDeger]) => (
+            <label key={key} className="flex items-center gap-2 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                className="h-4 w-4"
+                checked={deger}
+                onChange={(e) => (setDeger as (v: boolean) => void)(e.target.checked)}
+                disabled={ro}
+              />
+              {etiket}
+            </label>
+          ))}
+        </div>
+        <div>
+          <label className="flex items-center gap-2 text-sm text-slate-700">
+            <input type="checkbox" className="h-4 w-4" checked={yayilimVarMi} onChange={(e) => setYayilimVarMi(e.target.checked)} disabled={ro} />
+            Yayılım var (aynı/benzer uygunsuzluk başka proses, hat veya üründe de olabilir)
+          </label>
+          {yayilimVarMi && (
+            <Textarea
+              rows={2}
+              className="mt-2"
+              value={yayilimAciklama}
+              onChange={(e) => setYayilimAciklama(e.target.value)}
+              disabled={ro}
+              placeholder="Nerelerde değerlendirildi, hangi aksiyon alındı… (yayılım işaretliyse zorunlu)"
+            />
+          )}
+        </div>
       </div>
 
       {hata && <p className="text-sm text-red-600">{hata}</p>}

@@ -9,7 +9,7 @@
 import { prisma } from '@/lib/prisma'
 import { ifsBaglanti, istek, type IfsCevap } from '@/lib/ifs/personel-sync/ifs-api'
 import { filtreCoz, postgresParametreleri } from './parametre'
-import type { Birlestirme, Kaynak, KaynakIfs, KaynakPostgres, KaynakIstatistik, RaporParametreler, VeriSetiSonuc, VeriSetiTanim } from './tipler'
+import type { Birlestirme, Kaynak, KaynakIfs, KaynakPostgres, KaynakIstatistik, Ozet, RaporParametreler, VeriSetiSonuc, VeriSetiTanim } from './tipler'
 
 export class VeriSetiHatasi extends Error {
   constructor(mesaj: string) { super(mesaj); this.name = 'VeriSetiHatasi' }
@@ -32,6 +32,7 @@ async function ifsCek(k: KaynakIfs, p: RaporParametreler, topSinir = TOP_UST_SIN
   const qs: string[] = []
   if (k.select?.length) qs.push(`$select=${k.select.join(',')}`)
   if (k.filtre) qs.push(`$filter=${encodeURIComponent(filtreCoz(k.filtre, p))}`)
+  if (k.orderby) qs.push(`$orderby=${encodeURIComponent(k.orderby)}`)
   qs.push(`$top=${top}`)
 
   // IFS sayfa boyutunu $top'tan küçük tutabilir → nextLink'i top'a ulaşana dek izle.
@@ -99,8 +100,39 @@ async function postgresCek(k: KaynakPostgres, p: RaporParametreler): Promise<Sat
 
 async function kaynakCek(k: Kaynak, p: RaporParametreler, sec: CalistirmaSecenekleri): Promise<{ ad: string; satirlar: Satir[]; sureMs: number }> {
   const t0 = Date.now()
-  const satirlar = k.tip === 'ifs-odata' ? await ifsCek(k, p, sec.ifsTopSinir) : await postgresCek(k, p)
+  const ham = k.tip === 'ifs-odata' ? await ifsCek(k, p, sec.ifsTopSinir) : await postgresCek(k, p)
+  const satirlar = k.ozet ? ozetUygula(ham, k.ozet) : ham
   return { ad: k.ad, satirlar, sureMs: Date.now() - t0 }
+}
+
+// ── Kaynak özeti (argmax/argmin/ilk) ─────────────────────────────────────
+
+/** Sayıya çevrilebiliyorsa sayı, değilse null (null/boş metin/metin → null). */
+function sayiya(v: unknown): number | null {
+  if (v === null || v === undefined || v === '') return null
+  const n = typeof v === 'number' ? v : Number(v)
+  return Number.isFinite(n) ? n : null
+}
+
+/**
+ * Grup başına tek satır bırakır — birleştirmeden ÖNCE (fan-out'u kaynakta keser).
+ * Eşitlikte/karşılaştırılamazda ilk görülen satır kazanır; null değerli satır yalnız
+ * grupta sayısal değer hiç yoksa seçilir (Map ekleme sırası = kaynaktan gelen sıra).
+ */
+export function ozetUygula(satirlar: Satir[], ozet: Ozet): Satir[] {
+  const kovalar = new Map<string, { satir: Satir; skor: number | null }>()
+  for (const s of satirlar) {
+    const anah = ozet.grupla.map((a) => String(anahtar(s[a]) ?? '\u0000')).join('\u001f')
+    const mevcut = kovalar.get(anah)
+    if (!mevcut) { kovalar.set(anah, { satir: s, skor: ozet.sec === 'ilk' ? null : sayiya(s[ozet.alan ?? '']) }); continue }
+    if (ozet.sec === 'ilk') continue
+    const skor = sayiya(s[ozet.alan ?? ''])
+    if (skor === null) continue // null her zaman sonda
+    if (mevcut.skor === null || (ozet.sec === 'enbuyuk' ? skor > mevcut.skor : skor < mevcut.skor)) {
+      kovalar.set(anah, { satir: s, skor })
+    }
+  }
+  return [...kovalar.values()].map((v) => v.satir)
 }
 
 // ── Birleştirme ──────────────────────────────────────────────────────────
@@ -194,6 +226,13 @@ export function tanimDogrula(tanim: VeriSetiTanim): string[] {
       if (enBuyuk > n) h.push(`${k.ad}: sorguda $${enBuyuk} var ama ${n} parametre tanımlı`)
     } else {
       h.push(`Bilinmeyen kaynak tipi: '${(k as { tip?: string }).tip ?? ''}'`)
+    }
+    const o = (k as { ozet?: Ozet }).ozet
+    if (o !== undefined) {
+      if (!Array.isArray(o.grupla)) h.push(`${k.ad}: ozet.grupla dizi olmalı`)
+      else for (const a of o.grupla) if (!AD_DESENI.test(a ?? '')) h.push(`${k.ad}: ozet.grupla alan adı geçersiz: '${a ?? ''}'`)
+      if (!['enbuyuk', 'enkucuk', 'ilk'].includes(o.sec)) h.push(`${k.ad}: ozet.sec 'enbuyuk' | 'enkucuk' | 'ilk' olmalı ('${o.sec ?? ''}')`)
+      if (o.sec !== 'ilk' && !AD_DESENI.test(o.alan ?? '')) h.push(`${k.ad}: ozet.sec='${o.sec}' için geçerli bir ozet.alan gerekli`)
     }
   }
   const yol = (y: string, baglam: string): { kaynak: string; alan: string } | null => {

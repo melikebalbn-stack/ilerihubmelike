@@ -2,6 +2,21 @@
  * Rapor tasarımcısı — veri seti tanımı tipleri (RaporVeriSeti.tanim JSON'unun şekli).
  */
 
+/**
+ * Kaynak özeti — satırlar çekildikten SONRA, birleştirmeden ÖNCE uygulanır: `grupla` alanlarının
+ * her değer bileşimi için TEK satır kalır. 'enbuyuk'/'enkucuk' → `alan`ın en büyük/küçük olduğu
+ * satır (argmax/argmin: satırın tüm kolonları korunur), 'ilk' → kaynaktan gelen ilk satır.
+ * Eşitlikte ilk görülen satır kazanır; `alan` null/sayıya çevrilemez olan satırlar en sona düşer
+ * (grupta yalnız onlar varsa ilki seçilir).
+ */
+export interface Ozet {
+  /** Gruplama alanları (kaynağın kendi alan adları). Boş dizi = tüm satırlar tek grup. */
+  grupla: string[]
+  sec: 'enbuyuk' | 'enkucuk' | 'ilk'
+  /** 'enbuyuk'/'enkucuk' için karşılaştırılacak alan; 'ilk' için kullanılmaz. */
+  alan?: string
+}
+
 export interface KaynakIfs {
   /** Veri seti içinde bu kaynağa verilen takma ad (birleştirme/alan yollarında kullanılır). */
   ad: string
@@ -14,8 +29,12 @@ export interface KaynakIfs {
   select?: string[]
   /** OData $filter; `{p.ad}` yer tutucuları içerebilir. */
   filtre?: string
+  /** OData $orderby (örn. 'QtyOnhand desc'); IFS tarafında sıralar. */
+  orderby?: string
   /** Varsayılan 500, üst sınır 5000. */
   top?: number
+  /** Çekim sonrası grup başına tek satıra indirger (bkz. Ozet). */
+  ozet?: Ozet
 }
 
 export interface KaynakPostgres {
@@ -29,6 +48,8 @@ export interface KaynakPostgres {
   tasarim?: { tablo: string; alanlar: string[]; where?: string }
   /** Serbest SQL kaynağı meta'sı (motor kullanmaz): {p.x} yer tutuculu ham metin; sorgu/parametreler bundan türetilir. */
   sqlMetin?: string
+  /** Çekim sonrası grup başına tek satıra indirger (bkz. Ozet). */
+  ozet?: Ozet
 }
 
 export type Kaynak = KaynakIfs | KaynakPostgres

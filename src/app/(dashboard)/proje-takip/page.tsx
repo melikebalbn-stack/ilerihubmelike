@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/table";
 import {
   Plus, FolderKanban, Hourglass, CircleDot, CheckCircle2, XCircle,
-  CalendarDays, ArrowUpDown,
+  CalendarDays, ArrowUpDown, BarChart3,
 } from "lucide-react";
 import { AramaKutusu } from "./_components/AramaKutusu";
 import { SorumluFiltre } from "./_components/SorumluFiltre";
@@ -180,12 +180,20 @@ export default async function ProjeTakipListePage({
             Tüm projelerin durumu ve mühendislik ilerlemesi
           </p>
         </div>
-        <Link href="/proje-takip/yeni">
-          <Button style={{ backgroundColor: ANA_RENK }}>
-            <Plus className="w-4 h-4 mr-1" />
-            Yeni Proje
-          </Button>
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link href="/proje-takip/rapor">
+            <Button variant="outline">
+              <BarChart3 className="w-4 h-4 mr-1" />
+              Rapor
+            </Button>
+          </Link>
+          <Link href="/proje-takip/yeni">
+            <Button style={{ backgroundColor: ANA_RENK }}>
+              <Plus className="w-4 h-4 mr-1" />
+              Yeni Proje
+            </Button>
+          </Link>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">

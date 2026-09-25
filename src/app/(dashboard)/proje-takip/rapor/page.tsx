@@ -4,9 +4,16 @@ import { prisma } from "@/lib/prisma";
 import {
   Card, CardContent, CardHeader, CardTitle,
 } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { FolderKanban, Hourglass, CheckCircle2, CalendarDays } from "lucide-react";
 
 export const dynamic = "force-dynamic";
+
+function durumRozetSinifi(durum: string | null): string {
+  if (durum === "ONAY_ALAN") return "bg-emerald-50 text-emerald-700 border-emerald-200";
+  if (durum === "IPTAL") return "bg-red-50 text-red-700 border-red-200";
+  return "bg-amber-50 text-amber-700 border-amber-200";
+}
 
 const ANA_RENK = "#1B4F72";
 
@@ -69,6 +76,7 @@ export default async function ProjeTakipRaporPage() {
 
   const data = await getRaporVerisi();
   const yuzde = (n: number) => data.toplam > 0 ? `%${((n / data.toplam) * 100).toFixed(1)}` : "%0";
+  const grupKodMax = Math.max(1, ...data.grupKodGrup.map((d) => d._count._all));
 
   const KARTLAR = [
     { label: "Toplam Proje", deger: data.toplam, icon: FolderKanban, renk: ANA_RENK },
@@ -114,7 +122,9 @@ export default async function ProjeTakipRaporPage() {
           <div className="divide-y divide-border/60">
             {data.durumGrup.map((d) => (
               <div key={d.durum ?? "belirsiz"} className="grid grid-cols-[1fr_60px_60px] items-center gap-2 px-6 py-2.5 text-sm">
-                <span className="text-muted-foreground truncate">{d.durum ?? "Belirsiz"}</span>
+                <Badge variant="outline" className={`w-fit ${durumRozetSinifi(d.durum)}`}>
+                  {d.durum ?? "Belirsiz"}
+                </Badge>
                 <span className="font-medium tabular-nums text-right">{d._count._all}</span>
                 <span className="text-xs text-muted-foreground tabular-nums text-right">
                   {yuzde(d._count._all)}
@@ -148,9 +158,20 @@ export default async function ProjeTakipRaporPage() {
         <CardContent className="p-0">
           <div className="divide-y divide-border/60">
             {data.grupKodGrup.map((d) => (
-              <div key={d.grupKod ?? "belirsiz"} className="grid grid-cols-[1fr_60px] items-center gap-2 px-6 py-2.5 text-sm">
+              <div key={d.grupKod ?? "belirsiz"} className="grid grid-cols-[1fr_140px_90px] items-center gap-3 px-6 py-2.5 text-sm">
                 <span className="text-muted-foreground truncate">{d.grupKod ?? "Belirsiz"}</span>
-                <span className="font-medium tabular-nums text-right">{d._count._all}</span>
+                <div className="h-2 rounded-full bg-muted overflow-hidden">
+                  <div
+                    className="h-full rounded-full"
+                    style={{
+                      width: `${(d._count._all / grupKodMax) * 100}%`,
+                      backgroundColor: ANA_RENK,
+                    }}
+                  />
+                </div>
+                <span className="text-xs text-muted-foreground tabular-nums text-right">
+                  {d._count._all} · {yuzde(d._count._all)}
+                </span>
               </div>
             ))}
           </div>

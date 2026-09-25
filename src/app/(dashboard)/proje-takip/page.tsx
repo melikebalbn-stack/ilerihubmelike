@@ -176,9 +176,6 @@ export default async function ProjeTakipListePage({
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-3xl font-bold text-foreground">Proje Takip</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Tüm projelerin durumu ve mühendislik ilerlemesi
-          </p>
         </div>
         <div className="flex items-center gap-2">
           <Link href="/proje-takip/rapor">

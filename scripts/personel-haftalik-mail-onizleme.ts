@@ -49,7 +49,8 @@ async function main() {
   console.log('Önizleme :', CIKTI)
   console.log('Hafta    :', veri.tarihMetni)
   console.log('Özet     :', `toplam ${ozet.toplamCalisan} · beyaz ${ozet.beyazYaka} · mavi ${ozet.maviYaka} · gri ${ozet.griYaka} · K/E ${cinsiyetDagilimi.kadin}/${cinsiyetDagilimi.erkek}`)
-  console.log('Dir/End  :', `${ozet.direkt} / ${ozet.endirekt}`)
+  // Mailin kartı MAVİ yaka kırılımını gösterir; tüm kadro sayısı /personnel/reports içindir.
+  console.log('Dir/End  :', `maildeki (mavi) ${ozet.maviDirekt} / ${ozet.maviEndirekt} · tüm kadro ${ozet.direkt} / ${ozet.endirekt}`)
   console.log('İmalat   :', `${imalatTablosu.sutunlar.length} sütun · toplam ${imalatTablosu.satirlar.find(s => s.ad === 'TOPLAM')?.genelToplam ?? 0}`)
   console.log('Ofis     :', `${ofisTablosu.sutunlar.length} sütun · toplam ${ofisTablosu.satir.genelToplam}`)
   console.log('Bölüm    :', `${tumBolumler.length} bölüm (mailde tümü)`)
@@ -65,7 +66,7 @@ async function main() {
   // (cron ucu bunu zaten geçiyordu, yalnız bu betik eksikti — 23.09.2026).
   const sonuc = await sendEmail(
     [{ email: hedef, name: hedef }],
-    `[TEST] Haftalık Personel Raporu — ${veri.tarihMetni}`,
+    `${process.env.TEST_ETIKET ?? '[TEST]'} Haftalık Personel Raporu — ${veri.tarihMetni}`,
     text,
     html,
     logoAttachments(),

@@ -269,7 +269,7 @@ export function buildPersonnelWeeklyText(veri: HaftalikPersonelRaporu, opts: Haf
     `Beyaz yaka: ${ozet.beyazYaka} · Mavi yaka: ${ozet.maviYaka} · Gri yaka: ${ozet.griYaka}`,
     `Kadın/Erkek: ${cinsiyetDagilimi.kadin} / ${cinsiyetDagilimi.erkek}`,
     '',
-    `Direkt: ${ozet.direkt} · Endirekt: ${ozet.endirekt}`,
+    `Direkt: ${ozet.maviDirekt} · Endirekt: ${ozet.maviEndirekt}`,
     '',
     'İMALAT (mavi + gri yaka):',
     ...imalatMetin(veri.rapor.imalatTablosu),
@@ -413,9 +413,12 @@ export function buildPersonnelWeeklyHtml(veri: HaftalikPersonelRaporu, opts: Haf
         { label: 'Toplam Çalışan', value: String(ozet.toplamCalisan), accent: TOKENS.textDark },
         { label: YAKA.beyaz.ad, value: String(ozet.beyazYaka), accent: YAKA.beyaz.renk },
         { label: YAKA.mavi.ad, value: String(ozet.maviYaka), accent: YAKA.mavi.renk },
+        // Direkt/Endirekt kırılımı MAVİ YAKANIN altkırılımı — kart sırası da bunu
+        // yansıtsın diye mavi yakadan hemen SONRA gelir (GMY isteği 25.09.2026).
+        // Yalnız MAVİ yaka — imalat tablosunun DİREK/ENDİREK satırlarıyla aynı kadro.
+        { label: 'Direkt / Endirekt', value: `${ozet.maviDirekt} / ${ozet.maviEndirekt}`, accent: TOKENS.navy },
         { label: YAKA.gri.ad, value: String(ozet.griYaka), accent: YAKA.gri.renk },
         { label: 'Kadın / Erkek', value: `${cinsiyetDagilimi.kadin} / ${cinsiyetDagilimi.erkek}`, accent: '#be123c' },
-        { label: 'Direkt / Endirekt', value: `${ozet.direkt} / ${ozet.endirekt}`, accent: TOKENS.navy },
       ]) +
       sectionTitle('Yaka · Cinsiyet · Engelli dağılımı') +
       yakaTablosuHtml +

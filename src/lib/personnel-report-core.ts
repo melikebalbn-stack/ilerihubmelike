@@ -86,6 +86,17 @@ export function hesaplaPersonelRaporu({ personnel, interns, consultants }: Perso
   const griYaka = personnel.filter(p => p.yakaRengi === 'GRI').length
   const direkt = personnel.filter(p => direktMi(p.direktEndirekt)).length
   const endirekt = personnel.filter(p => endirektMi(p.direktEndirekt)).length
+  // Haftalık mailin özet kartı için MAVİ YAKA ile sınırlı kırılım (25.09.2026).
+  // `direkt`/`endirekt` TÜM kadroyu sayar ve /personnel/reports ekranı, yüzde
+  // kartı ve CSV dışa aktarımı onu kullanıyor — o yüzden DEĞİŞTİRİLMEDİ, yanına
+  // ayrı alan eklendi.
+  //
+  // Neden yalnız MAVİ: imalat tablosunun DİREK/ENDİREK satırları da mavi yakayı
+  // sayar; gri yaka orada direkt/endirekt'e BÖLÜNMEZ, kendi satırında durur.
+  // Karta gri de eklenseydi (83/44) kart imalat tablosuyla çelişirdi.
+  const maviKadro = personnel.filter(p => p.yakaRengi === 'MAVI')
+  const maviDirekt = maviKadro.filter(p => direktMi(p.direktEndirekt)).length
+  const maviEndirekt = maviKadro.filter(p => endirektMi(p.direktEndirekt)).length
 
   // Cinsiyet dagilimi
   const erkek = personnel.filter(p => p.cinsiyet === 'MALE').length
@@ -188,7 +199,7 @@ export function hesaplaPersonelRaporu({ personnel, interns, consultants }: Perso
   const asansorBeyaz = asansorPersonel.filter(p => p.yakaRengi === 'BEYAZ').length
 
   return {
-    ozet: { toplamCalisan, beyazYaka, maviYaka, griYaka, direkt, endirekt },
+    ozet: { toplamCalisan, beyazYaka, maviYaka, griYaka, direkt, endirekt, maviDirekt, maviEndirekt },
     cinsiyetDagilimi: { erkek, kadin },
     yakaCinsiyetTablosu,
     imalatTablosu,
@@ -224,7 +235,7 @@ export function hesaplaPersonelRaporu({ personnel, interns, consultants }: Perso
 
 // ── GMY tabloları ──────────────────────────────────────────────────────────
 
-type YakaliPersonel = { bolum: string | null; yakaRengi: string | null; direktEndirekt: string | null }
+type YakaliPersonel = { bolum: string | null; bolumDetay: string | null; yakaRengi: string | null; direktEndirekt: string | null }
 
 /** Sütun listesini kurar: harita sırası + (varsa) DİĞER en sonda. */
 function sutunlariKur(gruplar: { baslik: string }[], digerVar: boolean): string[] {
@@ -252,7 +263,7 @@ function hucrelere(sutunlar: string[], sayim: Map<string, number>): { hucreler: 
  */
 export function hesaplaImalatTablosu(personnel: YakaliPersonel[]): ImalatTablosu {
   const kapsam = personnel.filter(p => p.yakaRengi === 'MAVI' || p.yakaRengi === 'GRI')
-  const digerVar = kapsam.some(p => sutunBul(IMALAT_INDEKS, p.bolum) === DIGER_SUTUN)
+  const digerVar = kapsam.some(p => sutunBul(IMALAT_INDEKS, p.bolum, p.bolumDetay) === DIGER_SUTUN)
   const sutunlar = sutunlariKur(IMALAT_GRUPLARI, digerVar)
 
   const direk = sayimHaritasi(sutunlar)
@@ -260,7 +271,7 @@ export function hesaplaImalatTablosu(personnel: YakaliPersonel[]): ImalatTablosu
   const gri = sayimHaritasi(sutunlar)
 
   for (const p of kapsam) {
-    const sutun = sutunBul(IMALAT_INDEKS, p.bolum)
+    const sutun = sutunBul(IMALAT_INDEKS, p.bolum, p.bolumDetay)
     if (p.yakaRengi === 'GRI') gri.set(sutun, (gri.get(sutun) ?? 0) + 1)
     else if (direktMi(p.direktEndirekt)) direk.set(sutun, (direk.get(sutun) ?? 0) + 1)
     else endirek.set(sutun, (endirek.get(sutun) ?? 0) + 1)
@@ -283,12 +294,12 @@ export function hesaplaImalatTablosu(personnel: YakaliPersonel[]): ImalatTablosu
 /** Ofis tablosu — yalnız BEYAZ yakalılar, tek satır. */
 export function hesaplaOfisTablosu(personnel: YakaliPersonel[]): OfisTablosu {
   const kapsam = personnel.filter(p => p.yakaRengi === 'BEYAZ')
-  const digerVar = kapsam.some(p => sutunBul(OFIS_INDEKS, p.bolum) === DIGER_SUTUN)
+  const digerVar = kapsam.some(p => sutunBul(OFIS_INDEKS, p.bolum, p.bolumDetay) === DIGER_SUTUN)
   const sutunlar = sutunlariKur(OFIS_GRUPLARI, digerVar)
 
   const sayim = sayimHaritasi(sutunlar)
   for (const p of kapsam) {
-    const sutun = sutunBul(OFIS_INDEKS, p.bolum)
+    const sutun = sutunBul(OFIS_INDEKS, p.bolum, p.bolumDetay)
     sayim.set(sutun, (sayim.get(sutun) ?? 0) + 1)
   }
 

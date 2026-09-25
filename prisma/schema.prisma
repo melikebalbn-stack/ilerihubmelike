@@ -14683,6 +14683,14 @@ enum DenemeDegerlendiriciRol {
   MUDUR // DepartmentDefinition.mudurId
 }
 
+/// Log satirinin OLAY tipi. Durum degisikligi OLMAYAN mudahaleler icin —
+/// eskiDurum == yeniDurum oldugunda log satirini durum gecisinden ayirir.
+/// Mevcut satirlar NULL kalir (durum gecisi = klasik satir).
+enum DenemeLogOlayTipi {
+  /// Insan Varliklari bir adimin degerlendiricisini degistirdi.
+  YONLENDIRME
+}
+
 // Kriter kataloğu — IV-FR-27 Rev.2 ile seed edilir, `hr.admin` yönetebilir.
 // Revizyon değişirse eski satır aktif=false yapılır, YENİ satır açılır; açılmış
 // formlar `kriterRevizyon` snapshot'ı sayesinde kendi revizyonlarını gösterir.
@@ -14815,6 +14823,9 @@ model DenemeDegerlendirmeLog {
 
   eskiDurum DenemeDurum?
   yeniDurum DenemeDurum
+  /// Durum degisikligi olmayan mudahaleler (ornegin yonlendirme). NULL = klasik
+  /// durum gecisi. Gecmis ekraninda satiri ayirt etmek icin okunur.
+  olayTipi  DenemeLogOlayTipi?
   aktorId   String?
   aktor     User?        @relation("DenemeLogAktor", fields: [aktorId], references: [id])
   aciklama  String?      @db.Text

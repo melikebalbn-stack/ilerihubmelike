@@ -15,6 +15,7 @@
 
 import type { Prisma, PrismaClient } from "@/generated/prisma";
 import type { DenemeDurum, DenemeDegerlendiriciRol } from "@/generated/prisma";
+import { degerlendiriciAtamasiGecerliMi } from "./deneme-degismezler";
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
@@ -238,6 +239,14 @@ export async function denemeZinciriCoz(db: Db, personnelId: string): Promise<Zin
   // yazdırmak yerine mevcut akış işler (fail-closed kontrolleri orada).
   const ozelBolum = !!dept.orgUnit?.code && (OZEL_ZINCIR_ORG_KODLARI as readonly string[]).includes(dept.orgUnit.code);
   if (ozelBolum && mudurYrd && !kendisi(mudurYrd) && !kendisi(mudur)) {
+    // Aynı kişi hem müdür hem müdür yrd. koltuğunda oturuyorsa iki puanı tek
+    // kişi verirdi — genel kurala düşülür (orada atlama/üst kademe mantığı var).
+    const ozelDegismez = degerlendiriciAtamasiGecerliMi({
+      personnelId: kisi.id,
+      degerlendirici1Id: mudurYrd.personnelId,
+      degerlendirici2Id: mudur.personnelId,
+    });
+    if (!ozelDegismez.ok) return { ok: false, sebep: ozelDegismez.sebep };
     return {
       ok: true,
       yakaRengi: yaka,
@@ -285,10 +294,14 @@ export async function denemeZinciriCoz(db: Db, personnelId: string): Promise<Zin
       deg2 = mudur;
       durum = "MUDUR_BEKLIYOR";
     }
-    // 1. ve 2. değerlendirici aynı kişi olamaz (çift puanı tek kişi veremez).
-    if (deg2.personnelId === deg1.personnelId) {
-      return { ok: false, sebep: "1. ve 2. değerlendirici aynı kişiye düşüyor — iki ayrı puan verilemez." };
-    }
+    // Değişmezler TEK KAYNAKTAN (deneme-degismezler.ts) — aynı kapı İV
+    // yönlendirme ucunda da işler, atama sonradan değişse de kural atlanmaz.
+    const degismez = degerlendiriciAtamasiGecerliMi({
+      personnelId: kisi.id,
+      degerlendirici1Id: deg1.personnelId,
+      degerlendirici2Id: deg2.personnelId,
+    });
+    if (!degismez.ok) return { ok: false, sebep: degismez.sebep };
 
     // Onay: müdür yrd. doldurursa bölüm müdürü onaylar; müdür doldurursa onay YOK.
     const onaylayan = deg2.rol === "MUDUR_YARDIMCISI" ? mudur : null;

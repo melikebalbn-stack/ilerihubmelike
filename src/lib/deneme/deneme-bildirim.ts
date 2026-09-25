@@ -96,7 +96,7 @@ export type DenemeCronSonuc = {
   mailUlasmayan: { personnelId: string; adSoyad: string; email: string; personel: string }[]
 }
 
-type Alici = {
+export type Alici = {
   userId: string
   email: string
   name: string
@@ -105,7 +105,7 @@ type Alici = {
 }
 
 /** Personnel → User (mail + in-app için). User hesabı yoksa null. */
-async function personelinKullanicisi(personnelId: string | null): Promise<Alici | null> {
+export async function personelinKullanicisi(personnelId: string | null): Promise<Alici | null> {
   if (!personnelId) return null
   const u = await prisma.user.findFirst({
     where: { personnelId, isActive: true },
@@ -187,9 +187,9 @@ function sonrakiHalkaPersonelId(form: {
  * işaretlemeyiz, yarın tekrar denenir (mevcut uçtaki `if (r.success)` deseni).
  */
 /** Tek alıcıya bildirim sonucu. `mail` gitmese de `inApp` oluştuysa BİLDİRİLMİŞ sayılır. */
-type GonderimSonuc = { mail: boolean; inApp: boolean }
+export type GonderimSonuc = { mail: boolean; inApp: boolean }
 
-async function gonder(
+export async function denemeAliciyaGonder(
   alici: Alici, konu: string, govde: string, html: string, link: string, inAppBaslik: string,
 ): Promise<GonderimSonuc> {
   // SENTETİK ADRES: posta kutusu yok, gönderilse teslim edilmez. Mail adımını
@@ -265,7 +265,7 @@ const ZINCIR_HATASI_TIPI = 'ZINCIR_HATASI'
 /** Maili ulaşmayan alıcı bildirimi — kişi bazında 14 gün dedup (ZINCIR_HATASI deseni). */
 const MAIL_ULASMADI_TIPI = 'MAIL_ULASMADI'
 
-const TUR_ETIKET: Record<DenemeTur, string> = {
+export const TUR_ETIKET: Record<DenemeTur, string> = {
   DENEME_2AY: 'Deneme Süresi (2 Ay)',
   ALTI_AY: 'İlk 6 Ay',
 }
@@ -418,7 +418,7 @@ export async function denemeFormlariniIsle(args: {
           let enAzBiriBildirildi = false
           const mailsiz = new Set<string>()
           for (const a of benzersiz) {
-            const r = await gonder(a, subject, body, html, link, `${etiket} değerlendirmesi gecikiyor`)
+            const r = await denemeAliciyaGonder(a, subject, body, html, link, `${etiket} değerlendirmesi gecikiyor`)
             if (!r.mail && r.inApp) {
               mailsiz.add(a.userId)
               sonuc.mailUlasmayan.push({ personnelId: kisi.id, adSoyad: a.name, email: a.email, personel: `${kisi.adSoyad} (${kisi.sicilNo})` })
@@ -450,7 +450,7 @@ export async function denemeFormlariniIsle(args: {
             adSoyad: kisi.adSoyad, sicilNo: kisi.sicilNo, bolum: kisi.bolum, gorev: kisi.gorev,
             tur: etiket, hedefTarih, gunKala, link,
           })
-          const r = await gonder(sahip, subject, body, html, link, `${etiket} değerlendirmesi sizde`)
+          const r = await denemeAliciyaGonder(sahip, subject, body, html, link, `${etiket} değerlendirmesi sizde`)
           if (!r.mail && r.inApp) {
             sonuc.mailUlasmayan.push({ personnelId: kisi.id, adSoyad: sahip.name, email: sahip.email, personel: `${kisi.adSoyad} (${kisi.sicilNo})` })
           }
@@ -498,7 +498,7 @@ export async function denemeFormlariniIsle(args: {
     })
     let gitti = false
     for (const a of iv) {
-      const r = await gonder(a, konu, ulasmadiText, ulasmadiHtml, `${base}/deneme`, 'Bildirim e-postası ulaşmadı')
+      const r = await denemeAliciyaGonder(a, konu, ulasmadiText, ulasmadiHtml, `${base}/deneme`, 'Bildirim e-postası ulaşmadı')
       if (r.mail || r.inApp) gitti = true
     }
     // Bildirim çıktıysa her VAKA için ayrı işaret — 14 gün boyunca tekrarlanmaz.
@@ -513,7 +513,7 @@ export async function denemeFormlariniIsle(args: {
       const { subject, body, html } = generateDenemeZincirHatasiEmail(zincirHatalari)
       let gitti = false
       for (const a of iv) {
-        const r = await gonder(a, subject, body, html, `${base}/personnel`, 'Deneme değerlendirme zinciri kurulamadı')
+        const r = await denemeAliciyaGonder(a, subject, body, html, `${base}/personnel`, 'Deneme değerlendirme zinciri kurulamadı')
         if (r.mail || r.inApp) gitti = true
       }
       // Mail gittiyse HER KİŞİ için ayrı işaret — 14 gün boyunca o kişi tekrar

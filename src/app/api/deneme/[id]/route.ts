@@ -28,7 +28,15 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       degerlendirici2: { select: { sicilNo: true, adSoyad: true, gorev: true } },
       onaylayan: { select: { sicilNo: true, adSoyad: true, gorev: true } },
       puanlar: { select: { kriterId: true, degerlendiriciSira: true, puan: true, not: true } },
-      loglar: { orderBy: { createdAt: "asc" }, select: { eskiDurum: true, yeniDurum: true, aciklama: true, createdAt: true } },
+      // olayTipi: durum değişikliği OLMAYAN müdahaleleri (yönlendirme) geçmişte
+      // ayırt etmek için. aktor: satırı kimin ürettiği — cron satırlarında null.
+      loglar: {
+        orderBy: { createdAt: "asc" },
+        select: {
+          eskiDurum: true, yeniDurum: true, olayTipi: true, aciklama: true, createdAt: true,
+          aktor: { select: { name: true, email: true } },
+        },
+      },
     },
   });
   if (!form) return NextResponse.json({ error: "Form bulunamadı" }, { status: 404 });

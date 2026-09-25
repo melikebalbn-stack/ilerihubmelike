@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -47,6 +48,15 @@ const GECME_PUANI = 60
 type Kriter = { id: string; sira: number; grup: string; baslik: string; aciklama: string }
 type Puan = { kriterId: string; degerlendiriciSira: number; puan: number; not: string | null }
 type Kisi = { sicilNo: string | null; adSoyad: string; gorev: string } | null
+type Log = {
+  eskiDurum: string | null
+  yeniDurum: string
+  olayTipi: string | null
+  aciklama: string | null
+  createdAt: string
+  aktor: { name: string | null; email: string | null } | null
+}
+type Aday = { id: string; adSoyad: string; sicilNo: string | null; bolum: string; gorev: string }
 
 type Form = {
   id: string
@@ -66,6 +76,7 @@ type Form = {
   degerlendirici2: Kisi
   onaylayan: Kisi
   puanlar: Puan[]
+  loglar: Log[]
 }
 
 type Yanit = { form: Form; kriterler: Kriter[]; yetki: { roller: string[]; adimSahibi: boolean } }
@@ -86,6 +97,13 @@ export default function DenemeFormPage() {
   const [onayNotu, setOnayNotu] = useState("")
   const [fesihGerekce, setFesihGerekce] = useState("")
   const [iptalGerekce, setIptalGerekce] = useState("")
+  // ── Yönlendirme (İV) ──
+  const [yonSira, setYonSira] = useState<1 | 2>(1)
+  const [yonAra, setYonAra] = useState("")
+  const [yonHedef, setYonHedef] = useState<Aday | null>(null)
+  const [yonGerekce, setYonGerekce] = useState("")
+  const [adaylar, setAdaylar] = useState<Aday[]>([])
+  const [adaylarYuklendi, setAdaylarYuklendi] = useState(false)
 
   const yukle = useCallback(async () => {
     setYukleniyor(true)
@@ -136,7 +154,9 @@ export default function DenemeFormPage() {
   const ikiKolon = dolduranSira === 2 && Object.keys(birinciPuanlar).length > 0
 
   // ── ONAY ve İK aşamaları: puan GİRİLMEZ, iki değerlendiricinin puanları salt okunur ──
-  const roller = veri?.yetki.roller ?? []
+  // useMemo: her render yeni dizi üretirse aşağıdaki useMemo bağımlılığı
+  // sürekli değişir (react-hooks/exhaustive-deps).
+  const roller = useMemo(() => veri?.yetki.roller ?? [], [veri])
   const onayAsamasi = form?.durum === "ONAY_BEKLIYOR" && roller.includes("ONAYLAYAN")
   const ikAsamasi = form?.durum === "IK_BEKLIYOR" && roller.includes("IK")
   const ikinciPuanlar = useMemo(() => {
@@ -148,6 +168,21 @@ export default function DenemeFormPage() {
   const saltOkunurKolonlar = onayAsamasi || ikAsamasi
   // İV her aşamada iptal edebilir (geçiş matrisi izinli). İK aşamasında iptal
   // zaten kapanış bloğunda olduğu için burada ayrı kart çizilmez.
+  // Yönlendirme: yalnız İV, form kapalı değilse. Hangi adımların yönlendirilebildiği
+  // sunucuda ayrıca doğrulanır (puanlanmış adım reddedilir) — buradaki liste
+  // yalnız ekranı sadeleştirir, kapı DEĞİLDİR.
+  const yonlendirilebilirSiralar = useMemo<(1 | 2)[]>(() => {
+    if (!form || !roller.includes("IK")) return []
+    if (["TAMAMLANDI", "IPTAL"].includes(form.durum)) return []
+    const liste: (1 | 2)[] = []
+    const p1 = form.puanlar.some((p) => p.degerlendiriciSira === 1)
+    const p2 = form.puanlar.some((p) => p.degerlendiriciSira === 2)
+    if (!p1) liste.push(1)
+    if (form.degerlendirici2 && !p2) liste.push(2)
+    return liste
+  }, [form, roller])
+  const yonlendirebilir = yonlendirilebilirSiralar.length > 0
+
   const ivIptalEdebilir =
     roller.includes("IK") &&
     !!form &&
@@ -212,6 +247,45 @@ export default function DenemeFormPage() {
       await yukle()
     } catch {
       toast.error("Aktarılamadı")
+    } finally {
+      setKaydediyor(false)
+    }
+  }
+
+  // Aday listesi TALEP ÜZERİNE çekilir (kart açılınca) — her form açılışında
+  // tüm aktif personeli indirmenin anlamı yok.
+  async function adaylariYukle() {
+    if (adaylarYuklendi) return
+    try {
+      const res = await apiFetch(`/api/deneme/${id}/yonlendir`)
+      const j = await res.json()
+      if (!res.ok) throw new Error(j.error ?? "Aday listesi alınamadı")
+      setAdaylar(j.adaylar ?? [])
+      setAdaylarYuklendi(true)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Aday listesi alınamadı")
+    }
+  }
+
+  async function yonlendir() {
+    if (!yonHedef || yonGerekce.trim().length < 10) return
+    setKaydediyor(true)
+    try {
+      const res = await apiFetch(`/api/deneme/${id}/yonlendir`, {
+        method: "POST",
+        body: JSON.stringify({ sira: yonSira, hedefPersonnelId: yonHedef.id, gerekce: yonGerekce.trim() }),
+      })
+      const j = await res.json()
+      if (!res.ok) throw new Error(j.error ?? "Yönlendirilemedi")
+      toast.success(`${yonSira}. değerlendirici ${yonHedef.adSoyad} olarak güncellendi`)
+      // Bildirim yönlendirmeyi BLOKE ETMEZ; ulaşmadıysa kullanıcı bilsin.
+      if (!j.bildirim?.gonderildi) {
+        toast.warning(j.bildirim?.sebep ?? "Bildirim gönderilemedi — kişiyi ayrıca haberdar edin")
+      }
+      setYonHedef(null); setYonAra(""); setYonGerekce("")
+      await yukle()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Yönlendirilemedi")
     } finally {
       setKaydediyor(false)
     }
@@ -668,6 +742,142 @@ export default function DenemeFormPage() {
         </Card>
       )}
 
+      {/* ── İV YÖNLENDİRME ── Değerlendiriciyi İnsan Varlıkları değiştirir.
+          Zincir üyelerine AÇIK DEĞİL: kendi değerlendirmesini devretmek formun
+          tarafsızlık varsayımını bozar. Kapılar sunucuda tekrar uygulanır. */}
+      {yonlendirebilir && (
+        <Card>
+          <CardHeader className="border-b bg-muted/40 py-3">
+            <CardTitle className="text-base">İnsan Varlıkları — Yönlendir</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4 p-6">
+            <p className="text-sm text-muted-foreground">
+              Değerlendirici formu dolduramıyorsa (izin, görev değişikliği, gecikme) adım
+              başka bir kişiye yönlendirilebilir. Puan girilmiş adım yönlendirilemez.
+              Yeni değerlendiriciye e-posta ve uygulama içi bildirim gönderilir.
+            </p>
+
+            {yonlendirilebilirSiralar.length > 1 && (
+              <div className="space-y-2">
+                <Label>Hangi adım?</Label>
+                <div className="flex gap-2">
+                  {yonlendirilebilirSiralar.map((n) => (
+                    <Button
+                      key={n}
+                      type="button"
+                      variant={yonSira === n ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setYonSira(n)}
+                    >
+                      {n}. Değerlendirici
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label htmlFor="yon-hedef">Yeni değerlendirici (zorunlu)</Label>
+              {yonHedef ? (
+                <div className="flex items-center justify-between rounded-md border px-3 py-2 text-sm">
+                  <span>
+                    <span className="font-medium">{yonHedef.adSoyad}</span>
+                    <span className="text-muted-foreground">
+                      {yonHedef.sicilNo ? ` · ${yonHedef.sicilNo}` : ""} · {yonHedef.bolum}
+                    </span>
+                  </span>
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setYonHedef(null)}>
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) : (
+                <div className="relative">
+                  <Input
+                    id="yon-hedef"
+                    placeholder="Ad veya sicil ile ara…"
+                    value={yonAra}
+                    onFocus={() => void adaylariYukle()}
+                    onChange={(e) => setYonAra(e.target.value)}
+                  />
+                  {yonAra.trim().length >= 2 && (
+                    <div className="absolute z-50 mt-1 max-h-56 w-full overflow-y-auto rounded-md border bg-popover shadow-lg">
+                      {adaylar
+                        .filter((a) => {
+                          const q = yonAra.trim().toLocaleLowerCase("tr")
+                          return (
+                            a.adSoyad.toLocaleLowerCase("tr").includes(q) ||
+                            (a.sicilNo ?? "").toLocaleLowerCase("tr").includes(q)
+                          )
+                        })
+                        .slice(0, 12)
+                        .map((a) => (
+                          <button
+                            key={a.id}
+                            type="button"
+                            className="w-full px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+                            onClick={() => { setYonHedef(a); setYonAra("") }}
+                          >
+                            <span className="font-medium">{a.adSoyad}</span>
+                            <span className="text-muted-foreground">
+                              {a.sicilNo ? ` · ${a.sicilNo}` : ""} · {a.bolum}
+                            </span>
+                          </button>
+                        ))}
+                      {adaylarYuklendi &&
+                        adaylar.filter((a) =>
+                          a.adSoyad.toLocaleLowerCase("tr").includes(yonAra.trim().toLocaleLowerCase("tr")),
+                        ).length === 0 && (
+                          <p className="px-3 py-2 text-sm text-muted-foreground">
+                            Eşleşen aktif kullanıcı yok. (Kullanıcı hesabı olmayan personel listelenmez.)
+                          </p>
+                        )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="yon-gerekce">Gerekçe (zorunlu, en az 10 karakter)</Label>
+              <Textarea
+                id="yon-gerekce"
+                placeholder="Örn. Değerlendirici uzun süreli izinde, form 2 gün gecikti."
+                value={yonGerekce}
+                onChange={(e) => setYonGerekce(e.target.value)}
+                rows={2}
+              />
+            </div>
+
+            <div className="flex justify-end">
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    variant="outline"
+                    disabled={kaydediyor || !yonHedef || yonGerekce.trim().length < 10}
+                  >
+                    <UserCog className="mr-2 h-4 w-4" /> Yönlendir
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Form yönlendirilsin mi?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      {yonSira}. değerlendirici <strong>{yonHedef?.adSoyad}</strong> olarak
+                      değiştirilecek ve kendisine bildirim gönderilecek. İşlem form geçmişine
+                      gerekçesiyle yazılır.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Vazgeç</AlertDialogCancel>
+                    <AlertDialogAction onClick={yonlendir}>Yönlendir</AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* ── İV İPTAL (her aşamada) ── İK bloğu zaten kendi iptalini taşıyor,
           burası onun DIŞINDAKİ aşamalar için: form yanlış açıldıysa İV kapatabilsin. */}
       {ivIptalEdebilir && (
@@ -707,6 +917,39 @@ export default function DenemeFormPage() {
                 </AlertDialogContent>
               </AlertDialog>
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── FORM GEÇMİŞİ ── Durum geçişleri + durum DEĞİŞTİRMEYEN müdahaleler
+          (yönlendirme). olayTipi NULL ise klasik geçiş satırıdır. */}
+      {(form.loglar?.length ?? 0) > 0 && (
+        <Card>
+          <CardHeader className="border-b bg-muted/40 py-3">
+            <CardTitle className="text-base">Form Geçmişi</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <ul className="divide-y">
+              {form.loglar.map((l, i) => (
+                <li key={i} className="flex flex-col gap-1 px-6 py-3 text-sm sm:flex-row sm:items-start sm:gap-4">
+                  <span className="shrink-0 tabular-nums text-muted-foreground">
+                    {new Date(l.createdAt).toLocaleString("tr-TR", {
+                      day: "2-digit", month: "2-digit", year: "numeric",
+                      hour: "2-digit", minute: "2-digit",
+                    })}
+                  </span>
+                  <span className="flex-1">
+                    {l.olayTipi === "YONLENDIRME" && (
+                      <Badge variant="outline" className="mr-2 align-middle">Yönlendirme</Badge>
+                    )}
+                    {l.aciklama ?? `${l.eskiDurum ?? "—"} → ${l.yeniDurum}`}
+                    {l.aktor && (
+                      <span className="text-muted-foreground"> · {l.aktor.name || l.aktor.email}</span>
+                    )}
+                  </span>
+                </li>
+              ))}
+            </ul>
           </CardContent>
         </Card>
       )}

@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   sikayetListesiGetir: vi.fn(),
   sikayetOlustur: vi.fn(),
   sikayetDetayGetir: vi.fn(),
+  sikayetFirmaListesiGetir: vi.fn(),
   sikayetDurumDegistir: vi.fn(),
 }))
 
@@ -24,6 +25,7 @@ vi.mock('@/lib/servis-yonetimi/sikayet', async importOriginal => {
     sikayetListesiGetir: mocks.sikayetListesiGetir,
     sikayetOlustur: mocks.sikayetOlustur,
     sikayetDetayGetir: mocks.sikayetDetayGetir,
+    sikayetFirmaListesiGetir: mocks.sikayetFirmaListesiGetir,
   }
 })
 vi.mock('@/lib/servis-yonetimi/sikayet-durum-uygula', () => ({
@@ -33,6 +35,7 @@ vi.mock('@/lib/servis-yonetimi/sikayet-durum-uygula', () => ({
 import { GET as LISTE_GET, POST } from './route'
 import { GET as DETAY_GET } from './[id]/route'
 import { PATCH } from './[id]/durum/route'
+import { GET as FIRMA_GET } from './firma-gorunumu/route'
 import { SikayetError } from '@/lib/servis-yonetimi/sikayet'
 
 function oturumKur(izinler: string[] | null) {
@@ -66,6 +69,7 @@ beforeEach(() => {
   mocks.sikayetListesiGetir.mockResolvedValue([])
   mocks.sikayetOlustur.mockResolvedValue({ id: 's1', no: 1 })
   mocks.sikayetDetayGetir.mockResolvedValue({ id: 's1', no: 1 })
+  mocks.sikayetFirmaListesiGetir.mockResolvedValue([])
   mocks.sikayetDurumDegistir.mockResolvedValue({ id: 's1', durum: 'AKSIYON_ALINDI' })
 })
 
@@ -301,5 +305,79 @@ describe('PATCH durum — gövde ve hata çevirisi', () => {
   it('beklenmeyen hata 500 döner', async () => {
     mocks.sikayetDurumDegistir.mockRejectedValue(new Error('db patladı'))
     expect((await PATCH(durumIstegi({ durum: 'ACIK' }), params)).status).toBe(500)
+  })
+})
+
+// ----------------------------------------------------------------------------
+// Adım 5D — firma görünümü ucu
+// ----------------------------------------------------------------------------
+describe('GET .../sikayet/firma-gorunumu', () => {
+  it('view izniyle 200', async () => {
+    oturumKur([VIEW])
+    mocks.sikayetFirmaListesiGetir.mockResolvedValue([])
+    const res = await FIRMA_GET(istek('http://localhost/x'))
+    expect(res.status).toBe(200)
+  })
+
+  it('yetkisiz 403, oturumsuz 401 — sorgu hiç çalışmaz', async () => {
+    oturumKur(['servis.view'])
+    expect((await FIRMA_GET(istek('http://localhost/x'))).status).toBe(403)
+    oturumKur(null)
+    expect((await FIRMA_GET(istek('http://localhost/x'))).status).toBe(401)
+    expect(mocks.sikayetFirmaListesiGetir).not.toHaveBeenCalled()
+  })
+
+  it('filtreler sorgu katmanına iletiliyor', async () => {
+    oturumKur([VIEW])
+    mocks.sikayetFirmaListesiGetir.mockResolvedValue([])
+    await FIRMA_GET(istek('http://localhost/x?firmaId=f1&durakId=d1&bildirimBaslangic=2026-09-01'))
+
+    const f = mocks.sikayetFirmaListesiGetir.mock.calls[0][0]
+    expect(f.firmaId).toBe('f1')
+    expect(f.durakId).toBe('d1')
+    expect(f.bildirimBaslangic).toEqual(new Date('2026-09-01'))
+  })
+
+  it('🔴 REGRESYON: yanıtta şikâyetçi kimliği YOK — DESEN TARAMASI', async () => {
+    oturumKur([VIEW])
+    // Sorgu katmanı şikâyetçi alanlarını zaten seçmiyor; uç de eklememelı.
+    mocks.sikayetFirmaListesiGetir.mockResolvedValue([
+      { id: 's1', no: 1, durum: 'ACIK', firmaAd: 'Firma A', durak: { id: 'd1', kod: 'D1', ad: 'Durak 1' } },
+    ])
+
+    const res = await FIRMA_GET(istek('http://localhost/x'))
+    const govde = JSON.stringify(await res.json())
+
+    // Alan sayarak değil, DESENLE: şikâyetçiye dair hiçbir anahtar/veri yok
+    expect(govde).not.toMatch(/sikayetci/i)
+    expect(govde).not.toMatch(/sikayetciPersonnelId/i)
+  })
+
+  it('🔴 FAIL-CLOSED: sorgu katmanı şikâyetçi döndürürse uç 500 verir ve gövdeyi GÖNDERMEZ', async () => {
+    oturumKur([VIEW])
+    // Sorgu katmanı bir gün yanlışlıkla şikâyetçi seçerse ikinci hat devreye
+    // girer. Ayıklama YOK — hata görünür olsun ki select düzeltilsin.
+    mocks.sikayetFirmaListesiGetir.mockResolvedValue([
+      { id: 's1', sikayetciPersonnelId: 'p1', sikayetci: { adSoyad: 'Ahmet' } },
+    ])
+
+    const res = await FIRMA_GET(istek('http://localhost/x'))
+    expect(res.status).toBe(500)
+
+    const govde = JSON.stringify(await res.json())
+    // Sızan veri yanıtta YOK — ne alan adı ne değeri
+    expect(govde).not.toMatch(/sikayetci/i)
+    expect(govde).not.toContain('Ahmet')
+    expect(govde).not.toContain('p1')
+  })
+
+  it('iç içe sızıntıda da 500 (desen derinlemesine taranıyor)', async () => {
+    oturumKur([VIEW])
+    mocks.sikayetFirmaListesiGetir.mockResolvedValue([
+      { id: 's1', durak: { id: 'd1', sikayetciNotu: 'gizli' } },
+    ])
+    const res = await FIRMA_GET(istek('http://localhost/x'))
+    expect(res.status).toBe(500)
+    expect(JSON.stringify(await res.json())).not.toContain('gizli')
   })
 })

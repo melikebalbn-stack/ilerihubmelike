@@ -14,7 +14,7 @@ export async function GET(_req: NextRequest) {
   const certs = await prisma.akademiCertificate.findMany({
     where: { userId },
     include: {
-      course: { select: { id: true, title: true } },
+      course: { select: { id: true, title: true, thumbnail: true } },
       _count: { select: { downloads: true } },
     },
     orderBy: { issuedAt: "desc" },

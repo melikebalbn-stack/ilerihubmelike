@@ -21,6 +21,7 @@ export function SplitBadge({
   href,
   className = "",
   ariaLabel,
+  download = false,
 }: {
   color: SplitBadgeColor;
   left: string;
@@ -28,13 +29,12 @@ export function SplitBadge({
   href: string;
   className?: string;
   ariaLabel?: string;
+  /** true → next/link yerine düz <a download> (PDF indirme; prefetch/soft-nav yok). */
+  download?: boolean;
 }) {
-  return (
-    <Link
-      href={href}
-      aria-label={ariaLabel ?? `${left} — ${right}`}
-      className={`inline-flex items-stretch overflow-hidden rounded-lg text-[12.5px] font-semibold leading-none text-white ${BG[color]} ${className}`}
-    >
+  const cls = `inline-flex items-stretch overflow-hidden rounded-lg text-[12.5px] font-semibold leading-none text-white ${BG[color]} ${className}`;
+  const inner = (
+    <>
       <span className="flex items-center gap-1.5 whitespace-nowrap px-[11px] py-2">
         {left}
       </span>
@@ -44,6 +44,20 @@ export function SplitBadge({
           ↗
         </span>
       </span>
+    </>
+  );
+  const label = ariaLabel ?? `${left} — ${right}`;
+
+  if (download) {
+    return (
+      <a href={href} download aria-label={label} className={cls}>
+        {inner}
+      </a>
+    );
+  }
+  return (
+    <Link href={href} aria-label={label} className={cls}>
+      {inner}
     </Link>
   );
 }

@@ -24,7 +24,7 @@ export type ExamCardInput = {
   timeLimit: number | null;
   maxAttempts: number;
   questionCount: number;
-  course: { id: string; title: string } | null;
+  course: { id: string; title: string; thumbnail?: string | null } | null;
   userStatus: ExamUserStatus;
 };
 
@@ -32,6 +32,7 @@ export type ExamCardModel = {
   id: string;
   title: string;
   href: string; // kart tıklaması
+  coverImage: string | null; // bağlı eğitimin thumbnail'i (yoksa null → degrade)
   coverGradient: string;
   tag: { label: string; color: "green" | "red" | "gray" | "amber" } | null;
   durationBadge: string;
@@ -140,16 +141,21 @@ export function buildExamCardModel(e: ExamCardInput): ExamCardModel {
     footerLeft = "Şu an başlatılamıyor";
   }
 
+  // Footer tek satır: solda "Hak X/Y" (kalan/toplam), sağda SplitBadge.
+  const footerHak = `Hak ${us.remainingAttempts}/${e.maxAttempts}`;
+  void footerLeft; // eski durum-metni artık footer'da değil (KPI/rozet taşıyor)
+
   return {
     id: e.id,
     title: e.title,
     href: EXAM_URL(e.id),
+    coverImage: e.course?.thumbnail ?? null,
     coverGradient: "linear-gradient(135deg,#12325E,#12B5CB)",
     tag,
     durationBadge,
     metaLine,
     lastScore,
-    footerLeft,
+    footerLeft: footerHak,
     badge,
   };
 }

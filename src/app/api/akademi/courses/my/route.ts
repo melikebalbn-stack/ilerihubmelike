@@ -27,9 +27,21 @@ export async function GET() {
     },
     include: {
       _count: { select: { contents: { where: { isActive: true } } } },
+      contents: { where: { isActive: true }, select: { type: true } },
+      exams: { where: { isActive: true }, select: { _count: { select: { questions: true } } } },
       progress: {
         where: { userId },
         take: 1,
+      },
+      directAssignments: {
+        where: { userAssignments: { some: { userId } } },
+        select: {
+          userAssignments: {
+            where: { userId },
+            select: { dueDate: true, assignedAt: true },
+            take: 1,
+          },
+        },
       },
     },
     orderBy: { createdAt: "desc" },
@@ -37,6 +49,7 @@ export async function GET() {
 
   const items: CourseListItem[] = courses.map((c) => {
     const prog = c.progress[0];
+    const ua = c.directAssignments[0]?.userAssignments[0];
     return {
       id: c.id,
       title: c.title,
@@ -49,6 +62,10 @@ export async function GET() {
       progressPercent: prog?.percentage ?? 0,
       isCompleted: Boolean(prog?.completedAt),
       isAssigned: true,
+      videoCount: c.contents.filter((ct) => ct.type === "VIDEO").length,
+      examQuestionCount: c.exams.reduce((s, e) => s + e._count.questions, 0),
+      dueDate: ua?.dueDate ? ua.dueDate.toISOString() : null,
+      assignedAt: ua?.assignedAt ? ua.assignedAt.toISOString() : null,
     };
   });
 

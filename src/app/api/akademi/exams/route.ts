@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
   const exams = await prisma.exam.findMany({
     where: { ...viaOptionalCourseWhere(type), isActive: true },
     include: {
-      course: { select: { id: true, title: true } },
+      course: { select: { id: true, title: true, thumbnail: true } },
       _count: { select: { questions: true } },
       attempts: {
         where: { userId },

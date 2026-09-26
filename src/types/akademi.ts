@@ -20,6 +20,11 @@ export interface CourseListItem {
   progressPercent: number;       // 0-100
   isCompleted: boolean;
   isAssigned: boolean;
+  // Kart görünümü (dashboard CourseCard) için — opsiyonel, geriye dönük uyumlu.
+  videoCount?: number;
+  examQuestionCount?: number;
+  dueDate?: string | null;
+  assignedAt?: string | null;
 }
 
 /** Kurs detay sayfası — içerikler dahil. */

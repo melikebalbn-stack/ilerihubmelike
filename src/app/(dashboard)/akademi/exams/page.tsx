@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useAkademiAuth } from "@/lib/akademi-auth";
 import { ExamCard } from "@/components/akademi/dashboard/ExamCard";
+import { StatCard } from "@/components/akademi/dashboard/StatCard";
+import { examsKpi } from "@/lib/akademi/page-kpi";
 import type { ExamCardInput } from "@/lib/akademi/exam-card-model";
 
 export default function UserExamsPage() {
@@ -18,6 +20,8 @@ export default function UserExamsPage() {
       .finally(() => setLoading(false));
   }, []);
 
+  const kpi = useMemo(() => examsKpi(exams), [exams]);
+
   return (
     <div className="px-8 py-7 max-w-7xl mx-auto">
       <div className="mb-6 ak-animate-in">
@@ -31,6 +35,15 @@ export default function UserExamsPage() {
           Atanmış ve genel sınavlar
         </p>
       </div>
+
+      {!loading && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6 ak-animate-in">
+          <StatCard icon="clock" label="Bekleyen Sınav" value={kpi.pending} color="orange" delayIndex={1} />
+          <StatCard icon="award" label="Geçilen" value={kpi.passed} color="green" delayIndex={2} />
+          <StatCard icon="flame" label="Kalan" value={kpi.failed} color="red" delayIndex={3} />
+          <StatCard icon="trophy" label="Ortalama Puan" value={kpi.avgScore} suffix="%" color="accent" delayIndex={4} />
+        </div>
+      )}
 
       {loading ? (
         <div className="text-sm" style={{ color: "var(--ak-text-tertiary)" }}>

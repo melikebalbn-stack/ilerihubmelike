@@ -329,3 +329,68 @@ describe('POST /api/personnel/import — saklanan adres normalleştirilmez', () 
     expect(veri.ikametAdresiDegisimTarihi).toBeUndefined()
   })
 })
+
+// ----------------------------------------------------------------------------
+// Melih düzeltmesi (26.09.2026): ikametAdresi de bosHucre()'den geçiyor.
+// Bu alan kuralı BAŞLATAN alandı ama ortak yardımcı sonradan kurulduğu için
+// satır içi kalmıştı (Ders 91) — " " gelince mevcut adresi NULL yazıp
+// üstüne "adres değişti" damgası basıyordu.
+// ----------------------------------------------------------------------------
+describe('POST /api/personnel/import — ikametAdresi boş hücrede DOKUNULMAZ', () => {
+  for (const [etiket, deger] of [['boşluk (" ")', ' '], ['boş metin ("")', ''], ['sekme ("\\t")', '\t']] as const) {
+    it(`🔴 İKAMET ADRESİ ${etiket} ile gelirse anahtar data'ya EKLENMEZ **VE** damga BASILMAZ`, async () => {
+      mocks.personnelFindUnique.mockResolvedValue({
+        id: 'p1', sicilNo: '1001', ikametAdresi: 'Mevcut Cd. 1', ikametAdresiDegisimTarihi: null,
+      })
+      xlsxOkumasiniKur({ 'İKAMET ADRESİ': deger })
+
+      const res = await POST(istekOlustur())
+      expect(res.status).toBe(200)
+
+      const veri = mocks.personnelUpdate.mock.calls[0][0].data
+      // (1) adres alanına hiç dokunulmadı — mevcut adres korunuyor
+      expect(Object.prototype.hasOwnProperty.call(veri, 'ikametAdresi')).toBe(false)
+      // (2) VE damga basılmadı — ikisi AYNI testte
+      expect(Object.prototype.hasOwnProperty.call(veri, 'ikametAdresiDegisimTarihi')).toBe(false)
+      expect(veri.ikametAdresiDegisimTarihi).toBeUndefined()
+    })
+  }
+
+  it('DOLU adres hâlâ yazılıyor ve damga basılıyor (regresyon yok)', async () => {
+    mocks.personnelFindUnique.mockResolvedValue({
+      id: 'p1', sicilNo: '1001', ikametAdresi: 'Eski Cd. 1', ikametAdresiDegisimTarihi: null,
+    })
+    xlsxOkumasiniKur({ 'İKAMET ADRESİ': '  Yeni Cd. 2  ' })
+
+    await POST(istekOlustur())
+    const veri = mocks.personnelUpdate.mock.calls[0][0].data
+    expect(veri.ikametAdresi).toBe('Yeni Cd. 2')
+    expect(veri.ikametAdresiDegisimTarihi).toBeInstanceOf(Date)
+  })
+})
+
+// ----------------------------------------------------------------------------
+// Aynı kural, satır içi kalan DİĞER alanlar için de (davranış değişmedi,
+// kural tek sözlükte ifade edildi).
+// ----------------------------------------------------------------------------
+describe('POST /api/personnel/import — diğer alanlar da boş hücrede dokunulmuyor', () => {
+  const ALANLAR: [string, string][] = [
+    ['KAN GRUBU', 'kanGrubu'],
+    ['MEZUNİYET YILI', 'mezuniyetYili'],
+    ['İLK YARDIMCI BELGESİ', 'ilkYardimciBelgesi'],
+    ['YANGIN SERTİFİKASI', 'yanginSertifikasi'],
+    ['KALFALIK BELGESİ', 'kalfalikBelgesi'],
+    ['USTALIK BELGESİ', 'ustalikBelgesi'],
+  ]
+
+  for (const [sutun, alan] of ALANLAR) {
+    it(`${sutun} " " ile gelirse ${alan} anahtarı data'ya eklenmez`, async () => {
+      mocks.personnelFindUnique.mockResolvedValue({ id: 'p1', sicilNo: '1001', ikametAdresi: null })
+      xlsxOkumasiniKur({ [sutun]: ' ' })
+
+      await POST(istekOlustur())
+      const veri = mocks.personnelUpdate.mock.calls[0][0].data
+      expect(Object.prototype.hasOwnProperty.call(veri, alan)).toBe(false)
+    })
+  }
+})

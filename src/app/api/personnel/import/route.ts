@@ -471,28 +471,35 @@ export async function POST(request: NextRequest) {
         opsiyonelMetinAta(personnelData, 'egitimYeri', mapped.egitimYeri)
         opsiyonelMetinAta(personnelData, 'egitimTipi', mapped.egitimTipi)
         opsiyonelMetinAta(personnelData, 'egitimAlani', mapped.egitimAlani)
-        if (mapped.ikametAdresi !== undefined) {
-          personnelData.ikametAdresi = mapped.ikametAdresi.toString().trim() || null
-        }
+        // 🔴 Bu satır uzun süre satır içi kalmıştı ve `trim() || null` yüzünden
+        // " " gibi boş görünen bir hücreyi NULL yazıyordu — yani mevcut adresi
+        // sessizce siliyor, üstüne "adres değişti" damgası basıyordu. Ortak
+        // yardımcı sonradan kurulduğu için işi başlatan bu alan süpürülmemişti
+        // (Ders 91). Artık diğer metin alanlarıyla AYNI kuraldan geçiyor.
+        opsiyonelMetinAta(personnelData, 'ikametAdresi', mapped.ikametAdresi)
 
         // Optional enums
-        const direktEndirekt = normalizeDirektEndirekt(mapped.direktEndirekt)
+        // Aşağıdaki alanlar zaten boş hücrede yazmıyordu (normalize -> null,
+        // parseDate -> null, parseInt -> NaN ve hepsi korumalı). Kural yine de
+        // TEK SÖZLÜKLE ifade ediliyor: bosHucre() erken çıkışı, ileride bir
+        // koruma kaldırılırsa sessiz regresyon olmasın diye (Ders 91).
+        const direktEndirekt = bosHucre(mapped.direktEndirekt) ? null : normalizeDirektEndirekt(mapped.direktEndirekt)
         if (direktEndirekt) personnelData.direktEndirekt = direktEndirekt
 
-        const asansorMekanik = normalizeAsansorMekanik(mapped.asansorMekanik)
+        const asansorMekanik = bosHucre(mapped.asansorMekanik) ? null : normalizeAsansorMekanik(mapped.asansorMekanik)
         if (asansorMekanik) personnelData.asansorMekanik = asansorMekanik
 
-        const kanGrubu = normalizeBloodType(mapped.kanGrubu)
+        const kanGrubu = bosHucre(mapped.kanGrubu) ? null : normalizeBloodType(mapped.kanGrubu)
         if (kanGrubu) personnelData.kanGrubu = kanGrubu
 
-        if (mapped.mezuniyetYili) {
+        if (!bosHucre(mapped.mezuniyetYili)) {
           const year = parseInt(mapped.mezuniyetYili)
           if (!isNaN(year)) personnelData.mezuniyetYili = year
         }
 
         // Booleans
         // ilkYardimciBelgesi tarih alanı
-        if (mapped.ilkYardimciBelgesi) {
+        if (!bosHucre(mapped.ilkYardimciBelgesi)) {
           const ilkYardimciDate = parseDate(mapped.ilkYardimciBelgesi)
           if (ilkYardimciDate) personnelData.ilkYardimciBelgesi = ilkYardimciDate
         }
@@ -506,18 +513,18 @@ export async function POST(request: NextRequest) {
         opsiyonelBoolAta(personnelData, 'forkliftEhliyeti', mapped.forkliftEhliyeti)
         opsiyonelBoolAta(personnelData, 'eTrans', mapped.eTrans)
         // yanginSertifikasi tarih alanı
-        if (mapped.yanginSertifikasi) {
+        if (!bosHucre(mapped.yanginSertifikasi)) {
           const yanginDate = parseDate(mapped.yanginSertifikasi)
           if (yanginDate) personnelData.yanginSertifikasi = yanginDate
         }
         opsiyonelBoolAta(personnelData, 'ustaOgreticiBelgesi', mapped.ustaOgreticiBelgesi)
 
         // Belge tarihleri
-        if (mapped.kalfalikBelgesi) {
+        if (!bosHucre(mapped.kalfalikBelgesi)) {
           const kalfalikDate = parseDate(mapped.kalfalikBelgesi)
           if (kalfalikDate) personnelData.kalfalikBelgesi = kalfalikDate
         }
-        if (mapped.ustalikBelgesi) {
+        if (!bosHucre(mapped.ustalikBelgesi)) {
           const ustalikDate = parseDate(mapped.ustalikBelgesi)
           if (ustalikDate) personnelData.ustalikBelgesi = ustalikDate
         }

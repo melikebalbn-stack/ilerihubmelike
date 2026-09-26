@@ -5,17 +5,23 @@ import { Clock3, History, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 
-// 13 modelin (15 hedefTipi değeri) ortak "İşlem Geçmişi" gösterimi — tek bir
-// paylaşılan Dialog + tek bir GET /api/servis-yonetimi/islem-gecmisi uç
-// noktası (bkz. plan onayı, madde 5). Her modelin tablo satırında bir
-// <GecmisButonu> + bu Dialog kullanılır.
-export type ServisIslemHedefTipi =
-  | 'FIRMA' | 'YERLESKE' | 'SEFER_DILIMI' | 'GUZERGAH' | 'DURAK'
-  | 'GUZERGAH_DURAK' | 'GUZERGAH_DURAK_SAAT' | 'ARAC' | 'SOFOR'
-  | 'GUZERGAH_ARAC_VARSAYILAN' | 'GUZERGAH_SOFOR_VARSAYILAN'
-  | 'PERSONEL_ATAMA' | 'PERSONEL_ATAMA_DILIM' | 'SORUMLUSU' | 'PERSONEL_DURUM'
+// Servis modellerinin ortak "İşlem Geçmişi" gösterimi — tek bir paylaşılan
+// Dialog + tek bir GET /api/servis-yonetimi/islem-gecmisi uç noktası (bkz.
+// plan onayı, madde 5). Her modelin tablo satırında bir <GecmisButonu> +
+// bu Dialog kullanılır.
+//
+// 🔴 Tipler ELLE YAZILMAZ, prisma enum'undan TÜRETİLİR. Eskiden burada 15
+// değerlik elle bir union vardı ve enum'a SIKAYET eklendiğinde sessizce eski
+// kaldı: şikâyet tarihçesi tip düzeyinde reddediliyordu. Elle liste, enum
+// büyüdükçe kaçınılmaz olarak bayatlar.
+//
+// 🔴 YALNIZ `import type` — düz import prisma'yı istemci paketine sızdırır;
+// bunu ne tsc ne test yakalar, yalnız sayfa açılınca 500 olarak görünür.
+import type { ServisIslemHedefTipi, ServisIslemTuru } from '@/generated/prisma'
 
-type IslemTuru = 'OLUSTURMA' | 'GUNCELLEME' | 'PASIFLESTIRME' | 'AKTIFLESTIRME'
+export type { ServisIslemHedefTipi }
+
+type IslemTuru = ServisIslemTuru
 
 type GecmisKaydi = {
   id: string

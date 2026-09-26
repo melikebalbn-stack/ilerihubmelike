@@ -21,6 +21,8 @@ import { Loader2, Plus } from 'lucide-react'
 // Ekranda ikinci bir hedef listesi ya da etiket sözlüğü YAZILMADI (rule 6).
 // Dosya prisma'dan yalnız TİP alıyor, istemciye güvenle gider.
 import { izinliHedefler, SIKAYET_DURUM_ETIKETLERI } from '@/lib/servis-yonetimi/sikayet-durum'
+// Paylaşılan tarihçe dialogu — 13 tanım modeliyle AYNI bileşen (rule 6).
+import { ServisGecmisDialog, GecmisButonu } from '../_components/ServisGecmisDialog'
 
 type Durum = 'ACIK' | 'AKSIYON_ALINDI' | 'KAPANDI' | 'REDDEDILDI'
 
@@ -97,6 +99,9 @@ export default function SikayetListesiPage() {
   const permissions = session?.user?.permissions || []
   const canView = permissions.includes('servis.sikayet.view')
   const canManage = permissions.includes('servis.sikayet.manage')
+  // Tarihçe AYRI eksen: modülün mevcut servis.history anahtarı kullanılıyor,
+  // şikâyete özgü yeni bir anahtar açılmadı.
+  const canHistory = permissions.includes('servis.history')
 
   const [guzergahId, setGuzergahId] = useState('')
   const [durakId, setDurakId] = useState('')
@@ -138,6 +143,9 @@ export default function SikayetListesiPage() {
   const [gecisNot, setGecisNot] = useState('')
   const [gecisHata, setGecisHata] = useState<string | null>(null)
   const [gecisGonderiliyor, setGecisGonderiliyor] = useState(false)
+
+  // ── Tarihçe dialogu ──
+  const [gecmisKaydi, setGecmisKaydi] = useState<SikayetSatiri | null>(null)
 
   const sorguDizesi = useMemo(() => {
     const p = new URLSearchParams()
@@ -556,7 +564,7 @@ export default function SikayetListesiPage() {
               <TableHead>Durum</TableHead>
               <TableHead>Şikâyetçi</TableHead>
               <TableHead>Sorumlu</TableHead>
-              {canManage && <TableHead>İşlem</TableHead>}
+              {(canManage || canHistory) && <TableHead>İşlem</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -576,13 +584,14 @@ export default function SikayetListesiPage() {
                 </TableCell>
                 <TableCell>{s.sikayetci?.adSoyad ?? '-'}</TableCell>
                 <TableCell>{s.sorumlu?.adSoyad ?? '-'}</TableCell>
-                {canManage && (
+                {(canManage || canHistory) && (
                   <TableCell>
                     <div className="flex flex-wrap gap-1">
+                      {canHistory && <GecmisButonu onClick={() => setGecmisKaydi(s)} />}
                       {/* 🔴 Hedefler MATRİSTEN geliyor (Adım 1). Ekranda ikinci
                           bir liste yok: kapalı bir kayıtta "Kapat" butonu
                           ÜRETİLEMEZ, çünkü izinliHedefler onu döndürmez. */}
-                      {izinliHedefler(s.durum).map(hedef => (
+                      {canManage && izinliHedefler(s.durum).map(hedef => (
                         <Button
                           key={hedef} size="sm" variant="outline"
                           onClick={() => {
@@ -600,6 +609,16 @@ export default function SikayetListesiPage() {
             ))}
           </TableBody>
         </Table>
+      )}
+
+      {canHistory && gecmisKaydi && (
+        <ServisGecmisDialog
+          open={Boolean(gecmisKaydi)}
+          onOpenChange={a => { if (!a) setGecmisKaydi(null) }}
+          baslik={`#${gecmisKaydi.no} — Şikâyet geçmişi`}
+          hedefTipi="SIKAYET"
+          hedefId={gecmisKaydi.id}
+        />
       )}
     </div>
   )

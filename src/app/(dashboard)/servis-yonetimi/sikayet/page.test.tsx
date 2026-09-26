@@ -231,14 +231,14 @@ describe('filtreler uca gönderiliyor', () => {
 // NOT: Adım 5A'da burada "oluşturma ve geçiş aksiyonu YOK" testi vardı.
 // 5B tam da onları eklediği için o test GEÇERSİZLEŞTİ ve kapsamı 5C'ye
 // taşındı — silinmedi, güncellendi.
-describe('Adım 5B kapsamı — 5C\'ye ait olanlar hâlâ YOK', () => {
-  it('tarihçe dialogu ve firma raporu bağlantısı bu adımda YOK', async () => {
-    mockSession(['servis.sikayet.view', 'servis.sikayet.manage'])
+describe('Adım 5C kapsamı — firma raporu 5D\'de', () => {
+  it('tarihçe butonu ARTIK VAR, firma raporu bağlantısı hâlâ YOK', async () => {
+    mockSession(['servis.sikayet.view', 'servis.sikayet.manage', 'servis.history'])
     fetchMockKur([SATIR])
     render(<SikayetListesiPage />)
 
     await waitFor(() => expect(screen.getByText('Ahmet Yolcu')).toBeInTheDocument())
-    expect(screen.queryByRole('button', { name: /geçmiş|tarihçe/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /geçmiş/i })).toBeInTheDocument()
     expect(screen.queryByText(/firma performans/i)).not.toBeInTheDocument()
   })
 
@@ -247,7 +247,11 @@ describe('Adım 5B kapsamı — 5C\'ye ait olanlar hâlâ YOK', () => {
     fetchMockKur([{ ...SATIR, durum: 'ACIK' as const }])
     render(<SikayetListesiPage />)
 
-    await waitFor(() => expect(screen.getByText('Yeni Şikâyet')).toBeInTheDocument())
+    // 🔴 Önce SATIRIN gelmesini bekle: "Yeni Şikâyet" fetch'ten bağımsız
+    // render olduğu için ona beklemek yarış koşulu yaratıyordu (tek dosyada
+    // geçip tam takımda düşüyordu).
+    await waitFor(() => expect(screen.getByText('Ahmet Yolcu')).toBeInTheDocument())
+    expect(screen.getByText('Yeni Şikâyet')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Aksiyon alındı' })).toBeInTheDocument()
   })
 })
@@ -409,5 +413,58 @@ describe('durum geçişi aksiyonları', () => {
     await waitFor(() =>
       expect(screen.getByText(/Kapanış tarihi ve notu temizlenir; aksiyon kaydı korunur/)).toBeInTheDocument(),
     )
+  })
+})
+
+
+// ----------------------------------------------------------------------------
+// Adım 5C — tarihçe dialogu
+// ----------------------------------------------------------------------------
+describe('tarihçe butonu — servis.history', () => {
+  it('servis.history VARKEN "Geçmiş" butonu görünür', async () => {
+    mockSession(['servis.sikayet.view', 'servis.history'])
+    fetchMockKur([SATIR])
+    render(<SikayetListesiPage />)
+
+    await waitFor(() => expect(screen.getByText('Ahmet Yolcu')).toBeInTheDocument())
+    expect(screen.getByRole('button', { name: /geçmiş/i })).toBeInTheDocument()
+  })
+
+  it('🔴 servis.history YOKKEN buton yok ama SAYFA ve LİSTE render ediliyor', async () => {
+    mockSession(['servis.sikayet.view'])
+    fetchMockKur([SATIR])
+    render(<SikayetListesiPage />)
+
+    await waitFor(() => expect(screen.getByText('Ahmet Yolcu')).toBeInTheDocument())
+    expect(screen.getByText('Servis Şikâyetleri')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /geçmiş/i })).not.toBeInTheDocument()
+  })
+
+  it('sikayet.manage yokken de tarihçe görülebilir (ayrı eksen)', async () => {
+    mockSession(['servis.sikayet.view', 'servis.history'])
+    fetchMockKur([{ ...SATIR, durum: 'ACIK' as const }])
+    render(<SikayetListesiPage />)
+
+    await waitFor(() => expect(screen.getByText('Ahmet Yolcu')).toBeInTheDocument())
+    expect(screen.getByRole('button', { name: /geçmiş/i })).toBeInTheDocument()
+    // Geçiş butonları YOK — manage ayrı anahtar
+    expect(screen.queryByRole('button', { name: 'Reddet' })).not.toBeInTheDocument()
+  })
+
+  it('🔴 dialog\'a hedefTipi=SIKAYET ve doğru hedefId geçiliyor', async () => {
+    mockSession(['servis.sikayet.view', 'servis.history'])
+    const m = fetchMockKur([SATIR])
+    render(<SikayetListesiPage />)
+
+    await waitFor(() => expect(screen.getByText('Ahmet Yolcu')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: /geçmiş/i }))
+
+    // Dialog açılınca tarihçe ucuna istek atar — parametreleri oradan okuyoruz
+    await waitFor(() => {
+      const cagri = m.mock.calls.map(c => c[0] as string).find(u => u.includes('islem-gecmisi'))
+      expect(cagri).toBeTruthy()
+      expect(cagri).toContain('hedefTipi=SIKAYET')
+      expect(cagri).toContain(`hedefId=${SATIR.id}`)
+    })
   })
 })

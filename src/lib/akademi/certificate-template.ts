@@ -167,33 +167,36 @@ export function renderCertificateHtml(data: CertificateHtmlData): string {
   .logos img { height: 44px; width: auto; }
   /* İçerik */
   .content { position: relative; z-index: 4; text-align: center;
-             padding: 200px 120px 0; }
+             padding: 196px 120px 0; }
   .title { font-family: 'Cormorant Garamond', 'IBM Plex Sans'; font-weight: 600;
            font-size: 64px; letter-spacing: 10px; color: ${NAVY}; line-height: 1; }
   .subtitle { font-family: 'Archivo', 'IBM Plex Sans'; font-weight: 600;
-              font-size: 15px; letter-spacing: 6px; color: ${GOLD};
+              font-size: 24px; letter-spacing: 6px; color: ${GOLD};
               text-transform: uppercase; margin-top: 8px; }
   .divider { width: 120px; height: 2px; background: ${GOLD}; margin: 18px auto; }
-  .lead { font-size: 13px; color: #5a6472; margin-top: 6px; }
+  .lead { font-size: 16px; color: #5a6472; margin-top: 6px; }
   .name { font-family: 'Great Vibes', 'IBM Plex Sans'; font-weight: 400;
-          font-size: 58px; color: ${NAVY}; margin: 6px 0 2px; line-height: 1.1; }
-  .body-text { font-size: 14px; color: #3a4256; margin-top: 8px; }
+          font-size: 84px; color: ${NAVY}; margin: 4px 0 2px; line-height: 1.1; }
+  .body-text { font-size: 17px; color: #3a4256; margin-top: 8px; }
   .course { font-family: 'Cormorant Garamond', 'IBM Plex Sans'; font-weight: 600;
-            font-size: 26px; color: ${NAVY}; margin-top: 10px; }
-  .meta { font-size: 11px; color: #6b7280; letter-spacing: 0.3px; margin-top: 18px; }
+            font-size: 30px; color: ${NAVY}; margin-top: 12px; }
+  .meta { font-size: 13px; color: #6b7280; letter-spacing: 0.3px; margin-top: 20px; }
   .meta span { margin: 0 8px; }
-  /* İmzalar */
-  .signatures { position: absolute; bottom: 78px; left: 120px; right: 260px;
-                display: flex; justify-content: space-around; z-index: 4; }
-  .sig { text-align: center; min-width: 180px; }
-  .sig-line { width: 170px; height: 1px; background: #9aa3b2; margin: 0 auto 6px; }
-  .sig-name { font-family: 'Archivo', 'IBM Plex Sans'; font-weight: 600; font-size: 13px; color: ${NAVY}; }
-  .sig-title { font-size: 10px; color: #6b7280; margin-top: 2px; }
-  /* QR */
-  .qr { position: absolute; bottom: 60px; right: 100px; text-align: center; z-index: 4; }
-  .qr img { width: 96px; height: 96px; display: block; }
-  .qr .no { font-size: 9px; color: #6b7280; margin-top: 4px; }
-  .qr .lnk { font-size: 8px; color: #9aa3b2; word-break: break-all; max-width: 130px; }
+  /* İmzalar — sayfaya ortalı, simetrik; QR'dan bağımsız */
+  .signatures { position: absolute; bottom: 150px; left: 0; right: 0;
+                display: flex; justify-content: center; gap: 160px; z-index: 4; }
+  .sig { text-align: center; }
+  .sig-line { width: 240px; height: 1px; background: #9aa3b2; margin: 0 auto 6px; }
+  .sig-name { font-family: 'Archivo', 'IBM Plex Sans'; font-weight: 600; font-size: 18px; color: ${NAVY}; }
+  .sig-title { font-size: 14px; color: #6b7280; margin-top: 2px; }
+  /* QR — sağ altta ayrı; altındaki metin QR'a ortalı, iki satır */
+  .qr { position: absolute; bottom: 56px; right: 100px; width: 180px;
+        text-align: center; z-index: 4; }
+  .qr img { width: 96px; height: 96px; display: block; margin: 0 auto; }
+  .qr .no { font-size: 9px; color: #6b7280; margin-top: 5px; }
+  .qr .dov-label { font-size: 8px; color: #9aa3b2; margin-top: 3px; }
+  .qr .lnk { font-size: 8px; color: #9aa3b2; word-break: normal;
+             overflow-wrap: break-word; line-height: 1.3; }
 </style>
 </head>
 <body>
@@ -238,7 +241,8 @@ export function renderCertificateHtml(data: CertificateHtmlData): string {
     <div class="qr">
       <img src="${esc(data.qrDataUrl)}" alt="QR">
       <div class="no">${esc(data.sertifikaNo)}</div>
-      <div class="lnk">${esc(data.dogrulaUrl)}</div>
+      <div class="dov-label">Doğrulama:</div>
+      <div class="lnk">${esc(data.dogrulaUrl.replace(/^https?:\/\//, "")).replace(/\//g, "/<wbr>")}</div>
     </div>
   </div>
 </body>

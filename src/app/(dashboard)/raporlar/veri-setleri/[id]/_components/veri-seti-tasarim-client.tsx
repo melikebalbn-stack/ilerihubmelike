@@ -16,7 +16,7 @@ import { ChevronDown, ChevronRight, Database, Download, List, Loader2, Maximize2
 import type { Birlestirme, Kaynak, KaynakIfs, KaynakPostgres, VeriSetiTanim } from '@/lib/rapor/tipler'
 import { GeriRozet } from '../../../_components/rozet-link'
 import { apiGet, apiGonder, hataListesi, hataMetni } from '../../../_components/api'
-import { referansMi } from '@/lib/rapor/katalog-siniflama'
+import { birlestirmeAnahtariMi, enIyiAnahtarEslesmesi, referansMi } from '@/lib/rapor/katalog-siniflama'
 
 const NAVY = '#1B4F72'
 
@@ -187,6 +187,9 @@ export default function VeriSetiTasarimClient({ katalogYukleyebilir, mevcut }: P
   const [referansGoster, setReferansGoster] = useState(false)
   const [aramaReferansAcik, setAramaReferansAcik] = useState(false)
   const [onizlemeBuyuk, setOnizlemeBuyuk] = useState(false)
+  /** AI Rapor'dan "veri setine ekle" ile gelindiyse üst bilgi şeridi (?ekle=kaynakAd|entity|alan). */
+  const [oneriSerit, setOneriSerit] = useState<{ kaynakAd: string; entity: string; alan: string; raporId?: string; kod?: string; takma?: string; birlestirme?: string } | null>(null)
+  const oneriUygulandi = useRef(false)
 
   // Sol — katalog
   const [arama, setArama] = useState('')
@@ -320,6 +323,98 @@ export default function VeriSetiTasarimClient({ katalogYukleyebilir, mevcut }: P
       setKaynakTip('ifs'); setSeciliProjeksiyon(s.kaynakAd); setEntityAra(''); setSeciliEntity(e); setArama('')
     } catch (e) { setSolHata(hataMetni(e)) }
   }
+
+  /** Veri setinde hâlihazırda çekilen (kaynak takma adı, alan) çiftleri — otomatik birleştirme için. */
+  const mevcutAlanCiftleri = useCallback(() => {
+    const ciftler: { kaynak: string; alan: string }[] = []
+    const gorulen = new Set<string>()
+    const ekle = (kaynak: string, alan: string) => {
+      const a = `${kaynak}.${alan}`
+      if (gorulen.has(a)) return
+      gorulen.add(a); ciftler.push({ kaynak, alan })
+    }
+    for (const k of kaynaklar) {
+      if (k.tip === 'ifs-odata') for (const a of k.select ?? []) ekle(k.ad, a)
+      else for (const a of k.tasarim?.alanlar ?? []) ekle(k.ad, a)
+    }
+    for (const e of alanEslemeleri) {
+      const [kaynak, ...kalan] = e.yol.split('.')
+      if (kaynak && kalan.length) ekle(kaynak, kalan.join('.'))
+    }
+    return ciftler
+  }, [kaynaklar, alanEslemeleri])
+
+  /**
+   * AI Rapor önerisini uygular: entity'yi kaynak olarak ekler (anahtarlar + istenen alan seçili),
+   * alanı çıktıya eşler ve ad eşleşmesi varsa birleştirme satırını ÖNERİR. Hiçbir şey KAYDEDİLMEZ.
+   */
+  async function oneriyiUygula(o: { kaynakAd: string; entity: string; alan: string }) {
+    setSolHata(null)
+    try {
+      const [entityYanit, alanYanit] = await Promise.all([
+        getJson<{ entityler: Entity[] }>(`/api/raporlar/katalog/entityler?projeksiyon=${encodeURIComponent(o.kaynakAd)}&ara=${encodeURIComponent(o.entity)}`),
+        getJson<{ alanlar: KatalogAlan[] }>(`/api/raporlar/katalog/alanlar?projeksiyon=${encodeURIComponent(o.kaynakAd)}&entity=${encodeURIComponent(o.entity)}`),
+      ])
+      const e = entityYanit.entityler.find((x) => x.entity === o.entity) ?? { entity: o.entity, alanSayisi: 0, entitySetleri: [] }
+      const entitySet = e.entitySetleri.find((x) => !x.startsWith('Reference_')) ?? e.entitySetleri[0] ?? `${o.entity}s`
+      if (!e.entitySetleri.length) setSolHata(`${o.kaynakAd} › ${o.entity}: EntitySet adı $metadata'dan alınamadı; '${entitySet}' varsayıldı — kaynak kartından düzeltin.`)
+
+      const anahtarlar = alanYanit.alanlar.filter((a) => a.anahtarMi).map((a) => a.alan)
+      // Otomatik birleştirmede site/şirket kolonları kullanılmaz (satır patlaması).
+      const birlestirmeAdaylari = anahtarlar.filter(birlestirmeAnahtariMi)
+      const secilen = [...new Set([...anahtarlar, ...(o.alan ? [o.alan] : [])])]
+      const takma = takmaAdUret(o.entity, new Set(kaynaklar.map((k) => k.ad)))
+      const contractVar = alanYanit.alanlar.some((a) => a.alan.toLowerCase() === 'contract')
+      const yeni: KaynakIfs = {
+        ad: takma, tip: 'ifs-odata', projeksiyon: o.kaynakAd, entitySet, select: secilen, top: 500,
+        ...(contractVar && siteler.varsayilan ? { filtre: `Contract eq '${siteler.varsayilan}'` } : {}),
+      }
+      setKaynaklar((l) => [...l, yeni])
+      setKaynakAlanlari((m) => ({ ...m, [takma]: alanYanit.alanlar.map((a) => a.alan) }))
+      setAcikKaynak(takma)
+      setKaynakTip('ifs'); setSeciliProjeksiyon(o.kaynakAd); setSeciliEntity(e); setEntityAra(''); setArama('')
+
+      // Çıktı alanı: istenen alan rapora düşsün.
+      if (o.alan) {
+        setAlanEslemeleri((l) => {
+          const yol = `${takma}.${o.alan}`
+          if (l.some((x) => x.yol === yol)) return l
+          const mevcutCikti = new Set(l.map((x) => x.cikti))
+          let cikti = o.alan.replace(/[^A-Za-z0-9_]/g, '_')
+          cikti = cikti[0].toLowerCase() + cikti.slice(1)
+          if (mevcutCikti.has(cikti)) cikti = `${takma}_${cikti}`
+          return [...l, { cikti, yol }]
+        })
+      }
+
+      // Birleştirme önerisi: yeni kaynağın anahtarları ↔ mevcut alanlar (ad eşitliği/sonek).
+      let birlestirmeMetni: string | undefined
+      const mevcut = mevcutAlanCiftleri()
+      for (const anahtar of birlestirmeAdaylari) {
+        const es = enIyiAnahtarEslesmesi(mevcut, anahtar, o.entity)
+        if (!es) continue
+        const sol = `${es.kaynak}.${es.alan}`, sag = `${takma}.${anahtar}`
+        setBirlestir((l) => (l.some((b) => b.sol === sol && b.sag === sag) ? l : [...l, { sol, sag, tip: 'left' as const }]))
+        birlestirmeMetni = `${sol} ↔ ${sag}`
+        break
+      }
+      setOneriSerit((s2) => (s2 ? { ...s2, takma, birlestirme: birlestirmeMetni } : s2))
+    } catch (e) { setSolHata(hataMetni(e)) }
+  }
+
+  // AI Rapor'dan gelen öneri bağlantısı: ?ekle=kaynakAd|entity|alan&rapor=<id>&kod=<kod>
+  // (useSearchParams yerine window: Suspense sınırı gerektirmesin, tek seferlik okuma.)
+  useEffect(() => {
+    if (oneriUygulandi.current) return
+    const p = new URLSearchParams(window.location.search)
+    const ham = p.get('ekle')
+    if (!ham) return
+    const [kaynakAd, entity, alan] = ham.split('|')
+    if (!kaynakAd || !entity) return
+    oneriUygulandi.current = true
+    setOneriSerit({ kaynakAd, entity, alan: alan ?? '', raporId: p.get('rapor') ?? undefined, kod: p.get('kod') ?? undefined })
+    void oneriyiUygula({ kaynakAd, entity, alan: alan ?? '' })
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Katalog değerleri (rapor_katalog_deger) ───────────────────────────
   /** Alanın değerlerini aç: enum değerleri katalogdan gelir; yoksa elle eklenebilir. */
@@ -606,6 +701,23 @@ export default function VeriSetiTasarimClient({ katalogYukleyebilir, mevcut }: P
 
   return (
     <div className="space-y-4">
+      {/* AI Rapor önerisinden gelindi (?ekle=…) — hiçbir şey kaydedilmedi, kullanıcı Kaydet'e basacak */}
+      {oneriSerit && (
+        <div className="rounded-md border border-[#2AA5C7]/50 bg-[#F2F9FC] px-4 py-3 text-sm text-[#1B4F72] flex flex-wrap items-center gap-x-3 gap-y-1">
+          <Sparkles className="h-4 w-4 shrink-0" />
+          <span>
+            <b>{oneriSerit.kod ?? 'Rapor'}</b> raporundan geldin:{' '}
+            {oneriSerit.takma
+              ? <><span className="font-mono">{oneriSerit.entity}.{oneriSerit.alan}</span> alanı <span className="font-mono">{oneriSerit.takma}</span> kaynağı olarak eklendi{oneriSerit.birlestirme ? <> ve <span className="font-mono">{oneriSerit.birlestirme}</span> birleştirmesi önerildi</> : ' (birleştirme satırını elle kurman gerekebilir)'}. <b>Kaydet</b>&apos;e bas ve rapora dön.</>
+              : <>öneri uygulanıyor…</>}
+          </span>
+          {oneriSerit.raporId && (
+            <a href={`/raporlar/${oneriSerit.raporId}`} className="ml-auto inline-flex items-center gap-1 font-medium hover:underline">
+              Rapora dön<ChevronRight className="h-3.5 w-3.5" />
+            </a>
+          )}
+        </div>
+      )}
       {/* ÜST */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">

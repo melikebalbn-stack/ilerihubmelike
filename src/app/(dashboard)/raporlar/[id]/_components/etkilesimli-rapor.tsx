@@ -18,12 +18,13 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { DateField } from '@/components/ui/date-field'
 import { NativeSelect } from '@/components/ui/select'
-import { AlertTriangle, FileBarChart2, FileSpreadsheet, GripVertical, Loader2, Play, Printer, RotateCcw, Save, Sparkles, Undo2, X } from 'lucide-react'
+import { AlertTriangle, FileBarChart2, FileSpreadsheet, GripVertical, Loader2, Play, Plus, Printer, RotateCcw, Save, Sparkles, Undo2, X } from 'lucide-react'
 import { gorunumUygula, MAX_GRUP, type GrupDugum, type KolonTipi, type Satir } from '@/lib/rapor/gorunum'
 import { bicimle } from '@/lib/rapor/bicim'
 import { gorunumHtml } from '@/lib/rapor/gorunum-html'
 import type { EtkilesimliIcerik, Gorunum, GorunumKolon, GorunumToplamFn, SablonParametre } from '@/lib/rapor/tipler'
 import type { VeriSetiAlan } from '@/lib/rapor/veri-seti-alanlar'
+import type { AlanOnerisi } from '@/lib/rapor/alan-onerisi'
 import { GeriRozet, RozetLink } from '../../_components/rozet-link'
 import { apiGonder, apiYanit, hataListesi, hataMetni } from '../../_components/api'
 import { TUR_ADI } from '@/lib/rapor/tur-adlari'
@@ -196,7 +197,7 @@ export default function EtkilesimliRapor({ sablon, icerik, alanlar, tasarlayabil
   // ── Doğal dil çubuğu ──────────────────────────────────────────────────
   const [aiIstek, setAiIstek] = useState('')
   const [aiCalisiyor, setAiCalisiyor] = useState(false)
-  const [aiSerit, setAiSerit] = useState<{ aciklama: string; uyari: boolean } | null>(null)
+  const [aiSerit, setAiSerit] = useState<{ aciklama: string; uyari: boolean; oneriler?: AlanOnerisi[] } | null>(null)
   /** Geri al yığını: AI her görünüm kurduğunda öncekini iter (çok adım geri alınabilir). */
   const [aiGecmis, setAiGecmis] = useState<Gorunum[]>([])
 
@@ -231,9 +232,10 @@ export default function EtkilesimliRapor({ sablon, icerik, alanlar, tasarlayabil
     if (!istek || aiCalisiyor) return
     setAiCalisiyor(true)
     try {
-      const d = await apiGonder<{ anlasilmadi?: boolean; gorunum?: Gorunum; aciklama?: string }>(`/api/raporlar/${sablon.id}/ai`, 'POST', { istek, mevcutGorunum: gorunum, ornekDegerler })
+      const d = await apiGonder<{ anlasilmadi?: boolean; gorunum?: Gorunum; aciklama?: string; oneriler?: AlanOnerisi[] }>(`/api/raporlar/${sablon.id}/ai`, 'POST', { istek, mevcutGorunum: gorunum, ornekDegerler })
       if (d.anlasilmadi || !d.gorunum) {
-        setAiSerit({ aciklama: d.aciklama ?? 'İstek anlaşılamadı.', uyari: true })
+        // Alan eksikse sunucu katalogdan öneri döndürür → şeridin altında "veri setine ekle" satırları.
+        setAiSerit({ aciklama: d.aciklama ?? 'İstek anlaşılamadı.', uyari: true, oneriler: d.oneriler ?? [] })
         return
       }
       setAiGecmis((y) => [...y, gorunum])
@@ -434,7 +436,8 @@ export default function EtkilesimliRapor({ sablon, icerik, alanlar, tasarlayabil
           </div>
         )}
         {aiSerit && (
-          <div className={`mt-2.5 flex items-start gap-2 rounded-md border px-3 py-2 text-xs max-w-4xl ${aiSerit.uyari ? 'border-amber-300 bg-amber-50 text-amber-900' : 'border-[#2AA5C7]/40 bg-[#F2F9FC] text-[#1B4F72]'}`}>
+          <div className="mt-2.5 max-w-4xl space-y-2">
+          <div className={`flex items-start gap-2 rounded-md border px-3 py-2 text-xs ${aiSerit.uyari ? 'border-amber-300 bg-amber-50 text-amber-900' : 'border-[#2AA5C7]/40 bg-[#F2F9FC] text-[#1B4F72]'}`}>
             {aiSerit.uyari ? <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" /> : <Sparkles className="h-3.5 w-3.5 mt-0.5 shrink-0" />}
             <span className="flex-1">{aiSerit.uyari ? aiSerit.aciklama : <><span className="font-semibold">Kurulan görünüm:</span> {aiSerit.aciklama}</>}</span>
             {aiGecmis.length > 0 && (
@@ -442,6 +445,30 @@ export default function EtkilesimliRapor({ sablon, icerik, alanlar, tasarlayabil
                 <Undo2 className="h-3 w-3 mr-1" />Geri al{aiGecmis.length > 1 ? ` (${aiGecmis.length})` : ''}
               </Button>
             )}
+          </div>
+          {!!aiSerit.oneriler?.length && (
+            <div className="rounded-md border border-slate-200 bg-white px-3 py-2 text-xs">
+              <p className="m-0 mb-1.5 font-semibold text-[#1B4F72]">Bu alan veri setinde yok. Şunları ekleyebilirsin:</p>
+              <ul className="list-none m-0 p-0 space-y-1.5">
+                {aiSerit.oneriler.map((o) => (
+                  <li key={`${o.kaynakAd}|${o.entity}|${o.alan}`} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 border-t border-slate-100 pt-1.5 first:border-t-0 first:pt-0">
+                    <span className="font-medium">{o.entityEtiket ?? o.entity}</span>
+                    <span className="text-slate-400">·</span>
+                    <span>{o.alanEtiket ?? o.alan}</span>
+                    <span className="font-mono text-[10.5px] text-slate-400">{o.kaynakAd} › {o.entity}.{o.alan}</span>
+                    <a
+                      href={`/raporlar/veri-setleri/${sablon.veriSetiId}?ekle=${encodeURIComponent(`${o.kaynakAd}|${o.entity}|${o.alan}`)}&rapor=${sablon.id}&kod=${encodeURIComponent(sablon.kod)}`}
+                      className="ml-auto inline-flex items-center gap-1 text-[#1B4F72] hover:underline font-medium"
+                    >
+                      <Plus className="h-3 w-3" />Veri setine ekle
+                    </a>
+                    {o.baglantiIpucu && <span className="basis-full font-mono text-[10.5px] text-slate-500">{o.baglantiIpucu}</span>}
+                  </li>
+                ))}
+              </ul>
+              <p className="m-0 mt-1.5 text-[11px] text-amber-800">Veri setini değiştirdikten sonra <b>Kaydet</b>'e basıp bu raporu yeniden çalıştır.</p>
+            </div>
+          )}
           </div>
         )}
       </div>

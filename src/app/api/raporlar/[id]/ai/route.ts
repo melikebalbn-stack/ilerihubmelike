@@ -6,6 +6,7 @@ import { checkRateLimit } from '@/lib/rate-limit'
 import { PERMISSION_KEYS } from '@/lib/auth/permissions'
 import { veriSetiAlanlari } from '@/lib/rapor/veri-seti-alanlar'
 import { aiGorunumKur, AiYapilandirmaHatasi, ISTEK_SINIRI, type AiAlan } from '@/lib/rapor/ai-gorunum'
+import { alanOnerileri } from '@/lib/rapor/alan-onerisi'
 import { etkilesimliMi, type SablonIcerikHer, type VeriSetiTanim } from '@/lib/rapor/tipler'
 
 export const dynamic = 'force-dynamic'
@@ -51,7 +52,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const icerik = sablon.icerik as unknown as SablonIcerikHer
   if (!etkilesimliMi(icerik)) return NextResponse.json({ error: 'Bu rapor bir AI Rapor değil' }, { status: 400 })
 
-  const alanlar = await veriSetiAlanlari(sablon.veriSeti.tanim as unknown as VeriSetiTanim)
+  const tanim = sablon.veriSeti.tanim as unknown as VeriSetiTanim
+  const alanlar = await veriSetiAlanlari(tanim)
   const mevcutGorunum = govde.data.mevcutGorunum as unknown as Parameters<typeof aiGorunumKur>[0]['mevcutGorunum']
   const aiAlanlar: AiAlan[] = [
     ...alanlar.map((a) => ({ ad: a.ad, etiket: a.etiket, tip: a.veriTipi })),
@@ -67,12 +69,20 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       alanlar: aiAlanlar,
       ornekDegerler: govde.data.ornekDegerler,
     })
+    // İkinci aşama: istek karşılanamadıysa katalogdan "şu kaynağı eklersen bu alan gelir" önerisi.
+    // Öneri üretimi hata verirse asıl yanıt bozulmaz (öneriler boş kalır).
+    let oneriler: Awaited<ReturnType<typeof alanOnerileri>> = []
+    if (sonuc.anlasilmadi && sonuc.aranacakTerimler.length) {
+      try { oneriler = await alanOnerileri(sonuc.aranacakTerimler, tanim) }
+      catch (e) { console.warn('[rapor-ai] öneri üretilemedi:', e instanceof Error ? e.message : e) }
+    }
     console.info(
       `[rapor-ai] ${kullanici?.email ?? userId} · ${sablon.kod} · "${govde.data.istek.replace(/\s+/g, ' ').slice(0, 200)}" · ` +
         `model=${sonuc.olcum.model} giris=${sonuc.olcum.girisToken} cikis=${sonuc.olcum.cikisToken} ` +
-        `deneme=${sonuc.olcum.deneme} ${sonuc.olcum.sureMs}ms · ${sonuc.anlasilmadi ? 'ANLASILMADI' : 'OK'}`,
+        `deneme=${sonuc.olcum.deneme} ${sonuc.olcum.sureMs}ms · ${sonuc.anlasilmadi ? 'ANLASILMADI' : 'OK'}` +
+        (sonuc.anlasilmadi ? ` · terim=[${sonuc.aranacakTerimler.join(', ')}] oneri=${oneriler.length}` : ''),
     )
-    return NextResponse.json({ gorunum: sonuc.gorunum, aciklama: sonuc.aciklama, anlasilmadi: sonuc.anlasilmadi })
+    return NextResponse.json({ gorunum: sonuc.gorunum, aciklama: sonuc.aciklama, anlasilmadi: sonuc.anlasilmadi, oneriler })
   } catch (e) {
     const mesaj = e instanceof Error ? e.message : String(e)
     console.error(`[rapor-ai] ${kullanici?.email ?? userId} · ${sablon.kod} · HATA (${Date.now() - t0}ms):`, mesaj)

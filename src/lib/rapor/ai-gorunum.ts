@@ -40,6 +40,8 @@ export interface AiGorunumSonuc {
   gorunum: Gorunum | null
   aciklama: string
   anlasilmadi: boolean
+  /** anlasilmadi=true iken katalogda alan aramak için terimler (modelden). */
+  aranacakTerimler: string[]
   /** Ölçüm/log için. */
   olcum: { girisToken: number; cikisToken: number; sureMs: number; deneme: number; model: string }
 }
@@ -69,6 +71,12 @@ export const GORUNUM_ARACI = {
     properties: {
       anlasilmadi: { type: 'boolean', description: 'İstek bu veri setiyle karşılanamıyorsa true; bu durumda gorunum gönderme, aciklama\'da nedenini yaz.' },
       aciklama: { type: 'string', description: 'Kullanıcıya gösterilecek 1-2 cümlelik Türkçe özet: ne yaptın (veya neden yapamadın).' },
+      aranacakTerimler: {
+        type: 'array',
+        items: { type: 'string' },
+        maxItems: 5,
+        description: 'YALNIZ anlasilmadi=true ve eksik olan bir ALAN ise doldur: o alanın katalogda aranacağı 2-5 terim; Türkçe VE İngilizce/IFS yazımı ver (ör. "müşteri isimleri" → ["müşteri adı","customer name","CustomerName"]). İstek bir alan isteği değilse (renk/biçim/ekran isteği) BOŞ bırak.',
+      },
       gorunum: {
         type: 'object',
         properties: {
@@ -148,6 +156,8 @@ export function sistemMesaji(girdi: AiGorunumGirdi): string {
     '7. Bir alanı "göster" demek gorunur: true, "gizle/çıkar" demek gorunur: false. Alanı kolon listesinden SİLME.',
     '8. aciklama Türkçe, 1-2 cümle, kullanıcıya ne yaptığını anlatır (ör. "Tezgaha göre grupladım ve verimi 90\'ın altındakileri süzdüm.").',
     '9. İstek veri setiyle karşılanamıyorsa (olmayan bir ölçü/boyut) anlasilmadi=true ve aciklama\'da hangi alanın bulunmadığını yaz.',
+    '10. anlasilmadi=true VE eksik olan bir ALAN ise aranacakTerimler\'i doldur (Türkçe + İngilizce/IFS yazımı);',
+    '    istek alanla ilgili değilse (renk, yazı tipi, ekran düzeni gibi) aranacakTerimler BOŞ kalsın.',
   ].join('\n')
 }
 
@@ -191,9 +201,9 @@ async function anthropicCagir(model: string, sistem: string, mesajlar: Mesaj[], 
   }
 }
 
-function aracCiktisi(y: AnthropicYanit): { id: string; input: { anlasilmadi?: boolean; aciklama?: string; gorunum?: Gorunum } } | null {
+function aracCiktisi(y: AnthropicYanit): { id: string; input: { anlasilmadi?: boolean; aciklama?: string; gorunum?: Gorunum; aranacakTerimler?: string[] } } | null {
   const blok = y.content?.find((c) => c.type === 'tool_use' && c.name === GORUNUM_ARACI.name) as
-    | { id?: string; input?: { anlasilmadi?: boolean; aciklama?: string; gorunum?: Gorunum } }
+    | { id?: string; input?: { anlasilmadi?: boolean; aciklama?: string; gorunum?: Gorunum; aranacakTerimler?: string[] } }
     | undefined
   if (!blok?.input) return null
   return { id: blok.id ?? '', input: blok.input }
@@ -238,25 +248,27 @@ export async function aiGorunumKur(girdi: AiGorunumGirdi): Promise<AiGorunumSonu
     const arac = aracCiktisi(yanit)
     const olcum = { girisToken, cikisToken, sureMs: Date.now() - t0, deneme, model }
     if (!arac) {
-      return { gorunum: null, aciklama: 'Yapay zekâ bir görünüm üretemedi. İsteği biraz daha somut yazmayı dene.', anlasilmadi: true, olcum }
+      return { gorunum: null, aciklama: 'Yapay zekâ bir görünüm üretemedi. İsteği biraz daha somut yazmayı dene.', anlasilmadi: true, aranacakTerimler: [], olcum }
     }
     const { anlasilmadi, aciklama, gorunum } = arac.input
+    const aranacakTerimler = (arac.input.aranacakTerimler ?? []).filter((t) => typeof t === 'string' && t.trim()).slice(0, 5)
 
     if (anlasilmadi || !gorunum) {
-      return { gorunum: null, aciklama: aciklama ?? 'Bu istek mevcut veri setiyle karşılanamıyor.', anlasilmadi: true, olcum }
+      return { gorunum: null, aciklama: aciklama ?? 'Bu istek mevcut veri setiyle karşılanamıyor.', anlasilmadi: true, aranacakTerimler, olcum }
     }
 
     const tam = gorunumuTamamla(gorunum, girdi.mevcutGorunum)
     const sahteIcerik = { tur: 'etkilesimli', baslik: 'kontrol', gorunum: tam } as EtkilesimliIcerik
     const hatalar = gorunumDogrula(sahteIcerik, veriSetiAlanAdlari)
     if (hatalar.length === 0) {
-      return { gorunum: tam, aciklama: aciklama ?? 'Görünüm güncellendi.', anlasilmadi: false, olcum }
+      return { gorunum: tam, aciklama: aciklama ?? 'Görünüm güncellendi.', anlasilmadi: false, aranacakTerimler: [], olcum }
     }
     if (deneme === 2) {
       return {
         gorunum: null,
         aciklama: `İstek anlaşıldı ama geçerli bir görünüm kurulamadı (${hatalar[0]}). Farklı bir ifadeyle dener misin?`,
         anlasilmadi: true,
+        aranacakTerimler,
         olcum,
       }
     }

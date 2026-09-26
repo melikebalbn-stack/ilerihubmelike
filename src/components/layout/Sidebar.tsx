@@ -84,6 +84,7 @@ import {
   Receipt,
   DoorOpen,
   CreditCard,
+  ScanLine,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useState, useEffect, createContext, useContext } from "react"
@@ -301,8 +302,9 @@ const offboardingMenuItems = [
 
 // PDKS (Personel Devam Kontrol) — İV altında kendi alt grubu. Görünürlük sayfa guard'ıyla
 // birebir (permission; IPRO/zimmet deseni). Faz 1: cihaz tanımları (pdks.manage);
-// Faz 2: Kartlar (pdks.view okur). Puantaj/geçiş ekranları sonraki fazlarda buraya eklenir.
+// Faz 2: Kartlar, Faz 3: Geçiş Kayıtları (pdks.view okur). Puantaj Faz 4'te buraya eklenir.
 const pdksMenuItems = [
+  { name: "Geçiş Kayıtları", icon: ScanLine, href: "/pdks/gecisler", roles: [] as string[], permission: ["pdks.view", "pdks.manage"], note: "canlı" },
   { name: "Kartlar", icon: CreditCard, href: "/pdks/kartlar", roles: [] as string[], permission: ["pdks.view", "pdks.manage"] },
   { name: "Cihazlar & Kapılar", icon: DoorOpen, href: "/pdks/cihazlar", roles: [] as string[], permission: ["pdks.manage"] },
 ]

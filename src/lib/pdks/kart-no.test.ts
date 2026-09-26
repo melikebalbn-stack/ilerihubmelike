@@ -5,6 +5,7 @@ import {
   kartNoBicimiOku,
   kartNoDonustur,
   kartNoGoster,
+  kartHamPanelden,
 } from './kart-no'
 
 describe('kartHamCoz', () => {
@@ -69,5 +70,21 @@ describe('kartNoBicimiOku', () => {
   })
   it('tanınmayan değerde fırlatır (fail-closed)', async () => {
     await expect(kartNoBicimiOku(db('HEX'))).rejects.toThrow(KartNoHatasi)
+  })
+})
+
+describe('kartHamPanelden (kartNoDonustur tersi)', () => {
+  it('her iki biçimde gidiş-dönüş aynı hamı verir', () => {
+    for (const ham of ['11863577', '00100042', '25565535', '00000000']) {
+      expect(kartHamPanelden(kartNoDonustur(ham, 'BIRLESIK'), 'BIRLESIK')).toBe(ham)
+      expect(kartHamPanelden(kartNoDonustur(ham, 'W26_ONDALIK'), 'W26_ONDALIK')).toBe(ham)
+    }
+  })
+  it('çözülemeyeni null döner', () => {
+    expect(kartHamPanelden('1234', 'BIRLESIK')).toBeNull()
+    expect(kartHamPanelden('11899999', 'BIRLESIK')).toBeNull() // kart > 65535
+    expect(kartHamPanelden('99999999999', 'W26_ONDALIK')).toBeNull()
+    expect(kartHamPanelden('', 'W26_ONDALIK')).toBeNull()
+    expect(kartHamPanelden('12a', 'BIRLESIK')).toBeNull()
   })
 })

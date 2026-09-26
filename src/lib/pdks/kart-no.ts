@@ -81,6 +81,25 @@ export function kartNoDonustur(ham: string, bicim: KartNoBicimi): string {
   }
 }
 
+/**
+ * Panelden gelen cardNo → 8 haneli ham (gösterim / Hub'da arama için). kartNoDonustur'un tersi.
+ * Çözülemezse null (ör. biçim değişikliği öncesi yüklenmiş eski kart, ya da W26 dışı kart).
+ */
+export function kartHamPanelden(cardNo: string | null | undefined, bicim: KartNoBicimi): string | null {
+  const s = String(cardNo ?? '').trim()
+  if (!/^\d+$/.test(s)) return null
+  try {
+    if (bicim === 'BIRLESIK') return s.length === 8 ? kartHamCoz(s).ham : null
+    const n = Number(s)
+    if (!Number.isSafeInteger(n) || n > W26_TESIS_UST * 65536 + W26_KART_UST) return null
+    const tesis = Math.floor(n / 65536)
+    const kart = n % 65536
+    return String(tesis).padStart(3, '0') + String(kart).padStart(5, '0')
+  } catch {
+    return null
+  }
+}
+
 export function kartNoBicimiMi(v: unknown): v is KartNoBicimi {
   return typeof v === 'string' && (KART_NO_BICIMLERI as readonly string[]).includes(v)
 }

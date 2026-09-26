@@ -96,14 +96,15 @@ function Rozet({ ton, children, title }: { ton: 'mavi' | 'turuncu' | 'gri'; chil
   )
 }
 
-export function KartlarClient({ canManage }: { canManage: boolean }) {
+export function KartlarClient({ canManage, baslangicKartNo }: { canManage: boolean; baslangicKartNo?: string }) {
   const [durum, setDurum] = useState<'AKTIF' | 'PASIF' | 'TUMU'>('AKTIF')
   const [arama, setArama] = useState('')
   const [q, setQ] = useState('')
   const [veri, setVeri] = useState<Veri | null>(null)
   const [hata, setHata] = useState<string | null>(null)
   const [yukleniyor, setYukleniyor] = useState(true)
-  const [tanimlaAcik, setTanimlaAcik] = useState(false)
+  // Geçiş Kayıtları › "Personele bağla" → ?kartNo=118-63577 ile gelinirse pencere kart no dolu açılır.
+  const [tanimlaAcik, setTanimlaAcik] = useState(canManage && !!baslangicKartNo)
   const [pasifle, setPasifle] = useState<Satir | null>(null)
   const [gecmisId, setGecmisId] = useState<string | null>(null)
   const [farkAcik, setFarkAcik] = useState(false)
@@ -279,7 +280,7 @@ export function KartlarClient({ canManage }: { canManage: boolean }) {
         </table>
       </div>
 
-      {canManage && <TanimlaDialog acik={tanimlaAcik} kapat={() => setTanimlaAcik(false)} bitti={yukle} />}
+      {canManage && <TanimlaDialog acik={tanimlaAcik} kapat={() => setTanimlaAcik(false)} bitti={yukle} ilkKartNo={baslangicKartNo} />}
       {canManage && <PasifleDialog kart={pasifle} kapat={() => setPasifle(null)} bitti={yukle} />}
       <GecmisDialog id={gecmisId} kapat={() => setGecmisId(null)} />
       <FarkDialog acik={farkAcik} kapat={() => setFarkAcik(false)} cihazlar={m?.cihazlar ?? []} zaman={m?.zaman ?? null} />
@@ -304,11 +305,11 @@ function OzetKart({ ikon, baslik, deger, ton, alt }: { ikon: React.ReactNode; ba
 
 // ── Kart tanımla ─────────────────────────────────────────────────────────────
 
-function TanimlaDialog({ acik, kapat, bitti }: { acik: boolean; kapat: () => void; bitti: () => void }) {
+function TanimlaDialog({ acik, kapat, bitti, ilkKartNo }: { acik: boolean; kapat: () => void; bitti: () => void; ilkKartNo?: string }) {
   const [arama, setArama] = useState('')
   const [adaylar, setAdaylar] = useState<Aday[]>([])
   const [secili, setSecili] = useState<Aday | null>(null)
-  const [kartNo, setKartNo] = useState('')
+  const [kartNo, setKartNo] = useState(ilkKartNo ?? '')
   const [hata, setHata] = useState<string | null>(null)
   const [kaydediliyor, setKaydediliyor] = useState(false)
 

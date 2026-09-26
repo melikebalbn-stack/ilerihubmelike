@@ -11873,7 +11873,7 @@ model IproProductionLog {
   ifsHata               String?
   createdAt             DateTime            @default(now())
 
-  hurdaKayitlari        IproHurdaKaydi[]
+  hurdaKayitlari IproHurdaKaydi[]
 
   // MAS ayna idempotency: aynı MAS üretim+iş emri+operasyon iki kez yazılmasın.
   // Nullable alanlar → non-MAS (kiosk) kayıtlar NULL kalır, Postgres NULL'ları unique saymaz (çakışmaz).
@@ -15632,22 +15632,28 @@ enum PdksGunDurum {
 // Geçiş kontrol paneli. Kimlik bilgisi DB'de TUTULMAZ: envOnek=PDKS_CIHAZ_HIK_ANA_1 →
 // process.env.PDKS_CIHAZ_HIK_ANA_1_USER / _PASS.
 model PdksCihaz {
-  id           String    @id @default(cuid())
-  kod          String    @unique // HIK-ANA-1, GV-AS210 (arşiv)
-  ad           String
-  marka        String // HIKVISION | GEOVISION
-  model        String // DS-K2604T
-  host         String // "10.x.x.x" veya "10.x.x.x:80" — şema yok, http varsayılır
-  envOnek      String    @unique
-  seriNo       String?
-  firmware     String?
-  aktif        Boolean   @default(true)
+  id            String    @id @default(cuid())
+  kod           String    @unique // HIK-ANA-1, GV-AS210 (arşiv)
+  ad            String
+  marka         String // HIKVISION | GEOVISION
+  model         String // DS-K2604T
+  host          String // "10.x.x.x" veya "10.x.x.x:80" — şema yok, http varsayılır
+  envOnek       String    @unique
+  seriNo        String?
+  firmware      String?
+  aktif         Boolean   @default(true)
   // Cihaz serialNo'su sıfırlanırsa (fabrika reset / firmware) dönem artar; eski olaylar ezilmez.
-  seriDonem    Int       @default(1)
-  sonSeriNo    Int? // boşluk doldurma imleci: kesintisiz alınan son serialNo
-  sonGorulmeAt DateTime?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  seriDonem     Int       @default(1)
+  sonSeriNo     Int? // boşluk doldurma imleci: kesintisiz alınan son serialNo
+  sonGorulmeAt  DateTime?
+  // Faz 3 — cihaz sağlığı. saatSapmaSn = panel saati − sunucu saati (sn); |x| > 60 → uyarı.
+  // Push olaylarında (olay zamanı − alınma zamanı) ve periyodik /ISAPI/System/time ile ölçülür.
+  saatSapmaSn   Int?
+  saatKontrolAt DateTime?
+  sonPushAt     DateTime? // son kimliği doğrulanmış push
+  sonPollAt     DateTime? // son başarılı AcsEvent sorgusu
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   kapilar       PdksKapi[]
   gecisler      PdksGecis[]
@@ -15762,6 +15768,11 @@ model PdksGecis {
   kaynak         PdksGecisKaynak
   ham            Json
   alindiAt       DateTime        @default(now())
+  // Faz 3 — "geçti" sensör olayı → bağlandığı kart okutma olayı (aynı kapı, son N sn).
+  // Kart olayı DEĞİŞTİRİLEMEZ (trigger) — bağ sensör satırında durur.
+  bagliGecisId   String?
+  bagliGecis     PdksGecis?      @relation("GecisSensorBag", fields: [bagliGecisId], references: [id], onDelete: Restrict)
+  sensorOlaylari PdksGecis[]     @relation("GecisSensorBag")
 
   puantajIlkGiris PdksPuantajGun[] @relation("PuantajIlkGiris")
   puantajSonCikis PdksPuantajGun[] @relation("PuantajSonCikis")
@@ -15769,6 +15780,8 @@ model PdksGecis {
   @@index([personnelId, olayZamani])
   @@index([olayZamani])
   @@index([cihazId, seriDonem, seriNo])
+  @@index([bagliGecisId])
+  @@index([olayTipi, olayZamani])
   @@map("pdks_gecis")
 }
 

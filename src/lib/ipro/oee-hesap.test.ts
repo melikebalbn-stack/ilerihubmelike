@@ -3,6 +3,7 @@ import {
   planliSaniyeHesapla,
   oeeBilesenleri,
   oeeHesaplanabilir,
+  iyiAdetHesapla,
   type VardiyaSaat,
 } from './oee-hesap'
 import type { IproTatilTip } from './takvim-util'
@@ -132,6 +133,32 @@ describe('planliSaniyeHesapla — vardiya+tatil kesişimi (TZ UTC+3)', () => {
       [{ basla: new Date('2026-08-10T15:00:00Z'), bitis: new Date('2026-08-10T15:30:00Z') }], // 18:00 yerel — vardiya dışı
     )
     expect(r).toBe(36000)
+  })
+})
+
+describe('iyiAdetHesapla + quality — hurda düşümü (0–1 garantisi)', () => {
+  const q = (uretilen: number, scrap: number) => {
+    const iyi = iyiAdetHesapla(uretilen, scrap)
+    return oeeBilesenleri({ planliSaniye: 1000, durusSaniye: 0, uretilenAdet: uretilen, iyiAdet: iyi, idealSaniyeAdet: 1, cakismaVar: false }).quality
+  }
+  it('hurdasız → quality 1', () => {
+    expect(iyiAdetHesapla(100, 0)).toBe(100)
+    expect(q(100, 0)).toBe(1)
+  })
+  it('tüm adet hurda → quality 0', () => {
+    expect(iyiAdetHesapla(100, 100)).toBe(0)
+    expect(q(100, 100)).toBe(0)
+  })
+  it('kısmi hurda → 0–1 arası', () => {
+    expect(iyiAdetHesapla(100, 30)).toBe(70)
+    expect(q(100, 30)).toBeCloseTo(0.7, 5)
+  })
+  it('hurda > üretilen (bozuk veri) → iyi 0, quality 0 (asla negatif/>1)', () => {
+    expect(iyiAdetHesapla(100, 150)).toBe(0)
+    expect(q(100, 150)).toBe(0)
+  })
+  it('uretilen 0 → quality null (bölme yok)', () => {
+    expect(q(0, 0)).toBeNull()
   })
 })
 

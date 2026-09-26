@@ -6,6 +6,7 @@ import {
   acikOperatorler,
   acikDuruslar,
   acikDurusTezgahKodlari,
+  rejectByMasIds,
   type MasUretimSatiri,
 } from '@/lib/mas/uretim'
 import { isEmirineGrupla, employeeNoToSicilNo, uretimAdedi, type MasUretimGirdi } from './uretim-mapper'
@@ -32,6 +33,9 @@ export interface MasAynaOzet {
   kapatilan: number
   durusAcilan: number
   durusKapatilan: number
+  hurdaOkunan: number // MAS'tan çekilen reject satırı (hedef loglar için)
+  hurdaYazilan: number // IproHurdaKaydi upsert (yeni/güncel)
+  hurdaLogGuncellenen: number // qtyScrap güncellenen log sayısı
   eslesmeyenDurusSebepleri: string[]
   atlanan: { sebep: string; anahtar: string; detay: string }[]
 }
@@ -74,7 +78,8 @@ export async function runMasAyna(opts: { dryRun?: boolean; limit?: number | null
 
   const ozet: MasAynaOzet = {
     dryRun, acikOkunan: acikSatir.length, acikUygun: 0, acilan: 0, guncellenen: 0, mukerrer: 0,
-    kapatilan: 0, durusAcilan: 0, durusKapatilan: 0, eslesmeyenDurusSebepleri: [], atlanan: [],
+    kapatilan: 0, durusAcilan: 0, durusKapatilan: 0, hurdaOkunan: 0, hurdaYazilan: 0, hurdaLogGuncellenen: 0,
+    eslesmeyenDurusSebepleri: [], atlanan: [],
   }
 
   // Grup anahtarı → ilk satır meta (başlangıç, detayId + IFS alanları) — mapper bunları taşımaz.
@@ -346,6 +351,58 @@ export async function runMasAyna(opts: { dryRun?: boolean; limit?: number | null
     if (!dryRun) await prisma.iproMachineDowntime.update({ where: { id: md.id }, data: { bitis: simdi } })
   }
   } // durusDahil
+
+  // ── (d) HURDA → IproHurdaKaydi (MAS Production.ProductionReject aynası) ──
+  // Hedef: MAS kaynaklı, AÇIK veya son 48 saatte KAPANMIŞ loglar. reject idempotent (masRejectId UNIQUE);
+  // zaman masTarih'ten geçer. log.qtyScrap = Σ adet (rework HARİÇ). ifsScrapYazildi'ye DOKUNULMAZ, IFS'e yazılmaz.
+  const hurdaHedef = await prisma.iproProductionLog.findMany({
+    where: {
+      kaynak: KAYNAK,
+      masProductionMasterId: { not: null },
+      OR: [{ durum: 'ACIK' }, { durum: 'KAPALI', bitirildiAt: { gte: new Date(simdi.getTime() - 48 * 3600_000) } }],
+    },
+    select: { id: true, masProductionMasterId: true, durum: true },
+  })
+  const logByMasId = new Map<number, { id: string; durum: string }>()
+  for (const l of hurdaHedef) if (l.masProductionMasterId != null) logByMasId.set(l.masProductionMasterId, { id: l.id, durum: l.durum })
+  const hurdaMasIds = [...logByMasId.keys()]
+  if (hurdaMasIds.length) {
+    const rejectler = await rejectByMasIds(hurdaMasIds) // MAS okuma (dryRun'da da okunur, yazılmaz)
+    ozet.hurdaOkunan = rejectler.length
+    const etkilenenLog = new Set<string>()
+    if (!dryRun) {
+      for (const rj of rejectler) {
+        const log = logByMasId.get(rj.masId)
+        if (!log) continue
+        const adet = Math.round(rj.adet)
+        try {
+          await prisma.iproHurdaKaydi.upsert({
+            where: { masRejectId: rj.rejectId },
+            update: { adet, sebepKod: rj.sebepKod, sebepAd: rj.sebepAd, isRework: !!rj.isRework, zaman: rj.zaman ?? simdi, productionLogId: log.id },
+            create: { productionLogId: log.id, masRejectId: rj.rejectId, sebepKod: rj.sebepKod, sebepAd: rj.sebepAd, adet, isRework: !!rj.isRework, zaman: rj.zaman ?? simdi, kaynak: KAYNAK },
+          })
+          ozet.hurdaYazilan++
+          etkilenenLog.add(log.id)
+        } catch (e) {
+          ozet.atlanan.push({ sebep: 'hurda_yazma_hatasi', anahtar: `reject:${rj.rejectId}`, detay: (e as Error)?.message?.slice(0, 120) ?? '?' })
+        }
+      }
+      // Etkilenen loglarda qtyScrap = Σ adet (rework hariç); KAPALI ise OEE (quality) yeniden hesapla.
+      for (const logId of etkilenenLog) {
+        try {
+          const agg = await prisma.iproHurdaKaydi.aggregate({ where: { productionLogId: logId, isRework: false }, _sum: { adet: true } })
+          await prisma.iproProductionLog.update({ where: { id: logId }, data: { qtyScrap: agg._sum.adet ?? 0 } })
+          ozet.hurdaLogGuncellenen++
+          const durum = [...logByMasId.values()].find((v) => v.id === logId)?.durum
+          if (durum === 'KAPALI') {
+            try { await oeeKaydiHesaplaVeYaz(prisma, logId) } catch { /* OEE hatası ayna'yı bloklamasın */ }
+          }
+        } catch (e) {
+          ozet.atlanan.push({ sebep: 'hurda_scrap_guncelleme_hatasi', anahtar: `log:${logId}`, detay: (e as Error)?.message?.slice(0, 120) ?? '?' })
+        }
+      }
+    }
+  }
 
   return ozet
 }

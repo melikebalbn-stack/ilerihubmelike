@@ -108,6 +108,15 @@ export interface OeeBilesen {
  * PERF_IFS: performance IFS planlı çevrimden (ölçülen güvenilir ideal yerine) hesaplandı;
  * formül aynı, yalnız kaynak damgası farklı. idealKaynak yoksa TAM (geriye dönük uyum).
  */
+/**
+ * İyi (kaliteli) adet = ölçülen GROSS üretim − hurda (rework hariç), 0 altına düşmez.
+ * quality = iyi/uretilen bu sayede DAİMA 0–1 kalır (qtyComplete/IFS raporu KULLANILMAZ).
+ * SAF — kapalı yol (oeeKaydiHesaplaVeYaz) buradan çağırır; canlı yolda quality yok (null).
+ */
+export function iyiAdetHesapla(uretilenAdet: number, qtyScrap: number): number {
+  return Math.max(0, uretilenAdet - qtyScrap)
+}
+
 export function oeeBilesenleri(g: OeeGirdi): OeeBilesen {
   const calisma = g.planliSaniye - g.durusSaniye
   const availability = g.planliSaniye > 0 ? calisma / g.planliSaniye : null
@@ -343,10 +352,11 @@ export async function oeeKaydiHesaplaVeYaz(prisma: PrismaClient, productionLogId
 
   // 3) durusSaniye · 4) miktarlar · 5) çakışma
   const durusSaniye = await durusSaniyeHesapla(prisma, log.tezgahId, bas, bit, molaPencereler)
-  // uretilenAdet: log.uretimAdet (sinyalli→PLC delta, sinyalsiz MAS→ayna MAS adedini log'a yazar) ??
-  // fallback qtyComplete+qtyScrap. Ayrı 'masAdedi' parametresine gerek yok — kaynak log'da.
+  // uretilenAdet: log.uretimAdet GROSS'tur (sinyalli→PLC absolute×CounterMultiplier, sinyalsiz MAS→MAS Amount;
+  // ikisi de hurda DAHİL). Fallback (uretimAdet null) qtyComplete+qtyScrap. iyi = uretilen − hurda (0 altına
+  // düşmez); qtyComplete quality'de KULLANILMAZ (IFS raporu ≠ ölçülen üretim → quality>1 yapıyordu).
   const uretilenAdet = log.uretimAdet ?? log.qtyComplete + log.qtyScrap
-  const iyiAdet = log.qtyComplete
+  const iyiAdet = iyiAdetHesapla(uretilenAdet, log.qtyScrap)
   const cakismaVar = await cakismaVarMi(prisma, log.tezgahId, log.id, bas, bit)
 
   // 6) bileşenler · 7) vardiya etiketi

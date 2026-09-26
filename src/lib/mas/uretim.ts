@@ -128,6 +128,47 @@ export async function uretimlerByMasIds(ids: number[]): Promise<MasUretimSatiri[
   return out
 }
 
+export interface MasRejectSatiri {
+  rejectId: number
+  masId: number // ProductionDetail.ProductionMasterId = IPRO masProductionMasterId
+  sebepKod: string | null
+  sebepAd: string | null
+  adet: number
+  zaman: Date | null // RecordDateTime (masTarih ile normalize)
+  isRework: boolean
+}
+
+/**
+ * Belirli ProductionMaster.Id'ler için hurda/red kayıtları (Production.ProductionReject).
+ * Zincir: ProductionReject → ProductionDetail (ProductionMasterId) ⋈ Loss.Reject (Code/Name).
+ * SALT OKUMA; IN 500'lük batch. RecordDateTime masTarih ile doğru UTC'ye çevrilir.
+ */
+export async function rejectByMasIds(ids: number[]): Promise<MasRejectSatiri[]> {
+  const uniq = [...new Set(ids)].filter((n) => Number.isFinite(n))
+  if (uniq.length === 0) return []
+  const pool = await masPool()
+  const out: MasRejectSatiri[] = []
+  for (let i = 0; i < uniq.length; i += 500) {
+    const dilim = uniq.slice(i, i + 500)
+    const rq = pool.request()
+    const params: string[] = []
+    dilim.forEach((id, j) => {
+      rq.input(`id${j}`, sql.Int, id)
+      params.push(`@id${j}`)
+    })
+    const res = await rq.query<MasRejectSatiri>(
+      `SELECT r.Id AS rejectId, pd.ProductionMasterId AS masId, lr.Code AS sebepKod, lr.Name AS sebepAd, ` +
+        `CAST(r.Amount AS float) AS adet, r.RecordDateTime AS zaman, r.IsRework AS isRework ` +
+        `FROM Production.ProductionReject r ` +
+        `JOIN Production.ProductionDetail pd ON pd.Id = r.ProductionDetailId ` +
+        `LEFT JOIN Loss.Reject lr ON lr.Id = r.RejectId ` +
+        `WHERE r.Active = 1 AND pd.ProductionMasterId IN (${params.join(',')})`,
+    )
+    out.push(...res.recordset.map((r) => ({ ...r, zaman: masTarih(r.zaman) })))
+  }
+  return out
+}
+
 /**
  * MAS'ta ŞU AN açık duruşu olan tezgah kodları (PENCERE YOK — kapanış tespiti için).
  * acikDuruslar() son N saatle sınırlıyken bu, tüm açık duruşların tezgah kümesini verir; IPRO'da

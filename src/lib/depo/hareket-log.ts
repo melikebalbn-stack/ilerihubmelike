@@ -8,7 +8,15 @@
  */
 import { prisma } from '@/lib/prisma'
 
-export type DepoOlay = 'TOPLAMA_CIKIS' | 'STOK_TASIMA' | 'ETIKET_BASMA'
+export type DepoOlay =
+  | 'TOPLAMA_CIKIS'
+  | 'STOK_TASIMA'
+  | 'ETIKET_BASMA'
+  // Malzeme talebi (sarf çıkışı): orderNo = IFS talep no, releaseNo/lineItemNo = satır; OLUSTUR'da partNo '-'.
+  | 'MALZEME_TALEBI_OLUSTUR'
+  | 'MALZEME_TALEBI_REZERV'
+  | 'MALZEME_TALEBI_CIKAR'
+  | 'MALZEME_TALEBI_TUKET'
 
 export interface DepoHareketGirdi {
   olay: DepoOlay

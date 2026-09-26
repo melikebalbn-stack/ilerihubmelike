@@ -47,6 +47,7 @@ export interface StokBilgisiSatir {
   konfigurasyon: string
   kosulKodu: string
   muhSeviye: string
+  waivDevRejNo: string
   aktiviteSira: number
   kullanilabilirlikKontrolu: string
   proje: string
@@ -98,7 +99,7 @@ const SET = 'InventoryPartInStockHandling.svc/InventoryPartInStockSet'
 const SELECT = [
   'PartNo', 'PartNoDesc', 'QtyOnhand', 'QtyReserved', 'AvailableQty', 'UoM', 'Warehouse', 'LocationNo',
   'LocationDescription', 'LotBatchNo', 'SerialNo', 'HandlingUnitId', 'ConfigurationId', 'ConditionCode',
-  'EngChgLevel', 'ActivitySeq', 'AvailabilityControlId', 'ProjectId', 'InvPartBarcodeExist',
+  'EngChgLevel', 'WaivDevRejNo', 'ActivitySeq', 'AvailabilityControlId', 'ProjectId', 'InvPartBarcodeExist',
 ].join(',')
 
 interface RawStok {
@@ -117,6 +118,7 @@ interface RawStok {
   ConfigurationId?: string | null
   ConditionCode?: string | null
   EngChgLevel?: string | null
+  WaivDevRejNo?: string | null
   ActivitySeq?: number | null
   AvailabilityControlId?: string | null
   ProjectId?: string | null
@@ -160,6 +162,7 @@ function satira(r: RawStok): StokBilgisiSatir {
     konfigurasyon: str(r.ConfigurationId),
     kosulKodu: str(r.ConditionCode),
     muhSeviye: str(r.EngChgLevel),
+    waivDevRejNo: str(r.WaivDevRejNo) || '*',
     aktiviteSira: num(r.ActivitySeq),
     kullanilabilirlikKontrolu: str(r.AvailabilityControlId),
     proje: str(r.ProjectId),

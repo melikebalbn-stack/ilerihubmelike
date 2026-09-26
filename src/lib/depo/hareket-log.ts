@@ -29,6 +29,10 @@ export type DepoOlay =
   | 'TOPLU_TASIMA_SIL'
   | 'TOPLU_TASIMA_TRANSFER'
   | 'TOPLU_TASIMA_IPTAL'
+  // Transfer talebi (TRDST taşıma talebi): orderNo = talep no (HeaderNo); detay.taskId/lineNo = taşıma görevi satırı.
+  | 'TRANSFER_TALEBI_BAGLA'
+  | 'TRANSFER_TALEBI_KALDIR'
+  | 'TRANSFER_TALEBI_TRANSFER'
 
 export interface DepoHareketGirdi {
   olay: DepoOlay

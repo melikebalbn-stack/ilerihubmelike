@@ -249,6 +249,13 @@ export function TezgahDetayModal({
   const aktifSure = gecenSureBicim(aktif?.baslatildiAt)
   const durusSure = detay?.durus ? sureBicim(Date.now() - new Date(detay.durus.baslangicAt).getTime()) : null
   const sd = detay?.sureDagilimi
+  // Gece yarısını aşan açık iş: "Bugün süre dağılımı" yalnız 00:00 sonrasını kapsar → not düşülür.
+  const gunBasi = new Date()
+  gunBasi.setHours(0, 0, 0, 0)
+  const isGeceAsan = !!aktif?.baslatildiAt && new Date(aktif.baslatildiAt).getTime() < gunBasi.getTime()
+  const isBaslangicSaat = aktif?.baslatildiAt
+    ? new Date(aktif.baslatildiAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
+    : ''
   const toplamDurusDk =
     detay?.bugunDuruslar.reduce((a, d) => {
       const end = d.bitisAt ? new Date(d.bitisAt).getTime() : Date.now()
@@ -545,6 +552,9 @@ export function TezgahDetayModal({
                   <Lej renk="bg-red-500" e="Duruş" v={dkBicim(sd.durusDk)} />
                   <Lej renk="bg-slate-300" e="Boşta" v={dkBicim(sd.bostaDk)} />
                 </div>
+                {isGeceAsan ? (
+                  <p className="mt-1 text-[11px] text-slate-400">bugün 00:00’dan itibaren — iş {isBaslangicSaat}’te başladı</p>
+                ) : null}
               </section>
             )}
 

@@ -628,6 +628,13 @@ function DetayDialog({ tezgahId, canliOee, esik, onClose }: { tezgahId: string |
   const aktifSure = aktif?.baslatildiAt ? sureBicim(Date.now() - new Date(aktif.baslatildiAt).getTime()) : '—'
   const durusSure = detay?.durus ? sureBicim(Date.now() - new Date(detay.durus.baslangicAt).getTime()) : null
   const sd = detay?.sureDagilimi
+  // Gece yarısını aşan açık iş: "Bugün süre dağılımı" yalnız 00:00 sonrasını kapsar → not düşülür.
+  const gunBasi = new Date()
+  gunBasi.setHours(0, 0, 0, 0)
+  const isGeceAsan = !!aktif?.baslatildiAt && new Date(aktif.baslatildiAt).getTime() < gunBasi.getTime()
+  const isBaslangicSaat = aktif?.baslatildiAt
+    ? new Date(aktif.baslatildiAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
+    : ''
   const toplamDurusDk =
     detay?.bugunDuruslar.reduce((a, d) => {
       const end = d.bitisAt ? new Date(d.bitisAt).getTime() : Date.now()
@@ -776,6 +783,9 @@ function DetayDialog({ tezgahId, canliOee, esik, onClose }: { tezgahId: string |
                   <Lej renk="bg-red-500" e="Duruş" v={dkBicim(sd.durusDk)} />
                   <Lej renk="bg-slate-300" e="Boşta" v={dkBicim(sd.bostaDk)} />
                 </div>
+                {isGeceAsan ? (
+                  <p className="mt-1 text-[11px] text-slate-400">bugün 00:00’dan itibaren — iş {isBaslangicSaat}’te başladı</p>
+                ) : null}
               </section>
             )}
 
@@ -791,7 +801,7 @@ function DetayDialog({ tezgahId, canliOee, esik, onClose }: { tezgahId: string |
                     <Halka deger={null} boyut={72} kalinlik={8} etiket="Kalite" />
                   </div>
                   <div className="mt-2 space-y-1 rounded-lg bg-slate-50 px-3 py-2 text-[11px] text-slate-500">
-                    <p>• Üretilen (canlı): <b>{canliOee.uretilen}</b> adet · planlı süre {Math.round(canliOee.planliSaniye / 60)}dk · duruş {Math.round(canliOee.durusSaniye / 60)}dk</p>
+                    <p>• Üretilen (canlı): <b>{canliOee.uretilen}</b> adet · planlı süre {Math.round(canliOee.planliSaniye / 60)}dk · bu iş boyunca duruş {Math.round(canliOee.durusSaniye / 60)}dk</p>
                     <p>• <b>Kalite</b> açık işte hesaplanmaz — iş bitince; <b>tam OEE iş kapanınca</b> motordan.</p>
                     {canliOee.hesapKaynagi === 'COKLU_IS' ? (
                       <p>• <b>Performans</b> hesaplanmadı — tezgahta <b>çoklu açık iş</b> var, üretim tek işe atfedilemez.</p>

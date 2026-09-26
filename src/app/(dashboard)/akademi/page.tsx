@@ -4,12 +4,17 @@ import { resolveAkademiUserId } from "@/lib/akademi-user";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import Link from "next/link";
-import { ChevronRight, ArrowRight, Factory } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { StatCard } from "@/components/akademi/dashboard/StatCard";
-import { CourseListItem } from "@/components/akademi/dashboard/CourseListItem";
+import { ProgressRing } from "@/components/akademi/dashboard/ProgressRing";
+import { CourseCard } from "@/components/akademi/dashboard/CourseCard";
+import { SplitBadge } from "@/components/akademi/SplitBadge";
 import { MyPackagesWidget } from "@/components/akademi/MyPackagesWidget";
 import { resolveFirstName } from "@/lib/akademi-helpers";
-import type { CourseListItem as CourseListItemType } from "@/types/akademi";
+import {
+  buildCourseCardModel,
+  type CourseCardInput,
+} from "@/lib/akademi/course-card-model";
 
 export default async function AkademiDashboardPage() {
   const session = await getServerSession(authOptions);
@@ -36,6 +41,9 @@ export default async function AkademiDashboardPage() {
     (c) => !c.isCompleted && c.progressPercent > 0
   ).length;
 
+  const now = new Date();
+  const cardModels = myCourses.map((c) => buildCourseCardModel(c, now));
+
   return (
     <div className="px-8 py-7 max-w-7xl mx-auto">
       <div className="mb-6 ak-animate-in">
@@ -50,57 +58,40 @@ export default async function AkademiDashboardPage() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 mb-6">
-        <StatCard
-          icon="bookOpen"
-          label="Atanan Eğitim"
-          value={assignedCount}
-          color="accent"
-          delayIndex={1}
+      {/* Üst satır: ilerleme halkası + 3 sayaç */}
+      <div className="grid grid-cols-1 lg:grid-cols-[1.2fr_1fr_1fr_1fr] gap-4 mb-6 ak-animate-in">
+        <ProgressRing
+          assigned={assignedCount}
+          completed={completedCount}
+          inProgress={inProgressCount}
         />
-        <StatCard
-          icon="award"
-          label="Tamamlanan"
-          value={completedCount}
-          color="green"
-          delayIndex={2}
-        />
-        <StatCard
-          icon="clock"
-          label="Devam Eden"
-          value={inProgressCount}
-          color="orange"
-          delayIndex={3}
-        />
+        <StatCard icon="bookOpen" label="Atanan Eğitim" value={assignedCount} color="accent" delayIndex={1} />
+        <StatCard icon="award" label="Tamamlanan" value={completedCount} color="green" delayIndex={2} />
+        <StatCard icon="clock" label="Devam Eden" value={inProgressCount} color="orange" delayIndex={3} />
       </div>
 
       {ifsAssignmentCount > 0 && (
-        <Link
-          href="/ifs/odevler"
-          className="ak-card-static p-4 mb-6 flex items-center gap-3 ak-animate-in"
-          style={{ color: "var(--ak-text-primary)" }}
-        >
-          <Factory
-            className="w-5 h-5 shrink-0"
-            style={{ color: "var(--ak-accent)" }}
-          />
-          <div className="flex-1 min-w-0">
-            <div className="text-sm font-semibold">
+        <div className="ak-card-static p-4 mb-6 flex items-center justify-between gap-3 ak-animate-in">
+          <div className="min-w-0">
+            <div
+              className="text-sm font-semibold"
+              style={{ color: "var(--ak-text-primary)" }}
+            >
               IFS geçiş eğitimleriniz IFS Ödevleri sayfasında
             </div>
-            <div
-              className="text-xs"
-              style={{ color: "var(--ak-text-secondary)" }}
-            >
+            <div className="text-xs" style={{ color: "var(--ak-text-secondary)" }}>
               {ifsAssignmentCount} IFS eğitimi size atanmış — ilerleme ve
               görevler orada takip ediliyor.
             </div>
           </div>
-          <ArrowRight
-            className="w-4 h-4 shrink-0"
-            style={{ color: "var(--ak-accent)" }}
+          <SplitBadge
+            color="blue"
+            left={`${ifsAssignmentCount} IFS eğitimi`}
+            right="Ödevlere git"
+            href="/ifs/odevler"
+            className="shrink-0"
           />
-        </Link>
+        </div>
       )}
 
       <MyPackagesWidget />
@@ -123,7 +114,7 @@ export default async function AkademiDashboardPage() {
           </Link>
         </div>
 
-        {myCourses.length === 0 ? (
+        {cardModels.length === 0 ? (
           <div
             className="ak-card-static p-6 text-center text-sm"
             style={{ color: "var(--ak-text-tertiary)" }}
@@ -131,13 +122,9 @@ export default async function AkademiDashboardPage() {
             Henüz sana atanmış bir eğitim yok. Yöneticinle iletişime geç.
           </div>
         ) : (
-          <div className="space-y-2.5">
-            {myCourses.slice(0, 5).map((c, i) => (
-              <CourseListItem
-                key={c.id}
-                course={c}
-                delayIndex={Math.min(i + 1, 8)}
-              />
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-[18px]">
+            {cardModels.map((m) => (
+              <CourseCard key={m.id} model={m} />
             ))}
           </div>
         )}
@@ -149,55 +136,58 @@ export default async function AkademiDashboardPage() {
 async function fetchUser(userId: string) {
   return prisma.user.findUnique({
     where: { id: userId },
-    select: {
-      id: true,
-      name: true,
-      firstName: true,
-      lastName: true,
-      email: true,
-    },
+    select: { id: true, name: true, firstName: true, lastName: true, email: true },
   });
 }
 
-// IFS-6: IFS kursları akademi panelinde listelenmez — kişinin IFS ataması
-// varsa yukarıdaki yönlendirme kartı /ifs/odevler'e götürür. Kayıtlara
-// (atama/ilerleme) dokunulmaz; yalnız bu listeden çıkar. courses/my ile aynı.
+// IFS-6: IFS kursları akademi panelinde listelenmez; kişinin IFS ataması varsa
+// yönlendirme bandı /ifs/odevler'e götürür. Kayıtlara dokunulmaz.
 async function countIfsAssignments(userId: string): Promise<number> {
   return prisma.userCourseAssignment.count({
     where: { userId, assignment: { course: { isIfs: true, isActive: true } } },
   });
 }
 
-async function fetchMyCourses(userId: string): Promise<CourseListItemType[]> {
+async function fetchMyCourses(userId: string): Promise<CourseCardInput[]> {
   const courses = await prisma.course.findMany({
     where: {
       isActive: true,
       isIfs: false,
-      directAssignments: {
-        some: { userAssignments: { some: { userId } } },
-      },
+      directAssignments: { some: { userAssignments: { some: { userId } } } },
     },
     include: {
-      _count: { select: { contents: { where: { isActive: true } } } },
+      contents: { where: { isActive: true }, select: { type: true } },
+      exams: { where: { isActive: true }, select: { _count: { select: { questions: true } } } },
       progress: { where: { userId }, take: 1 },
+      directAssignments: {
+        where: { userAssignments: { some: { userId } } },
+        select: {
+          userAssignments: {
+            where: { userId },
+            select: { dueDate: true, assignedAt: true },
+            take: 1,
+          },
+        },
+      },
     },
     orderBy: { createdAt: "desc" },
   });
 
   return courses.map((c) => {
     const prog = c.progress[0];
+    const ua = c.directAssignments[0]?.userAssignments[0];
     return {
       id: c.id,
       title: c.title,
-      description: c.description,
       thumbnail: c.thumbnail,
       category: c.category,
-      difficulty: c.difficulty,
       duration: c.duration,
-      contentCount: c._count.contents,
+      videoCount: c.contents.filter((ct) => ct.type === "VIDEO").length,
+      examQuestionCount: c.exams.reduce((s, e) => s + e._count.questions, 0),
       progressPercent: prog?.percentage ?? 0,
       isCompleted: Boolean(prog?.completedAt),
-      isAssigned: true,
+      dueDate: ua?.dueDate ?? null,
+      assignedAt: ua?.assignedAt ?? null,
     };
   });
 }

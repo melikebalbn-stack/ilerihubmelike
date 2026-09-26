@@ -23,6 +23,12 @@ export type DepoOlay =
   | 'HU_CIKAR'
   | 'HU_TASI'
   | 'HU_DEGISTIR'
+  // Toplu taşıma (TRDST fişi): orderNo = fiş no (TransferId); OLUSTUR/IPTAL'de partNo '-'.
+  | 'TOPLU_TASIMA_OLUSTUR'
+  | 'TOPLU_TASIMA_EKLE'
+  | 'TOPLU_TASIMA_SIL'
+  | 'TOPLU_TASIMA_TRANSFER'
+  | 'TOPLU_TASIMA_IPTAL'
 
 export interface DepoHareketGirdi {
   olay: DepoOlay

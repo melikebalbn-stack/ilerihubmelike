@@ -31,6 +31,12 @@ interface Props {
   suffix?: string;
   color: "accent" | "green" | "orange" | "purple" | "teal" | "red";
   delayIndex?: number;
+  /**
+   * compact: ana sayfa dışındaki KPI satırları için (courses/exams). İkon kutusu
+   * YOK, sayı + etiket tek satırda yan yana → yükseklik ~yarıya iner. Padding ana
+   * sayfayla aynı (p-5). Ana sayfa bu prop'u geçmez, görünümü DEĞİŞMEZ.
+   */
+  compact?: boolean;
 }
 
 export function StatCard({
@@ -40,8 +46,30 @@ export function StatCard({
   suffix,
   color,
   delayIndex = 1,
+  compact = false,
 }: Props) {
   const Icon = ICON_MAP[icon];
+
+  if (compact) {
+    return (
+      <div className={`ak-card-static p-5 ak-animate-in ak-delay-${delayIndex}`}>
+        <div className="flex items-baseline justify-between gap-3">
+          <span
+            className="text-2xl font-bold leading-none"
+            style={{ color: `var(--ak-${color})` }}
+          >
+            <AnimatedNumber value={value} suffix={suffix} />
+          </span>
+          <span
+            className="text-sm text-right"
+            style={{ color: "var(--ak-text-secondary)" }}
+          >
+            {label}
+          </span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={`ak-card-static p-5 ak-animate-in ak-delay-${delayIndex}`}>

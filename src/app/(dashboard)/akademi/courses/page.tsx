@@ -81,10 +81,10 @@ export default function AkademiCoursesPage() {
 
       {/* KPI satırı */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6 ak-animate-in">
-        <StatCard icon="bookOpen" label="Toplam Eğitim" value={kpi.total} color="accent" delayIndex={1} />
-        <StatCard icon="clock" label="Devam Eden" value={kpi.inProgress} color="orange" delayIndex={2} />
-        <StatCard icon="award" label="Tamamlanan" value={kpi.completed} color="green" delayIndex={3} />
-        <StatCard icon="flame" label="Zorunlu (Bekleyen)" value={kpi.zorunluPending} color="red" delayIndex={4} />
+        <StatCard compact icon="bookOpen" label="Toplam Eğitim" value={kpi.total} color="accent" delayIndex={1} />
+        <StatCard compact icon="clock" label="Devam Eden" value={kpi.inProgress} color="orange" delayIndex={2} />
+        <StatCard compact icon="award" label="Tamamlanan" value={kpi.completed} color="green" delayIndex={3} />
+        <StatCard compact icon="flame" label="Zorunlu (Bekleyen)" value={kpi.zorunluPending} color="red" delayIndex={4} />
       </div>
 
       <CourseFilters

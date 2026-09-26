@@ -38,10 +38,10 @@ export default function UserExamsPage() {
 
       {!loading && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6 ak-animate-in">
-          <StatCard icon="clock" label="Bekleyen Sınav" value={kpi.pending} color="orange" delayIndex={1} />
-          <StatCard icon="award" label="Geçilen" value={kpi.passed} color="green" delayIndex={2} />
-          <StatCard icon="flame" label="Kalan" value={kpi.failed} color="red" delayIndex={3} />
-          <StatCard icon="trophy" label="Ortalama Puan" value={kpi.avgScore} suffix="%" color="accent" delayIndex={4} />
+          <StatCard compact icon="clock" label="Bekleyen Sınav" value={kpi.pending} color="orange" delayIndex={1} />
+          <StatCard compact icon="award" label="Geçilen" value={kpi.passed} color="green" delayIndex={2} />
+          <StatCard compact icon="flame" label="Kalan" value={kpi.failed} color="red" delayIndex={3} />
+          <StatCard compact icon="trophy" label="Ortalama Puan" value={kpi.avgScore} suffix="%" color="accent" delayIndex={4} />
         </div>
       )}
 

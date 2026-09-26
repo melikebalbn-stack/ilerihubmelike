@@ -49,8 +49,21 @@ export function SplitBadge({
   const label = ariaLabel ?? `${left} — ${right}`;
 
   if (download) {
+    // PDF indirme: DAİMA yeni sekme. target'sız düz <a href download> tıklamada
+    // MEVCUT sekmede gezinme başlatır; tarayıcı PDF'i yeni sekmeye/indirmeye
+    // yönlendirince özgün Hub sekmesi gezinme ortasında donar ve sayfa ilk
+    // `loading` render'ında (Yükleniyor…) asılı kalırdı. target=_blank +
+    // rel=noopener ile tıklama mevcut sekmeye HİÇ dokunmaz, loading/transition
+    // state tetiklenmez.
     return (
-      <a href={href} download aria-label={label} className={cls}>
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        download
+        aria-label={label}
+        className={cls}
+      >
         {inner}
       </a>
     );

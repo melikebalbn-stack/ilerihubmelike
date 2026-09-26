@@ -472,3 +472,55 @@ describe('durakId — KVKK regresyonu', () => {
     expect(Object.keys(FIRMA_GORUNUMU_SELECT).filter(k => /sikayetci/i.test(k))).toEqual([])
   })
 })
+
+// ----------------------------------------------------------------------------
+// Melih kararı (25.09.2026): şikâyetçi zorunluluğu KAYNAĞA bağlı.
+// PERSONEL → zorunlu · IV → opsiyonel (ama verilebilir).
+// ----------------------------------------------------------------------------
+describe('şikâyetçi zorunluluğu — kaynağa bağlı', () => {
+  it('🔴 kaynak=PERSONEL + şikâyetçi YOK → reddedilir, mesaj YOL GÖSTERİR', async () => {
+    await expect(
+      sikayetOlustur({ ...GIRDI, kaynak: 'PERSONEL' }),
+    ).rejects.toThrow(/şikâyetçiyi seçin/)
+
+    // Yol gösteriyor: ne yapılacağını söylüyor
+    await expect(
+      sikayetOlustur({ ...GIRDI, kaynak: 'PERSONEL' }),
+    ).rejects.toThrow(/kaynağı "İV" olarak işaretleyin/)
+
+    // Hiçbir yazma olmadı
+    expect(mocks.transaction).not.toHaveBeenCalled()
+  })
+
+  it('kaynak=PERSONEL + yalnız boşluk da YETMEZ', async () => {
+    await expect(
+      sikayetOlustur({ ...GIRDI, kaynak: 'PERSONEL', sikayetciPersonnelId: '   ' }),
+    ).rejects.toThrow(/şikâyetçiyi seçin/)
+    expect(mocks.transaction).not.toHaveBeenCalled()
+  })
+
+  it('kaynak=PERSONEL + şikâyetçi VAR → kabul', async () => {
+    const iz: string[] = []
+    const tx = txClientKur(iz)
+    await sikayetOlustur({ ...GIRDI, kaynak: 'PERSONEL', sikayetciPersonnelId: 'p1' })
+    const d = tx.servisSikayet.create.mock.calls[0][0].data
+    expect(d.kaynak).toBe('PERSONEL')
+    expect(d.sikayetciPersonnelId).toBe('p1')
+  })
+
+  it('kaynak=IV + şikâyetçi YOK → KABUL (İV gözlemi / isimsiz bildirim)', async () => {
+    const iz: string[] = []
+    const tx = txClientKur(iz)
+    await sikayetOlustur({ ...GIRDI, kaynak: 'IV' })
+    const d = tx.servisSikayet.create.mock.calls[0][0].data
+    expect(d.kaynak).toBe('IV')
+    expect(d.sikayetciPersonnelId).toBeNull()
+  })
+
+  it('kaynak=IV + şikâyetçi VAR → KABUL (İV ismi biliyorsa yazabilmeli)', async () => {
+    const iz: string[] = []
+    const tx = txClientKur(iz)
+    await sikayetOlustur({ ...GIRDI, kaynak: 'IV', sikayetciPersonnelId: 'p7' })
+    expect(tx.servisSikayet.create.mock.calls[0][0].data.sikayetciPersonnelId).toBe('p7')
+  })
+})

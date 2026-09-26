@@ -174,6 +174,20 @@ export async function sikayetOlustur(girdi: SikayetOlusturGirdisi) {
   if (!girdi.kaynak) {
     throw new SikayetError('Şikâyeti kimin bildirdiğini (kaynak) seçin.')
   }
+  // 🔴 Şikâyetçi zorunluluğu KAYNAĞA BAĞLI (Melih kararı, 25.09.2026):
+  //   PERSONEL → kişi şikâyeti KENDİSİ açmış, kimliği zaten biliniyor; boş
+  //     bırakılması veri kaybıdır ve madde 47'de "tekrar eden şikâyetçi"
+  //     kırılımını imkânsız kılar.
+  //   IV       → İV'nin kendi gözlemi ya da isimsiz bildirim olabilir;
+  //     zorunlu tutmak İV'yi isim UYDURMAYA iter. Opsiyonel, ama İV
+  //     telefonla gelen ismi biliyorsa YAZABİLİR.
+  // Şema değişmedi — alan nullable kalıyor, kural uygulama katmanında.
+  if (girdi.kaynak === 'PERSONEL' && !girdi.sikayetciPersonnelId?.trim()) {
+    throw new SikayetError(
+      'Çalışanın kendi bildirdiği şikâyetlerde şikâyetçiyi seçin. ' +
+        'Bildiren kişi belli değilse kaynağı "İV" olarak işaretleyin.',
+    )
+  }
 
   // Adım 1'deki doğrulayıcı — ikinci bir doğrulama YAZILMADI.
   const dogrulama = durumAlanlariniDogrula({ durum: 'ACIK' })
@@ -286,13 +300,7 @@ const ORTAK_SELECT = {
 export async function sikayetListesiGetir(filtre: SikayetFiltresi = {}) {
   return prisma.servisSikayet.findMany({
     where: sikayetWhereOlustur(filtre),
-    select: {
-      ...ORTAK_SELECT,
-      sikayetciPersonnelId: true,
-      sikayetci: { select: { id: true, sicilNo: true, adSoyad: true, bolum: true } },
-      sorumluId: true,
-      sorumlu: { select: { id: true, sicilNo: true, adSoyad: true, bolum: true } },
-    },
+    select: { ...IC_GORUNUM_SELECT },
     orderBy: [{ bildirimTarihi: 'desc' }, { no: 'desc' }],
   })
 }
@@ -314,6 +322,26 @@ export async function sikayetFirmaListesiGetir(filtre: SikayetFiltresi = {}) {
     where: sikayetWhereOlustur(filtre),
     select: { ...ORTAK_SELECT },
     orderBy: [{ bildirimTarihi: 'desc' }, { no: 'desc' }],
+  })
+}
+
+/** İç görünümün tekil kaydı — listeyle AYNI select, ayrı bir şekil yok. */
+const IC_GORUNUM_SELECT = {
+  ...ORTAK_SELECT,
+  sikayetciPersonnelId: true,
+  sikayetci: { select: { id: true, sicilNo: true, adSoyad: true, bolum: true } },
+  sorumluId: true,
+  sorumlu: { select: { id: true, sicilNo: true, adSoyad: true, bolum: true } },
+} as const
+
+/**
+ * TEKİL KAYIT — iç görünüm (İK/İdari İşler). Listeyle aynı select'i
+ * kullanır; tekil/çoğul arasında alan farkı olmaz.
+ */
+export async function sikayetDetayGetir(id: string) {
+  return prisma.servisSikayet.findUnique({
+    where: { id },
+    select: IC_GORUNUM_SELECT,
   })
 }
 

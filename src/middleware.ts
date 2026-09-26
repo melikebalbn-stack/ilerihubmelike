@@ -119,5 +119,9 @@ export const config = {
     // faturalar taşınınca eklendi.)
     '/yonetim/:path*',
     '/sistem-gelistirme/:path*',
+    // PDKS (2026-09, Faz 1): /ifs ile aynı gerekçe — oturumsuz istek kenarda 307 + callbackUrl.
+    // İzin (pdks.manage / pdks.view) sayfada. İleride eklenecek cihaz push ucu /api/pdks/isapi
+    // altındadır; /api matcher'da olmadığı için buradan ETKİLENMEZ.
+    '/pdks/:path*',
   ],
 };

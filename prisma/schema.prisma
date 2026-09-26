@@ -9531,8 +9531,14 @@ model Personnel {
   uygunsuzlukSorumluluklari     KaliteUygunsuzluk[]
 
   // Servis Yönetimi (FAZ 1/A) — ters ilişkiler (DB kolonu eklemez)
-  servisSoforKaydi               ServisSofor?
-  servisAtamalari                ServisPersonelAtama[]
+  servisSoforKaydi ServisSofor?
+  servisAtamalari  ServisPersonelAtama[]
+
+  // PDKS (Faz 1) — ters ilişkiler (DB kolonu eklemez)
+  pdksKartlar                    PdksKart[]
+  pdksGecisler                   PdksGecis[]
+  pdksPuantajGunleri             PdksPuantajGun[]
+  pdksVardiyalari                PdksPersonelVardiya[]
   servisSorumlulari              ServisSorumlusu[]
   servisDurumlari                ServisPersonelDurum[]
   // MASTER madde 30 — gönderilmiş liste snapshot'larındaki satırları (ters uç)
@@ -11912,6 +11918,11 @@ model IproVardiya {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
+  // PDKS puantajı vardiya tanımını buradan OKUR (ikinci vardiya tablosu yok) —
+  // ters ilişkiler, DB kolonu eklemez.
+  pdksPuantajGunleri PdksPuantajGun[]
+  pdksAtamalari      PdksPersonelVardiya[]
+
   @@map("ipro_vardiya")
 }
 
@@ -12652,6 +12663,9 @@ model BulkCardScanFailure {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  // PDKS: eksik okutmayı kapatan form — ters ilişki (DB kolonu eklemez)
+  pdksPuantajGunleri PdksPuantajGun[]
 
   @@index([personnelId])
   @@index([tarih])
@@ -15526,4 +15540,239 @@ model RaporCalistirma {
 
   @@index([sablonId, olusturma])
   @@map("rapor_calistirma")
+}
+
+// ============================================================
+// PDKS — Personel Devam Kontrol Sistemi (Faz 1: şema)
+// Donanım: Hikvision DS-K2604T (ISAPI). GeoVision GV-AS210 yalnız arşiv cihazı olarak
+// kayıtlı kalır (GV_IMPORT geçişleri). Plan: "PDKS Modülü — Tasarım Planı" §2.
+// Manuel SQL (migration.sql sonunda): pdks_gecis değişmezlik trigger'ı +
+// pdks_kart kısmi unique'leri (Prisma ifade edemez).
+// ============================================================
+
+enum PdksYon {
+  GIRIS
+  CIKIS
+}
+
+enum PdksKartDurum {
+  AKTIF
+  PASIF
+}
+
+enum PdksGecisKaynak {
+  PUSH // cihazın httpHosts bildirimi
+  POLL // AcsEvent boşluk doldurma sorgusu
+  GV_IMPORT // ASManager geçmiş log Excel'i
+}
+
+enum PdksGunDurum {
+  TAM
+  EKSIK_GIRIS
+  EKSIK_CIKIS
+  GELMEDI
+  TATIL
+  HAFTA_SONU
+  BEKLENMIYOR
+}
+
+// Geçiş kontrol paneli. Kimlik bilgisi DB'de TUTULMAZ: envOnek=PDKS_CIHAZ_HIK_ANA_1 →
+// process.env.PDKS_CIHAZ_HIK_ANA_1_USER / _PASS.
+model PdksCihaz {
+  id           String    @id @default(cuid())
+  kod          String    @unique // HIK-ANA-1, GV-AS210 (arşiv)
+  ad           String
+  marka        String // HIKVISION | GEOVISION
+  model        String // DS-K2604T
+  host         String // "10.x.x.x" veya "10.x.x.x:80" — şema yok, http varsayılır
+  envOnek      String    @unique
+  seriNo       String?
+  firmware     String?
+  aktif        Boolean   @default(true)
+  // Cihaz serialNo'su sıfırlanırsa (fabrika reset / firmware) dönem artar; eski olaylar ezilmez.
+  seriDonem    Int       @default(1)
+  sonSeriNo    Int? // boşluk doldurma imleci: kesintisiz alınan son serialNo
+  sonGorulmeAt DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  kapilar       PdksKapi[]
+  gecisler      PdksGecis[]
+  kartDurumlari PdksKartCihaz[]
+
+  @@map("pdks_cihaz")
+}
+
+model PdksKapi {
+  id      String    @id @default(cuid())
+  cihazId String
+  cihaz   PdksCihaz @relation(fields: [cihazId], references: [id], onDelete: Restrict)
+  kapiNo  Int // ISAPI doorNo (DS-K2604T: 1-4)
+  ad      String // "Turnike 1 - Giriş"
+  grup    String? // TURNIKE-1 — aynı fiziksel turnikenin iki yönü
+  aktif   Boolean   @default(true)
+
+  okuyucular PdksOkuyucu[]
+
+  @@unique([cihazId, kapiNo])
+  @@map("pdks_kapi")
+}
+
+model PdksOkuyucu {
+  id            String   @id @default(cuid())
+  kapiId        String
+  kapi          PdksKapi @relation(fields: [kapiId], references: [id], onDelete: Restrict)
+  okuyucuNo     Int // ISAPI cardReaderNo
+  yon           PdksYon
+  puantajaDahil Boolean  @default(true) // ileride iç kapılar puantaja girmesin
+  aktif         Boolean  @default(true)
+
+  gecisler PdksGecis[]
+
+  @@unique([kapiId, okuyucuNo])
+  @@map("pdks_okuyucu")
+}
+
+// Kart ↔ personel. Kart numarası DÖNÜŞÜMÜ Faz 0 kanıtına bağlı (GV ham → Hikvision ondalık);
+// kartNo cihazın okuduğu biçimdir. Kısmi unique (migration.sql): kartNo ve personnelId
+// yalnız durum='AKTIF' satırlar arasında tekil — kişi başı tek aktif kart, kart tek kişide.
+// createdById / pasifYapanId: User.id (otomatik işler 'sistem') — relation YOK (User'a dokunulmaz).
+model PdksKart {
+  id               String        @id @default(cuid())
+  kartNo           String
+  kartNoHam        String? // GV export'undaki ham değer
+  personnelId      String
+  personnel        Personnel     @relation(fields: [personnelId], references: [id], onDelete: Restrict)
+  durum            PdksKartDurum @default(AKTIF)
+  gecerliBaslangic DateTime
+  gecerliBitis     DateTime?
+  pasifNedeni      String? // AYRILDI | KAYIP | BOZUK | DEGISTI | IPTAL
+  pasifAt          DateTime?
+  pasifYapanId     String?
+  kaynak           String // MANUEL | GV_IMPORT
+  createdById      String
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  cihazDurumlari PdksKartCihaz[]
+
+  @@index([personnelId])
+  @@index([kartNo])
+  @@map("pdks_kart")
+}
+
+// Hub → cihaz senkron defteri: istenen durum (Hub) ile cihazdaki gerçek durum.
+model PdksKartCihaz {
+  id          String    @id @default(cuid())
+  kartId      String
+  kart        PdksKart  @relation(fields: [kartId], references: [id], onDelete: Restrict)
+  cihazId     String
+  cihaz       PdksCihaz @relation(fields: [cihazId], references: [id], onDelete: Restrict)
+  durum       String // BEKLIYOR | YUKLENDI | SILINECEK | SILINDI | HATA
+  deneme      Int       @default(0)
+  sonHata     String?
+  sonDenemeAt DateTime?
+  yuklendiAt  DateTime?
+
+  @@unique([kartId, cihazId])
+  @@index([durum])
+  @@map("pdks_kart_cihaz")
+}
+
+// HAM GEÇİŞ OLAYI — INSERT-only. UPDATE/DELETE/TRUNCATE DB trigger'ıyla reddedilir
+// (migration.sql). Düzeltme her zaman ayrı kayıtla (Kart Okutamama) yapılır.
+// dedupAnahtar: "<cihazKod>:<seriDonem>:<serialNo>" | "GV:<sha256>" → INSERT ... ON CONFLICT DO NOTHING.
+// okuyucuId / yon / personnelId alım anında çözülür (snapshot). Bu tabloyu gösteren FK'lar
+// SetNull kullanamaz (UPDATE tetikler) — hepsi Restrict.
+model PdksGecis {
+  id             String          @id @default(cuid())
+  dedupAnahtar   String          @unique
+  cihazId        String
+  cihaz          PdksCihaz       @relation(fields: [cihazId], references: [id], onDelete: Restrict)
+  seriDonem      Int?
+  seriNo         Int? // GV import'ta null
+  olayZamani     DateTime        @db.Timestamptz(3)
+  cihazZamaniHam String // "2026-09-26T07:58:12+03:00" — olduğu gibi
+  major          Int
+  minor          Int
+  olayTipi       String // GECERLI_KART | YETKISIZ | TANIMSIZ_KART | YANGIN_ALARMI | ...
+  gecerli        Boolean // puantaja girebilen başarılı geçiş
+  kapiNo         Int?
+  okuyucuNo      Int?
+  okuyucuId      String?
+  okuyucu        PdksOkuyucu?    @relation(fields: [okuyucuId], references: [id], onDelete: Restrict)
+  yon            PdksYon?
+  kartNo         String?
+  employeeNo     String?
+  personnelId    String?
+  personnel      Personnel?      @relation(fields: [personnelId], references: [id], onDelete: Restrict)
+  kaynak         PdksGecisKaynak
+  ham            Json
+  alindiAt       DateTime        @default(now())
+
+  puantajIlkGiris PdksPuantajGun[] @relation("PuantajIlkGiris")
+  puantajSonCikis PdksPuantajGun[] @relation("PuantajSonCikis")
+
+  @@index([personnelId, olayZamani])
+  @@index([olayZamani])
+  @@index([cihazId, seriDonem, seriNo])
+  @@map("pdks_gecis")
+}
+
+// HESAPLANMIŞ günlük puantaj — ham geçişten her an yeniden üretilebilir (Faz 4 motoru).
+// gun = VARDİYA GÜNÜ (vardiyanın başladığı takvim günü; 21→07 gece vardiyası başladığı güne yazılır).
+model PdksPuantajGun {
+  id                String               @id @default(cuid())
+  personnelId       String
+  personnel         Personnel            @relation(fields: [personnelId], references: [id], onDelete: Restrict)
+  gun               DateTime             @db.Date
+  vardiyaId         String?
+  vardiya           IproVardiya?         @relation(fields: [vardiyaId], references: [id], onDelete: SetNull)
+  vardiyaKaynak     String? // ATAMA | VARDIYA_FORMU | VARSAYILAN | CIKARIM
+  beklenenBaslangic DateTime?            @db.Timestamptz(3)
+  beklenenBitis     DateTime?            @db.Timestamptz(3)
+  ilkGiris          DateTime?            @db.Timestamptz(3)
+  sonCikis          DateTime?            @db.Timestamptz(3)
+  ilkGirisGecisId   String?
+  ilkGirisGecis     PdksGecis?           @relation("PuantajIlkGiris", fields: [ilkGirisGecisId], references: [id], onDelete: Restrict)
+  sonCikisGecisId   String?
+  sonCikisGecis     PdksGecis?           @relation("PuantajSonCikis", fields: [sonCikisGecisId], references: [id], onDelete: Restrict)
+  girisKaynak       String? // CIHAZ | FORM
+  cikisKaynak       String?
+  kartOkutamamaId   String?
+  kartOkutamama     BulkCardScanFailure? @relation(fields: [kartOkutamamaId], references: [id], onDelete: SetNull)
+  durum             PdksGunDurum
+  gecDakika         Int                  @default(0)
+  erkenCikisDakika  Int                  @default(0)
+  calismaDakika     Int?
+  onayliMesaiDakika Int?
+  fazlaDakika       Int?
+  uyarilar          String[]             @default([]) // ONAYSIZ_FAZLA | MESAI_ONAYLI_GELMEDI | ...
+  kilitli           Boolean              @default(false) // ay kapanışı sonrası yeniden hesap yok
+  kilitleyenId      String?
+  hesaplamaSurumu   Int
+  hesaplandiAt      DateTime
+
+  @@unique([personnelId, gun])
+  @@index([gun, durum])
+  @@index([vardiyaId])
+  @@index([kartOkutamamaId])
+  @@map("pdks_puantaj_gun")
+}
+
+// Kişi–vardiya ataması (tarih aralıklı). Faz 4'te kullanılır; bitis null = açık uçlu.
+model PdksPersonelVardiya {
+  id          String      @id @default(cuid())
+  personnelId String
+  personnel   Personnel   @relation(fields: [personnelId], references: [id], onDelete: Restrict)
+  vardiyaId   String
+  vardiya     IproVardiya @relation(fields: [vardiyaId], references: [id], onDelete: Restrict)
+  baslangic   DateTime    @db.Date
+  bitis       DateTime?   @db.Date
+  createdById String
+  createdAt   DateTime    @default(now())
+
+  @@index([personnelId, baslangic])
+  @@index([vardiyaId])
+  @@map("pdks_personel_vardiya")
 }

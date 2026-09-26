@@ -82,6 +82,7 @@ import {
   Laptop,
   Wallet,
   Receipt,
+  DoorOpen,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useState, useEffect, createContext, useContext } from "react"
@@ -297,6 +298,13 @@ const offboardingMenuItems = [
   { name: "İlişik Kesme", icon: LogOut, href: "/offboarding", roles: [] as string[], permission: ["offboarding.view"] },
 ]
 
+// PDKS (Personel Devam Kontrol) — İV altında kendi alt grubu. Görünürlük sayfa guard'ıyla
+// birebir (permission; IPRO/zimmet deseni). Faz 1: yalnız cihaz tanımları (pdks.manage);
+// puantaj/geçiş/kart ekranları sonraki fazlarda buraya eklenir.
+const pdksMenuItems = [
+  { name: "Cihazlar & Kapılar", icon: DoorOpen, href: "/pdks/cihazlar", roles: [] as string[], permission: ["pdks.manage"] },
+]
+
 // Personel yönetimi öğeleri — hepsi canSeeIk kapısıyla gösterilir. Önceden JSX
 // içinde satır satır gömülüydü; menü aramasında da çıkabilmeleri için diziye
 // alındı (render davranışı birebir aynı: aynı sırada, aynı canSeeIk koşuluyla).
@@ -480,6 +488,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const [kaliteYonetimOpen, setKaliteYonetimOpen] = useState(false)
   const [ikOpen, setIkOpen] = useState(false)
   const [strategicHrOpen, setStrategicHrOpen] = useState(false)
+  const [pdksOpen, setPdksOpen] = useState(false)
   const [auditsOpen, setAuditsOpen] = useState(false)
   const [iso27001Open, setIso27001Open] = useState(false)
   const [formsOpen, setFormsOpen] = useState(false)
@@ -542,6 +551,11 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     // /deneme (IV-FR-27) İV grubunda — kök rotası olduğu için açıkça listelenir.
     if (pathname.startsWith('/deneme')) {
       setIkOpen(true)
+    }
+    // /pdks İV › PDKS alt grubunda.
+    if (pathname.startsWith('/pdks')) {
+      setIkOpen(true)
+      setPdksOpen(true)
     }
     if (
       pathname.startsWith('/settings/roller') ||
@@ -789,10 +803,13 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     ...(iaFlags.amir ? [iaAmirItem] : []),
   ]
   const filteredOffboardingItems = filterItems(offboardingMenuItems)
+  // PDKS permission alanını dizi tutuyor; filterItems cast (IPRO deseni).
+  const filteredPdksItems = filterItems(pdksMenuItems as unknown as typeof mainMenuItems)
   // İV grubu görünürlüğü: en az bir alt öğe görünüyorsa başlık gösterilir
   // (4 personnel öğesi canSeeIk ile; offboarding + strategicHr kendi kitleleriyle).
   const showIkGroup =
     canSeeIk || filteredOffboardingItems.length > 0 || filteredStrategicHrItems.length > 0 ||
+    filteredPdksItems.length > 0 ||
     // İV yetkisi olup canSeeIk kapısından geçmeyen kullanıcı da grubu görebilsin,
     // yoksa menü öğesi hesaplanır ama grup hiç çizilmediği için görünmezdi.
     denemeGorunur
@@ -850,6 +867,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
       .map((g) => ({ group: `Formlar › ${g.label}`, items: g.items })),
     { group: "İnsan Varlıkları", items: filteredPersonnelItems },
     { group: "İnsan Varlıkları", items: filteredOffboardingItems },
+    { group: "İnsan Varlıkları › PDKS", items: filteredPdksItems },
     { group: "Stratejik İK", items: filteredStrategicHrItems },
     { group: "Kalite", items: filteredKaliteItems },
     { group: "Kalite Yönetim Sistemi", items: filteredQdmsItems },
@@ -905,7 +923,9 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const isIkActive = pathname === '/strategic-hr/bluecollar-users' || pathname.startsWith('/strategic-hr/bluecollar-users/') ||
     strategicHrMenuItems.some(item =>
       pathname === item.href || pathname.startsWith(item.href + "/")
-    ) || pathname.startsWith('/talent-management/')
+    ) || pathname.startsWith('/talent-management/') || pathname.startsWith('/pdks')
+
+  const isPdksActive = pathname.startsWith('/pdks')
 
   // Stratejik IK menüsünde aktif sayfa var mı kontrol et
   const isStrategicHrActive = strategicHrMenuItems.some(item =>
@@ -1366,6 +1386,34 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
             {filteredOffboardingItems.map(item => renderMenuItem(item))}
             {/* IV-FR-27 deneme değerlendirme listesi — SUNUCU bayrağı (İV ya da zincir üyesi). */}
             {denemeGorunur && renderMenuItem(denemeItem)}
+
+            {/* PDKS */}
+            {filteredPdksItems.length > 0 && (
+              <>
+                <button
+                  onClick={() => setPdksOpen(!pdksOpen)}
+                  className={cn(
+                    "flex items-center w-full space-x-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150",
+                    isPdksActive
+                      ? "text-teal-300"
+                      : "text-white/50 hover:text-white/90 hover:bg-white/[0.07]"
+                  )}
+                >
+                  <DoorOpen className="h-5 w-5" />
+                  <span className="flex-1 text-left">PDKS</span>
+                  {pdksOpen ? (
+                    <ChevronDown className="h-4 w-4" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4" />
+                  )}
+                </button>
+                {pdksOpen && (
+                  <div className="space-y-1 ml-4">
+                    {filteredPdksItems.map(item => renderMenuItem(item))}
+                  </div>
+                )}
+              </>
+            )}
             {/* {renderMenuItem({ name: "Mavi Yaka Kullanıcılar", icon: Users, href: "/strategic-hr/bluecollar-users", roles: ["HR_MANAGER", "ADMIN", "SUPER_ADMIN"] })} */}
 
             {/* Stratejik IK */}

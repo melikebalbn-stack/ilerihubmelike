@@ -66,6 +66,11 @@ export type AuditTargetType =
   // CALIBRATION_HISTORY_UPDATED — details.degisiklikler = [{alan,etiket,eski,yeni}]
   | 'CALIBRATION_DEVICE'
   | 'CALIBRATION_HISTORY'
+  // PDKS cihaz/kapı/okuyucu tanımları. action: PDKS_CIHAZ_CREATED / _UPDATED / _DELETED,
+  // PDKS_KAPI_*, PDKS_OKUYUCU_* — details = alanların yeni değeri (kimlik bilgisi YOK).
+  | 'PDKS_CIHAZ'
+  | 'PDKS_KAPI'
+  | 'PDKS_OKUYUCU'
 
 export interface AuditLogParams {
   action: string

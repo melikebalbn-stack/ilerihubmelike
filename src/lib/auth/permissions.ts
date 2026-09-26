@@ -195,6 +195,10 @@ export const PERMISSION_KEYS = {
   RAPOR_VIEW: 'rapor.view',
   RAPOR_TASARLA: 'rapor.tasarla',
   RAPOR_KATALOG: 'rapor.katalog',
+
+  // === PDKS (Personel Devam Kontrol — Hikvision ISAPI) ===
+  PDKS_VIEW: 'pdks.view',
+  PDKS_MANAGE: 'pdks.manage',
 } as const;
 
 export type PermissionKey = typeof PERMISSION_KEYS[keyof typeof PERMISSION_KEYS];
@@ -365,4 +369,7 @@ export const PERMISSION_DESCRIPTIONS: Record<string, string> = {
   'rapor.view': 'Raporları görüntüleme ve çalıştırma',
   'rapor.tasarla': 'Rapor şablonu ve veri seti oluşturma/düzenleme',
   'rapor.katalog': 'Veri kataloğunu yönetme (entity ekleme/çıkarma)',
+
+  'pdks.view': 'PDKS geçiş kayıtları, puantaj ve kart listesini görüntüleme',
+  'pdks.manage': 'PDKS kart tanımlama, cihaz/kapı/okuyucu yönetimi, içe aktarım ve ay kilidi',
 };

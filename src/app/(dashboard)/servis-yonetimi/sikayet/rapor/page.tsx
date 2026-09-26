@@ -16,10 +16,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { buttonVariants } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
-import { Loader2 } from 'lucide-react'
-import { SIKAYET_DURUM_ETIKETLERI } from '@/lib/servis-yonetimi/sikayet-durum'
+import { Download, Loader2 } from 'lucide-react'
+import { SIKAYET_DURUM_ETIKETLERI, sikayetKategoriEtiketi } from '@/lib/servis-yonetimi/sikayet-durum'
 
 const NAVY = '#1B4F72'
 const KIRILIM_RENK = ['#2563eb', '#0891b2', '#7c3aed', '#059669', '#94a3b8', '#d97706']
@@ -39,13 +40,6 @@ type Kpi = {
 
 type Secenek = { id: string; kod?: string | null; ad: string }
 
-const KATEGORI_ETIKET: Record<string, string> = {
-  GEC_GELME: 'Geç gelme', DURAGA_UGRAMAMA: 'Durağa uğramama', SURUCU_DAVRANISI: 'Sürücü davranışı',
-  TEHLIKELI_KULLANIM: 'Tehlikeli kullanım', HIZ_IHLALI: 'Hız ihlali', TEMIZLIK: 'Temizlik',
-  KLIMA_ISITMA: 'Klima / ısıtma', EMNIYET_KEMERI: 'Emniyet kemeri', ARAC_ARIZASI: 'Araç arızası',
-  FAZLA_YOLCU: 'Fazla yolcu', YANLIS_GUZERGAH: 'Yanlış güzergâh', SAAT_UYUMSUZLUGU: 'Saat uyumsuzluğu',
-  DIGER: 'Diğer',
-}
 
 function etiket(s: Secenek): string {
   return s.kod ? `${s.kod} — ${s.ad}` : s.ad
@@ -103,6 +97,9 @@ export default function SikayetRaporPage() {
   const { data: session } = useSession()
   const permissions = session?.user?.permissions || []
   const canView = permissions.includes('servis.sikayet.view')
+  // 🔴 Uçtaki AND ile BİREBİR: servis.sikayet.view VE servis.export. Buton,
+  // uçtan 403 alacak kullanıcıya hiç gösterilmez — ama asıl koruma uçtadır.
+  const canExport = canView && permissions.includes('servis.export')
 
   const [firmaId, setFirmaId] = useState('')
   const [guzergahId, setGuzergahId] = useState('')
@@ -195,11 +192,30 @@ export default function SikayetRaporPage() {
 
   return (
     <div className="space-y-6 p-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Servis Firma Performansı</h1>
-        <p className="text-sm text-muted-foreground">
-          Şikâyet kayıtlarından türetilen ölçüler. Tüm değerler kayıt sayısıdır.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold">Servis Firma Performansı</h1>
+          <p className="text-sm text-muted-foreground">
+            Şikâyet kayıtlarından türetilen ölçüler. Tüm değerler kayıt sayısıdır.
+          </p>
+        </div>
+        {canExport && (
+          // Dosya EKRANDAKİ FİLTRELERLE indirilir (aynı sorgu dizesi) —
+          // "ekranda gördüğüm neyse dosyada o" (madde 62). Kırpma yoktur.
+          // Tarayıcı indirmesi: <a download> ile, fetch+blob kurulmadı.
+          // 🔴 <Button asChild> KULLANILMADI: bu repodaki Button `asChild`'ı
+          // props tipinde TANIYOR ama UYGULAMIYOR (Radix Slot yok) — prop
+          // doğrudan <button>'a düşer ve <button> içine <a> gömülür
+          // (geçersiz HTML, React uyarısı). Bunun yerine buttonVariants ile
+          // düz bağlantı: görünüm aynı, anlam doğru.
+          <a
+            href={`/api/servis-yonetimi/sikayet/export${sorguDizesi ? `?${sorguDizesi}` : ''}`}
+            className={buttonVariants({ variant: 'outline' })}
+          >
+            <Download className="mr-2 h-4 w-4" />
+            Excel indir
+          </a>
+        )}
       </div>
 
       <Card>
@@ -270,7 +286,7 @@ export default function SikayetRaporPage() {
             />
             <KirilimKarti
               baslik="Kategori kırılımı"
-              veri={kpi.kategoriKirilim.map(k => ({ label: KATEGORI_ETIKET[k.kategori] ?? k.kategori, sayi: k.adet }))}
+              veri={kpi.kategoriKirilim.map(k => ({ label: sikayetKategoriEtiketi(k.kategori), sayi: k.adet }))}
             />
             <KirilimKarti
               baslik="Durak kırılımı"

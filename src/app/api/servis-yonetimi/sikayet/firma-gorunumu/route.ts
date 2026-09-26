@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/auth/require-permission'
 import type { ServisSikayetDurumu, ServisSikayetKategori, ServisSikayetKaynagi } from '@/generated/prisma'
-import { sikayetFirmaListesiGetir } from '@/lib/servis-yonetimi/sikayet'
+import { sikayetFiltresiCoz, sikayetFirmaListesiGetir } from '@/lib/servis-yonetimi/sikayet'
 import { firmaSiniriniDogrula, FirmaSiniriIhlali } from '@/lib/servis-yonetimi/sikayet-firma-siniri'
 
 export const dynamic = 'force-dynamic'
@@ -14,11 +14,6 @@ export const dynamic = 'force-dynamic'
 // geçer ve bir loga/hata çıktısına düşebilirdi.
 //
 // İş mantığı burada tekrar edilmez; filtreler ve select sorgu katmanında.
-function tarihAyikla(ham: string | null): Date | undefined {
-  if (!ham) return undefined
-  const d = new Date(ham)
-  return Number.isNaN(d.getTime()) ? undefined : d
-}
 
 export async function GET(request: NextRequest) {
   const { error } = await requirePermission('servis.sikayet.view')
@@ -26,16 +21,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const sp = request.nextUrl.searchParams
-    const data = await sikayetFirmaListesiGetir({
-      guzergahId: sp.get('guzergahId') || undefined,
-      firmaId: sp.get('firmaId') || undefined,
-      durakId: sp.get('durakId') || undefined,
-      durum: (sp.get('durum') as ServisSikayetDurumu) || undefined,
-      kategori: (sp.get('kategori') as ServisSikayetKategori) || undefined,
-      kaynak: (sp.get('kaynak') as ServisSikayetKaynagi) || undefined,
-      bildirimBaslangic: tarihAyikla(sp.get('bildirimBaslangic')),
-      bildirimBitis: tarihAyikla(sp.get('bildirimBitis')),
-    })
+    const data = await sikayetFirmaListesiGetir(sikayetFiltresiCoz(sp))
 
     // 🔴 SINIR BEKÇİSİ (fail-closed): sorgu katmanı bir gün yanlışlıkla
     // şikâyetçi seçerse veri firmaya ULAŞMADAN burada durur. Ayıklama YOK —

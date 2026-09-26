@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { useSession } from 'next-auth/react'
 import SikayetRaporPage from './page'
 
@@ -176,5 +176,44 @@ describe('boş ve hata hâlleri ayrı', () => {
   it('üç metin birbirinden farklı', () => {
     const m = ['Bu sayfayı görüntüleme yetkiniz yok.', 'Bu dönemde kayıt yok.', 'Performans özeti alınırken hata oluştu.']
     expect(new Set(m).size).toBe(3)
+  })
+})
+
+// ----------------------------------------------------------------------------
+// Adım 5F — Excel indirme butonu
+// ----------------------------------------------------------------------------
+describe('rapor ekranı — Excel indirme butonu', () => {
+  it('servis.export VARKEN buton görünür ve ekranın filtrelerini taşır', async () => {
+    mockSession(['servis.sikayet.view', 'servis.export'])
+    fetchMockKur()
+    render(<SikayetRaporPage />)
+
+    const bag = await screen.findByRole('link', { name: /Excel indir/i })
+    expect(bag).toHaveAttribute('href', '/api/servis-yonetimi/sikayet/export')
+  })
+
+  it('🔴 servis.export YOKKEN buton GÖRÜNMEZ (rapor yine görünür)', async () => {
+    mockSession(['servis.sikayet.view'])
+    fetchMockKur()
+    render(<SikayetRaporPage />)
+
+    await waitFor(() => expect(screen.getByText('Toplam şikâyet')).toBeInTheDocument())
+    expect(screen.queryByRole('link', { name: /Excel indir/i })).not.toBeInTheDocument()
+  })
+
+  it('filtre seçilince indirme bağlantısı AYNI sorgu dizesini alır', async () => {
+    mockSession(['servis.sikayet.view', 'servis.export'])
+    fetchMockKur()
+    render(<SikayetRaporPage />)
+
+    const firmaSecici = await screen.findByLabelText('Firma')
+    fireEvent.change(firmaSecici, { target: { value: 'f1' } })
+
+    await waitFor(() =>
+      expect(screen.getByRole('link', { name: /Excel indir/i })).toHaveAttribute(
+        'href',
+        '/api/servis-yonetimi/sikayet/export?firmaId=f1',
+      ),
+    )
   })
 })

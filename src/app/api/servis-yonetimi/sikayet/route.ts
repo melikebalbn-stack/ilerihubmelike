@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/auth/require-permission'
 import type { ServisSikayetDurumu, ServisSikayetKategori, ServisSikayetKaynagi } from '@/generated/prisma'
-import { sikayetListesiGetir, sikayetOlustur, SikayetError } from '@/lib/servis-yonetimi/sikayet'
+import { sikayetFiltresiCoz, sikayetListesiGetir, sikayetOlustur, SikayetError } from '@/lib/servis-yonetimi/sikayet'
 
 export const dynamic = 'force-dynamic'
 
@@ -14,12 +14,6 @@ export const dynamic = 'force-dynamic'
 // Bu uç İÇ GÖRÜNÜMÜ döndürür (şikâyetçi kimliği DAHİL). Firma görünümü ucu
 // BU ADIMDA YOK — firma raporuyla birlikte gelecek.
 
-/** "2026-09-01" → Date. Geçersiz/boş ise undefined (filtre uygulanmaz). */
-function tarihAyikla(ham: string | null): Date | undefined {
-  if (!ham) return undefined
-  const d = new Date(ham)
-  return Number.isNaN(d.getTime()) ? undefined : d
-}
 
 export async function GET(request: NextRequest) {
   const { error } = await requirePermission('servis.sikayet.view')
@@ -27,17 +21,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const sp = request.nextUrl.searchParams
-    const data = await sikayetListesiGetir({
-      guzergahId: sp.get('guzergahId') || undefined,
-      firmaId: sp.get('firmaId') || undefined,
-      durakId: sp.get('durakId') || undefined,
-      durum: (sp.get('durum') as ServisSikayetDurumu) || undefined,
-      kategori: (sp.get('kategori') as ServisSikayetKategori) || undefined,
-      kaynak: (sp.get('kaynak') as ServisSikayetKaynagi) || undefined,
-      // 🔴 Tarih filtresi bildirimTarihi üzerinden — `tarih` olay günüdür.
-      bildirimBaslangic: tarihAyikla(sp.get('bildirimBaslangic')),
-      bildirimBitis: tarihAyikla(sp.get('bildirimBitis')),
-    })
+    const data = await sikayetListesiGetir(sikayetFiltresiCoz(sp))
 
     return NextResponse.json({ ok: true, data, toplam: data.length })
   } catch (err) {

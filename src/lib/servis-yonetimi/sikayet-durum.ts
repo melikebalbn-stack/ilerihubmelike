@@ -12,7 +12,7 @@
 // 🔴 Durum birliği elle union olarak YAZILMAZ; prisma'nın ürettiği tipten
 // gelir. Elle yazılsaydı enum'a değer eklendiğinde burası sessizce eski
 // kalırdı.
-import type { ServisSikayetDurumu } from '@/generated/prisma'
+import type { ServisSikayetDurumu, ServisSikayetKategori, ServisSikayetKaynagi } from '@/generated/prisma'
 
 /**
  * GEÇİŞ MATRİSİ — deny-by-default: yalnız burada AÇIKÇA yazılan (from → to)
@@ -62,6 +62,51 @@ export const SIKAYET_DURUM_ETIKETLERI: Record<ServisSikayetDurumu, string> = {
   AKSIYON_ALINDI: 'Aksiyon alındı',
   KAPANDI: 'Kapandı',
   REDDEDILDI: 'Reddedildi',
+}
+
+/**
+ * Kategori ve kaynak etiketleri.
+ *
+ * 🔴 Bunlar ÖNCE iki ekranda ayrı ayrı duruyordu (sikayet/page.tsx ve
+ * sikayet/rapor/page.tsx). Dışa aktarım üçüncü bir kopya isteyince buraya
+ * taşındı ve İKİ EKRAN DA süpürüldü (Ders 91: ortak yardımcı sonradan
+ * kurulunca, işi başlatan kopyalar da temizlenir — yoksa etiketler zamanla
+ * birbirinden ayrışır ve dosya ile ekran farklı kelime gösterir).
+ *
+ * `Record<Enum, string>` anotasyonu exhaustiveness guard'dır: enum'a yeni bir
+ * değer eklenirse burası derlenmez.
+ */
+export const SIKAYET_KATEGORI_ETIKETLERI: Record<ServisSikayetKategori, string> = {
+  GEC_GELME: 'Geç gelme',
+  DURAGA_UGRAMAMA: 'Durağa uğramama',
+  SURUCU_DAVRANISI: 'Sürücü davranışı',
+  TEHLIKELI_KULLANIM: 'Tehlikeli kullanım',
+  HIZ_IHLALI: 'Hız ihlali',
+  TEMIZLIK: 'Temizlik',
+  KLIMA_ISITMA: 'Klima / ısıtma',
+  EMNIYET_KEMERI: 'Emniyet kemeri',
+  ARAC_ARIZASI: 'Araç arızası',
+  FAZLA_YOLCU: 'Fazla yolcu',
+  YANLIS_GUZERGAH: 'Yanlış güzergâh',
+  SAAT_UYUMSUZLUGU: 'Saat uyumsuzluğu',
+  DIGER: 'Diğer',
+}
+
+export const SIKAYET_KAYNAK_ETIKETLERI: Record<ServisSikayetKaynagi, string> = {
+  IV: 'İV',
+  PERSONEL: 'Çalışan',
+}
+
+/**
+ * Kategori etiketi — API yanıtından gelen `string` için.
+ *
+ * Sözlüğün kendisi `Record<Enum, string>` (exhaustiveness guard) olduğu için
+ * doğrudan `string` ile indekslenemez. Erişimci, katılığı BOZMADAN ekranların
+ * JSON'dan gelen değerini karşılar; tanınmayan değer olduğu gibi gösterilir
+ * (ekran boş hücre yerine ham kodu gösterir, bilgi kaybolmaz).
+ */
+export function sikayetKategoriEtiketi(kategori: string): string {
+  return SIKAYET_KATEGORI_ETIKETLERI[kategori as ServisSikayetKategori] ?? kategori
 }
 
 // ----------------------------------------------------------------------------

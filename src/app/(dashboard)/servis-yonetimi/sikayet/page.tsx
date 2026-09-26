@@ -20,7 +20,13 @@ import { Loader2, Plus } from 'lucide-react'
 // 🔴 Geçiş matrisi ve durum etiketleri TEK KAYNAK: Adım 1'in durum makinesi.
 // Ekranda ikinci bir hedef listesi ya da etiket sözlüğü YAZILMADI (rule 6).
 // Dosya prisma'dan yalnız TİP alıyor, istemciye güvenle gider.
-import { izinliHedefler, SIKAYET_DURUM_ETIKETLERI } from '@/lib/servis-yonetimi/sikayet-durum'
+import {
+  izinliHedefler,
+  SIKAYET_DURUM_ETIKETLERI,
+  SIKAYET_KATEGORI_ETIKETLERI,
+  sikayetKategoriEtiketi,
+  SIKAYET_KAYNAK_ETIKETLERI,
+} from '@/lib/servis-yonetimi/sikayet-durum'
 // Paylaşılan tarihçe dialogu — 13 tanım modeliyle AYNI bileşen (rule 6).
 import { ServisGecmisDialog, GecmisButonu } from '../_components/ServisGecmisDialog'
 
@@ -66,23 +72,6 @@ const DURUM_RENK: Record<Durum, string> = {
   REDDEDILDI: 'bg-slate-200 text-slate-800',
 }
 
-const KATEGORI_ETIKET: Record<string, string> = {
-  GEC_GELME: 'Geç gelme',
-  DURAGA_UGRAMAMA: 'Durağa uğramama',
-  SURUCU_DAVRANISI: 'Sürücü davranışı',
-  TEHLIKELI_KULLANIM: 'Tehlikeli kullanım',
-  HIZ_IHLALI: 'Hız ihlali',
-  TEMIZLIK: 'Temizlik',
-  KLIMA_ISITMA: 'Klima / ısıtma',
-  EMNIYET_KEMERI: 'Emniyet kemeri',
-  ARAC_ARIZASI: 'Araç arızası',
-  FAZLA_YOLCU: 'Fazla yolcu',
-  YANLIS_GUZERGAH: 'Yanlış güzergâh',
-  SAAT_UYUMSUZLUGU: 'Saat uyumsuzluğu',
-  DIGER: 'Diğer',
-}
-
-const KAYNAK_ETIKET: Record<string, string> = { IV: 'İV', PERSONEL: 'Çalışan' }
 
 function gunMetni(deger: string | null | undefined): string {
   if (!deger) return '-'
@@ -329,7 +318,7 @@ export default function SikayetListesiPage() {
                 >
                   {/* 🔴 Ön seçili değer YOK — bilinçli. */}
                   <option value="">Seçiniz</option>
-                  {Object.entries(KAYNAK_ETIKET).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                  {Object.entries(SIKAYET_KAYNAK_ETIKETLERI).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                 </select>
               </div>
               <div>
@@ -349,7 +338,7 @@ export default function SikayetListesiPage() {
                   className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                 >
                   <option value="">Seçiniz</option>
-                  {Object.entries(KATEGORI_ETIKET).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                  {Object.entries(SIKAYET_KATEGORI_ETIKETLERI).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                 </select>
               </div>
               <div>
@@ -507,7 +496,7 @@ export default function SikayetListesiPage() {
               className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
             >
               <option value="">Tümü</option>
-              {Object.entries(KATEGORI_ETIKET).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              {Object.entries(SIKAYET_KATEGORI_ETIKETLERI).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
             </select>
           </div>
           <div>
@@ -517,7 +506,7 @@ export default function SikayetListesiPage() {
               className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
             >
               <option value="">Tümü</option>
-              {Object.entries(KAYNAK_ETIKET).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              {Object.entries(SIKAYET_KAYNAK_ETIKETLERI).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
             </select>
           </div>
           <div>
@@ -575,7 +564,7 @@ export default function SikayetListesiPage() {
                 <TableCell>{gunMetni(s.bildirimTarihi)}</TableCell>
                 <TableCell>{s.guzergahId}</TableCell>
                 <TableCell>{s.durak ? `${s.durak.kod} — ${s.durak.ad}` : '-'}</TableCell>
-                <TableCell>{KATEGORI_ETIKET[s.kategori] ?? s.kategori}</TableCell>
+                <TableCell>{sikayetKategoriEtiketi(s.kategori)}</TableCell>
                 <TableCell>
                   {/* Etiket metni tek başına yeterli; renk yalnız destek. */}
                   <Badge className={DURUM_RENK[s.durum]} variant="secondary">

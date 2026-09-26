@@ -381,3 +381,35 @@ describe('GET .../sikayet/firma-gorunumu', () => {
     expect(JSON.stringify(await res.json())).not.toContain('gizli')
   })
 })
+
+// ----------------------------------------------------------------------------
+// Adım 5F — güzergâh kod/ad firma görünümü YANITINDA
+// ----------------------------------------------------------------------------
+describe('GET .../sikayet/firma-gorunumu — güzergâh (Adım 5F)', () => {
+  const GUZERGAHLI = {
+    id: 'c1',
+    no: 1,
+    firmaAd: 'Taşeron A.Ş.',
+    guzergahId: 'g1',
+    guzergah: { kod: 'GZR-01', ad: 'Çerkezköy Hattı' },
+    durak: { id: 'dr1', kod: 'DRK-01', ad: 'Merkez' },
+  }
+
+  it('yanıt güzergâhın KOD ve AD\'ını taşıyor', async () => {
+    oturumKur([VIEW])
+    mocks.sikayetFirmaListesiGetir.mockResolvedValue([GUZERGAHLI])
+
+    const json = await (await FIRMA_GET(istek('http://localhost/x'))).json()
+    expect(json.ok).toBe(true)
+    expect(json.data[0].guzergah).toEqual({ kod: 'GZR-01', ad: 'Çerkezköy Hattı' })
+  })
+
+  it('🔴 REGRESYON: güzergâh eklendi ama bekçi HÂLÂ geçiyor (200, sızıntı yok)', async () => {
+    oturumKur([VIEW])
+    mocks.sikayetFirmaListesiGetir.mockResolvedValue([GUZERGAHLI])
+
+    const res = await FIRMA_GET(istek('http://localhost/x'))
+    expect(res.status).toBe(200)
+    expect(JSON.stringify(await res.json())).not.toMatch(/sikayetci/i)
+  })
+})

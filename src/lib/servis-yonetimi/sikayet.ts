@@ -239,6 +239,43 @@ export interface SikayetFiltresi {
   bildirimBitis?: Date
 }
 
+/**
+ * HTTP sorgu parametrelerini `SikayetFiltresi`'ne çevirir.
+ *
+ * 🔴 Bu ayrıştırma ÖNCE iki uçta (liste + firma görünümü) ayrı ayrı
+ * duruyordu; dışa aktarım ucu üçüncü kopyayı isteyince buraya taşındı ve
+ * her iki uç da süpürüldü (Ders 91 / rule 6). Üç uç AYNI filtreyi kabul
+ * etmek zorunda: ekranda süzülen veri ile dosyaya giden veri ayrışırsa
+ * kullanıcı "ekranda 12 kayıt vardı, dosyada 40 çıktı" der.
+ */
+export function sikayetFiltresiCoz(sp: URLSearchParams): SikayetFiltresi {
+  return {
+    guzergahId: sp.get('guzergahId') || undefined,
+    firmaId: sp.get('firmaId') || undefined,
+    durakId: sp.get('durakId') || undefined,
+    durum: (sp.get('durum') as ServisSikayetDurumu) || undefined,
+    kategori: (sp.get('kategori') as ServisSikayetKategori) || undefined,
+    kaynak: (sp.get('kaynak') as ServisSikayetKaynagi) || undefined,
+    // 🔴 Tarih filtresi bildirimTarihi üzerinden — `tarih` olay günüdür.
+    bildirimBaslangic: sikayetTarihAyikla(sp.get('bildirimBaslangic')),
+    bildirimBitis: sikayetTarihAyikla(sp.get('bildirimBitis')),
+  }
+}
+
+/**
+ * "2026-09-01" → Date. Geçersiz/boş ise undefined (filtre uygulanmaz).
+ *
+ * Dışa açık, çünkü KPI ucu filtrenin YALNIZ dört alanını kabul ediyor
+ * (firma/güzergâh/iki tarih) — tam `sikayetFiltresiCoz` onu genişletir ve bu
+ * ADIMIN KAPSAMI DIŞINDA bir davranış değişikliği olurdu. Tarih ayrıştırması
+ * yine tek yerde kalsın diye ayrıca export ediliyor.
+ */
+export function sikayetTarihAyikla(ham: string | null): Date | undefined {
+  if (!ham) return undefined
+  const d = new Date(ham)
+  return Number.isNaN(d.getTime()) ? undefined : d
+}
+
 /** Filtreyi prisma where'e çevirir — iki görünüm de AYNI where'i kullanır. */
 export function sikayetWhereOlustur(filtre: SikayetFiltresi): Prisma.ServisSikayetWhereInput {
   const where: Prisma.ServisSikayetWhereInput = {}
@@ -284,6 +321,11 @@ const ORTAK_SELECT = {
   // Konum bilgisi, kişisel veri değil — firma da "hangi durakta ne oldu"yu
   // görmeli. il/ilce/mahalle/koordinat BİLEREK yok (madde 23).
   durak: { select: { id: true, kod: true, ad: true } },
+  // Güzergâhın KOD/AD'ı — ham guzergahId firma için okunaksız bir UUID.
+  // Kişisel veri değil, konum/operasyon bilgisi (durak ile aynı gerekçe,
+  // madde 23). Dışa aktarımda "hangi güzergâhta" sorusunu bu karşılar.
+  // ORTAK_SELECT'e konuldu ki iç görünüm ile firma görünümü AYRIŞMASIN.
+  guzergah: { select: { kod: true, ad: true } },
   plaka: true,
   soforAdSoyad: true,
   firmaAd: true,

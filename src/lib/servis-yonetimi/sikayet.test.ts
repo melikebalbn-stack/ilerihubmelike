@@ -524,3 +524,57 @@ describe('şikâyetçi zorunluluğu — kaynağa bağlı', () => {
     expect(tx.servisSikayet.create.mock.calls[0][0].data.sikayetciPersonnelId).toBe('p7')
   })
 })
+
+// ----------------------------------------------------------------------------
+// Adım 5F — güzergâh KOD/AD ortak select'te
+// ----------------------------------------------------------------------------
+describe('guzergah — select kapsamı (Adım 5F)', () => {
+  function guzergahAlanlari(select: Record<string, unknown>): string[] {
+    const g = select.guzergah as { select: Record<string, unknown> } | undefined
+    return g ? Object.keys(g.select) : []
+  }
+
+  for (const [etiket, cagir] of [
+    ['iç görünüm', () => sikayetListesiGetir()],
+    ['firma görünümü', () => sikayetFirmaListesiGetir()],
+  ] as const) {
+    it(`${etiket}: guzergah YALNIZ kod/ad seçiliyor`, async () => {
+      mocks.findMany.mockResolvedValue([])
+      await cagir()
+      expect(guzergahAlanlari(mocks.findMany.mock.calls[0][0].select).sort()).toEqual(['ad', 'kod'])
+    })
+  }
+
+  it('🔴 İKİ GÖRÜNÜM AYRIŞMIYOR: guzergah her ikisinde de AYNI şekilde var', async () => {
+    // ORTAK_SELECT'e konuldu; birine eklenip diğerine eklenmeme durumu
+    // (ekranla dosyanın farklı kolon taşıması) bu testle kapalı.
+    mocks.findMany.mockResolvedValue([])
+    await sikayetListesiGetir()
+    const ic = mocks.findMany.mock.calls[0][0].select.guzergah
+
+    mocks.findMany.mockClear()
+    await sikayetFirmaListesiGetir()
+    const firma = mocks.findMany.mock.calls[0][0].select.guzergah
+
+    expect(firma).toEqual(ic)
+    expect(firma).toEqual({ select: { kod: true, ad: true } })
+  })
+
+  it('ham guzergahId HÂLÂ her iki görünümde de var (ilişki onu değiştirmedi)', async () => {
+    mocks.findMany.mockResolvedValue([])
+    await sikayetListesiGetir()
+    expect(mocks.findMany.mock.calls[0][0].select.guzergahId).toBe(true)
+
+    mocks.findMany.mockClear()
+    await sikayetFirmaListesiGetir()
+    expect(mocks.findMany.mock.calls[0][0].select.guzergahId).toBe(true)
+  })
+
+  it('🔴 REGRESYON: guzergah eklendikten sonra da firma select\'inde şikâyetçi YOK', async () => {
+    mocks.findMany.mockResolvedValue([])
+    await sikayetFirmaListesiGetir()
+    const select = mocks.findMany.mock.calls[0][0].select
+    expect(Object.keys(select).filter(k => /sikayetci/i.test(k))).toEqual([])
+    expect(select).toEqual({ ...FIRMA_GORUNUMU_SELECT })
+  })
+})

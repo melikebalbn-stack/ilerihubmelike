@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/auth/require-permission'
 import { sikayetKpiHesapla } from '@/lib/servis-yonetimi/sikayet-kpi'
+import { sikayetTarihAyikla } from '@/lib/servis-yonetimi/sikayet'
 
 export const dynamic = 'force-dynamic'
 
@@ -11,11 +12,6 @@ export const dynamic = 'force-dynamic'
 // göremeyen anlamsız bir rol kombinasyonu üretirdi.
 //
 // Hesap sikayet-kpi.ts'te; burada yalnız yetki + parametre ayrıştırma.
-function tarihAyikla(ham: string | null): Date | undefined {
-  if (!ham) return undefined
-  const d = new Date(ham)
-  return Number.isNaN(d.getTime()) ? undefined : d
-}
 
 export async function GET(request: NextRequest) {
   const { error } = await requirePermission('servis.sikayet.view')
@@ -26,8 +22,8 @@ export async function GET(request: NextRequest) {
     const data = await sikayetKpiHesapla({
       firmaId: sp.get('firmaId') || undefined,
       guzergahId: sp.get('guzergahId') || undefined,
-      bildirimBaslangic: tarihAyikla(sp.get('bildirimBaslangic')),
-      bildirimBitis: tarihAyikla(sp.get('bildirimBitis')),
+      bildirimBaslangic: sikayetTarihAyikla(sp.get('bildirimBaslangic')),
+      bildirimBitis: sikayetTarihAyikla(sp.get('bildirimBitis')),
     })
     return NextResponse.json({ ok: true, data })
   } catch (err) {

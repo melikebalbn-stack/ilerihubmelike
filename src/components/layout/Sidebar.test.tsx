@@ -459,7 +459,10 @@ describe('Sidebar — Stratejik İK "Servis" alt-başlığı (Formlar deseninin 
       .map((a) => a.textContent?.trim())
       .filter(
         (ad): ad is string =>
-          !!ad && !['Servis Yönetimi', 'Servis: Bu Ay Ne Değişti?', 'Veri Kalite Merkezi'].includes(ad),
+          !!ad &&
+          !['Servis Yönetimi', 'Servis: Bu Ay Ne Değişti?', 'Veri Kalite Merkezi', 'Servis Şikâyetleri'].includes(
+            ad,
+          ),
       )
     expect(duzAdlar).toEqual(digerOgeler)
   })
@@ -490,5 +493,32 @@ describe('Sidebar — "Veri Kalite Merkezi" menü öğesi için permission testi
     renderSidebar()
     acIvGrubunu()
     expect(screen.getByText('Veri Kalite Merkezi')).toBeInTheDocument()
+    })
+  })
+
+describe('Sidebar — "Servis Şikâyetleri" menü girdisi (madde 46)', () => {
+  it('servis.sikayet.view izni OLMAYAN kullanıcı satırı GÖRMEZ (grup başka izinle açık)', () => {
+    // İlgisiz izin yalnız İV/Stratejik İK grubunu açtırmak için —
+    // "grup kapalı olduğu için göremedi" yanlış-negatifini eler.
+    mockSession({ role: 'KULLANICI', department: 'Üretim', permissions: ['yilliktakvim.view'] })
+    renderSidebar()
+    acIvGrubunu()
+    expect(screen.getByText('Yıllık Çalışma Takvimi')).toBeInTheDocument()
+    expect(screen.queryByText('Servis Şikâyetleri')).not.toBeInTheDocument()
+  })
+
+  it('servis.view tek başına YETMEZ — ayrı anahtar gerekiyor', () => {
+    mockSession({ role: 'KULLANICI', department: 'Üretim', permissions: ['servis.view'] })
+    renderSidebar()
+    acIvGrubunu()
+    expect(screen.getByText('Servis Yönetimi')).toBeInTheDocument()
+    expect(screen.queryByText('Servis Şikâyetleri')).not.toBeInTheDocument()
+  })
+
+  it('servis.sikayet.view izni OLAN kullanıcı satırı GÖRÜR', () => {
+    mockSession({ role: 'KULLANICI', department: 'Üretim', permissions: ['servis.sikayet.view'] })
+    renderSidebar()
+    acIvGrubunu()
+    expect(screen.getByText('Servis Şikâyetleri')).toBeInTheDocument()
   })
 })

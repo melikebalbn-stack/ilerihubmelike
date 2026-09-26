@@ -45,6 +45,7 @@ import {
   Truck,
   BookOpen,
   ListChecks,
+  MessageSquareWarning,
   GitBranch,
   FileWarning,
   MessageCircle,
@@ -310,6 +311,9 @@ const strategicHrMenuItems = [
   // permission (servis.view) ve aynı "servis" alt grubu; üçü birlikte
   // "Servis" başlığı altında görünür (bkz. strategicHrBySubgroup).
   { name: "Veri Kalite Merkezi", icon: ShieldAlert, href: "/servis-yonetimi/veri-kalite", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"], permission: "servis.view", subgroup: "servis" as StrategicHrAltGrup },
+  // MASTER madde 46 — şikâyet listesi. Servis Yönetimi/Bu Ay Ne Değişti/Veri
+  // Kalite Merkezi ile aynı "servis" alt grubu; izin farklı (servis.sikayet.view).
+  { name: "Servis Şikâyetleri", icon: MessageSquareWarning, href: "/servis-yonetimi/sikayet", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"], permission: "servis.sikayet.view", subgroup: "servis" as StrategicHrAltGrup },
   { name: "Organizasyon Şeması", icon: Network, href: "/strategic-hr/org-chart", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"] },
   // VIEW gate = YILLIK_TAKVIM_VIEW_PERMISSIONS (yilliktakvim.view | yilliktakvim.admin, OR).
   // admin eklendi — yalnız admin izinli kullanıcı sayfayı açabildiği hâlde menüde göremiyordu.

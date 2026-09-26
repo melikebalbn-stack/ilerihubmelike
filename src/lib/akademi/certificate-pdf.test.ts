@@ -52,11 +52,6 @@ describe("renderCertificateHtml", () => {
     expect(html).toContain("Ayşe Şıkğüöç Çelik");
     expect(html).toContain("Rekabet Hukuku Farkındalık Eğitimi");
     expect(html).toContain("CERT-2026-VITEST3");
-    // QR altı doğrulama: kısa URL (protokolsüz, slash'larda <wbr> ile bölünür)
-    expect(html).toContain("Doğrulama:");
-    expect(html.replace(/<wbr>/g, "")).toContain(
-      "hub.ilerigroup.com/akademi/verify/VITEST-KODU"
-    );
     expect(html).toContain("Halit İleri");
     expect(html).toContain("İnsan Varlıkları Müdürü");
   });

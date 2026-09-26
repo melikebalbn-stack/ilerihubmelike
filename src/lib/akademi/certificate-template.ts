@@ -182,21 +182,18 @@ export function renderCertificateHtml(data: CertificateHtmlData): string {
             font-size: 30px; color: ${NAVY}; margin-top: 12px; }
   .meta { font-size: 13px; color: #6b7280; letter-spacing: 0.3px; margin-top: 20px; }
   .meta span { margin: 0 8px; }
-  /* İmzalar — sayfaya ortalı, simetrik; QR'dan bağımsız */
-  .signatures { position: absolute; bottom: 150px; left: 0; right: 0;
+  /* İmzalar — sayfaya ortalı, simetrik; alt dalganın hemen üstünde (~30px) */
+  .signatures { position: absolute; bottom: 120px; left: 0; right: 0;
                 display: flex; justify-content: center; gap: 160px; z-index: 4; }
   .sig { text-align: center; }
   .sig-line { width: 240px; height: 1px; background: #9aa3b2; margin: 0 auto 6px; }
   .sig-name { font-family: 'Archivo', 'IBM Plex Sans'; font-weight: 600; font-size: 18px; color: ${NAVY}; }
   .sig-title { font-size: 14px; color: #6b7280; margin-top: 2px; }
-  /* QR — sağ altta ayrı; altındaki metin QR'a ortalı, iki satır */
-  .qr { position: absolute; bottom: 56px; right: 100px; width: 180px;
+  /* QR — sağ altta; imzalarla aynı yatay hizada (alt kenar unvan alt kenarına yakın) */
+  .qr { position: absolute; bottom: 120px; right: 100px; width: 130px;
         text-align: center; z-index: 4; }
   .qr img { width: 96px; height: 96px; display: block; margin: 0 auto; }
   .qr .no { font-size: 9px; color: #6b7280; margin-top: 5px; }
-  .qr .dov-label { font-size: 8px; color: #9aa3b2; margin-top: 3px; }
-  .qr .lnk { font-size: 8px; color: #9aa3b2; word-break: normal;
-             overflow-wrap: break-word; line-height: 1.3; }
 </style>
 </head>
 <body>
@@ -241,8 +238,6 @@ export function renderCertificateHtml(data: CertificateHtmlData): string {
     <div class="qr">
       <img src="${esc(data.qrDataUrl)}" alt="QR">
       <div class="no">${esc(data.sertifikaNo)}</div>
-      <div class="dov-label">Doğrulama:</div>
-      <div class="lnk">${esc(data.dogrulaUrl.replace(/^https?:\/\//, "")).replace(/\//g, "/<wbr>")}</div>
     </div>
   </div>
 </body>

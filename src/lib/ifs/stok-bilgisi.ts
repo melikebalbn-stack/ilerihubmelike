@@ -127,7 +127,9 @@ interface RawStok {
 
 function filtreMetni(f: StokBilgisiFiltre): string {
   const { contract } = getIfsConfig()
-  const p = [`Contract eq '${esc(contract)}'`]
+  // IFS çıkarma/taşıma sonrası 0 miktarlı satır bırakır (ör. boşalan palet) → eldeki ve rezerve 0 ise gizle.
+  // Filtre sorguda: $count/sayfalama/tek parça toplamı da aynı kümeye göre.
+  const p = [`Contract eq '${esc(contract)}'`, '(QtyOnhand gt 0 or QtyReserved gt 0)']
   const eq = (alan: string, v?: string) => { if (dolu(v)) p.push(`${alan} eq '${esc(dolu(v))}'`) }
   eq('Warehouse', f.warehouse)
   eq('LocationNo', f.locationNo)

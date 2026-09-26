@@ -38,7 +38,7 @@ module.exports = {
       // IFS TLS: ifscloudtest.ilerigroup.com ara CA'sını (RapidSSL TLS RSA CA G1)
       // sunmuyor; Node kendi kök deposuyla zinciri kuramıyor → "fetch failed".
       // Node sistem CA deposunu (/etc/ssl/certs) okumaz, bu yüzden ek CA şart.
-      env: { NODE_ENV: 'production', PORT: 3000, NODE_EXTRA_CA_CERTS: '/home/rokunet/certs/rapidssl-tls-rsa-ca-g1.pem', CHROMIUM_PATH: '/home/rokunet/.cache/ms-playwright/chromium_headless_shell-1208/chrome-headless-shell-linux64/chrome-headless-shell', CHROMIUM_LD_LIBRARY_PATH: '/home/rokunet/scratch/chrome-libs/root/usr/lib/x86_64-linux-gnu' },
+      env: { NODE_ENV: 'production', PORT: 3000, NODE_EXTRA_CA_CERTS: '/home/rokunet/certs/rapidssl-tls-rsa-ca-g1.pem', CHROMIUM_PATH: '/home/rokunet/.cache/ms-playwright/chromium_headless_shell-1208/chrome-headless-shell-linux64/chrome-headless-shell', CHROMIUM_LD_LIBRARY_PATH: '/home/rokunet/chrome-libs/root/usr/lib/x86_64-linux-gnu' },
       // SINIR 512M -> 1536M (2026-09-05 gece, SAHA KANITIYLA).
       // 512M degeri, PM2 npm sarmalayicisini (~60 MB) olctugu donemde kondu ve
       // HIC tetiklenmedi. bin/next'e gecince PM2 asil sunucuyu olcmeye basladi
@@ -73,7 +73,7 @@ module.exports = {
       exec_mode: 'fork',
       instances: 1,
       // IFS TLS: bkz. blue — ara CA Node'a ayrıca verilmeli.
-      env: { NODE_ENV: 'production', PORT: 3002, NODE_EXTRA_CA_CERTS: '/home/rokunet/certs/rapidssl-tls-rsa-ca-g1.pem', CHROMIUM_PATH: '/home/rokunet/.cache/ms-playwright/chromium_headless_shell-1208/chrome-headless-shell-linux64/chrome-headless-shell', CHROMIUM_LD_LIBRARY_PATH: '/home/rokunet/scratch/chrome-libs/root/usr/lib/x86_64-linux-gnu' },
+      env: { NODE_ENV: 'production', PORT: 3002, NODE_EXTRA_CA_CERTS: '/home/rokunet/certs/rapidssl-tls-rsa-ca-g1.pem', CHROMIUM_PATH: '/home/rokunet/.cache/ms-playwright/chromium_headless_shell-1208/chrome-headless-shell-linux64/chrome-headless-shell', CHROMIUM_LD_LIBRARY_PATH: '/home/rokunet/chrome-libs/root/usr/lib/x86_64-linux-gnu' },
       // SINIR 512M -> 1536M (2026-09-05 gece, SAHA KANITIYLA).
       // 512M degeri, PM2 npm sarmalayicisini (~60 MB) olctugu donemde kondu ve
       // HIC tetiklenmedi. bin/next'e gecince PM2 asil sunucuyu olcmeye basladi
@@ -106,7 +106,7 @@ module.exports = {
       exec_mode: 'fork',
       instances: 1,
       // IFS TLS: bkz. blue — ara CA Node'a ayrıca verilmeli.
-      env: { NODE_ENV: 'production', PORT: 3001, NODE_EXTRA_CA_CERTS: '/home/rokunet/certs/rapidssl-tls-rsa-ca-g1.pem', CHROMIUM_PATH: '/home/rokunet/.cache/ms-playwright/chromium_headless_shell-1208/chrome-headless-shell-linux64/chrome-headless-shell', CHROMIUM_LD_LIBRARY_PATH: '/home/rokunet/scratch/chrome-libs/root/usr/lib/x86_64-linux-gnu' },
+      env: { NODE_ENV: 'production', PORT: 3001, NODE_EXTRA_CA_CERTS: '/home/rokunet/certs/rapidssl-tls-rsa-ca-g1.pem', CHROMIUM_PATH: '/home/rokunet/.cache/ms-playwright/chromium_headless_shell-1208/chrome-headless-shell-linux64/chrome-headless-shell', CHROMIUM_LD_LIBRARY_PATH: '/home/rokunet/chrome-libs/root/usr/lib/x86_64-linux-gnu' },
       max_memory_restart: '512M',
       error_file: '/home/rokunet/.pm2/logs/ilerihub-staging-error.log',
       out_file: '/home/rokunet/.pm2/logs/ilerihub-staging-out.log',

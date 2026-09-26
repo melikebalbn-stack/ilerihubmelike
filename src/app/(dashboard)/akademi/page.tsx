@@ -51,7 +51,7 @@ export default async function AkademiDashboardPage() {
           className="text-2xl font-bold mb-1"
           style={{ color: "var(--ak-text-primary)" }}
         >
-          Merhaba{firstName ? `, ${firstName}` : ""}! 👋
+          Merhaba{firstName ? `, ${firstName}` : ""}!
         </h1>
         <p className="text-sm" style={{ color: "var(--ak-text-secondary)" }}>
           Bugün hangi eğitime devam etmek istersin?
@@ -59,7 +59,7 @@ export default async function AkademiDashboardPage() {
       </div>
 
       {/* Üst satır: ilerleme halkası + 3 sayaç */}
-      <div className="grid grid-cols-1 lg:grid-cols-[1.2fr_1fr_1fr_1fr] gap-4 mb-6 ak-animate-in">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-[1.2fr_1fr_1fr_1fr] gap-4 mb-6 ak-animate-in">
         <ProgressRing
           assigned={assignedCount}
           completed={completedCount}

@@ -228,14 +228,186 @@ describe('filtreler uca gönderiliyor', () => {
 // ----------------------------------------------------------------------------
 // Adım 5A kapsamı — oluşturma/geçiş YOK
 // ----------------------------------------------------------------------------
-describe('Adım 5A kapsamı', () => {
-  it('oluşturma butonu ve durum değiştirme aksiyonu YOK', async () => {
+// NOT: Adım 5A'da burada "oluşturma ve geçiş aksiyonu YOK" testi vardı.
+// 5B tam da onları eklediği için o test GEÇERSİZLEŞTİ ve kapsamı 5C'ye
+// taşındı — silinmedi, güncellendi.
+describe('Adım 5B kapsamı — 5C\'ye ait olanlar hâlâ YOK', () => {
+  it('tarihçe dialogu ve firma raporu bağlantısı bu adımda YOK', async () => {
     mockSession(['servis.sikayet.view', 'servis.sikayet.manage'])
     fetchMockKur([SATIR])
     render(<SikayetListesiPage />)
 
     await waitFor(() => expect(screen.getByText('Ahmet Yolcu')).toBeInTheDocument())
-    expect(screen.queryByText(/Yeni Şikâyet|Şikâyet Ekle/i)).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /kapat|reddet|aksiyon al/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /geçmiş|tarihçe/i })).not.toBeInTheDocument()
+    expect(screen.queryByText(/firma performans/i)).not.toBeInTheDocument()
+  })
+
+  it('5B ile gelenler ise VAR (kapsamın gerçekten ilerlediğinin kanıtı)', async () => {
+    mockSession(['servis.sikayet.view', 'servis.sikayet.manage'])
+    fetchMockKur([{ ...SATIR, durum: 'ACIK' as const }])
+    render(<SikayetListesiPage />)
+
+    await waitFor(() => expect(screen.getByText('Yeni Şikâyet')).toBeInTheDocument())
+    expect(screen.getByRole('button', { name: 'Aksiyon alındı' })).toBeInTheDocument()
+  })
+})
+
+// ----------------------------------------------------------------------------
+// Adım 5B — oluşturma formu
+// ----------------------------------------------------------------------------
+describe('oluşturma formu — yetki', () => {
+  it('manage VARKEN "Yeni Şikâyet" butonu görünür', async () => {
+    mockSession(['servis.sikayet.view', 'servis.sikayet.manage'])
+    fetchMockKur([])
+    render(<SikayetListesiPage />)
+    await waitFor(() => expect(screen.getByText('Yeni Şikâyet')).toBeInTheDocument())
+  })
+
+  it('🔴 manage YOKKEN buton yok ama SAYFA ve LİSTE render ediliyor', async () => {
+    mockSession(['servis.sikayet.view'])
+    fetchMockKur([SATIR])
+    render(<SikayetListesiPage />)
+
+    await waitFor(() => expect(screen.getByText('Ahmet Yolcu')).toBeInTheDocument())
+    expect(screen.getByText('Servis Şikâyetleri')).toBeInTheDocument()
+    expect(screen.queryByText('Yeni Şikâyet')).not.toBeInTheDocument()
+  })
+})
+
+describe('oluşturma formu — alanlar', () => {
+  async function formuAc() {
+    mockSession(['servis.sikayet.view', 'servis.sikayet.manage'])
+    const m = fetchMockKur([])
+    render(<SikayetListesiPage />)
+    await waitFor(() => expect(screen.getByText('Yeni Şikâyet')).toBeInTheDocument())
+    fireEvent.click(screen.getByText('Yeni Şikâyet'))
+    await waitFor(() => expect(screen.getByLabelText('Kaynak *')).toBeInTheDocument())
+    return m
+  }
+
+  it('🔴 kaynak ÖN SEÇİLİ DEĞİL — boş değerle açılıyor', async () => {
+    await formuAc()
+    const kaynak = screen.getByLabelText('Kaynak *') as HTMLSelectElement
+    expect(kaynak.value).toBe('')
+    // İlk seçenek "Seçiniz", İV değil
+    expect((kaynak.options[0] as HTMLOptionElement).value).toBe('')
+  })
+
+  it('🔴 kaynak=PERSONEL seçilince şikâyetçi ZORUNLU işaretleniyor', async () => {
+    await formuAc()
+    fireEvent.change(screen.getByLabelText('Kaynak *'), { target: { value: 'PERSONEL' } })
+    await waitFor(() => expect(screen.getByLabelText('Şikâyetçi *')).toBeInTheDocument())
+    expect(screen.queryByLabelText('Şikâyetçi (opsiyonel)')).not.toBeInTheDocument()
+  })
+
+  it('kaynak=IV seçilince şikâyetçi OPSİYONEL', async () => {
+    await formuAc()
+    fireEvent.change(screen.getByLabelText('Kaynak *'), { target: { value: 'IV' } })
+    await waitFor(() => expect(screen.getByLabelText('Şikâyetçi (opsiyonel)')).toBeInTheDocument())
+    expect(screen.queryByLabelText('Şikâyetçi *')).not.toBeInTheDocument()
+  })
+
+  it('🔴 uçtan gelen 400 mesajı OLDUĞU GİBİ gösteriliyor', async () => {
+    mockSession(['servis.sikayet.view', 'servis.sikayet.manage'])
+    const MESAJ = 'Çalışanın kendi bildirdiği şikâyetlerde şikâyetçiyi seçin. Bildiren kişi belli değilse kaynağı "İV" olarak işaretleyin.'
+    global.fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.startsWith('/api/servis-yonetimi/sikayet') && init?.method === 'POST') {
+        return { ok: false, json: async () => ({ ok: false, message: MESAJ }) }
+      }
+      if (url.startsWith('/api/servis-yonetimi/sikayet')) return { ok: true, json: async () => ({ ok: true, data: [] }) }
+      return { ok: true, json: async () => ({ ok: true, data: [] }) }
+    }) as unknown as typeof fetch
+
+    render(<SikayetListesiPage />)
+    await waitFor(() => expect(screen.getByText('Yeni Şikâyet')).toBeInTheDocument())
+    fireEvent.click(screen.getByText('Yeni Şikâyet'))
+    await waitFor(() => expect(screen.getByText('Kaydet')).toBeInTheDocument())
+    fireEvent.click(screen.getByText('Kaydet'))
+
+    // Mesaj kelimesi kelimesine — kendi cümlemizle değiştirilmedi
+    await waitFor(() => expect(screen.getByText(MESAJ)).toBeInTheDocument())
+  })
+})
+
+// ----------------------------------------------------------------------------
+// 🔴 Adım 5B — durum geçişi aksiyonları MATRİSTEN
+// ----------------------------------------------------------------------------
+describe('durum geçişi aksiyonları', () => {
+  function kayitla(durum: 'ACIK' | 'AKSIYON_ALINDI' | 'KAPANDI' | 'REDDEDILDI') {
+    mockSession(['servis.sikayet.view', 'servis.sikayet.manage'])
+    fetchMockKur([{ ...SATIR, durum }])
+    render(<SikayetListesiPage />)
+  }
+
+  it('🔴 ACIK kayıtta yalnız "Aksiyon alındı" ve "Reddet" — "Kapat" YOK', async () => {
+    kayitla('ACIK')
+    await waitFor(() => expect(screen.getByText('Ahmet Yolcu')).toBeInTheDocument())
+
+    expect(screen.getByRole('button', { name: 'Aksiyon alındı' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Reddet' })).toBeInTheDocument()
+    // Matris ekrana sızmadığının kanıtı
+    expect(screen.queryByRole('button', { name: 'Kapat' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Yeniden aç' })).not.toBeInTheDocument()
+  })
+
+  it('AKSIYON_ALINDI kayıtta "Kapat" ve "Reddet" var, "Aksiyon alındı" YOK', async () => {
+    kayitla('AKSIYON_ALINDI')
+    await waitFor(() => expect(screen.getByText('Ahmet Yolcu')).toBeInTheDocument())
+
+    expect(screen.getByRole('button', { name: 'Kapat' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Reddet' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Aksiyon alındı' })).not.toBeInTheDocument()
+  })
+
+  it('🔴 KAPANDI kayıtta YALNIZ "Yeniden aç"', async () => {
+    kayitla('KAPANDI')
+    await waitFor(() => expect(screen.getByText('Ahmet Yolcu')).toBeInTheDocument())
+
+    expect(screen.getByRole('button', { name: 'Yeniden aç' })).toBeInTheDocument()
+    for (const yok of ['Kapat', 'Reddet', 'Aksiyon alındı']) {
+      expect(screen.queryByRole('button', { name: yok })).not.toBeInTheDocument()
+    }
+  })
+
+  it('REDDEDILDI kayıtta da YALNIZ "Yeniden aç" (gizlenmiyor)', async () => {
+    kayitla('REDDEDILDI')
+    await waitFor(() => expect(screen.getByText('Ahmet Yolcu')).toBeInTheDocument())
+    expect(screen.getByRole('button', { name: 'Yeniden aç' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Kapat' })).not.toBeInTheDocument()
+  })
+
+  it('🔴 manage YOKSA hiçbir geçiş butonu görünmez (liste yine görünür)', async () => {
+    mockSession(['servis.sikayet.view'])
+    fetchMockKur([{ ...SATIR, durum: 'ACIK' as const }])
+    render(<SikayetListesiPage />)
+
+    await waitFor(() => expect(screen.getByText('Ahmet Yolcu')).toBeInTheDocument())
+    for (const yok of ['Aksiyon alındı', 'Reddet', 'Kapat', 'Yeniden aç']) {
+      expect(screen.queryByRole('button', { name: yok })).not.toBeInTheDocument()
+    }
+    expect(screen.queryByText('İşlem')).not.toBeInTheDocument()
+  })
+
+  it('AKSIYON_ALINDI seçilince aksiyon metni isteniyor', async () => {
+    kayitla('ACIK')
+    await waitFor(() => expect(screen.getByText('Ahmet Yolcu')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'Aksiyon alındı' }))
+    await waitFor(() => expect(screen.getByLabelText('Aksiyon *')).toBeInTheDocument())
+  })
+
+  it('REDDEDILDI seçilince ret gerekçesi isteniyor, KAPANDI\'da opsiyonel', async () => {
+    kayitla('ACIK')
+    await waitFor(() => expect(screen.getByText('Ahmet Yolcu')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'Reddet' }))
+    await waitFor(() => expect(screen.getByLabelText('Kapanış notu * (ret gerekçesi)')).toBeInTheDocument())
+  })
+
+  it('yeniden açmada ne olacağı kullanıcıya söyleniyor', async () => {
+    kayitla('KAPANDI')
+    await waitFor(() => expect(screen.getByText('Ahmet Yolcu')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'Yeniden aç' }))
+    await waitFor(() =>
+      expect(screen.getByText(/Kapanış tarihi ve notu temizlenir; aksiyon kaydı korunur/)).toBeInTheDocument(),
+    )
   })
 })

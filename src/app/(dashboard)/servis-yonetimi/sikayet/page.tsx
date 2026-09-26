@@ -13,9 +13,14 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Loader2 } from 'lucide-react'
+import { Loader2, Plus } from 'lucide-react'
+// 🔴 Geçiş matrisi ve durum etiketleri TEK KAYNAK: Adım 1'in durum makinesi.
+// Ekranda ikinci bir hedef listesi ya da etiket sözlüğü YAZILMADI (rule 6).
+// Dosya prisma'dan yalnız TİP alıyor, istemciye güvenle gider.
+import { izinliHedefler, SIKAYET_DURUM_ETIKETLERI } from '@/lib/servis-yonetimi/sikayet-durum'
 
 type Durum = 'ACIK' | 'AKSIYON_ALINDI' | 'KAPANDI' | 'REDDEDILDI'
 
@@ -37,12 +42,19 @@ type SikayetSatiri = {
 
 type Secenek = { id: string; kod?: string | null; ad: string }
 
-/** Durum etiketleri — okunabilir Türkçe. Renk YALNIZ destek. */
-const DURUM_ETIKET: Record<Durum, string> = {
-  ACIK: 'Açık',
+/** Durum etiketleri — Adım 1'deki TEK KAYNAK'tan. Renk YALNIZ destek. */
+const DURUM_ETIKET = SIKAYET_DURUM_ETIKETLERI
+
+/**
+ * Geçiş BUTONU etiketi — hedef duruma göre EYLEM dili.
+ * Hangi hedeflerin görüneceğini bu sözlük DEĞİL, izinliHedefler() belirler;
+ * burası yalnız metin.
+ */
+const GECIS_BUTON_ETIKET: Record<Durum, string> = {
+  ACIK: 'Yeniden aç',
   AKSIYON_ALINDI: 'Aksiyon alındı',
-  KAPANDI: 'Kapandı',
-  REDDEDILDI: 'Reddedildi',
+  KAPANDI: 'Kapat',
+  REDDEDILDI: 'Reddet',
 }
 
 const DURUM_RENK: Record<Durum, string> = {
@@ -84,6 +96,7 @@ export default function SikayetListesiPage() {
   const { data: session } = useSession()
   const permissions = session?.user?.permissions || []
   const canView = permissions.includes('servis.sikayet.view')
+  const canManage = permissions.includes('servis.sikayet.manage')
 
   const [guzergahId, setGuzergahId] = useState('')
   const [durakId, setDurakId] = useState('')
@@ -99,6 +112,32 @@ export default function SikayetListesiPage() {
   const [satirlar, setSatirlar] = useState<SikayetSatiri[]>([])
   const [yukleniyor, setYukleniyor] = useState(true)
   const [hata, setHata] = useState<string | null>(null)
+
+  // ── Oluşturma formu ──
+  const [formAcik, setFormAcik] = useState(false)
+  const [formHata, setFormHata] = useState<string | null>(null)
+  const [gonderiliyor, setGonderiliyor] = useState(false)
+  // 🔴 kaynak ÖN SEÇİLİ DEĞİL: şemada default yok ve bu bilinçli. Ön seçili
+  // gelseydi kullanıcı düşünmeden onaylar, "İV" sanılan kayıtlar personel
+  // şikâyeti gibi görünürdü. Boş kalırsa uç zaten 400 döner.
+  const [fKaynak, setFKaynak] = useState('')
+  const [fGuzergah, setFGuzergah] = useState('')
+  const [fKategori, setFKategori] = useState('')
+  const [fTarih, setFTarih] = useState('')
+  const [fBildirim, setFBildirim] = useState('')
+  const [fAciklama, setFAciklama] = useState('')
+  const [fSikayetci, setFSikayetci] = useState('')
+  const [fDurak, setFDurak] = useState('')
+  const [fPlanlananSaat, setFPlanlananSaat] = useState('')
+  const [fTermin, setFTermin] = useState('')
+
+  // ── Durum geçişi ──
+  const [gecisKaydi, setGecisKaydi] = useState<SikayetSatiri | null>(null)
+  const [gecisHedef, setGecisHedef] = useState<Durum | null>(null)
+  const [gecisAksiyon, setGecisAksiyon] = useState('')
+  const [gecisNot, setGecisNot] = useState('')
+  const [gecisHata, setGecisHata] = useState<string | null>(null)
+  const [gecisGonderiliyor, setGecisGonderiliyor] = useState(false)
 
   const sorguDizesi = useMemo(() => {
     const p = new URLSearchParams()
@@ -159,6 +198,86 @@ export default function SikayetListesiPage() {
     yukle()
   }, [canView, yukle])
 
+  function formuSifirla() {
+    setFKaynak(''); setFGuzergah(''); setFKategori(''); setFTarih('')
+    setFBildirim(''); setFAciklama(''); setFSikayetci(''); setFDurak('')
+    setFPlanlananSaat(''); setFTermin(''); setFormHata(null)
+  }
+
+  // 🔴 DOĞRULAMA EKRANDA TEKRAR EDİLMEZ. Zorunluluk işaretleri yalnız
+  // kullanıcı kolaylığı; asıl otorite uç. Uçtan gelen 400 mesajı OLDUĞU GİBİ
+  // gösterilir — Adım 1/2'nin yol gösteren metni kendi cümlemizle
+  // değiştirilmez.
+  async function sikayetGonder() {
+    setGonderiliyor(true)
+    setFormHata(null)
+    try {
+      const res = await fetch('/api/servis-yonetimi/sikayet', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          guzergahId: fGuzergah,
+          kaynak: fKaynak,
+          kategori: fKategori,
+          tarih: fTarih,
+          bildirimTarihi: fBildirim,
+          aciklama: fAciklama,
+          sikayetciPersonnelId: fSikayetci || null,
+          durakId: fDurak || null,
+          planlananSaat: fPlanlananSaat || null,
+          termin: fTermin || null,
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok || !json.ok) {
+        setFormHata(json.message || 'Şikâyet kaydedilemedi.')
+        return
+      }
+      formuSifirla()
+      setFormAcik(false)
+      await yukle()
+    } catch {
+      setFormHata('Şikâyet kaydedilirken beklenmeyen bir hata oluştu.')
+    } finally {
+      setGonderiliyor(false)
+    }
+  }
+
+  async function gecisGonder() {
+    if (!gecisKaydi || !gecisHedef) return
+    setGecisGonderiliyor(true)
+    setGecisHata(null)
+    try {
+      const bugun = new Date().toISOString().slice(0, 10)
+      const govde: Record<string, unknown> = { durum: gecisHedef }
+      if (gecisHedef === 'AKSIYON_ALINDI') {
+        govde.aksiyon = gecisAksiyon
+        govde.aksiyonTarihi = bugun
+      }
+      if (gecisHedef === 'KAPANDI' || gecisHedef === 'REDDEDILDI') {
+        govde.kapanisTarihi = bugun
+        govde.kapanisNotu = gecisNot || null
+      }
+
+      const res = await fetch(`/api/servis-yonetimi/sikayet/${gecisKaydi.id}/durum`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(govde),
+      })
+      const json = await res.json()
+      if (!res.ok || !json.ok) {
+        setGecisHata(json.message || 'Durum güncellenemedi.')
+        return
+      }
+      setGecisKaydi(null); setGecisHedef(null); setGecisAksiyon(''); setGecisNot('')
+      await yukle()
+    } catch {
+      setGecisHata('Durum güncellenirken beklenmeyen bir hata oluştu.')
+    } finally {
+      setGecisGonderiliyor(false)
+    }
+  }
+
   // 🔴 "Yetki yok" hâli, "kayıt yok" hâlinden AYRI ve ilk sırada.
   if (!canView) {
     return (
@@ -171,12 +290,170 @@ export default function SikayetListesiPage() {
 
   return (
     <div className="space-y-6 p-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Servis Şikâyetleri</h1>
-        <p className="text-sm text-muted-foreground">
-          Servis kullanımına dair şikâyet ve uygunsuzluk kayıtları.
-        </p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold">Servis Şikâyetleri</h1>
+          <p className="text-sm text-muted-foreground">
+            Servis kullanımına dair şikâyet ve uygunsuzluk kayıtları.
+          </p>
+        </div>
+        {/* Oluşturma yalnız servis.sikayet.manage ile görünür. */}
+        {canManage && (
+          <Button size="sm" onClick={() => setFormAcik(a => !a)}>
+            <Plus className="mr-2 h-4 w-4" />
+            Yeni Şikâyet
+          </Button>
+        )}
       </div>
+
+      {canManage && formAcik && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium">Yeni Şikâyet</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <div>
+                <Label htmlFor="f-kaynak">Kaynak *</Label>
+                <select
+                  id="f-kaynak" value={fKaynak} onChange={e => setFKaynak(e.target.value)}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                >
+                  {/* 🔴 Ön seçili değer YOK — bilinçli. */}
+                  <option value="">Seçiniz</option>
+                  {Object.entries(KAYNAK_ETIKET).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                </select>
+              </div>
+              <div>
+                <Label htmlFor="f-guzergah">Güzergâh *</Label>
+                <select
+                  id="f-guzergah" value={fGuzergah} onChange={e => setFGuzergah(e.target.value)}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                >
+                  <option value="">Seçiniz</option>
+                  {guzergahlar.map(g => <option key={g.id} value={g.id}>{etiket(g)}</option>)}
+                </select>
+              </div>
+              <div>
+                <Label htmlFor="f-kategori">Kategori *</Label>
+                <select
+                  id="f-kategori" value={fKategori} onChange={e => setFKategori(e.target.value)}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                >
+                  <option value="">Seçiniz</option>
+                  {Object.entries(KATEGORI_ETIKET).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                </select>
+              </div>
+              <div>
+                <Label htmlFor="f-tarih">Olay tarihi *</Label>
+                <input id="f-tarih" type="date" value={fTarih} onChange={e => setFTarih(e.target.value)}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
+              </div>
+              <div>
+                <Label htmlFor="f-bildirim">Bildirim tarihi *</Label>
+                <input id="f-bildirim" type="date" value={fBildirim} onChange={e => setFBildirim(e.target.value)}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
+              </div>
+              <div>
+                {/* 🔴 Zorunluluk işareti KAYNAĞA göre değişir: çalışan kendi
+                    bildirdiyse kimlik zaten biliniyor. Kural uçta da var. */}
+                <Label htmlFor="f-sikayetci">
+                  Şikâyetçi {fKaynak === 'PERSONEL' ? '*' : '(opsiyonel)'}
+                </Label>
+                <input
+                  id="f-sikayetci" value={fSikayetci} onChange={e => setFSikayetci(e.target.value)}
+                  placeholder="Personel ID"
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
+              </div>
+              <div>
+                <Label htmlFor="f-durak">Durak</Label>
+                <select
+                  id="f-durak" value={fDurak} onChange={e => setFDurak(e.target.value)}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                >
+                  <option value="">Yok</option>
+                  {duraklar.map(d => <option key={d.id} value={d.id}>{etiket(d)}</option>)}
+                </select>
+              </div>
+              <div>
+                {/* Otomatik doldurma YOK (Melih kararı) — İV elle girer. */}
+                <Label htmlFor="f-saat">Planlanan saat</Label>
+                <input id="f-saat" value={fPlanlananSaat} onChange={e => setFPlanlananSaat(e.target.value)}
+                  placeholder="07:15"
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
+              </div>
+              <div>
+                <Label htmlFor="f-termin">Termin</Label>
+                <input id="f-termin" type="date" value={fTermin} onChange={e => setFTermin(e.target.value)}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="f-aciklama">Açıklama *</Label>
+              <textarea
+                id="f-aciklama" value={fAciklama} onChange={e => setFAciklama(e.target.value)} rows={3}
+                className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
+            </div>
+
+            {/* Uçtan gelen mesaj OLDUĞU GİBİ — yeniden yazılmaz. */}
+            {formHata && <p className="text-sm text-red-600">{formHata}</p>}
+
+            <div className="flex gap-2">
+              <Button size="sm" onClick={sikayetGonder} disabled={gonderiliyor}>
+                {gonderiliyor ? 'Kaydediliyor…' : 'Kaydet'}
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => { setFormAcik(false); formuSifirla() }}>
+                Vazgeç
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {canManage && gecisKaydi && gecisHedef && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium">
+              #{gecisKaydi.no} → {DURUM_ETIKET[gecisHedef]}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {gecisHedef === 'AKSIYON_ALINDI' && (
+              <div>
+                <Label htmlFor="g-aksiyon">Aksiyon *</Label>
+                <textarea id="g-aksiyon" rows={2} value={gecisAksiyon} onChange={e => setGecisAksiyon(e.target.value)}
+                  className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
+              </div>
+            )}
+            {(gecisHedef === 'REDDEDILDI' || gecisHedef === 'KAPANDI') && (
+              <div>
+                <Label htmlFor="g-not">
+                  Kapanış notu {gecisHedef === 'REDDEDILDI' ? '* (ret gerekçesi)' : '(opsiyonel)'}
+                </Label>
+                <textarea id="g-not" rows={2} value={gecisNot} onChange={e => setGecisNot(e.target.value)}
+                  className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
+              </div>
+            )}
+            {gecisHedef === 'ACIK' && (
+              <p className="text-sm text-muted-foreground">
+                Kayıt yeniden açılacak. Kapanış tarihi ve notu temizlenir; aksiyon kaydı korunur.
+              </p>
+            )}
+
+            {gecisHata && <p className="text-sm text-red-600">{gecisHata}</p>}
+
+            <div className="flex gap-2">
+              <Button size="sm" onClick={gecisGonder} disabled={gecisGonderiliyor}>
+                {gecisGonderiliyor ? 'Uygulanıyor…' : 'Uygula'}
+              </Button>
+              <Button size="sm" variant="outline"
+                onClick={() => { setGecisKaydi(null); setGecisHedef(null); setGecisHata(null) }}>
+                Vazgeç
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader className="pb-3">
@@ -279,6 +556,7 @@ export default function SikayetListesiPage() {
               <TableHead>Durum</TableHead>
               <TableHead>Şikâyetçi</TableHead>
               <TableHead>Sorumlu</TableHead>
+              {canManage && <TableHead>İşlem</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -298,6 +576,26 @@ export default function SikayetListesiPage() {
                 </TableCell>
                 <TableCell>{s.sikayetci?.adSoyad ?? '-'}</TableCell>
                 <TableCell>{s.sorumlu?.adSoyad ?? '-'}</TableCell>
+                {canManage && (
+                  <TableCell>
+                    <div className="flex flex-wrap gap-1">
+                      {/* 🔴 Hedefler MATRİSTEN geliyor (Adım 1). Ekranda ikinci
+                          bir liste yok: kapalı bir kayıtta "Kapat" butonu
+                          ÜRETİLEMEZ, çünkü izinliHedefler onu döndürmez. */}
+                      {izinliHedefler(s.durum).map(hedef => (
+                        <Button
+                          key={hedef} size="sm" variant="outline"
+                          onClick={() => {
+                            setGecisKaydi(s); setGecisHedef(hedef)
+                            setGecisAksiyon(''); setGecisNot(''); setGecisHata(null)
+                          }}
+                        >
+                          {GECIS_BUTON_ETIKET[hedef]}
+                        </Button>
+                      ))}
+                    </div>
+                  </TableCell>
+                )}
               </TableRow>
             ))}
           </TableBody>

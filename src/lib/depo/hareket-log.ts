@@ -17,6 +17,12 @@ export type DepoOlay =
   | 'MALZEME_TALEBI_REZERV'
   | 'MALZEME_TALEBI_CIKAR'
   | 'MALZEME_TALEBI_TUKET'
+  // Taşıma birimi (palet): detay.handlingUnitId (+ hedefHandlingUnitId); OLUSTUR/TASI'da partNo '-'.
+  | 'HU_OLUSTUR'
+  | 'HU_EKLE'
+  | 'HU_CIKAR'
+  | 'HU_TASI'
+  | 'HU_DEGISTIR'
 
 export interface DepoHareketGirdi {
   olay: DepoOlay

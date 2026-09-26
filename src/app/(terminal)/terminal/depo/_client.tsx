@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import {
   ArrowDownUp,
+  Boxes,
   ArrowLeft,
   ClipboardList,
   HelpCircle,
@@ -30,6 +31,7 @@ const KARTLAR: DepoKart[] = [
   { label: 'Stok Taşıma', alt: 'Raf okut, taşı, etiketle', Icon: ArrowDownUp, href: '/terminal/depo/stok-tasima' },
   { label: 'Malzeme Toplama', alt: 'İş emri okut, FIFO ile topla', Icon: ClipboardList, href: '/terminal/depo/toplama' },
   { label: 'Stok Bilgisi', alt: 'Barkod, stok no ya da lokasyon okut', Icon: PackageSearch, href: '/terminal/depo/stok-bilgisi' },
+  { label: 'Taşıma Birimi', alt: 'Palet oluştur, doldur, taşı, aktar', Icon: Boxes, href: '/terminal/depo/tasima-birimi' },
   { label: 'Transfer Talebi', Icon: Send, yakinda: true },
   { label: 'Malzeme Talebi', alt: 'Sarf çıkışı: talep, rezerv, tüket', Icon: PackageMinus, href: '/terminal/depo/malzeme-talebi' },
 ]

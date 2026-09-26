@@ -103,6 +103,7 @@ export async function panoData(opts: { oee?: boolean } = {}): Promise<PanoData> 
         id: true,
         kod: true,
         ad: true,
+        masGrupKodu: true,
         masGrupAdi: true,
         aktif: true,
         _count: { select: { plcPinler: true } },
@@ -296,6 +297,7 @@ export type TezgahDetay = {
   id: string
   kod: string
   ad: string
+  masGrupKodu: string | null
   masGrupAdi: string | null
   aktif: boolean
   sinyalli: boolean
@@ -319,7 +321,7 @@ export async function tezgahDetay(tezgahId: string): Promise<TezgahDetay | null>
   const [tezgah, satirlar, durus, duruslar] = await Promise.all([
     prisma.iproTezgah.findUnique({
       where: { id: tezgahId },
-      select: { id: true, kod: true, ad: true, masGrupAdi: true, aktif: true, _count: { select: { plcPinler: true } } },
+      select: { id: true, kod: true, ad: true, masGrupKodu: true, masGrupAdi: true, aktif: true, _count: { select: { plcPinler: true } } },
     }),
     // Açık iş + bugün kapananlar tek sorguda.
     prisma.iproProductionLog.findMany({
@@ -443,6 +445,7 @@ export async function tezgahDetay(tezgahId: string): Promise<TezgahDetay | null>
     id: tezgah.id,
     kod: tezgah.kod,
     ad: tezgah.ad,
+    masGrupKodu: tezgah.masGrupKodu,
     masGrupAdi: tezgah.masGrupAdi,
     aktif: tezgah.aktif,
     sinyalli: tezgah._count.plcPinler > 0,

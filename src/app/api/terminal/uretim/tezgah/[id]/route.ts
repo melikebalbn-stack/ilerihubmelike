@@ -3,7 +3,8 @@ import { requirePermission } from '@/lib/auth/require-permission'
 import { tezgahDetay } from '@/lib/ipro/izleme-service'
 import { prisma } from '@/lib/prisma'
 import { iproHata } from '@/lib/ipro/yonetim-hata'
-import { planliSaniyeHesapla } from '@/lib/ipro/oee-hesap'
+import { planliSaniyeHesapla, molaDurusDuzeltmeSaniye } from '@/lib/ipro/oee-hesap'
+import { molaPencereleri } from '@/lib/ipro/mola-takvim'
 import { durusSaniyeCanli, oeeCanliBilesenleri } from '@/lib/ipro/oee-canli'
 import { gecerliTatilTip, tarihAnahtari, type IproTatilTip } from '@/lib/ipro/takvim-util'
 import { cevrimSaniye } from '@/lib/ipro/cevrim-util'
@@ -68,7 +69,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         const bas = new Date(detay.aktifIs.baslatildiAt)
         const simdi = new Date()
         const parcaKod = detay.aktifIs.ifsPartNo
-        const [vardiyalar, tatiller, ideal, durusSaniye] = await Promise.all([
+        const [vardiyalar, tatiller, ideal, durusRaw, molaPencereler] = await Promise.all([
           prisma.iproVardiya.findMany({
             where: { aktif: true },
             select: { baslangicSaat: true, bitisSaat: true, ertesiGuneTasar: true },
@@ -81,11 +82,15 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
               })
             : Promise.resolve(null),
           durusSaniyeCanli(prisma, id, bas, simdi),
+          // Mola pencereleri (bölüm bazlı) — planlı süreden düşülür + çift-düşüm engeli (kapalı iş yoluyla aynı helper).
+          molaPencereleri(prisma, detay.masGrupKodu ?? null, bas, simdi),
         ])
         const tatilMap = new Map<string, IproTatilTip>()
         for (const t of tatiller) if (gecerliTatilTip(t.tip)) tatilMap.set(tarihAnahtari(t.tarih), t.tip)
 
-        const planliSaniye = planliSaniyeHesapla(bas, simdi, vardiyalar, tatilMap)
+        // Guard: planlı-sebepli duruşun mola∩ kısmını ham duruştan düş (oee-canli.ts'e dokunmadan, çağıran tarafta).
+        const durusSaniye = Math.max(0, durusRaw - (await molaDurusDuzeltmeSaniye(prisma, id, bas, simdi, molaPencereler)))
+        const planliSaniye = planliSaniyeHesapla(bas, simdi, vardiyalar, tatilMap, molaPencereler)
         const uretilen = canliUretim?.adet ?? 0
 
         // Güvenilir ölçülen ideal → onu; yoksa IFS planlı çevrimi (sn) referans al.

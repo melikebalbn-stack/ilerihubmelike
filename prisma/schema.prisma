@@ -11716,8 +11716,9 @@ model IproDurusSebebi {
   kaliteBildirim             Boolean @default(false)
   aktif                      Boolean @default(true)
 
-  tezgahlar IproDurusTezgah[]
-  kayitlar  IproMachineDowntime[]
+  tezgahlar     IproDurusTezgah[]
+  kayitlar      IproMachineDowntime[]
+  molaTanimlari IproMolaTanim[]
 
   @@map("ipro_durus_sebebi")
 }
@@ -11922,8 +11923,37 @@ model IproVardiya {
   // ters ilişkiler, DB kolonu eklemez.
   pdksPuantajGunleri PdksPuantajGun[]
   pdksAtamalari      PdksPersonelVardiya[]
+  molaTanimlari      IproMolaTanim[]
 
   @@map("ipro_vardiya")
+}
+
+// IPRO mola takvimi — planlı mola pencereleri (MAS Planning.DailyDowntimeCalendar'dan tohumlanır).
+// OEE planlı süresinden DÜŞÜLÜR (çalışılamayan planlı ara) ve TAKVIM duruşu olarak işaretlenir.
+// Saatler string "HH:mm" İSTANBUL YEREL (vardiya deseniyle aynı; TZ dönüşümü hesapta yapılır).
+// bolum = MAS WorkCenterGroup.Code (= IproTezgah.masGrupKodu); null = tüm bölümler için geçerli.
+model IproMolaTanim {
+  id               String          @id @default(cuid())
+  vardiyaId        String
+  vardiya          IproVardiya     @relation(fields: [vardiyaId], references: [id])
+  bolum            String? // null = tüm bölümler; dolu = tek bölüm (override), MAS grup kodu
+  sebepId          String
+  sebep            IproDurusSebebi @relation(fields: [sebepId], references: [id])
+  baslangic        String // "HH:mm" İstanbul yerel
+  sureDk           Int
+  gunMaskesi       Int // bit maskesi: Pzt=1, Sal=2, Çar=4, Per=8, Cum=16, Cmt=32, Paz=64
+  gecerliBaslangic DateTime? // pencerenin geçerlilik başlangıcı (null = sınırsız geçmiş)
+  gecerliBitis     DateTime? // geçerlilik bitişi (null = sınırsız gelecek)
+  aktif            Boolean         @default(true)
+  masDowntimeId    Int? // kaynak MAS Loss.Downtime.Id (izlenebilirlik)
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  // Aynı vardiya+bölüm+sebep+başlangıç+gün maskesi tek satır. (bolum NULL satırlar Postgres'te
+  // birbirinden ayrı sayılır — seed null bölümde findFirst+upsert deseniyle idempotent kalır.)
+  @@unique([vardiyaId, bolum, sebepId, baslangic, gunMaskesi], map: "ipro_mola_tanim_uq")
+  @@index([bolum, aktif])
+  @@map("ipro_mola_tanim")
 }
 
 // İK çalışma takvimi — YALNIZ İSTİSNA günler. Pazar/Cumartesi vb. haftalık düzen KODDA

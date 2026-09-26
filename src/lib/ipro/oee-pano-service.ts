@@ -5,7 +5,8 @@
 // TEK YÖN import: izleme-service → oee-pano-service (dairesel bağımlılık yok).
 import 'server-only'
 import type { PrismaClient } from '@/generated/prisma'
-import { planliSaniyeHesapla } from '@/lib/ipro/oee-hesap'
+import { planliSaniyeHesapla, molaDurusDuzeltmeSaniye } from '@/lib/ipro/oee-hesap'
+import { molaPencereleri } from '@/lib/ipro/mola-takvim'
 import { isPenceresiDeltaToplami } from '@/lib/ipro/faz2-delta'
 import { durusSaniyeCanli, oeeCanliBilesenleri, type OeeCanliSonuc } from '@/lib/ipro/oee-canli'
 import { cevrimSaniye } from '@/lib/ipro/cevrim-util'
@@ -55,11 +56,12 @@ export type CanliOeeAcikIs = {
  */
 export async function tezgahlarinCanliOee(
   prisma: PrismaClient,
-  tezgahlar: { id: string; kod: string }[],
+  tezgahlar: { id: string; kod: string; masGrupKodu?: string | null }[],
   acikIsler: CanliOeeAcikIs[],
   simdi: Date,
 ): Promise<Map<string, OeeCanliKart>> {
   const kodById = new Map(tezgahlar.map((t) => [t.id, t.kod]))
+  const bolumById = new Map(tezgahlar.map((t) => [t.id, t.masGrupKodu ?? null]))
 
   const [vardiyalar, tatiller] = await Promise.all([
     prisma.iproVardiya.findMany({
@@ -106,11 +108,16 @@ export async function tezgahlarinCanliOee(
       // ham PLC deltası kullanınca çarpanı (2 gözlü kalıp vb.) olan tezgahta yarı sayıyordu. Kiosk/terminal
       // (MAS olmayan) işlerde MEVCUT davranış: iş penceresi PLC Σdelta.
       const masHepsi = isler.every((i) => i.kaynak === 'MAS' && i.uretimAdet != null)
-      const durusSaniye = await durusSaniyeCanli(prisma, tezgahId, bas, simdi)
+      // Mola pencereleri (bölüm bazlı) — planlı süreden düşülür + planlı-duruş çift sayımını engeller.
+      // Guard kapalı iş yoluyla AYNI fonksiyonu paylaşır (molaDurusDuzeltmeSaniye); oee-canli.ts'e dokunulmaz.
+      const bolum = bolumById.get(tezgahId) ?? null
+      const molaPencereler = await molaPencereleri(prisma, bolum, bas, simdi)
+      const durusRaw = await durusSaniyeCanli(prisma, tezgahId, bas, simdi)
+      const durusSaniye = Math.max(0, durusRaw - (await molaDurusDuzeltmeSaniye(prisma, tezgahId, bas, simdi, molaPencereler)))
       const uretilen = masHepsi
         ? isler.reduce((a, i) => a + (i.uretimAdet ?? 0), 0)
         : (await isPenceresiDeltaToplami(prisma, tezgahKod, bas, simdi)).toplam
-      const planliSaniye = planliSaniyeHesapla(bas, simdi, vardiyalar, tatilMap)
+      const planliSaniye = planliSaniyeHesapla(bas, simdi, vardiyalar, tatilMap, molaPencereler)
       // İdeal çevrim yalnız tek işte anlamlı (performance oradan gelir); çoklu işte hiç kullanılmaz.
       const ideal = !cokluIs && isler[0].ifsPartNo ? idealByKey.get(`${tezgahKod}|${isler[0].ifsPartNo}`) : undefined
       // İdeal çevrim seçimi (kapanış motoruyla aynı öncelik, FORMÜL aynı — yalnız kaynak damgası değişir):

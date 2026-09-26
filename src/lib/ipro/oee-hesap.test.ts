@@ -96,6 +96,43 @@ describe('planliSaniyeHesapla — vardiya+tatil kesişimi (TZ UTC+3)', () => {
   it('bitiş <= başlangıç → 0', () => {
     expect(planliSaniyeHesapla(new Date('2026-08-10T14:00:00Z'), new Date('2026-08-10T04:00:00Z'), [GUNDUZ], bosTatil())).toBe(0)
   })
+
+  it('mola pencereleri planlı süreden düşülür (36000 − 45dk = 33300)', () => {
+    // Öğle molası 09:00–09:45Z (12:00 yerel), tam gündüz vardiyası içinde.
+    const r = planliSaniyeHesapla(
+      new Date('2026-08-10T04:00:00Z'),
+      new Date('2026-08-10T14:00:00Z'),
+      [GUNDUZ],
+      bosTatil(),
+      [{ basla: new Date('2026-08-10T09:00:00Z'), bitis: new Date('2026-08-10T09:45:00Z') }],
+    )
+    expect(r).toBe(36000 - 45 * 60)
+  })
+
+  it('örtüşen mola pencereleri birleşik düşülür (çift sayılmaz)', () => {
+    const r = planliSaniyeHesapla(
+      new Date('2026-08-10T04:00:00Z'),
+      new Date('2026-08-10T14:00:00Z'),
+      [GUNDUZ],
+      bosTatil(),
+      [
+        { basla: new Date('2026-08-10T09:00:00Z'), bitis: new Date('2026-08-10T09:30:00Z') },
+        { basla: new Date('2026-08-10T09:15:00Z'), bitis: new Date('2026-08-10T09:45:00Z') },
+      ],
+    )
+    expect(r).toBe(36000 - 45 * 60) // birleşik 45 dk
+  })
+
+  it('vardiya dışına düşen mola penceresi planlıyı etkilemez', () => {
+    const r = planliSaniyeHesapla(
+      new Date('2026-08-10T04:00:00Z'),
+      new Date('2026-08-10T14:00:00Z'),
+      [GUNDUZ],
+      bosTatil(),
+      [{ basla: new Date('2026-08-10T15:00:00Z'), bitis: new Date('2026-08-10T15:30:00Z') }], // 18:00 yerel — vardiya dışı
+    )
+    expect(r).toBe(36000)
+  })
 })
 
 describe('oeeBilesenleri — formüller, null yayılımı, hesapKaynagi dalları', () => {

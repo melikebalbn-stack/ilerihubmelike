@@ -9,6 +9,7 @@ import type { PrismaClient } from '@/generated/prisma'
 import { gunDurumu, tarihAnahtari, gecerliTatilTip, type IproTatilTip } from '@/lib/ipro/takvim-util'
 import { idealCevrimGuncelle, araliklarKesisiyor } from '@/lib/ipro/ideal-cevrim'
 import { cevrimSaniye } from '@/lib/ipro/cevrim-util'
+import { molaPencereleri, pencereBirlesimMs, type MolaPencere } from '@/lib/ipro/mola-takvim'
 
 /** Türkiye sabit UTC+3 (DST yok). Sunucu UTC çalışır; vardiya saatleri YEREL girilir. */
 export const TR_OFFSET_DK = 180
@@ -42,12 +43,15 @@ function yerelGun(utc: Date): Date {
  * - Gece vardiyası önceki yerel günden taşabildiği için döngü bir gün geriden başlar.
  * - VARSAYIM: aktif vardiyalar zaman-örtüşmez (VARDIYA-1 07-17 / VARDIYA-2 21-07 gibi); örtüşürlerse
  *   ortak saniye çift sayılır (pratikte olmaz).
+ * - molaPencereler (opsiyonel): aktif mola pencereleri. Her vardiya diliminden pencerelerin BİRLEŞİK
+ *   kesişimi düşülür (mola = planlı ama çalışılamayan ara → planlı süreye girmez). Boşsa eski davranış.
  */
 export function planliSaniyeHesapla(
   baslangicUtc: Date,
   bitisUtc: Date,
   vardiyalar: VardiyaSaat[],
   tatilMap: Map<string, IproTatilTip>,
+  molaPencereler: { basla: Date; bitis: Date }[] = [],
 ): number {
   if (bitisUtc.getTime() <= baslangicUtc.getTime() || vardiyalar.length === 0) return 0
   let toplamSn = 0
@@ -65,7 +69,9 @@ export function planliSaniyeHesapla(
       const vBitUtc = t + bitMin * 60000 - TR_OFFSET_DK * 60000
       const kesBas = Math.max(vBasUtc, baslangicUtc.getTime())
       const kesBit = Math.min(vBitUtc, bitisUtc.getTime())
-      if (kesBit > kesBas) toplamSn += ((kesBit - kesBas) / 1000) * faktor
+      if (kesBit <= kesBas) continue
+      const molaMs = molaPencereler.length ? pencereBirlesimMs(molaPencereler, kesBas, kesBit) : 0
+      toplamSn += ((kesBit - kesBas - molaMs) / 1000) * faktor
     }
   }
   return Math.round(toplamSn)
@@ -154,15 +160,22 @@ export function oeeHesaplanabilir(log: {
 
 // ─────────────────────────── DB katmanı ───────────────────────────
 
-/** İş penceresiyle örtüşen duruşların toplam saniyesi. Açık duruş → pencere sonuna kadar sayılır. */
-async function durusSaniyeHesapla(
+/**
+ * ÇİFT DÜŞÜM ENGELİ (canlı + kapalı yol PAYLAŞIR): planlı sebepli (sebep.planli=true) duruşların mola
+ * penceresiyle KESİŞEN toplam saniyesi. Bu süre availability KAYBINA sayılmaz (planlı süreden zaten
+ * düşülmüştür); ham duruş toplamından ÇIKARILIR. Pencereyi aşan planlı-duruş kısmı kayıp olarak KALIR.
+ * molaPencereler boşsa 0 (eski davranış). Hem oee-hesap (kapalı) hem oee-pano-service/terminal (canlı) çağırır.
+ */
+export async function molaDurusDuzeltmeSaniye(
   prisma: PrismaClient,
   tezgahId: string,
   bas: Date,
   bit: Date,
+  molaPencereler: MolaPencere[],
 ): Promise<number> {
+  if (!molaPencereler.length) return 0
   const duruslar = await prisma.iproMachineDowntime.findMany({
-    where: { tezgahId, baslangic: { lt: bit }, OR: [{ bitis: null }, { bitis: { gt: bas } }] },
+    where: { tezgahId, baslangic: { lt: bit }, OR: [{ bitis: null }, { bitis: { gt: bas } }], durusSebebi: { planli: true } },
     select: { baslangic: true, bitis: true },
   })
   let sn = 0
@@ -170,9 +183,36 @@ async function durusSaniyeHesapla(
     const dBit = d.bitis ?? bit
     const kesBas = Math.max(d.baslangic.getTime(), bas.getTime())
     const kesBit = Math.min(dBit.getTime(), bit.getTime())
-    if (kesBit > kesBas) sn += (kesBit - kesBas) / 1000
+    if (kesBit <= kesBas) continue
+    sn += pencereBirlesimMs(molaPencereler, kesBas, kesBit) / 1000
   }
   return Math.round(sn)
+}
+
+/**
+ * İş penceresiyle örtüşen duruşların toplam saniyesi (çift-düşüm engeli uygulanmış).
+ * Açık duruş → pencere sonuna kadar sayılır. Ham toplamdan molaDurusDuzeltmeSaniye çıkarılır.
+ */
+async function durusSaniyeHesapla(
+  prisma: PrismaClient,
+  tezgahId: string,
+  bas: Date,
+  bit: Date,
+  molaPencereler: MolaPencere[] = [],
+): Promise<number> {
+  const duruslar = await prisma.iproMachineDowntime.findMany({
+    where: { tezgahId, baslangic: { lt: bit }, OR: [{ bitis: null }, { bitis: { gt: bas } }] },
+    select: { baslangic: true, bitis: true },
+  })
+  let ham = 0
+  for (const d of duruslar) {
+    const dBit = d.bitis ?? bit
+    const kesBas = Math.max(d.baslangic.getTime(), bas.getTime())
+    const kesBit = Math.min(dBit.getTime(), bit.getTime())
+    if (kesBit > kesBas) ham += (kesBit - kesBas) / 1000
+  }
+  const duzeltme = await molaDurusDuzeltmeSaniye(prisma, tezgahId, bas, bit, molaPencereler)
+  return Math.max(0, Math.round(ham) - duzeltme)
 }
 
 /** Aynı tezgahta zaman-örtüşen BAŞKA kapalı iş var mı (CAKISMA_VAR işareti için). */
@@ -242,7 +282,7 @@ export async function oeeKaydiHesaplaVeYaz(prisma: PrismaClient, productionLogId
       // IFS planlı çevrim snapshot'ı (başla anında yazılır) — ölçülen ideal yoksa fallback kaynağı.
       ifsMachRunFactor: true,
       ifsRunTimeCode: true,
-      tezgah: { select: { kod: true } },
+      tezgah: { select: { kod: true, masGrupKodu: true } },
     },
   })
   if (!log || !oeeHesaplanabilir(log)) return
@@ -297,10 +337,12 @@ export async function oeeKaydiHesaplaVeYaz(prisma: PrismaClient, productionLogId
   ])
   const tatilMap = new Map<string, IproTatilTip>()
   for (const t of tatiller) if (gecerliTatilTip(t.tip)) tatilMap.set(tarihAnahtari(t.tarih), t.tip)
-  const planliSaniye = planliSaniyeHesapla(bas, bit, vardiyalar, tatilMap)
+  // Mola pencereleri (bölüm bazlı): planlı süreden düşülür + planlı duruşun çift sayımını engeller.
+  const molaPencereler = await molaPencereleri(prisma, log.tezgah.masGrupKodu ?? null, bas, bit)
+  const planliSaniye = planliSaniyeHesapla(bas, bit, vardiyalar, tatilMap, molaPencereler)
 
   // 3) durusSaniye · 4) miktarlar · 5) çakışma
-  const durusSaniye = await durusSaniyeHesapla(prisma, log.tezgahId, bas, bit)
+  const durusSaniye = await durusSaniyeHesapla(prisma, log.tezgahId, bas, bit, molaPencereler)
   // uretilenAdet: log.uretimAdet (sinyalli→PLC delta, sinyalsiz MAS→ayna MAS adedini log'a yazar) ??
   // fallback qtyComplete+qtyScrap. Ayrı 'masAdedi' parametresine gerek yok — kaynak log'da.
   const uretilenAdet = log.uretimAdet ?? log.qtyComplete + log.qtyScrap

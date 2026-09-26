@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  SIKAYET_PDF_KOLONLARI,
   sikayetExcelDosyaAdi,
   sikayetExcelSatirlari,
   SIKAYET_EXPORT_GORUNUMU,
@@ -128,5 +129,37 @@ describe('sikayetExcelDosyaAdi', () => {
     // eslint-disable-next-line no-control-regex
     expect(ad).toMatch(/^[\x00-\x7F]+$/)
     expect(ad).toMatch(/^[A-Za-z0-9._-]+\.xlsx$/)
+  })
+})
+
+// ----------------------------------------------------------------------------
+// Adım 5G — PDF kolon alt kümesi tek kaynaktan türer
+// ----------------------------------------------------------------------------
+describe('SIKAYET_PDF_KOLONLARI', () => {
+  it('🔴 Excel kolonlarının ALT KÜMESİ — ayrı bir liste değil', () => {
+    const excel = new Set(SIKAYET_EXPORT_KOLONLARI.map(k => k.alan))
+    for (const k of SIKAYET_PDF_KOLONLARI) expect(excel.has(k.alan)).toBe(true)
+    expect(SIKAYET_PDF_KOLONLARI.length).toBeLessThan(SIKAYET_EXPORT_KOLONLARI.length)
+  })
+
+  it('🔴 PDF dışında bırakılanlar TAM OLARAK belgelenen küme', () => {
+    // Bu liste değişirse test patlar — "PDF\'te neden yok" sorusu sessizce
+    // cevapsız kalmasın. Excel HER ZAMAN tam listedir.
+    const disarida = SIKAYET_EXPORT_KOLONLARI.filter(k => !k.pdf).map(k => k.alan)
+    expect(disarida.sort()).toEqual([
+      'aksiyonTarihi', 'firmaAd', 'kapanisNotu', 'kaynak',
+      'olayTarihi', 'planlananSaat', 'sorumluAdSoyad', 'termin',
+    ])
+  })
+
+  it('PDF kolonları da satır anahtarlarıyla eşleşir (ölü kolon yok)', () => {
+    const [s] = sikayetExcelSatirlari([kayit()])
+    for (const k of SIKAYET_PDF_KOLONLARI) expect(Object.keys(s)).toContain(k.alan)
+  })
+
+  it('🔴 Ders 79 — PDF tablosunda da oran/yüzde başlığı yok', () => {
+    for (const k of SIKAYET_PDF_KOLONLARI) {
+      expect(k.baslik).not.toMatch(/%|[Oo]ran|[Yy]üzde/)
+    }
   })
 })

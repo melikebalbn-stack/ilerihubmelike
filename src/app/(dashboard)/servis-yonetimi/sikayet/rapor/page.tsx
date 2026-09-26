@@ -19,7 +19,7 @@ import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis
 import { buttonVariants } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
-import { Download, Loader2 } from 'lucide-react'
+import { Download, FileText, Loader2 } from 'lucide-react'
 import { SIKAYET_DURUM_ETIKETLERI, sikayetKategoriEtiketi } from '@/lib/servis-yonetimi/sikayet-durum'
 
 const NAVY = '#1B4F72'
@@ -214,6 +214,15 @@ export default function SikayetRaporPage() {
           >
             <Download className="mr-2 h-4 w-4" />
             Excel indir
+          </a>
+        )}
+        {canExport && (
+          <a
+            href={`/api/servis-yonetimi/sikayet/export/pdf${sorguDizesi ? `?${sorguDizesi}` : ''}`}
+            className={buttonVariants({ variant: 'outline' })}
+          >
+            <FileText className="mr-2 h-4 w-4" />
+            PDF indir
           </a>
         )}
       </div>

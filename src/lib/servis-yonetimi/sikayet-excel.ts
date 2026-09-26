@@ -43,28 +43,41 @@ export type SikayetFirmaKaydi = Prisma.ServisSikayetGetPayload<{
   select: typeof FIRMA_GORUNUMU_SELECT
 }>
 
-/** Dosyadaki kolonlar — `alan` anahtarları satirlar[] ile birebir aynıdır. */
+/**
+ * Dışa aktarımın TEK kolon tanımı — `alan` anahtarları satirlar[] ile birebir
+ * aynıdır. Excel ve PDF ikisi de BURADAN türer (rule 6): kolon listesi iki
+ * yere yazılsaydı zamanla ayrışır ve aynı raporun iki biçimi farklı veri
+ * gösterirdi.
+ *
+ * `pdf` bayrağı: PDF A4 YATAY bir tabloya sığmak zorunda. 19 kolon okunaksız
+ * olurdu, bu yüzden PDF tablosu daraltılmış bir ALT KÜME gösterir. Ayıklama
+ * gizli değil, burada AÇIKÇA işaretli ve testle sabit — "PDF'te neden yok"
+ * sorusunun cevabı tek satırda görünür. Excel her zaman TAM listedir.
+ */
 export const SIKAYET_EXPORT_KOLONLARI = [
-  { alan: 'no', baslik: 'No' },
-  { alan: 'bildirimTarihi', baslik: 'Bildirim Tarihi', bicim: 'gg.aa.yyyy' as const },
-  { alan: 'olayTarihi', baslik: 'Olay Tarihi', bicim: 'gg.aa.yyyy' as const },
-  { alan: 'firmaAd', baslik: 'Firma' },
-  { alan: 'guzergah', baslik: 'Güzergâh' },
-  { alan: 'durak', baslik: 'Durak' },
-  { alan: 'plaka', baslik: 'Plaka' },
-  { alan: 'soforAdSoyad', baslik: 'Sürücü' },
-  { alan: 'planlananSaat', baslik: 'Planlanan Saat' },
-  { alan: 'kategori', baslik: 'Kategori' },
-  { alan: 'kaynak', baslik: 'Kaynak' },
-  { alan: 'durum', baslik: 'Durum' },
-  { alan: 'aciklama', baslik: 'Açıklama' },
-  { alan: 'aksiyon', baslik: 'Aksiyon' },
-  { alan: 'aksiyonTarihi', baslik: 'Aksiyon Tarihi', bicim: 'gg.aa.yyyy' as const },
-  { alan: 'termin', baslik: 'Termin', bicim: 'gg.aa.yyyy' as const },
-  { alan: 'kapanisTarihi', baslik: 'Kapanış Tarihi', bicim: 'gg.aa.yyyy' as const },
-  { alan: 'kapanisNotu', baslik: 'Kapanış Notu' },
-  { alan: 'sorumluAdSoyad', baslik: 'İV Sorumlusu' },
+  { alan: 'no', baslik: 'No', pdf: true, pdfGenislik: 10 },
+  { alan: 'bildirimTarihi', baslik: 'Bildirim Tarihi', bicim: 'gg.aa.yyyy' as const, pdf: true, pdfGenislik: 22 },
+  { alan: 'olayTarihi', baslik: 'Olay Tarihi', bicim: 'gg.aa.yyyy' as const, pdf: false },
+  { alan: 'firmaAd', baslik: 'Firma', pdf: false }, // PDF'te grup başlığı
+  { alan: 'guzergah', baslik: 'Güzergâh', pdf: true, pdfGenislik: 35 },
+  { alan: 'durak', baslik: 'Durak', pdf: true, pdfGenislik: 32 },
+  { alan: 'plaka', baslik: 'Plaka', pdf: true, pdfGenislik: 24 },
+  { alan: 'soforAdSoyad', baslik: 'Sürücü', pdf: true, pdfGenislik: 30 },
+  { alan: 'planlananSaat', baslik: 'Planlanan Saat', pdf: false },
+  { alan: 'kategori', baslik: 'Kategori', pdf: true, pdfGenislik: 30 },
+  { alan: 'kaynak', baslik: 'Kaynak', pdf: false },
+  { alan: 'durum', baslik: 'Durum', pdf: true, pdfGenislik: 24 },
+  { alan: 'aciklama', baslik: 'Açıklama', pdf: true }, // kalan genişlik
+  { alan: 'aksiyon', baslik: 'Aksiyon', pdf: true },   // kalan genişlik
+  { alan: 'aksiyonTarihi', baslik: 'Aksiyon Tarihi', bicim: 'gg.aa.yyyy' as const, pdf: false },
+  { alan: 'termin', baslik: 'Termin', bicim: 'gg.aa.yyyy' as const, pdf: false },
+  { alan: 'kapanisTarihi', baslik: 'Kapanış Tarihi', bicim: 'gg.aa.yyyy' as const, pdf: true, pdfGenislik: 22 },
+  { alan: 'kapanisNotu', baslik: 'Kapanış Notu', pdf: false },
+  { alan: 'sorumluAdSoyad', baslik: 'İV Sorumlusu', pdf: false },
 ] as const
+
+/** PDF tablosunun kolonları — üstteki tek tanımdan TÜRETİLİR, elle yazılmaz. */
+export const SIKAYET_PDF_KOLONLARI = SIKAYET_EXPORT_KOLONLARI.filter(k => k.pdf)
 
 /**
  * Dosyanın görünümü: firmaya göre gruplanır, her grubun altında KAYIT SAYISI

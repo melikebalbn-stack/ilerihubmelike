@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { useSession } from 'next-auth/react'
 import SikayetRaporPage from './page'
 
@@ -207,7 +207,17 @@ describe('rapor ekranı — Excel indirme butonu', () => {
     render(<SikayetRaporPage />)
 
     const firmaSecici = await screen.findByLabelText('Firma')
+    // 🔴 Seçenek gelmeden change TETİKLENMEZ: <select>'e, karşılığı olan bir
+    // <option> yokken value atamak SESSİZ NO-OP'tur — değer '' kalır, href
+    // hiç değişmez ve test "zaman aşımı" gibi görünen bir sebeple düşer.
+    // Firma listesi ayrı bir fetch'ten geliyor; onu bekliyoruz.
+    await waitFor(() =>
+      expect(within(firmaSecici).getByRole('option', { name: 'Firma A' })).toBeInTheDocument(),
+    )
     fireEvent.change(firmaSecici, { target: { value: 'f1' } })
+    // Seçim GERÇEKTEN oturdu mu: option yoksa change sessiz no-op'tur
+    // ve hata aşağıda belirsiz bir zaman aşımı olarak görünürdü.
+    expect(firmaSecici).toHaveValue('f1')
 
     await waitFor(() =>
       expect(screen.getByRole('link', { name: /Excel indir/i })).toHaveAttribute(
@@ -215,5 +225,48 @@ describe('rapor ekranı — Excel indirme butonu', () => {
         '/api/servis-yonetimi/sikayet/export?firmaId=f1',
       ),
     )
+  })
+})
+
+describe('rapor ekranı — PDF indirme butonu (Adım 5G)', () => {
+  it('servis.export VARKEN PDF butonu görünür', async () => {
+    mockSession(['servis.sikayet.view', 'servis.export'])
+    fetchMockKur()
+    render(<SikayetRaporPage />)
+
+    const bag = await screen.findByRole('link', { name: /PDF indir/i })
+    expect(bag).toHaveAttribute('href', '/api/servis-yonetimi/sikayet/export/pdf')
+  })
+
+  it('🔴 servis.export YOKKEN PDF butonu da GÖRÜNMEZ', async () => {
+    mockSession(['servis.sikayet.view'])
+    fetchMockKur()
+    render(<SikayetRaporPage />)
+
+    await waitFor(() => expect(screen.getByText('Toplam şikâyet')).toBeInTheDocument())
+    expect(screen.queryByRole('link', { name: /PDF indir/i })).not.toBeInTheDocument()
+  })
+
+  it('iki indirme bağlantısı AYNI filtreyi taşır (Excel ile PDF ayrışmaz)', async () => {
+    mockSession(['servis.sikayet.view', 'servis.export'])
+    fetchMockKur()
+    render(<SikayetRaporPage />)
+
+    const secici = await screen.findByLabelText('Firma')
+    // Seçenek gelmeden change no-op olur — bkz. yukarıdaki gerekçe.
+    await waitFor(() =>
+      expect(within(secici).getByRole('option', { name: 'Firma A' })).toBeInTheDocument(),
+    )
+    fireEvent.change(secici, { target: { value: 'f1' } })
+    // Seçim GERÇEKTEN oturdu mu: option yoksa change sessiz no-op'tur
+    // ve hata aşağıda belirsiz bir zaman aşımı olarak görünürdü.
+    expect(secici).toHaveValue('f1')
+
+    await waitFor(() => {
+      expect(screen.getByRole('link', { name: /Excel indir/i }))
+        .toHaveAttribute('href', '/api/servis-yonetimi/sikayet/export?firmaId=f1')
+      expect(screen.getByRole('link', { name: /PDF indir/i }))
+        .toHaveAttribute('href', '/api/servis-yonetimi/sikayet/export/pdf?firmaId=f1')
+    })
   })
 })

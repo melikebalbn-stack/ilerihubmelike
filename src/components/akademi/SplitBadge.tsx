@@ -1,12 +1,13 @@
 import Link from "next/link";
 
-export type SplitBadgeColor = "red" | "blue" | "green" | "amber";
+export type SplitBadgeColor = "red" | "blue" | "green" | "amber" | "gray";
 
 const BG: Record<SplitBadgeColor, string> = {
   red: "bg-[#dc2626]",
   blue: "bg-[#2563eb]",
   green: "bg-[#16a34a]",
   amber: "bg-[#d97706]",
+  gray: "bg-[#64748b]",
 };
 
 /**

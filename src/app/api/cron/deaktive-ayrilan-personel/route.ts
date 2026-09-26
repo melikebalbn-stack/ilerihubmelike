@@ -8,6 +8,7 @@ import {
   adayOzet,
   deaktiveAyrilanPersonel,
 } from '@/lib/offboarding/deaktive-ayrilan'
+import { PASIF_KART_ABORT_LIMIT, pasifPersonelKartlariniKapat, type PasifSupurmeSonucu } from '@/lib/pdks/senkron'
 
 export const dynamic = 'force-dynamic'
 
@@ -119,7 +120,28 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // ── PDKS kancası (2026-09-26): pasif personelin AKTİF geçiş kartları PASİF + panelden
+    //    SILINECEK. Aynı dry-run/apply bayrağına uyar; kendi güvenlik ağı var (limit
+    //    PASIF_KART_ABORT_LIMIT). Hesap kapatmadan BAĞIMSIZ — biri hata verse diğeri sürer.
+    let pdksKart: PasifSupurmeSonucu | { hata: string }
+    try {
+      pdksKart = await pasifPersonelKartlariniKapat(prisma, { dryRun })
+      console.log(
+        `[deaktive-ayrilan-personel] PDKS kart ${dryRun ? 'DRY-RUN' : 'APPLY'} adet=${pdksKart.adet} ` +
+          `abortedLimit=${pdksKart.abortedLimit}${pdksKart.adet ? ` siciller=${pdksKart.siciller.join(',')}` : ''}`,
+      )
+      if (pdksKart.abortedLimit) {
+        console.error(
+          `[deaktive-ayrilan-personel] PDKS GÜVENLİK AĞI: ${pdksKart.adet} kart kapatılacaktı (limit ${PASIF_KART_ABORT_LIMIT}) — TÜMÜ İPTAL`,
+        )
+      }
+    } catch (kartErr) {
+      console.error('[deaktive-ayrilan-personel] PDKS kart süpürmesi hata', kartErr)
+      pdksKart = { hata: (kartErr as Error)?.message ?? 'pdks kart hata' }
+    }
+
     return NextResponse.json({
+      pdksKart,
       ok: !sonuc.abortedLimit,
       dryRun: sonuc.dryRun,
       bulundu: sonuc.bulundu,

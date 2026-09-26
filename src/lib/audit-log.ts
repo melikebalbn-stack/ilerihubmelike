@@ -71,6 +71,9 @@ export type AuditTargetType =
   | 'PDKS_CIHAZ'
   | 'PDKS_KAPI'
   | 'PDKS_OKUYUCU'
+  // PDKS kart yaşam döngüsü. action: PDKS_KART_CREATED / PDKS_KART_PASIFLENDI (neden:
+  // KAYIP|BOZUK|DEGISTI|IPTAL|AYRILDI) / PDKS_KART_IMPORT (targetId boş, özet satırı).
+  | 'PDKS_KART'
 
 export interface AuditLogParams {
   action: string

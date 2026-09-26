@@ -31,6 +31,8 @@ export class IsapiHata extends Error {
     public readonly kod: IsapiHataKodu,
     mesaj: string,
     public readonly httpDurum?: number,
+    /** Hikvision gövdesindeki subStatusCode (ör. "employeeNoAlreadyExist") — varsa. */
+    public readonly altKod?: string,
   ) {
     super(mesaj)
     this.name = 'IsapiHata'
@@ -85,7 +87,9 @@ export function hostDogrula(host: string): string | null {
   if ([a, b, c, d].some((x) => x > 255)) return 'Geçersiz IPv4 adresi'
   const port = m[5] ? Number(m[5]) : 80
   if (port < 1 || port > 65535) return 'Geçersiz port'
-  const ozel = a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168)
+  // Loopback YALNIZ birim testinde (sahte ISAPI sunucusu) — üretimde asla.
+  const testLoopback = process.env.NODE_ENV === 'test' && a === 127
+  const ozel = a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || testLoopback
   if (!ozel) return 'Yalnız özel ağ adresi (10.x, 172.16-31.x, 192.168.x) kabul edilir'
   return null
 }
@@ -195,6 +199,13 @@ function agHatasi(e: unknown, host: string): IsapiHata {
   }
 }
 
+/** Hikvision gövdesindeki subStatusCode (JSON ya da XML). */
+function hikvisionAltKod(metin: string): string | undefined {
+  return (
+    /"subStatusCode"\s*:\s*"([^"]+)"/.exec(metin)?.[1] ?? /<subStatusCode>([^<]*)<\/subStatusCode>/.exec(metin)?.[1]
+  )?.trim()
+}
+
 /** Hikvision hata gövdesi (JSON ya da XML ResponseStatus) → kısa açıklama. */
 function hikvisionHataOzeti(metin: string): string {
   const alan = (ad: string) =>
@@ -284,10 +295,10 @@ export async function isapiIstek(
     throw agHatasi(e, cihaz.host)
   }
   if (yanit.status === 403) {
-    throw new IsapiHata('YETKI', `Cihaz hesabının bu işleme yetkisi yok (403) ${hikvisionHataOzeti(metin)}`.trim(), 403)
+    throw new IsapiHata('YETKI', `Cihaz hesabının bu işleme yetkisi yok (403) ${hikvisionHataOzeti(metin)}`.trim(), 403, hikvisionAltKod(metin))
   }
   if (yanit.status < 200 || yanit.status >= 300) {
-    throw new IsapiHata('HTTP', `Cihaz HTTP ${yanit.status} döndü ${hikvisionHataOzeti(metin)}`.trim(), yanit.status)
+    throw new IsapiHata('HTTP', `Cihaz HTTP ${yanit.status} döndü ${hikvisionHataOzeti(metin)}`.trim(), yanit.status, hikvisionAltKod(metin))
   }
   return { durum: yanit.status, icerikTipi: yanit.headers.get('content-type') ?? '', metin }
 }

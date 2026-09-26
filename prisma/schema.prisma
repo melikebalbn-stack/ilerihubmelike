@@ -11854,8 +11854,10 @@ model IproProductionLog {
   plcSayacBaslangic     Int?
   plcSayacBitis         Int?
   // FAZ 2 (IPRO_FAZ2_DELTA): kapanışta iş penceresindeki Σ delta özeti + hesabın kaynağı.
-  uretimAdet            Int? // makine sayacından gerçekleşen toplam (Σ delta veya çıkarma)
-  hesapKaynagi          String? // 'DELTA' (zaman serisi Σ) | 'CIKARMA' (bitiş−başlangıç) — audit marker
+  uretimAdet            Int? // gerçekleşen üretim; MAS kaynaklı logda = MAS Amount (nihai adet), non-MAS'ta PLC Σdelta
+  plcAdet               Int? // ham PLC Σdelta (MAS kaynaklı sinyalli logda denetim/karşılaştırma; çarpansız)
+  masCarpan             Int? // MAS Production.ProductionDetail.CounterMultiplier (audit; MAS Amount zaten çarpanlı-nihai)
+  hesapKaynagi          String? // 'DELTA' (zaman serisi Σ) | 'CIKARMA' (bitiş−başlangıç) | 'MAS' (MAS Amount) — audit marker
   // İş yaşam döngüsü: default KAPALI — mevcut/eski kayıtlar bitmiş sayılır.
   // "başla" endpoint'i ACIK üretir; "bitir"/"durdur" KAPALI'ya çeker.
   durum                 IproIsDurum         @default(KAPALI)

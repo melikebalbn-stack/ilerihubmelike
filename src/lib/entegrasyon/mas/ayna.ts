@@ -229,14 +229,16 @@ export async function runMasAyna(opts: { dryRun?: boolean; limit?: number | null
   const kapanisIds = [...new Set(acikMasLoglar.map((l) => l.masProductionMasterId).filter((x): x is number => x != null))]
   const masSatirlar = kapanisIds.length ? await uretimlerByMasIds(kapanisIds) : []
   // masId → güncel durum (endDateTime/active + adet/isFinished — pm'in detay satırlarından türetilir).
-  const masById = new Map<number, { endDateTime: Date | null; active: boolean; isFinished: boolean; adet: number }>()
+  const masById = new Map<number, { endDateTime: Date | null; active: boolean; isFinished: boolean; adet: number; carpan: number | null }>()
   for (const r of masSatirlar) {
     const rowAdet = uretimAdedi(r)
+    const rowCarpan = r.counterMultiplier != null ? Math.round(r.counterMultiplier) : null
     const cur = masById.get(r.masId)
     if (!cur) {
-      masById.set(r.masId, { endDateTime: r.endDateTime, active: r.active !== false, isFinished: !!r.isFinished, adet: rowAdet })
+      masById.set(r.masId, { endDateTime: r.endDateTime, active: r.active !== false, isFinished: !!r.isFinished, adet: rowAdet, carpan: rowCarpan })
     } else {
       if (r.endDateTime && (!cur.endDateTime || r.endDateTime > cur.endDateTime)) cur.endDateTime = r.endDateTime
+      if (rowCarpan != null && (cur.carpan == null || rowCarpan > cur.carpan)) cur.carpan = rowCarpan
       cur.isFinished = cur.isFinished || !!r.isFinished
       cur.adet = Math.max(cur.adet, rowAdet)
       cur.active = cur.active && r.active !== false
@@ -260,19 +262,17 @@ export async function runMasAyna(opts: { dryRun?: boolean; limit?: number | null
       const tamamlandi = agg ? agg.isFinished : true // MAS'ta kayıt yoksa tamamlanmış/kaldırılmış say
       const sinyalli = log.tezgah._count.plcPinler > 0
 
-      // uretimAdet: SİNYALLİ → IPRO PLC delta; SİNYALSİZ → MAS adedi (log'a yazılır ki oeeHesaplanabilir
-      // guard'ı [uretimAdet!=null] geçsin). log.hesapKaynagi sinyalsizde 'MAS' (audit).
-      let uretimAdet: number | null = null
-      let logHesapKaynagi: string | null = null
+      // SAYIM KAYNAĞI: MAS kaynaklı loglarda uretimAdet = MAS Amount (SİNYALLİ DAHİL — PLC ham Σdelta
+      // çarpansız + kaçırılan okumalar yüzünden MAS Amount'un altında kalıyordu). plcAdet = sinyalli ise
+      // PLC Σdelta (denetim/karşılaştırma), masCarpan = MAS CounterMultiplier. hesapKaynagi 'MAS'.
+      const uretimAdet = adet
+      let plcAdet: number | null = null
       if (sinyalli && log.baslatildiAt) {
         try {
-          uretimAdet = (await isPenceresiDeltaToplami(prisma, log.tezgah.kod, log.baslatildiAt, bitirildiAt)).toplam
+          plcAdet = (await isPenceresiDeltaToplami(prisma, log.tezgah.kod, log.baslatildiAt, bitirildiAt)).toplam
         } catch {
-          uretimAdet = null
+          plcAdet = null
         }
-      } else if (!sinyalli) {
-        uretimAdet = adet
-        logHesapKaynagi = 'MAS'
       }
       await prisma.iproProductionLog.update({
         where: { id: log.id },
@@ -282,7 +282,9 @@ export async function runMasAyna(opts: { dryRun?: boolean; limit?: number | null
           qtyComplete: adet,
           tamamlandi,
           uretimAdet,
-          ...(logHesapKaynagi ? { hesapKaynagi: logHesapKaynagi } : {}),
+          plcAdet,
+          masCarpan: agg?.carpan ?? null,
+          hesapKaynagi: 'MAS',
         },
       })
       // OEE: uretilen adet log'dan okunur. Çoklu işte perf+quality+oee null (COKLU_IS) — oee-hesap içinde.

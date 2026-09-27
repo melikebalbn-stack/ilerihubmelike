@@ -56,9 +56,13 @@ export function SplitBadge({
       </span>
       <span className="flex items-center gap-1.5 whitespace-nowrap border-l border-white/35 px-[11px] py-2">
         {right}
-        <span aria-hidden className="ml-0.5 text-[11px]">
-          ↗
-        </span>
+        {/* ↗ "git" demek — yalnız gezinme (href) modunda. onClick modunda rozet
+            bir işlem tetikler (kaydet/sil/onayla), gezinme yok → ok gösterilmez. */}
+        {!onClick && (
+          <span aria-hidden className="ml-0.5 text-[11px]">
+            ↗
+          </span>
+        )}
       </span>
     </>
   );

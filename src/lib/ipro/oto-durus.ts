@@ -2,6 +2,7 @@ import 'server-only'
 import { prisma } from '@/lib/prisma'
 import { cevrimSaniye } from '@/lib/ipro/cevrim-util'
 import { esikSaniye, cevrimMedyaniGaplerden } from '@/lib/ipro/durus-esik'
+import { esikAyarGetir, tezgahEsikMap, birlesikEsikAyar } from '@/lib/ipro/ipro-ayar'
 import { aktifMolaPenceresi } from '@/lib/ipro/mola-takvim'
 
 /**
@@ -62,6 +63,9 @@ export async function runOtoDurus(opts: { dryRun?: boolean } = {}): Promise<OtoD
     }
   }
   ozet.taranan = byTezgah.size
+
+  // Eşik ayarları (IproAyar genel + IproTezgahAyar istisna) — 60 sn önbellekli, tur başında bir kez.
+  const [genelEsikAyar, tezgahEsik] = await Promise.all([esikAyarGetir(), tezgahEsikMap()])
 
   // OTO sebep (yalnız gerçek run'da seed) — kod OTO-SAYAC.
   let otoSebepId: string | null = null
@@ -148,7 +152,7 @@ export async function runOtoDurus(opts: { dryRun?: boolean } = {}): Promise<OtoD
       cevrimSn = cevrimMedyaniGaplerden(gaps)
     }
     if (cevrimSn == null) cevrimSn = cevrimSaniye(t.mach, t.kod2)
-    const esik = esikSaniye(cevrimSn)
+    const esik = esikSaniye(cevrimSn, birlesikEsikAyar(genelEsikAyar, tezgahEsik.get(t.tezgahId)))
 
     if (yasSn > esik) {
       if (!dryRun) {

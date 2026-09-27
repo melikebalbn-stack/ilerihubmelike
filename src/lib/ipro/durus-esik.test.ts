@@ -28,6 +28,21 @@ describe('esikSaniye — clamp(3.5×çevrim, 180, 900)', () => {
   })
 })
 
+describe('esikSaniye — ayardan (IproAyar) + tezgah istisnası', () => {
+  it('ayar çarpanı/tavanı sabitleri ezer', () => {
+    // çarpan 5, tavan 2000: çevrim 220 → 5×220=1100 (taban 180 üstü, tavan 2000 altı)
+    expect(esikSaniye(220, { carpan: 5, taban: 180, tavan: 2000 })).toBe(1100)
+  })
+  it('tezgah istisnası tavanı yükseltince gerçek uzun çevrim yakalanır (CN02 senaryosu)', () => {
+    // ölçülen 551, çarpan 3.5 → 1929; genel tavan 900 kırpardı; istisna tavan 2000 → 1929 geçer
+    expect(esikSaniye(551, { carpan: 3.5, taban: 180, tavan: 900 })).toBe(900)
+    expect(esikSaniye(551, { carpan: 3.5, taban: 180, tavan: 2000 })).toBe(1929)
+  })
+  it('ayar boş/null alanı sabite düşer', () => {
+    expect(esikSaniye(220, { carpan: null, taban: null, tavan: null })).toBe(770) // 3.5×220
+  })
+})
+
 describe('cevrimMedyaniGaplerden', () => {
   it('uzun duruş gap’i medyanı bozmaz (tavan üstü elenir)', () => {
     // 6 üretim gap’i ~30sn + 1 uzun duruş (5000sn) → medyan yine ~30

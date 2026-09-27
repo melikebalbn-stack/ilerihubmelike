@@ -11685,6 +11685,7 @@ model IproTezgah {
   durusEsleme IproDurusTezgah[]
   hurdaEsleme IproHurdaTezgah[]
   kiosklar    IproKioskTezgah[]
+  ayar        IproTezgahAyar?
 
   @@index([ifsWorkCenterNo])
   @@index([ifsResourceId])
@@ -11988,6 +11989,47 @@ model IproMolaTanim {
   @@unique([vardiyaId, bolum, sebepId, baslangic, gunMaskesi], map: "ipro_mola_tanim_uq")
   @@index([bolum, aktif])
   @@map("ipro_mola_tanim")
+}
+
+// IPRO genel ayarları (anahtar-değer) — duruş eşiği çarpan/taban/tavan. Kod bunlardan okur (60 sn önbellek).
+// Seed: durus_esik_carpan=3.5, durus_esik_taban_sn=180, durus_esik_tavan_sn=900.
+// ("Çalışıyor" penceresi fiziksel-aktivite.ts sabitindedir — DOKUNMA — burada TUTULMAZ.)
+model IproAyar {
+  id            String   @id @default(cuid())
+  anahtar       String   @unique
+  deger         String
+  guncelleyenId String?
+  updatedAt     DateTime @updatedAt
+
+  @@map("ipro_ayar")
+}
+
+// Tezgah bazlı duruş eşiği istisnası — genel taban/tavanı ezer. Boş alan genel değeri kullanır.
+model IproTezgahAyar {
+  id            String     @id @default(cuid())
+  tezgahId      String     @unique
+  tezgah        IproTezgah @relation(fields: [tezgahId], references: [id], onDelete: Cascade)
+  tabanSn       Int?
+  tavanSn       Int?
+  not           String?
+  guncelleyenId String?
+  updatedAt     DateTime   @updatedAt
+
+  @@map("ipro_tezgah_ayar")
+}
+
+// IPRO ayar değişiklik geçmişi (denetim). alan=ayar/istisna/mola/vardiya/tatil; kayitRef=ilgili kayıt.
+model IproAyarGecmis {
+  id          String   @id @default(cuid())
+  zaman       DateTime @default(now())
+  kullaniciId String?
+  alan        String
+  kayitRef    String?
+  eski        String?
+  yeni        String?
+
+  @@index([zaman])
+  @@map("ipro_ayar_gecmis")
 }
 
 // İK çalışma takvimi — YALNIZ İSTİSNA günler. Pazar/Cumartesi vb. haftalık düzen KODDA

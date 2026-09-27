@@ -17,13 +17,24 @@ export function medyan(xs: number[]): number | null {
   return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2
 }
 
+/** Eşik parametreleri — IproAyar'dan gelir (genel) + IproTezgahAyar (tezgah istisnası) ile ezilir. */
+export interface EsikAyar {
+  carpan?: number | null
+  taban?: number | null
+  tavan?: number | null
+}
+
 /**
- * Çevrim saniyesinden eşik: clamp(K × çevrim, taban, tavan). Çevrim yok/≤0 → taban (180).
- * Örn çevrim 15 → 3.5×15=52 → taban 180; çevrim 220 → 770; çevrim 400 → 1400 → tavan 900.
+ * Çevrim saniyesinden eşik: clamp(çarpan × çevrim, taban, tavan). Çevrim yok/≤0 → taban.
+ * ayar verilmezse mevcut sabitler (K=3.5, taban=180, tavan=900). Örn çevrim 220 → 770; 400 → tavan.
+ * Tezgah istisnası ayar.taban/tavan'ı ezerek geçilir (çağıran birleştirir).
  */
-export function esikSaniye(cevrimSn: number | null | undefined): number {
-  if (cevrimSn == null || !(cevrimSn > 0)) return ESIK_TABAN_SN
-  return Math.round(Math.min(ESIK_TAVAN_SN, Math.max(ESIK_TABAN_SN, K * cevrimSn)))
+export function esikSaniye(cevrimSn: number | null | undefined, ayar?: EsikAyar): number {
+  const carpan = ayar?.carpan != null && ayar.carpan > 0 ? ayar.carpan : K
+  const taban = ayar?.taban != null && ayar.taban > 0 ? ayar.taban : ESIK_TABAN_SN
+  const tavan = ayar?.tavan != null && ayar.tavan > 0 ? ayar.tavan : ESIK_TAVAN_SN
+  if (cevrimSn == null || !(cevrimSn > 0)) return Math.round(taban)
+  return Math.round(Math.min(tavan, Math.max(taban, carpan * cevrimSn)))
 }
 
 /**

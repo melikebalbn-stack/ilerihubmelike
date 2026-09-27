@@ -276,6 +276,7 @@ const iproMenuItems = [
   { name: "Kiosk Cihazları", icon: MonitorSmartphone, href: "/ipro/kiosklar", roles: [] as string[], permission: ["ipro.view", "ipro.admin"] },
   { name: "IFS Eşlemeleri", icon: Link2, href: "/ipro/ifs-eslemeleri", roles: [] as string[], permission: ["ipro.view", "ipro.admin"] },
   { name: "Sinyal Takibi", icon: Radio, href: "/ipro/sinyal", roles: [] as string[], permission: ["ipro.admin"] },
+  { name: "Ayarlar", icon: Settings, href: "/ipro/ayarlar", roles: [] as string[], permission: ["ipro.view", "ipro.admin"] },
 ]
 
 // Stratejik IK alt menüsü

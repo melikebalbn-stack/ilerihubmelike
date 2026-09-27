@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
+import { notifyAnnouncementPublished } from '@/lib/announcements/notify-announcement'
 
 // GET - Duyuruları listele
 export async function GET(request: NextRequest) {
@@ -182,6 +183,8 @@ export async function POST(request: NextRequest) {
       targetRoles = [],
       coverImageUrl,
       attachments,
+      eylemUrl,
+      eylemMetni,
       isPinned = false,
       publishAt,
       expiresAt,
@@ -213,6 +216,8 @@ export async function POST(request: NextRequest) {
         targetRoles,
         coverImageUrl,
         attachments,
+        eylemUrl: eylemUrl?.trim() || null,
+        eylemMetni: eylemMetni?.trim() || null,
         isPinned,
         publishAt: publishAt ? new Date(publishAt) : null,
         expiresAt: expiresAt ? new Date(expiresAt) : null,
@@ -232,6 +237,15 @@ export async function POST(request: NextRequest) {
         survey: true
       }
     })
+
+    // Yayında oluşturulduysa hedef kitleye in-app + push (mail YOK). Bloklamaz.
+    if (announcement.status === 'PUBLISHED') {
+      try {
+        await notifyAnnouncementPublished(announcement)
+      } catch (err) {
+        console.error('[announcements] publish bildirimi başarısız:', err)
+      }
+    }
 
     return NextResponse.json(announcement, { status: 201 })
   } catch (error) {

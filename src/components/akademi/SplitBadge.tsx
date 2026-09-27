@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-export type SplitBadgeColor = "red" | "blue" | "green" | "amber" | "gray";
+export type SplitBadgeColor = "red" | "blue" | "green" | "amber" | "gray" | "cyan";
 
 const BG: Record<SplitBadgeColor, string> = {
   red: "bg-[#dc2626]",
@@ -8,17 +8,19 @@ const BG: Record<SplitBadgeColor, string> = {
   green: "bg-[#16a34a]",
   amber: "bg-[#d97706]",
   gray: "bg-[#64748b]",
+  cyan: "bg-[#0891b2]",
 };
 
 /**
  * İki parçalı aksiyon rozeti (Tremor "Badge 11" deseni): sol durum, sağ eylem + ↗.
  * Akademi dashboard kartlarının ve IFS bandının tek aksiyonu.
  *
- * 27.09.2026 — Envanter modülü de bu deseni kullanıyor; oradaki aksiyonlar
- * gezinme DEĞİL işlem (kaydet/sil/onayla). Bu yüzden `href` artık opsiyonel:
- * `onClick` verilirse <button> (type=button, disabled destekli), `href`
- * verilirse eskisi gibi <Link>/<a download> render edilir. Link yolunun
- * davranışı DEĞİŞMEDİ — Akademi kartları aynı çıktıyı üretir.
+ * 27.09.2026 — Envanter + Duyurular modülleri de bu deseni kullanıyor; oradaki
+ * aksiyonlar gezinme DEĞİL işlem (kaydet/sil/onayla/kapat). Bu yüzden `href`
+ * opsiyonel: `onClick` verilirse <button> (type=button, disabled destekli),
+ * `href` verilirse eskisi gibi <Link>/<a download>, ikisi de yoksa tıklanamaz
+ * <span> render edilir. ↗ oku yalnız gezinme (href/Link) modunda gösterilir;
+ * onClick modunda işlem tetiklendiği için ok yoktur. Link yolu DEĞİŞMEDİ.
  */
 export function SplitBadge({
   color,
@@ -41,7 +43,7 @@ export function SplitBadge({
   ariaLabel?: string;
   /** true → next/link yerine düz <a download> (PDF indirme; prefetch/soft-nav yok). */
   download?: boolean;
-  /** İşlem aksiyonu (kaydet/sil/onayla…) → <button type="button"> olarak render edilir. */
+  /** İşlem aksiyonu (kaydet/sil/onayla/kapat…) → <button type="button">. */
   onClick?: () => void;
   disabled?: boolean;
   title?: string;
@@ -56,8 +58,7 @@ export function SplitBadge({
       </span>
       <span className="flex items-center gap-1.5 whitespace-nowrap border-l border-white/35 px-[11px] py-2">
         {right}
-        {/* ↗ "git" demek — yalnız gezinme (href) modunda. onClick modunda rozet
-            bir işlem tetikler (kaydet/sil/onayla), gezinme yok → ok gösterilmez. */}
+        {/* ↗ yalnız gezinme (href) modunda; onClick işlem tetikler, ok yok. */}
         {!onClick && (
           <span aria-hidden className="ml-0.5 text-[11px]">
             ↗
@@ -68,6 +69,7 @@ export function SplitBadge({
   );
   const label = ariaLabel ?? `${left} — ${right}`;
 
+  // İşlem aksiyonu (kaydet/sil/onayla/kapat) → gezinme yok.
   if (onClick) {
     return (
       <button type="button" onClick={onClick} disabled={disabled} aria-label={label} title={title} className={cls}>
@@ -93,20 +95,13 @@ export function SplitBadge({
     // rel=noopener ile tıklama mevcut sekmeye HİÇ dokunmaz, loading/transition
     // state tetiklenmez.
     return (
-      <a
-        href={href}
-        target="_blank"
-        rel="noopener noreferrer"
-        download
-        aria-label={label}
-        className={cls}
-      >
+      <a href={href} target="_blank" rel="noopener noreferrer" download aria-label={label} title={title} className={cls}>
         {inner}
       </a>
     );
   }
   return (
-    <Link href={href} aria-label={label} className={cls}>
+    <Link href={href} aria-label={label} title={title} className={cls}>
       {inner}
     </Link>
   );

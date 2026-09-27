@@ -1898,6 +1898,10 @@ model Announcement {
   coverImageUrl String? // Kapak görseli
   attachments   String? @db.Text // JSON array of file URLs
 
+  // Eylem Butonu (popup'ta isteğe bağlı buton)
+  eylemUrl   String? // Popup'taki butonun hedef linki
+  eylemMetni String? // Popup'taki butonun metni
+
   // Yayın Ayarları
   status    AnnouncementStatus @default(DRAFT)
   isPinned  Boolean            @default(false) // Üstte sabitlensin mi?

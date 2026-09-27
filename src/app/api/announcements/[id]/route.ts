@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
+import { notifyAnnouncementPublished } from '@/lib/announcements/notify-announcement'
 
 // GET - Tek duyuru getir
 export async function GET(
@@ -196,6 +197,8 @@ export async function PUT(
       targetRoles,
       coverImageUrl,
       attachments,
+      eylemUrl,
+      eylemMetni,
       isPinned,
       publishAt,
       expiresAt,
@@ -228,6 +231,8 @@ export async function PUT(
     if (targetRoles !== undefined) updateData.targetRoles = targetRoles
     if (coverImageUrl !== undefined) updateData.coverImageUrl = coverImageUrl
     if (attachments !== undefined) updateData.attachments = attachments
+    if (eylemUrl !== undefined) updateData.eylemUrl = eylemUrl?.trim() || null
+    if (eylemMetni !== undefined) updateData.eylemMetni = eylemMetni?.trim() || null
     if (isPinned !== undefined) updateData.isPinned = isPinned
     if (publishAt !== undefined) updateData.publishAt = publishAt ? new Date(publishAt) : null
     if (expiresAt !== undefined) updateData.expiresAt = expiresAt ? new Date(expiresAt) : null
@@ -235,9 +240,12 @@ export async function PUT(
     if (allowReactions !== undefined) updateData.allowReactions = allowReactions
     if (requireAcknowledgment !== undefined) updateData.requireAcknowledgment = requireAcknowledgment
     if (surveyId !== undefined) updateData.surveyId = surveyId
+    // Yeni yayına geçiş mi? (bildirim yalnız DRAFT/SCHEDULED → PUBLISHED anında)
+    const becomingPublished =
+      status === 'PUBLISHED' && existingAnnouncement.status !== 'PUBLISHED'
     if (status !== undefined) {
       updateData.status = status
-      if (status === 'PUBLISHED' && existingAnnouncement.status !== 'PUBLISHED') {
+      if (becomingPublished) {
         updateData.publishedAt = new Date()
       }
     }
@@ -250,6 +258,15 @@ export async function PUT(
         survey: true
       }
     })
+
+    // İlk kez yayınlandıysa hedef kitleye in-app + push (mail YOK). Bloklamaz.
+    if (becomingPublished) {
+      try {
+        await notifyAnnouncementPublished(announcement)
+      } catch (err) {
+        console.error('[announcements] publish bildirimi başarısız:', err)
+      }
+    }
 
     return NextResponse.json(announcement)
   } catch (error) {

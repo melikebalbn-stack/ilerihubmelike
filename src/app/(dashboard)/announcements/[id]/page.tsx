@@ -5,6 +5,7 @@ import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import DOMPurify from "dompurify"
+import { OkuyanlarPanel } from "@/components/announcements/OkuyanlarPanel"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -81,6 +82,8 @@ interface Announcement {
   allowComments: boolean
   allowReactions: boolean
   requireAcknowledgment: boolean
+  eylemUrl: string | null
+  eylemMetni: string | null
   isRead: boolean
   isAcknowledged: boolean
   hasRespondedToSurvey: boolean
@@ -358,6 +361,28 @@ export default function AnnouncementDetailPage({
             className="prose prose-sm dark:prose-invert max-w-none mb-6"
             dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(announcement.content) }}
           />
+
+          {/* Eylem butonu (varsa) */}
+          {announcement.eylemUrl && (
+            <a
+              href={announcement.eylemUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mb-6 inline-flex items-center gap-2 rounded-lg bg-[#2563eb] px-4 py-2 text-sm font-semibold text-white hover:bg-[#1d4ed8]"
+            >
+              {announcement.eylemMetni?.trim() || "Detay"} ↗
+            </a>
+          )}
+
+          {/* Yönetici: Okuyanlar */}
+          {isAdmin && (
+            <div className="mb-6">
+              <OkuyanlarPanel
+                announcementId={announcement.id}
+                requireAcknowledgment={announcement.requireAcknowledgment}
+              />
+            </div>
+          )}
 
           {/* Acknowledgment */}
           {announcement.requireAcknowledgment && (

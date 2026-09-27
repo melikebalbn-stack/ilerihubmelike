@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils"
 import { RouteChangeProvider } from "@/components/providers/route-change-provider"
 import { InstallPrompt } from "@/components/pwa/install-prompt"
 import { NotificationPermission } from "@/components/pwa/notification-permission"
+import { AnnouncementAutoPopup } from "@/components/announcements/AnnouncementAutoPopup"
 
 // İçerik alanı — sidebar collapse/pin durumuna göre sol ofset (lg) ayarlanır.
 function DashboardContent({ children }: { children: React.ReactNode }) {
@@ -82,6 +83,7 @@ export default function DashboardLayout({
             <Toaster position="top-right" richColors closeButton />
             <SafeComponent><InstallPrompt /></SafeComponent>
             <SafeComponent><NotificationPermission /></SafeComponent>
+            <SafeComponent><AnnouncementAutoPopup /></SafeComponent>
 
             {/* Masaüstü Sidebar */}
             <Sidebar />

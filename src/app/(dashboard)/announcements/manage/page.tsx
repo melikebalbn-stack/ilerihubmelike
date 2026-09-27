@@ -159,6 +159,8 @@ export default function AnnouncementManagePage() {
     targetType: "ALL",
     targetDepartments: [] as string[],
     targetRoles: [] as string[],
+    eylemUrl: "",
+    eylemMetni: "",
     isPinned: false,
     publishAt: "",
     expiresAt: "",
@@ -309,6 +311,8 @@ export default function AnnouncementManagePage() {
           targetType: data.targetType || "ALL",
           targetDepartments: data.targetDepartments || [],
           targetRoles: data.targetRoles || [],
+          eylemUrl: data.eylemUrl || "",
+          eylemMetni: data.eylemMetni || "",
           isPinned: data.isPinned || false,
           publishAt: data.publishAt ? new Date(data.publishAt).toISOString().slice(0, 16) : "",
           expiresAt: data.expiresAt ? new Date(data.expiresAt).toISOString().slice(0, 16) : "",
@@ -349,6 +353,8 @@ export default function AnnouncementManagePage() {
       targetType: "ALL",
       targetDepartments: [],
       targetRoles: [],
+      eylemUrl: "",
+      eylemMetni: "",
       isPinned: false,
       publishAt: "",
       expiresAt: "",
@@ -746,6 +752,26 @@ export default function AnnouncementManagePage() {
                     onChange={(e) => setFormData({ ...formData, content: e.target.value })}
                     placeholder="Duyuru icerigi (HTML destekler)"
                     rows={8}
+                  />
+                </div>
+
+                {/* Popup eylem butonu (isteğe bağlı) */}
+                <div className="space-y-2">
+                  <Label htmlFor="eylemMetni">Eylem butonu metni</Label>
+                  <Input
+                    id="eylemMetni"
+                    value={formData.eylemMetni}
+                    onChange={(e) => setFormData({ ...formData, eylemMetni: e.target.value })}
+                    placeholder="ör. Formu doldur"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="eylemUrl">Eylem butonu linki</Label>
+                  <Input
+                    id="eylemUrl"
+                    value={formData.eylemUrl}
+                    onChange={(e) => setFormData({ ...formData, eylemUrl: e.target.value })}
+                    placeholder="https://… (popup'ta buton olarak çıkar)"
                   />
                 </div>
 

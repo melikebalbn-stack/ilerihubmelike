@@ -33,6 +33,12 @@ export type DepoOlay =
   | 'TRANSFER_TALEBI_BAGLA'
   | 'TRANSFER_TALEBI_KALDIR'
   | 'TRANSFER_TALEBI_TRANSFER'
+  // Sevkiyat toplama: orderNo = ShipmentId; detay.keyref = IFS rezerv satırı; HAZIRLA'da partNo '-'.
+  | 'SEVKIYAT_HAZIRLA'
+  | 'SEVKIYAT_OKUT'
+  | 'SEVKIYAT_SIL'
+  | 'SEVKIYAT_TOPLA'
+  | 'SEVKIYAT_GERIAL'
 
 export interface DepoHareketGirdi {
   olay: DepoOlay

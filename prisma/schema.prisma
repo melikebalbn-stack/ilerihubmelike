@@ -262,6 +262,7 @@ model User {
   zimmetIadeAldiklari     ZimmetFormu[] @relation("ZimmetIadeAlan")
 
   depoHareketleri DepoHareketLog[] @relation("DepoHareketKullanici")
+  sevkiyatOkutmalari SevkiyatOkutma[] @relation("SevkiyatOkutmaKullanici")
 
   // Başvuru Değerlendirme Workflow — bu kullanıcıya atanan başvurular
   assignedApplications PublicJobApplication[] @relation("AssignedApplications")
@@ -12653,6 +12654,37 @@ model DepoHareketLog {
   @@index([userId, createdAt])
   @@index([partNo])
   @@map("depo_hareket_log")
+}
+
+/// Sevkiyat okutma listesi (el terminali) — IFS'e toplama raporlanmadan önce Hub'da biriken okutmalar.
+/// Bir IFS rezerv satırına (PickReservation keyref) bağlanır; TOPLAMAYI BİTİR'de aynı rezerv satırının
+/// okutmaları toplanıp tek PickSelected satır anahtarına (QTY_TO_PICK) çevrilir ve raporlandi=true olur.
+model SevkiyatOkutma {
+  id String @id @default(cuid())
+
+  shipmentId  Int
+  /// IFS PickReservation keyref (rezerv satırı tam anahtarı — PICK_LIST_NO dahil).
+  satirAnahtari String
+  pickListNo  String?
+  /// Okutulan IFS barkod ID (elle stok no girişinde null).
+  barkodId    Int?
+  partNo      String
+  lotBatchNo  String?
+  /// Rezerv lokasyonu (okutma anı) — geri almada dönüş hedefi.
+  lokasyon    String
+  miktar      Decimal @db.Decimal(18, 6)
+
+  userId      String
+  user        User    @relation("SevkiyatOkutmaKullanici", fields: [userId], references: [id], onDelete: Restrict)
+  kullaniciAd String
+
+  raporlandi   Boolean   @default(false)
+  raporlandiAt DateTime?
+  createdAt    DateTime  @default(now())
+
+  @@index([shipmentId, raporlandi])
+  @@index([userId, createdAt])
+  @@map("sevkiyat_okutma")
 }
 
 // ═══════════════════════════════════════════════

@@ -4,6 +4,7 @@ import Link from 'next/link'
 import {
   ArrowDownUp,
   Boxes,
+  Truck,
   Forklift,
   ArrowLeft,
   ClipboardList,
@@ -35,6 +36,7 @@ const KARTLAR: DepoKart[] = [
   { label: 'Taşıma Birimi', alt: 'Palet oluştur, doldur, taşı, aktar', Icon: Boxes, href: '/terminal/depo/tasima-birimi' },
   { label: 'Toplu Taşıma', alt: 'Çok kalemi tek fişle lokasyona taşı', Icon: Forklift, href: '/terminal/depo/toplu-tasima' },
   { label: 'Transfer Talebi', alt: 'Onaylı talebe stok bağla, transfer et', Icon: Send, href: '/terminal/depo/transfer-talebi' },
+  { label: 'Sevkiyat', alt: 'Sevkiyat toplama: okut, bitir', Icon: Truck, href: '/terminal/depo/sevkiyat' },
   { label: 'Malzeme Talebi', alt: 'Sarf çıkışı: talep, rezerv, tüket', Icon: PackageMinus, href: '/terminal/depo/malzeme-talebi' },
 ]
 

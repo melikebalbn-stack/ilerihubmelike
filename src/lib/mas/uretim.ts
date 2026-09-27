@@ -18,6 +18,7 @@ export interface MasUretimSatiri {
   workOrderNo: string | null
   operasyonNo: string | null
   description: string | null // WorkOrder.Description → ifsPartDescription
+  partNo: string | null // WorkOrder.MaterialId → Inventory.Material.Code → ifsPartNo (parça kodu)
   planlananAdet: number | null // WorkOrder.Amount → ifsQtyDue
   deliveryDateTime: Date | null // WorkOrder.DeliveryDateTime → ifsDueDate
   amount: number | null
@@ -61,7 +62,7 @@ const URETIM_SELECT =
   `SELECT pm.Id AS masId, pd.Id AS masDetayId, pm.StartDateTime AS startDateTime, pm.EndDateTime AS endDateTime, ` +
   `wc.Code AS tezgahKod, ` +
   `pm.CreatedBy AS createdBy, wo.WorkOrderNo AS workOrderNo, o.Code AS operasyonNo, ` +
-  `wo.Description AS description, wo.Amount AS planlananAdet, wo.DeliveryDateTime AS deliveryDateTime, ` +
+  `wo.Description AS description, mt.Code AS partNo, wo.Amount AS planlananAdet, wo.DeliveryDateTime AS deliveryDateTime, ` +
   `pd.Amount AS amount, pd.ReportedAmount AS reportedAmount, COALESCE(pd.CycleTime, wo.CycleTime) AS cycleTime, ` +
   `pd.CounterMultiplier AS counterMultiplier, pd.CounterDivider AS counterDivider, pd.IsFinished AS isFinished, ` +
   `pm.Active AS active ` +
@@ -69,6 +70,7 @@ const URETIM_SELECT =
   `JOIN Organization.WorkCenter wc ON wc.Id = pm.WorkCenterId ` +
   `LEFT JOIN Production.ProductionDetail pd ON pd.ProductionMasterId = pm.Id AND pd.Active = 1 ` +
   `LEFT JOIN Planning.WorkOrder wo ON wo.Id = pd.WorkOrderId ` +
+  `LEFT JOIN Inventory.Material mt ON mt.Id = wo.MaterialId ` +
   `LEFT JOIN Phase.Operation o ON o.Id = wo.OperationId`
 
 /** Açık üretimler: EndDateTime IS NULL AND Active=1. Satır = pm × detay (bir pm birden çok WO). */

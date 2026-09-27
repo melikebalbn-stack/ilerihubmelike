@@ -88,6 +88,7 @@ export async function runMasAyna(opts: { dryRun?: boolean; limit?: number | null
     startDateTime: Date | null
     masDetayId: number | null
     description: string | null
+    partNo: string | null
     planlananAdet: number | null
     deliveryDateTime: Date | null
     cycleTime: number | null
@@ -100,6 +101,7 @@ export async function runMasAyna(opts: { dryRun?: boolean; limit?: number | null
         startDateTime: s.startDateTime,
         masDetayId: s.masDetayId,
         description: s.description,
+        partNo: s.partNo,
         planlananAdet: s.planlananAdet,
         deliveryDateTime: s.deliveryDateTime,
         cycleTime: s.cycleTime,
@@ -112,6 +114,7 @@ export async function runMasAyna(opts: { dryRun?: boolean; limit?: number | null
     const adet = Math.round(g.adet)
     return {
       ifsPartDescription: meta?.description ?? null,
+      ifsPartNo: meta?.partNo ?? null, // MAS WorkOrder→Material.Code; çevrim sapma raporu parça bazlı kırılım için
       ifsQtyDue: meta?.planlananAdet != null ? Math.round(meta.planlananAdet) : null,
       ifsDueDate: meta?.deliveryDateTime ?? null,
       ifsMachRunFactor: cevrim?.faktor ?? null,

@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { createManyNotificationsWithPush } from "@/lib/push-notifications";
+import { sendPushToUser } from "@/lib/push-notifications";
 import { eslesenKullaniciIdleri } from "@/lib/announcements/hedef";
 
 /**
@@ -68,21 +68,30 @@ export async function notifyAnnouncementPublished(
   const kategori = ann.category?.name?.trim() || "Genel";
   const url = `/announcements?ac=${ann.id}`;
 
-  // push-notifications helper'ı yapısal (structural) bir prisma tipi bekliyor;
-  // gerçek PrismaClient'ın notification.createMany imzası (NotificationType) daha
-  // dar olduğundan doğrudan atanamıyor → helper'ın kendi param tipine cast.
-  const client = prisma as unknown as Parameters<typeof createManyNotificationsWithPush>[0];
+  const baslik = `Yeni duyuru · ${kategori}`;
 
-  await createManyNotificationsWithPush(
-    client,
-    userIds.map((userId) => ({
+  // In-app bildirim. NOT: Notification şemasında alan `link` (URL değil); ortak
+  // push-notifications helper'ı `url` yazmaya çalıştığı için "Unknown argument url"
+  // ile PATLIYOR → helper kullanılmıyor, doğrudan `link` yazılıyor.
+  await prisma.notification.createMany({
+    data: userIds.map((userId) => ({
       userId,
-      title: `Yeni duyuru · ${kategori}`,
+      title: baslik,
       message: ann.title,
-      type: "INFO",
-      url,
-    }))
-  );
+      type: "INFO" as const,
+      link: url,
+    })),
+  });
+
+  // Web-push (aboneliksiz/expired sessiz atlanır; NOTIFY_TEST_MODE guard helper'da).
+  const pushClient = prisma as unknown as Parameters<typeof sendPushToUser>[0];
+  for (const userId of userIds) {
+    try {
+      await sendPushToUser(pushClient, userId, { title: baslik, body: ann.title, url });
+    } catch (err) {
+      console.error(`[announcements] push başarısız (userId=${userId}):`, err);
+    }
+  }
 
   return userIds.length;
 }

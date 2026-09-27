@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Download, SlidersHorizontal } from 'lucide-react'
+import { SplitBadge } from '@/components/akademi/SplitBadge'
+import { SlidersHorizontal } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import type { TeslimHucre, TeslimListesiSonuc } from '@/lib/envanter/teslim-listesi'
 
@@ -210,15 +211,13 @@ export function TeslimTakipListesi() {
               )}
             </div>
 
-            <button
-              type="button"
+            <SplitBadge
+              color="green"
+              left={`${satirlar.length} satır`}
+              right="Excel'e Aktar"
               onClick={handleExcelAktar}
               disabled={loading || satirlar.length === 0}
-              className="flex items-center gap-2 rounded-xl border border-teal-700 px-3 py-2 text-sm font-medium text-teal-700 hover:bg-teal-50 disabled:opacity-60"
-            >
-              <Download className="h-4 w-4" />
-              Excel&apos;e Aktar
-            </button>
+            />
           </div>
         </div>
       </div>

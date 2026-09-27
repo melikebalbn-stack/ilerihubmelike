@@ -5,6 +5,8 @@ import { type ElementType, type ReactNode, useEffect, useMemo, useState } from '
 import type { EnvanterUrunDetail, EnvanterUrunListItem } from '@/types/envanter'
 import { HEDEF_YAKA_SECENEKLERI } from '@/lib/envanter/yaka-sabitleri'
 import { AramaliSecim } from '@/components/envanter/AramaliSecim'
+import { EnvanterArama, envanterAramaEslesir } from '@/components/envanter/EnvanterArama'
+import { SplitBadge } from '@/components/akademi/SplitBadge'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -42,7 +44,6 @@ import {
   HelpCircle,
   Package,
   Plus,
-  Search,
   ShoppingCart,
   Wrench,
   Upload,
@@ -387,6 +388,8 @@ function DashboardContent({
   // Faz 2 — kritik ürün bildirimi (alıcı yapılandırılmadığı için şu an 400 döner; sessiz hata YOK)
   const [bildirimSaving, setBildirimSaving] = useState(false)
   const [bildirimMesaj, setBildirimMesaj] = useState('')
+  // Sekme araması (27.09) — hem "Sipariş Açılmalı" hem "Stok Durumu Özeti" tablosunu süzer.
+  const [arama, setArama] = useState('')
 
   // F5 (tam fidelite) — "Sipariş Açılmalı" per-stok/varyant granülaritesinde.
   // Kaynak: /api/envanter/tum-stoklar (durum KRITIK/MINIMUM/NORMAL/EKSIK per stok).
@@ -458,6 +461,13 @@ function DashboardContent({
   const kritikUrun = urunler.filter((urun) => urun.stokSeviyesi === 'KRITIK').length
   const eksikUrun = urunler.filter((urun) => urun.mevcut === 0).length
 
+  // Arama SADECE tabloları süzer — üstteki toplam kartları TÜM veriyi gösterir
+  // (arama bir görünüm süzgeci, envanter özeti değil).
+  const siparisSuzulmus = siparisListesi.filter((s) =>
+    envanterAramaEslesir(arama, [s.urunKodu, s.urunAdi, s.kategori, s.varyantAdi, s.durum]),
+  )
+  const urunlerSuzulmus = urunler.filter((u) => envanterAramaEslesir(arama, [u.kod, u.ad, u.kategori]))
+
   if (loading) {
     return (
       <div className="rounded-2xl border bg-white p-6 shadow-sm text-sm text-slate-600">
@@ -498,29 +508,39 @@ function DashboardContent({
         />
       </div>
 
+      <EnvanterArama
+        value={arama}
+        onChange={setArama}
+        placeholder="Ürün kodu, adı, kategori veya varyant ara..."
+      />
+
       {/* F5 — Sipariş Açılmalı. Kritik/minimum eşiğin altına düşen ürünler.
           Kritik bildir butonu (alıcı yapılandırılmadıysa anlamlı uyarı döner; sessiz hata YOK). */}
       <div className="rounded-2xl border bg-white p-6 shadow-sm">
         <div className="flex items-center justify-between">
           <h3 className="text-lg font-semibold text-slate-900">Sipariş Açılmalı</h3>
           <div className="flex items-center gap-3">
-            <span className="text-sm text-slate-500">{siparisListesi.length} kalem</span>
-            <button
-              type="button"
+            <span className="text-sm text-slate-500">
+              {siparisSuzulmus.length}
+              {arama.trim() && siparisSuzulmus.length !== siparisListesi.length ? ` / ${siparisListesi.length}` : ''} kalem
+            </span>
+            <SplitBadge
+              color="red"
+              left="Kritik stok"
+              right={bildirimSaving ? 'Gönderiliyor...' : 'Bildir'}
               onClick={handleKritikBildir}
               disabled={bildirimSaving || siparisListesi.length === 0}
-              className="rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-rose-700 disabled:opacity-60"
-            >
-              {bildirimSaving ? 'Gönderiliyor...' : 'Kritik Ürünleri Bildir'}
-            </button>
+            />
           </div>
         </div>
         {bildirimMesaj && <p className="mt-2 text-sm text-slate-600">{bildirimMesaj}</p>}
         <p className="mt-1 text-sm text-slate-500">
           Kritik veya minimum stok seviyesinin altına düşen, sipariş açılması gereken ürünler.
         </p>
-        {siparisListesi.length === 0 ? (
-          <p className="mt-4 text-sm text-slate-500">Şu an sipariş gerektiren ürün yok.</p>
+        {siparisSuzulmus.length === 0 ? (
+          <p className="mt-4 text-sm text-slate-500">
+            {arama.trim() ? 'Aramaya uyan kalem yok.' : 'Şu an sipariş gerektiren ürün yok.'}
+          </p>
         ) : (
           <div className="mt-4 overflow-x-auto rounded-xl border">
             <table className="w-full text-xs">
@@ -537,7 +557,7 @@ function DashboardContent({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {siparisListesi.map((s) => (
+                {siparisSuzulmus.map((s) => (
                   <tr key={s.stokId} className="hover:bg-slate-50">
                     <td className="px-3 py-2.5 font-medium text-slate-700">{s.urunKodu}</td>
                     <td className="px-3 py-2.5">{s.urunAdi}</td>
@@ -551,8 +571,10 @@ function DashboardContent({
                       }`}>{s.durum}</span>
                     </td>
                     <td className="px-3 py-2.5 text-right">
-                      <button
-                        type="button"
+                      <SplitBadge
+                        color={s.durum === 'KRITIK' || s.durum === 'EKSIK' ? 'red' : 'amber'}
+                        left={s.durum}
+                        right="Talep Aç"
                         onClick={() =>
                           onTalepAc({
                             malzemeKodu: s.urunKodu,
@@ -560,10 +582,7 @@ function DashboardContent({
                             malzemeAdi: s.varyantAdi ? `${s.urunAdi} — ${s.varyantAdi}` : s.urunAdi,
                           })
                         }
-                        className="rounded-lg bg-teal-700 px-3 py-1 text-xs font-medium text-white hover:bg-teal-800"
-                      >
-                        Talep Aç
-                      </button>
+                      />
                     </td>
                   </tr>
                 ))}
@@ -592,7 +611,7 @@ function DashboardContent({
             </thead>
 
             <tbody className="divide-y divide-slate-100">
-              {urunler.map((urun) => (
+              {urunlerSuzulmus.map((urun) => (
                 <tr key={urun.id} className="hover:bg-slate-50">
                   <td className="px-4 py-3 font-medium text-slate-700">
                     {urun.kod}
@@ -618,9 +637,9 @@ function DashboardContent({
           </table>
         </div>
 
-        {urunler.length === 0 && (
+        {urunlerSuzulmus.length === 0 && (
           <div className="p-8 text-center text-sm text-slate-500">
-            Henüz ürün kaydı bulunmuyor.
+            {arama.trim() ? 'Aramaya uyan ürün yok.' : 'Henüz ürün kaydı bulunmuyor.'}
           </div>
         )}
       </div>
@@ -745,26 +764,17 @@ async function handleBedenTipiDegistir(urunId: string, yeniDeger: string) {
             
           </div>
 
-         <button
-  type="button"
-  onClick={onNewProduct}
-  className="inline-flex items-center justify-center gap-2 rounded-xl bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800"
->
-  <Plus className="h-4 w-4" />
-  Yeni Ürün
-</button>
+        <SplitBadge color="green" left="Ürün" right="Yeni Ekle" onClick={onNewProduct} />
         </div>
 
         <div className="mt-5 flex flex-col gap-3 lg:flex-row">
-          <div className="relative flex-1">
-            <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-            <input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Ürün adı, kodu veya kategori ara..."
-              className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
-            />
-          </div>
+          {/* Desen artık ortak: EnvanterArama (tüm sekmeler aynı kutuyu kullanır). */}
+          <EnvanterArama
+            value={search}
+            onChange={setSearch}
+            placeholder="Ürün adı, kodu veya kategori ara..."
+            className="flex-1"
+          />
 
           <select
             value={kategoriFiltre}
@@ -876,14 +886,12 @@ async function handleBedenTipiDegistir(urunId: string, yeniDeger: string) {
                   <StokSeviyesiBadge seviye={urun.stokSeviyesi} />
                 </td>
                 <td className="px-4 py-3 text-right">
-                  <button
-  type="button"
-  onClick={() => setSelectedUrunId(urun.id)}
-  className="inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
->
-                    <Eye className="h-3.5 w-3.5" />
-                    Detay
-                  </button>
+                  <SplitBadge
+                    color={urun.durum === 'AKTIF' ? 'blue' : 'gray'}
+                    left={urun.kod}
+                    right="Detay"
+                    onClick={() => setSelectedUrunId(urun.id)}
+                  />
                 </td>
               </tr>
             ))}
@@ -3219,41 +3227,37 @@ function UrunDetayModal({
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Renk anlamı korunur: aktif ürünü pasifleştirmek nötr (gri),
+                pasif ürünü aktifleştirmek olumlu (yeşil). */}
             {urun && (
-              <button
-                type="button"
+              <SplitBadge
+                color={urun.durum === 'AKTIF' ? 'gray' : 'green'}
+                left={urun.durum}
+                right={
+                  durumSaving
+                    ? 'Kaydediliyor...'
+                    : urun.durum === 'AKTIF'
+                      ? 'Pasifleştir'
+                      : 'Aktifleştir'
+                }
                 onClick={handleDurumDegistir}
                 disabled={durumSaving}
-                className={[
-                  'rounded-lg border px-3 py-2 text-sm font-medium disabled:opacity-60',
-                  urun.durum === 'AKTIF'
-                    ? 'border-slate-300 bg-slate-50 text-slate-700 hover:bg-slate-100'
-                    : 'border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100',
-                ].join(' ')}
-              >
-                {durumSaving
-                  ? 'Kaydediliyor...'
-                  : urun.durum === 'AKTIF'
-                    ? 'Pasifleştir'
-                    : 'Aktifleştir'}
-              </button>
+              />
             )}
-            <button
-              type="button"
+            <SplitBadge
+              color="blue"
+              left="Ürün"
+              right="Düzenle"
               onClick={() => setDuzenlemeAcik(true)}
               disabled={!urun}
-              className="rounded-lg border border-teal-300 bg-teal-50 px-3 py-2 text-sm font-medium text-teal-800 hover:bg-teal-100 disabled:opacity-60"
-            >
-              Düzenle
-            </button>
-            <button
-              type="button"
+            />
+            <SplitBadge
+              color="red"
+              left="Ürün"
+              right={silSaving ? 'Siliniyor...' : 'Sil'}
               onClick={handleUrunSil}
               disabled={silSaving || !urun}
-              className="rounded-lg border border-rose-300 px-3 py-2 text-sm font-medium text-rose-700 hover:bg-rose-50 disabled:opacity-60"
-            >
-              {silSaving ? 'Siliniyor...' : 'Sil'}
-            </button>
+            />
             <button
               type="button"
               onClick={onClose}
@@ -3656,14 +3660,13 @@ function UrunDetayModal({
                       <option value="ÜRETİM" />
                     </datalist>
                   </div>
-                  <button
-                    type="button"
+                  <SplitBadge
+                    color="green"
+                    left="Varyant"
+                    right={varyantSaving ? 'Ekleniyor...' : 'Ekle'}
                     onClick={handleVaryantEkle}
                     disabled={varyantSaving || !varyantDeger.trim()}
-                    className="rounded-xl bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800 disabled:opacity-60"
-                  >
-                    {varyantSaving ? 'Ekleniyor...' : 'Ekle'}
-                  </button>
+                  />
                 </div>
                 {varyantHata && (
                   <p className="mt-2 text-sm text-rose-600">{varyantHata}</p>
@@ -3702,6 +3705,8 @@ function UrunDetayModal({
 
 function StokYonetimi() {
   const [urunler, setUrunler] = useState<EnvanterUrunListItem[]>([])
+  // Sekme araması (27.09) — ürün seçim listesini ve seçili ürünün hareketlerini süzer.
+  const [arama, setArama] = useState('')
   const [selectedUrunId, setSelectedUrunId] = useState('')
   const [urunDetay, setUrunDetay] = useState<EnvanterUrunDetail | null>(null)
   const [selectedStokId, setSelectedStokId] = useState('')
@@ -3879,6 +3884,12 @@ function StokYonetimi() {
         </p>
       </div>
 
+      <EnvanterArama
+        value={arama}
+        onChange={setArama}
+        placeholder="Ürün kodu, adı veya kategori ara..."
+      />
+
       <div className="grid gap-6 lg:grid-cols-[1fr_420px]">
         <div className="rounded-2xl border bg-white p-6 shadow-sm">
           <h3 className="font-semibold text-slate-900">Stoklar</h3>
@@ -3889,11 +3900,19 @@ function StokYonetimi() {
               onChange={(event) => setSelectedUrunId(event.target.value)}
               className="rounded-xl border px-3 py-2 text-sm"
             >
-              {urunler.map((urun) => (
-                <option key={urun.id} value={urun.id}>
-                  {urun.kod} - {urun.ad}
-                </option>
-              ))}
+              {/* Seçili ürün aramaya uymasa bile listede KALIR — aksi halde seçim
+                  görünmez olur ve altındaki stok/hareket paneli sahipsiz kalırdı. */}
+              {urunler
+                .filter(
+                  (urun) =>
+                    urun.id === selectedUrunId ||
+                    envanterAramaEslesir(arama, [urun.kod, urun.ad, urun.kategori]),
+                )
+                .map((urun) => (
+                  <option key={urun.id} value={urun.id}>
+                    {urun.kod} - {urun.ad}
+                  </option>
+                ))}
             </select>
             <div className="mt-2">
               <PasifUrunUyarisi
@@ -3957,7 +3976,15 @@ function StokYonetimi() {
       </p>
     ) : (
       <div className="mt-4 space-y-2">
-        {urunDetay.hareketler.slice(0, 10).map((hareket) => (
+        {urunDetay.hareketler
+          .filter((h) =>
+            envanterAramaEslesir(arama, [h.hareketTipi, h.aciklama, h.bolum, h.alanPersonelAd]) ||
+            // Ürün alanları da eşleşme sayılır: "iş ayakkabısı" araması seçili
+            // ürünün hareketlerini gizlemesin.
+            envanterAramaEslesir(arama, [urunDetay.kod, urunDetay.ad]),
+          )
+          .slice(0, 10)
+          .map((hareket) => (
           <div
             key={hareket.id}
             className="flex items-center justify-between rounded-lg border bg-slate-50 px-3 py-2 text-sm"
@@ -3988,13 +4015,12 @@ function StokYonetimi() {
               </div>
               {/* Faz 2 — Geri Al (SAYIM_DUZELTME hariç, zaten geri alınmamışsa) */}
               {hareket.hareketTipiRaw !== 'SAYIM_DUZELTME' && !hareket.geriAlindi && (
-                <button
-                  type="button"
+                <SplitBadge
+                  color="red"
+                  left={hareket.hareketTipi}
+                  right="Geri Al"
                   onClick={() => geriAl(hareket.id)}
-                  className="rounded-lg border border-rose-200 px-2 py-1 text-xs text-rose-600 hover:bg-rose-50"
-                >
-                  Geri Al
-                </button>
+                />
               )}
             </div>
           </div>
@@ -4088,14 +4114,14 @@ function StokYonetimi() {
               </div>
             )}
 
-            <button
-              type="button"
+            <SplitBadge
+              color="green"
+              left="Stok Hareketi"
+              right={saving ? 'Kaydediliyor...' : 'Kaydet'}
               onClick={handleSubmit}
               disabled={saving}
-              className="w-full rounded-xl bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800 disabled:opacity-60"
-            >
-              {saving ? 'Kaydediliyor...' : 'Stok Hareketini Kaydet'}
-            </button>
+              className="w-full justify-center"
+            />
           </div>
         </div>
       </div>
@@ -4125,6 +4151,8 @@ type PersonelZimmetItem = {
 }
 
 function PersonelZimmeti() {
+  // Sekme araması (27.09) — seçili personelin aktif/geçmiş zimmet satırlarını süzer.
+  const [arama, setArama] = useState('')
   const [personeller, setPersoneller] = useState<any[]>([])
   const [urunler, setUrunler] = useState<EnvanterUrunListItem[]>([])
 
@@ -4247,8 +4275,17 @@ function PersonelZimmeti() {
     return `${konum} — Mevcut: ${stok.mevcut}`
   }
 
-  const aktifZimmetler = personelZimmetleri.filter((zimmet) => zimmet.durum === 'AKTIF')
-  const gecmisZimmetler = personelZimmetleri.filter((zimmet) => zimmet.durum !== 'AKTIF')
+  const zimmetAramaUyar = (zimmet: PersonelZimmetItem) =>
+    envanterAramaEslesir(arama, [
+      zimmet.urun.kod,
+      zimmet.urun.ad,
+      zimmet.stok.varyant?.varyantAdi,
+      zimmet.stok.depo,
+      zimmet.stok.raf,
+      zimmet.aciklama,
+    ])
+  const aktifZimmetler = personelZimmetleri.filter((z) => z.durum === 'AKTIF' && zimmetAramaUyar(z))
+  const gecmisZimmetler = personelZimmetleri.filter((z) => z.durum !== 'AKTIF' && zimmetAramaUyar(z))
 
   async function handleZimmet() {
     setMessage('')
@@ -4310,6 +4347,12 @@ function PersonelZimmeti() {
           Personellere KKD ve ekipman zimmetleme ekranı.
         </p>
       </div>
+
+      <EnvanterArama
+        value={arama}
+        onChange={setArama}
+        placeholder="Zimmetlerde ürün kodu, adı, varyant veya depo ara..."
+      />
 
       <div className="grid grid-cols-2 gap-6">
         <div className="rounded-2xl border bg-white p-6">
@@ -4414,14 +4457,14 @@ function PersonelZimmeti() {
   />
 </div>
 
-<button
-  type="button"
+<SplitBadge
+  color="green"
+  left="Zimmet"
+  right={saving ? 'Kaydediliyor...' : 'Oluştur'}
   onClick={handleZimmet}
   disabled={saving}
-  className="w-full rounded-xl bg-teal-700 py-2 text-white hover:bg-teal-800 disabled:opacity-60"
->
-  {saving ? 'Kaydediliyor...' : 'Zimmet Oluştur'}
-</button>
+  className="w-full justify-center"
+/>
 
 {error && (
   <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">
@@ -4453,7 +4496,9 @@ function PersonelZimmeti() {
                 <h3 className="font-semibold text-slate-900">Aktif Zimmetler</h3>
 
                 {aktifZimmetler.length === 0 ? (
-                  <p className="mt-3 text-sm text-slate-500">Aktif zimmet yok.</p>
+                  <p className="mt-3 text-sm text-slate-500">
+                    {arama.trim() ? 'Aramaya uyan aktif zimmet yok.' : 'Aktif zimmet yok.'}
+                  </p>
                 ) : (
                   <div className="mt-3 space-y-2">
                     {aktifZimmetler.map((zimmet) => (
@@ -4467,7 +4512,9 @@ function PersonelZimmeti() {
                 <h3 className="font-semibold text-slate-900">Geçmiş</h3>
 
                 {gecmisZimmetler.length === 0 ? (
-                  <p className="mt-3 text-sm text-slate-500">Geçmiş zimmet kaydı yok.</p>
+                  <p className="mt-3 text-sm text-slate-500">
+                    {arama.trim() ? 'Aramaya uyan geçmiş kaydı yok.' : 'Geçmiş zimmet kaydı yok.'}
+                  </p>
                 ) : (
                   <div className="mt-3 space-y-2">
                     {gecmisZimmetler.map((zimmet) => (
@@ -4669,21 +4716,14 @@ function ZimmetSatiri({
           )}
           {!iadeAcik ? (
             <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => setIadeAcik(true)}
-                className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100"
-              >
-                İade Al
-              </button>
-              <button
-                type="button"
+              <SplitBadge color="blue" left="Aktif" right="İade Al" onClick={() => setIadeAcik(true)} />
+              <SplitBadge
+                color="red"
+                left="Zimmet"
+                right={silSaving ? 'Siliniyor...' : 'Sil'}
                 onClick={handleSil}
                 disabled={silSaving}
-                className="rounded-lg border border-rose-300 px-2.5 py-1 text-xs font-medium text-rose-700 hover:bg-rose-50 disabled:opacity-60"
-              >
-                {silSaving ? 'Siliniyor...' : 'Sil'}
-              </button>
+              />
             </div>
           ) : (
             <div className="mt-2 space-y-2 rounded-lg border border-slate-200 bg-white p-3">
@@ -4718,14 +4758,13 @@ function ZimmetSatiri({
               )}
 
               <div className="flex gap-2">
-                <button
-                  type="button"
+                <SplitBadge
+                  color="green"
+                  left="İade"
+                  right={iadeSaving ? 'Kaydediliyor...' : 'Onayla'}
                   onClick={handleIade}
                   disabled={iadeSaving}
-                  className="rounded-lg bg-teal-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-800 disabled:opacity-60"
-                >
-                  {iadeSaving ? 'Kaydediliyor...' : 'Onayla'}
-                </button>
+                />
                 <button
                   type="button"
                   onClick={() => {
@@ -4753,14 +4792,13 @@ function ZimmetSatiri({
               {iptalMessage}
             </div>
           )}
-          <button
-            type="button"
+          <SplitBadge
+            color="red"
+            left="Zimmet"
+            right={iptalSaving ? 'İptal ediliyor...' : 'İptal Et'}
             onClick={handleIptal}
             disabled={iptalSaving}
-            className="rounded-lg border border-rose-300 px-2.5 py-1 text-xs font-medium text-rose-700 hover:bg-rose-50 disabled:opacity-60"
-          >
-            {iptalSaving ? 'İptal ediliyor...' : 'İptal Et'}
-          </button>
+          />
         </div>
       )}
     </div>
@@ -4777,6 +4815,8 @@ type KategoriItem = {
 }
 
 function ParametrelerYonetimi() {
+  // Sekme araması (27.09) — kategori tablosunu süzer.
+  const [arama, setArama] = useState('')
   const [kategoriler, setKategoriler] = useState<KategoriItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -4964,6 +5004,10 @@ function ParametrelerYonetimi() {
     }
   }
 
+  const kategorilerSuzulmus = kategoriler.filter((k) =>
+    envanterAramaEslesir(arama, [k.ad, k.not, k.durum]),
+  )
+
   function startEdit(kategori: KategoriItem) {
     setError('')
     setMessage('')
@@ -5033,13 +5077,12 @@ function ParametrelerYonetimi() {
             </p>
           </div>
 
-          <button
-            type="button"
+          <SplitBadge
+            color={showNewForm ? 'gray' : 'green'}
+            left="Kategori"
+            right={showNewForm ? 'Vazgeç' : 'Yeni Ekle'}
             onClick={() => setShowNewForm((prev) => !prev)}
-            className="rounded-xl bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800"
-          >
-            {showNewForm ? 'Vazgeç' : 'Yeni Kategori'}
-          </button>
+          />
         </div>
 
         {showNewForm && (
@@ -5086,14 +5129,13 @@ function ParametrelerYonetimi() {
             </div>
 
             <div className="md:col-span-2">
-              <button
-                type="button"
+              <SplitBadge
+                color="green"
+                left="Yeni Kategori"
+                right={newSaving ? 'Kaydediliyor...' : 'Kaydet'}
                 onClick={handleYeniKategori}
                 disabled={newSaving}
-                className="rounded-xl bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800 disabled:opacity-60"
-              >
-                {newSaving ? 'Kaydediliyor...' : 'Kaydet'}
-              </button>
+              />
             </div>
           </div>
         )}
@@ -5107,11 +5149,21 @@ function ParametrelerYonetimi() {
         )}
       </div>
 
+      <EnvanterArama
+        value={arama}
+        onChange={setArama}
+        placeholder="Kategori adı, not veya durum ara..."
+      />
+
       <div className="rounded-2xl border bg-white p-6 shadow-sm">
         {loading ? (
           <p className="text-sm text-slate-500">Yükleniyor...</p>
-        ) : kategoriler.length === 0 ? (
-          <p className="text-sm text-slate-500">Henüz kategori tanımlanmamış.</p>
+        ) : kategorilerSuzulmus.length === 0 ? (
+          <p className="text-sm text-slate-500">
+            {arama.trim()
+              ? 'Aramaya uyan kategori yok.'
+              : 'Henüz kategori tanımlanmamış.'}
+          </p>
         ) : (
           <div className="overflow-hidden overflow-x-auto rounded-xl border">
             <table className="w-full text-xs">
@@ -5127,7 +5179,7 @@ function ParametrelerYonetimi() {
               </thead>
 
               <tbody className="divide-y divide-slate-100">
-                {kategoriler.map((kategori) => {
+                {kategorilerSuzulmus.map((kategori) => {
                   const isEditing = editingId === kategori.id
                   const isPasif = kategori.durum === 'PASIF'
 
@@ -5226,21 +5278,19 @@ function ParametrelerYonetimi() {
                       </td>
                       <td className="px-3 py-3">
                         <div className="flex gap-2">
-                          <button
-                            type="button"
+                          <SplitBadge
+                            color="blue"
+                            left={kategori.durum}
+                            right="Düzenle"
                             onClick={() => startEdit(kategori)}
-                            className="rounded-lg border px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100"
-                          >
-                            Düzenle
-                          </button>
-                          <button
-                            type="button"
+                          />
+                          <SplitBadge
+                            color="red"
+                            left="Kategori"
+                            right={kategoriSilSaving[kategori.id] ? 'Siliniyor...' : 'Sil'}
                             onClick={() => handleKategoriSil(kategori)}
                             disabled={kategoriSilSaving[kategori.id]}
-                            className="rounded-lg border border-rose-300 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-50 disabled:opacity-60"
-                          >
-                            {kategoriSilSaving[kategori.id] ? 'Siliniyor...' : 'Sil'}
-                          </button>
+                          />
                         </div>
                       </td>
                     </tr>
@@ -5315,14 +5365,13 @@ function ParametrelerYonetimi() {
             </div>
 
             <div className="md:col-span-2">
-              <button
-                type="button"
+              <SplitBadge
+                color="green"
+                left="Sezon Parametreleri"
+                right={sezonParamSaving ? 'Kaydediliyor...' : 'Kaydet'}
                 onClick={handleSezonParametreKaydet}
                 disabled={sezonParamSaving}
-                className="rounded-xl bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800 disabled:opacity-60"
-              >
-                {sezonParamSaving ? 'Kaydediliyor...' : 'Kaydet'}
-              </button>
+              />
             </div>
           </div>
         )}
@@ -5491,32 +5540,23 @@ function VeriAktarimi() {
             ZimmetGecmisi sayfasını da aktar
           </label>
 
-          <button
-            type="button"
-            onClick={handleSablonIndir}
-            className="flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
-          >
-            <Download className="h-4 w-4" />
-            Örnek Şablon İndir
-          </button>
+          <SplitBadge color="gray" left="Örnek Şablon" right="İndir" onClick={handleSablonIndir} />
 
-          <button
-            type="button"
+          <SplitBadge
+            color="blue"
+            left="Dosya"
+            right={validating ? 'Doğrulanıyor...' : 'Doğrula'}
             onClick={handleDogrula}
             disabled={!file || validating}
-            className="rounded-xl border border-teal-700 px-4 py-2 text-sm font-medium text-teal-700 hover:bg-teal-50 disabled:opacity-60"
-          >
-            {validating ? 'Doğrulanıyor...' : 'Doğrula'}
-          </button>
+          />
 
-          <button
-            type="button"
+          <SplitBadge
+            color="green"
+            left="Doğrulanan veri"
+            right={executing ? 'Aktarılıyor...' : 'İçeri Aktar'}
             onClick={handleIceriAktar}
             disabled={!iceriAktarAktif}
-            className="rounded-xl bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800 disabled:opacity-60"
-          >
-            {executing ? 'Aktarılıyor...' : 'İçeri Aktar'}
-          </button>
+          />
         </div>
 
         {error && (
@@ -5800,6 +5840,8 @@ function RaporlarVeSarfTuketim() {
 }
 
 function RaporlarYonetimi() {
+  // Sekme araması (27.09) — yenileme tablosunu süzer (bölüm/durum seçicileriyle birlikte çalışır).
+  const [arama, setArama] = useState('')
   const [veriler, setVeriler] = useState<YenilemeSatiri[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -5853,7 +5895,10 @@ function RaporlarYonetimi() {
   )
 
   const tabloSatirlari = useMemo(() => {
-    const liste = selectedDurum ? bolumFiltreli.filter((v) => v.durum === selectedDurum) : bolumFiltreli
+    const durumFiltreli = selectedDurum ? bolumFiltreli.filter((v) => v.durum === selectedDurum) : bolumFiltreli
+    const liste = durumFiltreli.filter((v) =>
+      envanterAramaEslesir(arama, [v.adSoyad, v.sicilNo, v.bolum, v.urunKod, v.urunAd, v.kategori]),
+    )
 
     return [...liste].sort((a, b) => {
       if (a.kalanGun === null && b.kalanGun === null) return 0
@@ -5861,7 +5906,7 @@ function RaporlarYonetimi() {
       if (b.kalanGun === null) return -1
       return a.kalanGun - b.kalanGun
     })
-  }, [bolumFiltreli, selectedDurum])
+  }, [bolumFiltreli, selectedDurum, arama])
 
   function handleExcelAktar() {
     const satirlar = tabloSatirlari.map((satir) => ({
@@ -5907,15 +5952,13 @@ function RaporlarYonetimi() {
             </p>
           </div>
 
-          <button
-            type="button"
+          <SplitBadge
+            color="green"
+            left={`${tabloSatirlari.length} kayıt`}
+            right="Excel'e Aktar"
             onClick={handleExcelAktar}
             disabled={tabloSatirlari.length === 0}
-            className="flex items-center gap-2 rounded-xl border border-teal-700 px-4 py-2 text-sm font-medium text-teal-700 hover:bg-teal-50 disabled:opacity-60"
-          >
-            <Download className="h-4 w-4" />
-            Excel'e Aktar
-          </button>
+          />
         </div>
 
         {error && (
@@ -5962,6 +6005,16 @@ function RaporlarYonetimi() {
 
           <div className="rounded-2xl border bg-white p-6 shadow-sm">
             <div className="grid gap-4 md:grid-cols-2">
+              <div className="md:col-span-2">
+                <label className="text-sm font-medium">Ara</label>
+                <EnvanterArama
+                  value={arama}
+                  onChange={setArama}
+                  placeholder="Personel, sicil, bölüm, ürün veya kategori ara..."
+                  className="mt-1"
+                />
+              </div>
+
               <div>
                 <label className="text-sm font-medium">Bölüm</label>
                 <select
@@ -6214,6 +6267,8 @@ function SatinAlmaYonetimi({
   onPrefillConsumed?: () => void
 }) {
   const [talepler, setTalepler] = useState<SatinAlmaTalepListItem[]>([])
+  // Sekme araması (27.09) — talep tablosunu süzer (durum filtresiyle birlikte).
+  const [arama, setArama] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
@@ -6354,6 +6409,10 @@ function SatinAlmaYonetimi({
       setDetayLoading(false)
     }
   }
+
+  const taleplerSuzulmus = talepler.filter((t) =>
+    envanterAramaEslesir(arama, [t.formNo, t.talepEdenAd, t.bolum, SATINALMA_DURUM_ETIKET[t.durum]]),
+  )
 
   function handleTalepSec(id: string) {
     setSelectedTalepId(id)
@@ -6694,14 +6753,12 @@ function SatinAlmaYonetimi({
             </p>
           </div>
 
-          <button
-            type="button"
+          <SplitBadge
+            color={showNewForm ? 'gray' : 'green'}
+            left="Satın Alma Talebi"
+            right={showNewForm ? 'Vazgeç' : 'Yeni Ekle'}
             onClick={() => setShowNewForm((prev) => !prev)}
-            className="flex items-center gap-2 rounded-xl bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800"
-          >
-            <Plus className="h-4 w-4" />
-            {showNewForm ? 'Vazgeç' : 'Yeni Talep'}
-          </button>
+          />
         </div>
 
         {showNewForm && (
@@ -6851,18 +6908,24 @@ function SatinAlmaYonetimi({
               />
             </div>
 
-            <button
-              type="button"
+            <SplitBadge
+              color="green"
+              left="Yeni Talep"
+              right={yeniSaving ? 'Kaydediliyor...' : 'Oluştur'}
               onClick={handleYeniTalepOlustur}
               disabled={yeniSaving}
-              className="rounded-xl bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800 disabled:opacity-60"
-            >
-              {yeniSaving ? 'Kaydediliyor...' : 'Talebi Oluştur'}
-            </button>
+            />
           </div>
         )}
 
         <div className="mt-4">
+          <EnvanterArama
+            value={arama}
+            onChange={setArama}
+            placeholder="Form no, talep eden veya bölüm ara..."
+            className="mb-4 max-w-xl"
+          />
+
           <label className="text-sm font-medium">Durum Filtresi</label>
           <select
             value={durumFiltre}
@@ -6889,8 +6952,10 @@ function SatinAlmaYonetimi({
       <div className="rounded-2xl border bg-white p-6 shadow-sm">
         {loading ? (
           <p className="text-sm text-slate-500">Yükleniyor...</p>
-        ) : talepler.length === 0 ? (
-          <p className="text-sm text-slate-500">Kayıt bulunamadı.</p>
+        ) : taleplerSuzulmus.length === 0 ? (
+          <p className="text-sm text-slate-500">
+            {arama.trim() ? 'Aramaya uyan talep yok.' : 'Kayıt bulunamadı.'}
+          </p>
         ) : (
           <div className="overflow-hidden overflow-x-auto rounded-xl border">
             <table className="w-full text-xs">
@@ -6906,7 +6971,7 @@ function SatinAlmaYonetimi({
               </thead>
 
               <tbody className="divide-y divide-slate-100">
-                {talepler.map((talep) => (
+                {taleplerSuzulmus.map((talep) => (
                   <tr key={talep.id} className={selectedTalepId === talep.id ? 'bg-slate-50' : ''}>
                     <td className="px-3 py-3 font-medium text-slate-900">{talep.formNo}</td>
                     <td className="px-3 py-3">{talep.talepEdenAd}</td>
@@ -6919,23 +6984,20 @@ function SatinAlmaYonetimi({
                     <td className="px-3 py-3 text-right">{talep.kalemler.length}</td>
                     <td className="px-3 py-3">
                       <div className="flex gap-2">
-                        <button
-                          type="button"
+                        <SplitBadge
+                          color="blue"
+                          left={SATINALMA_DURUM_ETIKET[talep.durum]}
+                          right="Detay"
                           onClick={() => handleTalepSec(talep.id)}
-                          className="flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100"
-                        >
-                          <Eye className="h-3.5 w-3.5" />
-                          Detay
-                        </button>
+                        />
                         {talep.durum === 'TASLAK' && (
-                          <button
-                            type="button"
+                          <SplitBadge
+                            color="red"
+                            left={talep.formNo}
+                            right={talepSilSaving[talep.id] ? 'Siliniyor...' : 'Sil'}
                             onClick={() => handleTalepSil(talep)}
                             disabled={talepSilSaving[talep.id]}
-                            className="rounded-lg border border-rose-300 px-2.5 py-1 text-xs font-medium text-rose-700 hover:bg-rose-50 disabled:opacity-60"
-                          >
-                            {talepSilSaving[talep.id] ? 'Siliniyor...' : 'Sil'}
-                          </button>
+                          />
                         )}
                       </div>
                     </td>
@@ -7066,42 +7128,38 @@ function SatinAlmaYonetimi({
                 <div className="flex items-center justify-between gap-3">
                   <h4 className="font-semibold text-slate-900">Aksiyonlar</h4>
                   {!['REDDEDILDI', 'IPTAL', 'STOGA_ISLENDI'].includes(talepDetay.durum) && (
-                    <button
-                      type="button"
+                    <SplitBadge
+                      color="red"
+                      left="Talep"
+                      right={talepIptalSaving ? 'İptal ediliyor...' : 'İptal Et'}
                       onClick={handleTalepIptal}
                       disabled={talepIptalSaving}
-                      className="rounded-lg border border-rose-300 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-50 disabled:opacity-60"
-                    >
-                      {talepIptalSaving ? 'İptal ediliyor...' : 'Talebi İptal Et'}
-                    </button>
+                    />
                   )}
                 </div>
 
                 {onayZincirindeMi && (
                   <div className="mt-3 space-y-3">
                     <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
+                      <SplitBadge
+                        color="green"
+                        left="Talep"
+                        right={aksiyonSaving ? 'Kaydediliyor...' : 'Onayla'}
                         onClick={() => handleAksiyonGonder('ONAYLA')}
                         disabled={aksiyonSaving}
-                        className="rounded-xl bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800 disabled:opacity-60"
-                      >
-                        Onayla
-                      </button>
-                      <button
-                        type="button"
+                      />
+                      <SplitBadge
+                        color="red"
+                        left="Talep"
+                        right="Reddet"
                         onClick={() => setAksiyonAcik(aksiyonAcik === 'REDDET' ? '' : 'REDDET')}
-                        className="rounded-xl border border-rose-300 px-4 py-2 text-sm font-medium text-rose-700 hover:bg-rose-50"
-                      >
-                        Reddet
-                      </button>
-                      <button
-                        type="button"
+                      />
+                      <SplitBadge
+                        color="amber"
+                        left="Talep"
+                        right="Revize"
                         onClick={() => setAksiyonAcik(aksiyonAcik === 'REVIZE' ? '' : 'REVIZE')}
-                        className="rounded-xl border px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
-                      >
-                        Revize
-                      </button>
+                      />
                     </div>
 
                     <div>
@@ -7122,14 +7180,14 @@ function SatinAlmaYonetimi({
                           onChange={(e) => setRedSebebi(e.target.value)}
                           className="mt-1 min-h-20 w-full rounded-xl border p-2 text-sm"
                         />
-                        <button
-                          type="button"
+                        <SplitBadge
+                          color="red"
+                          left="Red gerekçesi"
+                          right={aksiyonSaving ? 'Kaydediliyor...' : 'Onayla'}
                           onClick={() => handleAksiyonGonder('REDDET')}
                           disabled={aksiyonSaving}
-                          className="mt-2 rounded-xl bg-rose-600 px-4 py-2 text-sm font-medium text-white hover:bg-rose-700 disabled:opacity-60"
-                        >
-                          {aksiyonSaving ? 'Kaydediliyor...' : 'Reddi Onayla'}
-                        </button>
+                          className="mt-2"
+                        />
                       </div>
                     )}
 
@@ -7147,14 +7205,14 @@ function SatinAlmaYonetimi({
                           />
                           Revizeden sonra bir sonraki aşamaya ilerlet
                         </label>
-                        <button
-                          type="button"
+                        <SplitBadge
+                          color="amber"
+                          left="Revize"
+                          right={aksiyonSaving ? 'Kaydediliyor...' : 'Kaydet'}
                           onClick={() => handleAksiyonGonder('REVIZE')}
                           disabled={aksiyonSaving}
-                          className="mt-2 rounded-xl bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800 disabled:opacity-60"
-                        >
-                          {aksiyonSaving ? 'Kaydediliyor...' : 'Revizeyi Kaydet'}
-                        </button>
+                          className="mt-2"
+                        />
                       </div>
                     )}
                   </div>
@@ -7171,14 +7229,13 @@ function SatinAlmaYonetimi({
                         className="mt-1 rounded-xl border p-2 text-sm"
                       />
                     </div>
-                    <button
-                      type="button"
+                    <SplitBadge
+                      color="blue"
+                      left="Termin"
+                      right={terminSaving ? 'Kaydediliyor...' : 'Gir'}
                       onClick={handleTerminGonder}
                       disabled={terminSaving}
-                      className="rounded-xl bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800 disabled:opacity-60"
-                    >
-                      {terminSaving ? 'Kaydediliyor...' : 'Termin Gir'}
-                    </button>
+                    />
                   </div>
                 )}
 
@@ -7187,27 +7244,26 @@ function SatinAlmaYonetimi({
                     <p className="text-xs text-slate-500">
                       Yukarıdaki kalem tablosunda "Bu Teslimatta" kolonuna alınan miktarları girin.
                     </p>
-                    <button
-                      type="button"
+                    <SplitBadge
+                      color="green"
+                      left="Teslim"
+                      right={teslimSaving ? 'Kaydediliyor...' : 'Al'}
                       onClick={handleTeslimGonder}
                       disabled={teslimSaving}
-                      className="mt-2 rounded-xl bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800 disabled:opacity-60"
-                    >
-                      {teslimSaving ? 'Kaydediliyor...' : 'Teslim Al'}
-                    </button>
+                      className="mt-2"
+                    />
                   </div>
                 )}
 
                 {talepDetay.durum === 'TESLIM_ALINDI' && (
                   <div className="mt-3">
-                    <button
-                      type="button"
+                    <SplitBadge
+                      color="green"
+                      left="Stok"
+                      right={stogaSaving ? 'Kaydediliyor...' : 'Stoğa İşle'}
                       onClick={handleStogaGonder}
                       disabled={stogaSaving}
-                      className="rounded-xl bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800 disabled:opacity-60"
-                    >
-                      {stogaSaving ? 'Kaydediliyor...' : 'Stoğa İşle'}
-                    </button>
+                    />
                   </div>
                 )}
 
@@ -7268,6 +7324,8 @@ type SezonPlanDetay = {
 }
 
 function SezonPlaniYonetimi() {
+  // Sekme araması (27.09) — plan tablosunu süzer.
+  const [arama, setArama] = useState('')
   const [planlar, setPlanlar] = useState<SezonPlanListItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -7396,6 +7454,10 @@ function SezonPlaniYonetimi() {
       setDetayLoading(false)
     }
   }
+
+  const planlarSuzulmus = planlar.filter((pl) =>
+    envanterAramaEslesir(arama, [pl.ad, pl.sezonTipi, pl.yil, pl.durum, pl.not]),
+  )
 
   function handlePlanSec(id: string) {
     setSelectedPlanId(id)
@@ -7577,14 +7639,12 @@ function SezonPlaniYonetimi() {
             </p>
           </div>
 
-          <button
-            type="button"
+          <SplitBadge
+            color={showNewForm ? 'gray' : 'green'}
+            left="Sezon Planı"
+            right={showNewForm ? 'Vazgeç' : 'Yeni Ekle'}
             onClick={() => setShowNewForm((prev) => !prev)}
-            className="flex items-center gap-2 rounded-xl bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800"
-          >
-            <Plus className="h-4 w-4" />
-            {showNewForm ? 'Vazgeç' : 'Yeni Sezon Planı'}
-          </button>
+          />
         </div>
 
         {showNewForm && (
@@ -7711,14 +7771,13 @@ function SezonPlaniYonetimi() {
             </div>
 
             <div className="md:col-span-3">
-              <button
-                type="button"
+              <SplitBadge
+                color="green"
+                left="Yeni Plan"
+                right={yeniSaving ? 'Kaydediliyor...' : 'Oluştur'}
                 onClick={handleYeniPlanOlustur}
                 disabled={yeniSaving}
-                className="rounded-xl bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800 disabled:opacity-60"
-              >
-                {yeniSaving ? 'Kaydediliyor...' : 'Planı Oluştur'}
-              </button>
+              />
             </div>
           </div>
         )}
@@ -7731,11 +7790,19 @@ function SezonPlaniYonetimi() {
         )}
       </div>
 
+      <EnvanterArama
+        value={arama}
+        onChange={setArama}
+        placeholder="Plan adı, sezon tipi, yıl veya durum ara..."
+      />
+
       <div className="rounded-2xl border bg-white p-6 shadow-sm">
         {loading ? (
           <p className="text-sm text-slate-500">Yükleniyor...</p>
-        ) : planlar.length === 0 ? (
-          <p className="text-sm text-slate-500">Henüz sezon planı yok.</p>
+        ) : planlarSuzulmus.length === 0 ? (
+          <p className="text-sm text-slate-500">
+            {arama.trim() ? 'Aramaya uyan plan yok.' : 'Henüz sezon planı yok.'}
+          </p>
         ) : (
           <div className="overflow-hidden overflow-x-auto rounded-xl border">
             <table className="w-full text-xs">
@@ -7752,7 +7819,7 @@ function SezonPlaniYonetimi() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {planlar.map((plan) => (
+                {planlarSuzulmus.map((plan) => (
                   <tr key={plan.id} className={selectedPlanId === plan.id ? 'bg-slate-50' : ''}>
                     <td className="px-3 py-3 font-medium text-slate-900">{plan.ad}</td>
                     <td className="px-3 py-3">{plan.sezonTipi === 'YAZLIK' ? 'Yazlık' : 'Kışlık'}</td>
@@ -7772,14 +7839,7 @@ function SezonPlaniYonetimi() {
                     </td>
                     <td className="px-3 py-3 text-right">{plan.kalemler.length}</td>
                     <td className="px-3 py-3">
-                      <button
-                        type="button"
-                        onClick={() => handlePlanSec(plan.id)}
-                        className="flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100"
-                      >
-                        <Eye className="h-3.5 w-3.5" />
-                        Detay
-                      </button>
+                      <SplitBadge color="blue" left={plan.durum} right="Detay" onClick={() => handlePlanSec(plan.id)} />
                     </td>
                   </tr>
                 ))}
@@ -7868,14 +7928,14 @@ function SezonPlaniYonetimi() {
                   </div>
                 </div>
 
-                <button
-                  type="button"
+                <SplitBadge
+                  color="green"
+                  left="Plan Parametreleri"
+                  right={overrideSaving ? 'Kaydediliyor...' : 'Kaydet'}
                   onClick={handleOverrideKaydet}
                   disabled={overrideSaving}
-                  className="mt-3 rounded-xl bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800 disabled:opacity-60"
-                >
-                  {overrideSaving ? 'Kaydediliyor...' : 'Kaydet'}
-                </button>
+                  className="mt-3"
+                />
               </div>
 
               <div>
@@ -7961,38 +8021,34 @@ function SezonPlaniYonetimi() {
                     )}
                   </div>
 
-                  <button
-                    type="button"
+                  <SplitBadge
+                    color="green"
+                    left="Kalem"
+                    right={kalemEkleSaving ? 'Ekleniyor...' : 'Ekle'}
                     onClick={handleKalemEkle}
                     disabled={kalemEkleSaving}
-                    className="flex items-center gap-1 rounded-xl border px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-60"
-                  >
-                    <Plus className="h-4 w-4" />
-                    {kalemEkleSaving ? 'Ekleniyor...' : 'Kalem Ekle'}
-                  </button>
+                  />
                 </div>
               </div>
 
               <div>
                 <div className="flex flex-wrap items-center gap-3">
-                  <button
-                    type="button"
+                  <SplitBadge
+                    color="blue"
+                    left="İhtiyaç"
+                    right={ihtiyacLoading ? 'Hesaplanıyor...' : 'Hesapla'}
                     onClick={handleIhtiyacHesapla}
                     disabled={ihtiyacLoading || planDetay.kalemler.length === 0}
-                    className="rounded-xl bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800 disabled:opacity-60"
-                  >
-                    {ihtiyacLoading ? 'Hesaplanıyor...' : 'İhtiyaç Hesapla'}
-                  </button>
+                  />
 
                   {ihtiyacSonuc && (
-                    <button
-                      type="button"
+                    <SplitBadge
+                      color="green"
+                      left="Net eksik"
+                      right={talepOlusturSaving ? 'Oluşturuluyor...' : 'Satın Alma Talebi Oluştur'}
                       onClick={handleSatinAlmaTalebiOlustur}
                       disabled={!netEksikVarMi || talepOlusturSaving}
-                      className="rounded-xl border border-teal-700 px-4 py-2 text-sm font-medium text-teal-700 hover:bg-teal-50 disabled:opacity-60"
-                    >
-                      {talepOlusturSaving ? 'Oluşturuluyor...' : 'Satın Alma Talebi Oluştur'}
-                    </button>
+                    />
                   )}
                 </div>
 

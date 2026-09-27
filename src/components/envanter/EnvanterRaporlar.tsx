@@ -1,8 +1,9 @@
 'use client'
 
 import { useEffect, useState, Fragment, useMemo } from 'react'
-import { Download } from 'lucide-react'
 import * as XLSX from 'xlsx'
+import { SplitBadge } from '@/components/akademi/SplitBadge'
+import { EnvanterArama, envanterAramaEslesir } from './EnvanterArama'
 
 // IV / Envanter Faz 2 — 2b-3 · Raporlar: Sarf Tüketim + Maliyet.
 // Fetch yolları /api/envanter/* (sandbox yolu SIZDIRILMAZ). Mevcut KKD Yenileme
@@ -48,6 +49,8 @@ export function IslemKaydiRaporu() {
   const [hedefTipFiltre, setHedefTipFiltre] = useState('')
   const [veri, setVeri] = useState<IslemKaydiSonucTip | null>(null)
   const [loading, setLoading] = useState(false)
+  // Rapor araması (27.09) — sunucu süzgeçlerinin (tarih/tip) ÜSTÜNE, dönen satırlar üzerinde.
+  const [arama, setArama] = useState('')
 
   useEffect(() => {
     setLoading(true)
@@ -62,7 +65,16 @@ export function IslemKaydiRaporu() {
       .finally(() => setLoading(false))
   }, [baslangic, bitis, islemTipiFiltre, hedefTipFiltre])
 
-  const satirlar = veri?.satirlar ?? []
+  const tumSatirlar = veri?.satirlar ?? []
+  const satirlar = tumSatirlar.filter((s) =>
+    envanterAramaEslesir(arama, [
+      s.aktorAd,
+      islemTipiEtiket(s.islemTipi),
+      s.hedefTip,
+      s.hedefId,
+      s.detay ? JSON.stringify(s.detay) : null,
+    ]),
+  )
 
   const handleExcel = () => {
     const rows = satirlar.map((s) => ({
@@ -82,6 +94,14 @@ export function IslemKaydiRaporu() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end gap-3 rounded-2xl border bg-white p-4 shadow-sm">
+        <div className="min-w-[240px] flex-1">
+          <label className="mb-1 block text-xs font-medium text-slate-500">Ara</label>
+          <EnvanterArama
+            value={arama}
+            onChange={setArama}
+            placeholder="Aktör, işlem tipi, hedef veya detay ara..."
+          />
+        </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-500">Baslangic</label>
           <input type="date" value={baslangic} onChange={(e) => setBaslangic(e.target.value)} className="rounded-xl border px-3 py-2 text-sm" />
@@ -108,9 +128,13 @@ export function IslemKaydiRaporu() {
             ))}
           </select>
         </div>
-        <button type="button" onClick={handleExcel} disabled={satirlar.length === 0} className="flex items-center gap-2 rounded-xl border border-teal-700 px-3 py-2 text-sm font-medium text-teal-700 hover:bg-teal-50 disabled:opacity-60">
-          <Download className="h-4 w-4" /> Excel'e Aktar
-        </button>
+        <SplitBadge
+          color="green"
+          left={`${satirlar.length} kayıt`}
+          right="Excel'e Aktar"
+          onClick={handleExcel}
+          disabled={satirlar.length === 0}
+        />
         <span className="pb-2 text-sm text-slate-500">
           {loading ? 'Yukleniyor...' : `${satirlar.length} / ${veri?.toplamKayit ?? 0} kayit`}
         </span>
@@ -180,6 +204,8 @@ type MaliyetOzetTip = { paraBirimi: string; toplamCikis: number; toplamGiris: nu
 type MaliyetRaporuSonucTip = { satirlar: MaliyetSatiriTip[]; ozetler: MaliyetOzetTip[]; kategoriler: string[] }
 
 export function SarfTuketimRaporu() {
+  // Rapor araması (27.09) — tabloyu süzer; tarih aralığı SUNUCUDAN, bu satır bazında.
+  const [arama, setArama] = useState('')
   const [veri, setVeri] = useState<SarfTuketimSonucTip | null>(null)
   const [loading, setLoading] = useState(true)
   const [baslangic, setBaslangic] = useState('')
@@ -210,7 +236,7 @@ export function SarfTuketimRaporu() {
   const satirlar = (veri?.satirlar ?? []).filter((s) => {
     if (bolumFiltre && s.bolum !== bolumFiltre) return false
     if (kategoriFiltre && s.kategori !== kategoriFiltre) return false
-    return true
+    return envanterAramaEslesir(arama, [s.urunKodu, s.urunAdi, s.kategori, s.bolum, s.alanPersonelAd])
   })
 
   function fmtTarih(t: string) {
@@ -242,6 +268,12 @@ export function SarfTuketimRaporu() {
         <p className="mt-2 text-sm text-slate-500">
           Stok çıkışlarının bölüm ve personel bazında dağılımı. Kim, hangi malzemeden ne kadar aldı.
         </p>
+        <EnvanterArama
+          value={arama}
+          onChange={setArama}
+          placeholder="Ürün kodu, adı, kategori, bölüm veya personel ara..."
+          className="mt-4 max-w-xl"
+        />
         <div className="mt-4 flex flex-wrap items-end gap-3">
           <div>
             <label className="text-sm font-medium">Başlangıç</label>
@@ -251,9 +283,7 @@ export function SarfTuketimRaporu() {
             <label className="text-sm font-medium">Bitiş</label>
             <input type="date" value={bitis} onChange={(e) => setBitis(e.target.value)} className="mt-1 block rounded-xl border p-2 text-sm" />
           </div>
-          <button type="button" onClick={loadRapor} className="rounded-xl bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800">
-            Uygula
-          </button>
+          <SplitBadge color="blue" left="Tarih aralığı" right="Uygula" onClick={loadRapor} />
           <select value={bolumFiltre} onChange={(e) => setBolumFiltre(e.target.value)} className="rounded-xl border p-2 text-sm">
             <option value="">Tüm bölümler</option>
             {(veri?.bolumler ?? []).map((b) => <option key={b} value={b}>{b}</option>)}
@@ -262,10 +292,13 @@ export function SarfTuketimRaporu() {
             <option value="">Tüm kategoriler</option>
             {(veri?.kategoriler ?? []).map((k) => <option key={k} value={k}>{k}</option>)}
           </select>
-          <button type="button" onClick={handleExcel} disabled={satirlar.length === 0} className="flex items-center gap-2 rounded-xl border border-teal-700 px-3 py-2 text-sm font-medium text-teal-700 hover:bg-teal-50 disabled:opacity-60">
-            <Download className="h-4 w-4" />
-            Excel'e Aktar
-          </button>
+          <SplitBadge
+            color="green"
+            left={`${satirlar.length} kayıt`}
+            right="Excel'e Aktar"
+            onClick={handleExcel}
+            disabled={satirlar.length === 0}
+          />
           <span className="pb-2 text-sm text-slate-500">{loading ? 'Yükleniyor...' : `${satirlar.length} kayıt`}</span>
         </div>
       </div>
@@ -340,6 +373,8 @@ type ZimmetKaydiTip = {
   stok: { depo: string | null; raf: string | null; varyant: { varyantAdi: string } | null }
 }
 export function PersonelRaporu() {
+  // Rapor araması (27.09) — hem çıkış dökümü satırlarını hem zimmet listesini süzer.
+  const [arama, setArama] = useState('')
   const [veri, setVeri] = useState<PersonelRaporuSonucTip | null>(null)
   const [loading, setLoading] = useState(true)
   const [baslangic, setBaslangic] = useState('')
@@ -377,8 +412,22 @@ export function PersonelRaporu() {
   const satirlar = (veri?.satirlar ?? []).filter((s) => {
     if (bolumFiltre && s.bolum !== bolumFiltre) return false
     if (personelFiltre && (s.personelId || `ad::${s.personelAd}`) !== personelFiltre) return false
-    return true
+    // Ürün adı/kodu da eşleşme sayılır: kırılım satırlarındaki ürünler aranabilsin.
+    return (
+      envanterAramaEslesir(arama, [s.personelAd, s.bolum]) ||
+      s.detaylar.some((d) => envanterAramaEslesir(arama, [d.urunKodu, d.urunAdi, d.kategori]))
+    )
   })
+  const zimmetlerSuzulmus = zimmetler.filter((z) =>
+    envanterAramaEslesir(arama, [
+      z.urun.kod,
+      z.urun.ad,
+      z.stok.varyant?.varyantAdi,
+      z.stok.depo,
+      z.aciklama,
+      z.durum,
+    ]),
+  )
   useEffect(() => {
     if (personelFiltre) {
       setAcikSatirlar((prev) => {
@@ -455,6 +504,12 @@ export function PersonelRaporu() {
         <p className="mt-2 text-sm text-slate-500">
           Bir personeli seçerek ona zimmetli KKD/ürünleri (durumuyla birlikte) ve stok çıkışı dökümünü tek ekranda görebilir, Excel'e aktarabilirsin. İşten ayrılış kontrolü için uygundur.
         </p>
+        <EnvanterArama
+          value={arama}
+          onChange={setArama}
+          placeholder="Personel, bölüm, ürün kodu veya adı ara..."
+          className="mt-4 max-w-xl"
+        />
         <div className="mt-4 flex flex-wrap items-end gap-3">
           <div>
             <label className="text-sm font-medium">Başlangıç</label>
@@ -464,9 +519,7 @@ export function PersonelRaporu() {
             <label className="text-sm font-medium">Bitiş</label>
             <input type="date" value={bitis} onChange={(e) => setBitis(e.target.value)} className="mt-1 block rounded-xl border p-2 text-sm" />
           </div>
-          <button type="button" onClick={loadRapor} className="rounded-xl bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800">
-            Uygula
-          </button>
+          <SplitBadge color="blue" left="Tarih aralığı" right="Uygula" onClick={loadRapor} />
           <select value={bolumFiltre} onChange={(e) => setBolumFiltre(e.target.value)} className="rounded-xl border p-2 text-sm">
             <option value="">Tüm bölümler</option>
             {(veri?.bolumler ?? []).map((b) => <option key={b} value={b}>{b}</option>)}
@@ -475,10 +528,13 @@ export function PersonelRaporu() {
             <option value="">Tüm personel</option>
             {personelSecenekleri.map(([key, ad]) => <option key={key} value={key}>{ad}</option>)}
           </select>
-          <button type="button" onClick={handleExcel} disabled={satirlar.length === 0} className="flex items-center gap-2 rounded-xl border border-teal-700 px-3 py-2 text-sm font-medium text-teal-700 hover:bg-teal-50 disabled:opacity-60">
-            <Download className="h-4 w-4" />
-            Excel'e Aktar
-          </button>
+          <SplitBadge
+            color="green"
+            left={`${satirlar.length} kayıt`}
+            right="Excel'e Aktar"
+            onClick={handleExcel}
+            disabled={satirlar.length === 0}
+          />
           <span className="pb-2 text-sm text-slate-500">{loading ? 'Yükleniyor...' : `${satirlar.length} kayıt`}</span>
         </div>
       </div>
@@ -486,15 +542,13 @@ export function PersonelRaporu() {
         <div className="rounded-2xl border bg-white p-6 shadow-sm">
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-semibold">Zimmetler</h3>
-            <button
-              type="button"
+            <SplitBadge
+              color="green"
+              left={`${zimmetlerSuzulmus.length} zimmet`}
+              right="Excel'e Aktar"
               onClick={() => handleZimmetExcel(secilenPersonelAdi)}
               disabled={zimmetler.length === 0}
-              className="flex items-center gap-2 rounded-xl border border-teal-700 px-3 py-2 text-sm font-medium text-teal-700 hover:bg-teal-50 disabled:opacity-60"
-            >
-              <Download className="h-4 w-4" />
-              Zimmetleri Excel'e Aktar
-            </button>
+            />
           </div>
           {zimmetlerLoading ? (
             <p className="mt-3 text-sm text-slate-500">Yükleniyor...</p>
@@ -514,7 +568,7 @@ export function PersonelRaporu() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {zimmetler.map((z) => (
+                  {zimmetlerSuzulmus.map((z) => (
                     <tr key={z.id}>
                       <td className="px-3 py-2">
                         <span className="font-medium">{z.urun.kod}</span> <span className="text-slate-500">{z.urun.ad}</span>
@@ -619,6 +673,8 @@ export function PersonelRaporu() {
 }
 
 export function MaliyetRaporu() {
+  // Rapor araması (27.09) — satır tablosunu süzer; özet kartları TÜM veriyi gösterir.
+  const [arama, setArama] = useState('')
   const [veri, setVeri] = useState<MaliyetRaporuSonucTip | null>(null)
   const [loading, setLoading] = useState(true)
   const [baslangic, setBaslangic] = useState('')
@@ -645,7 +701,11 @@ export function MaliyetRaporu() {
     }
   }
 
-  const satirlar = (veri?.satirlar ?? []).filter((s) => !kategoriFiltre || s.kategori === kategoriFiltre)
+  const satirlar = (veri?.satirlar ?? []).filter(
+    (s) =>
+      (!kategoriFiltre || s.kategori === kategoriFiltre) &&
+      envanterAramaEslesir(arama, [s.urunKodu, s.urunAdi, s.kategori, s.varyantAdi, s.paraBirimi]),
+  )
   const fmt = (n: number) => n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
   function handleExcel() {
@@ -683,14 +743,24 @@ export function MaliyetRaporu() {
             <label className="text-sm font-medium">Bitiş</label>
             <input type="date" value={bitis} onChange={(e) => setBitis(e.target.value)} className="mt-1 block rounded-xl border p-2 text-sm" />
           </div>
-          <button type="button" onClick={loadRapor} className="rounded-xl bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800">Uygula</button>
+          <SplitBadge color="blue" left="Tarih aralığı" right="Uygula" onClick={loadRapor} />
+          <EnvanterArama
+            value={arama}
+            onChange={setArama}
+            placeholder="Ürün kodu, adı, kategori veya varyant ara..."
+            className="min-w-[240px] flex-1"
+          />
           <select value={kategoriFiltre} onChange={(e) => setKategoriFiltre(e.target.value)} className="rounded-xl border p-2 text-sm">
             <option value="">Tüm kategoriler</option>
             {(veri?.kategoriler ?? []).map((k) => <option key={k} value={k}>{k}</option>)}
           </select>
-          <button type="button" onClick={handleExcel} disabled={satirlar.length === 0} className="flex items-center gap-2 rounded-xl border border-teal-700 px-3 py-2 text-sm font-medium text-teal-700 hover:bg-teal-50 disabled:opacity-60">
-            <Download className="h-4 w-4" /> Excel'e Aktar
-          </button>
+          <SplitBadge
+            color="green"
+            left={`${satirlar.length} kayıt`}
+            right="Excel'e Aktar"
+            onClick={handleExcel}
+            disabled={satirlar.length === 0}
+          />
           <span className="pb-2 text-sm text-slate-500">{loading ? 'Yükleniyor...' : `${satirlar.length} kayıt`}</span>
         </div>
 

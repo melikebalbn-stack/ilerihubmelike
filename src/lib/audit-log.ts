@@ -79,6 +79,11 @@ export type AuditTargetType =
   | 'PDKS_PUANTAJ'
   // PDKS vardiya / mola / personel-vardiya ataması. action: PDKS_VARDIYA_* / PDKS_MOLA_* / PDKS_ATAMA_*
   | 'PDKS_VARDIYA'
+  // İzin defteri. action: IZIN_ACILIS_IMPORT (targetId boş, özet) / IZIN_HAK_EDIS_YAZILDI (cron özeti) /
+  // IZIN_BAKIYE_DUZELTILDI (targetId personnelId; gün + gerekçe) / IZIN_BAKIYE_EXPORT (Excel).
+  | 'IZIN_BAKIYE'
+  // İzin türleri (şirkete özel). action: IZIN_TURU_EKLENDI / IZIN_TURU_GUNCELLENDI.
+  | 'IZIN_TURU'
 
 export interface AuditLogParams {
   action: string

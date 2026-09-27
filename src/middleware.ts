@@ -123,5 +123,7 @@ export const config = {
     // İzin (pdks.manage / pdks.view) sayfada. İleride eklenecek cihaz push ucu /api/pdks/isapi
     // altındadır; /api matcher'da olmadığı için buradan ETKİLENMEZ.
     '/pdks/:path*',
+    // İZİN (2026-09, Faz 2): /pdks ile aynı gerekçe. İzin (izin.admin / izin.bakiye.admin) sayfada.
+    '/izin/:path*',
   ],
 };

@@ -315,6 +315,15 @@ const pdksMenuItems = [
   { name: "Cihazlar & Kapılar", icon: DoorOpen, href: "/pdks/cihazlar", roles: [] as string[], permission: ["pdks.manage"] },
 ]
 
+// İV › İzin alt grubu — sayfa guard'larıyla birebir (permission; PDKS deseni). Faz 2: Bakiyeler,
+// İzin türleri, Açılış içe aktarımı (izin.admin; gerçek aktarım sayfada izin.bakiye.admin).
+// Onay Bekleyenler / Ekip Takvimi Faz 3 / 5'te eklenecek.
+const izinMenuItems = [
+  { name: "Bakiyeler", icon: Wallet, href: "/izin/yonetim", roles: [] as string[], permission: ["izin.admin", "izin.bakiye.admin"] },
+  { name: "İzin Türleri", icon: ListChecks, href: "/izin/yonetim/turler", roles: [] as string[], permission: ["izin.admin", "izin.bakiye.admin"] },
+  { name: "Açılış İçe Aktarım", icon: FileText, href: "/izin/yonetim/ice-aktarim", roles: [] as string[], permission: ["izin.admin", "izin.bakiye.admin"] },
+]
+
 // Personel yönetimi öğeleri — hepsi canSeeIk kapısıyla gösterilir. Önceden JSX
 // içinde satır satır gömülüydü; menü aramasında da çıkabilmeleri için diziye
 // alındı (render davranışı birebir aynı: aynı sırada, aynı canSeeIk koşuluyla).
@@ -499,6 +508,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const [ikOpen, setIkOpen] = useState(false)
   const [strategicHrOpen, setStrategicHrOpen] = useState(false)
   const [pdksOpen, setPdksOpen] = useState(false)
+  const [izinOpen, setIzinOpen] = useState(false)
   const [auditsOpen, setAuditsOpen] = useState(false)
   const [iso27001Open, setIso27001Open] = useState(false)
   const [formsOpen, setFormsOpen] = useState(false)
@@ -567,6 +577,11 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     if (pathname.startsWith('/pdks')) {
       setIkOpen(true)
       setPdksOpen(true)
+    }
+    // /izin İV › İzin alt grubunda.
+    if (pathname.startsWith('/izin')) {
+      setIkOpen(true)
+      setIzinOpen(true)
     }
     if (
       pathname.startsWith('/settings/roller') ||
@@ -828,11 +843,12 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const filteredOffboardingItems = filterItems(offboardingMenuItems)
   // PDKS permission alanını dizi tutuyor; filterItems cast (IPRO deseni).
   const filteredPdksItems = filterItems(pdksMenuItems as unknown as typeof mainMenuItems)
+  const filteredIzinItems = filterItems(izinMenuItems as unknown as typeof mainMenuItems)
   // İV grubu görünürlüğü: en az bir alt öğe görünüyorsa başlık gösterilir
   // (4 personnel öğesi canSeeIk ile; offboarding + strategicHr kendi kitleleriyle).
   const showIkGroup =
     canSeeIk || filteredOffboardingItems.length > 0 || filteredStrategicHrItems.length > 0 ||
-    filteredPdksItems.length > 0 ||
+    filteredPdksItems.length > 0 || filteredIzinItems.length > 0 ||
     // İV yetkisi olup canSeeIk kapısından geçmeyen kullanıcı da grubu görebilsin,
     // yoksa menü öğesi hesaplanır ama grup hiç çizilmediği için görünmezdi.
     denemeGorunur
@@ -948,9 +964,10 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const isIkActive = pathname === '/strategic-hr/bluecollar-users' || pathname.startsWith('/strategic-hr/bluecollar-users/') ||
     strategicHrMenuItems.some(item =>
       pathname === item.href || pathname.startsWith(item.href + "/")
-    ) || pathname.startsWith('/talent-management/') || pathname.startsWith('/pdks')
+    ) || pathname.startsWith('/talent-management/') || pathname.startsWith('/pdks') || pathname.startsWith('/izin')
 
   const isPdksActive = pathname.startsWith('/pdks')
+  const isIzinActive = pathname.startsWith('/izin')
 
   // Stratejik IK menüsünde aktif sayfa var mı kontrol et
   const isStrategicHrActive = strategicHrMenuItems.some(item =>
@@ -1435,6 +1452,34 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                 {pdksOpen && (
                   <div className="space-y-1 ml-4">
                     {filteredPdksItems.map(item => renderMenuItem(item))}
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* İzin */}
+            {filteredIzinItems.length > 0 && (
+              <>
+                <button
+                  onClick={() => setIzinOpen(!izinOpen)}
+                  className={cn(
+                    "flex items-center w-full space-x-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150",
+                    isIzinActive
+                      ? "text-teal-300"
+                      : "text-white/50 hover:text-white/90 hover:bg-white/[0.07]"
+                  )}
+                >
+                  <CalendarDays className="h-5 w-5" />
+                  <span className="flex-1 text-left">İzin</span>
+                  {izinOpen ? (
+                    <ChevronDown className="h-4 w-4" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4" />
+                  )}
+                </button>
+                {izinOpen && (
+                  <div className="space-y-1 ml-4">
+                    {filteredIzinItems.map(item => renderMenuItem(item))}
                   </div>
                 )}
               </>

@@ -7,6 +7,7 @@ import {
   Truck,
   Forklift,
   ArrowLeft,
+  ClipboardCheck,
   ClipboardList,
   HelpCircle,
   PackageMinus,
@@ -38,6 +39,7 @@ const KARTLAR: DepoKart[] = [
   { label: 'Transfer Talebi', alt: 'Onaylı talebe stok bağla, transfer et', Icon: Send, href: '/terminal/depo/transfer-talebi' },
   { label: 'Sevkiyat', alt: 'Sevkiyat toplama: okut, bitir', Icon: Truck, href: '/terminal/depo/sevkiyat' },
   { label: 'Malzeme Talebi', alt: 'Sarf çıkışı: talep, rezerv, tüket', Icon: PackageMinus, href: '/terminal/depo/malzeme-talebi' },
+  { label: 'Sayım', alt: 'Sayım raporu: lokasyon, okut, say', Icon: ClipboardCheck, href: '/terminal/depo/sayim' },
 ]
 
 export function DepoMenuClient({ operatorName }: Props) {

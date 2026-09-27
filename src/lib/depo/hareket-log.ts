@@ -39,6 +39,9 @@ export type DepoOlay =
   | 'SEVKIYAT_SIL'
   | 'SEVKIYAT_TOPLA'
   | 'SEVKIYAT_GERIAL'
+  // Sayım (IFS sayım raporu): orderNo = InvListNo, lineItemNo = Seq, miktar = sayılan; detay.fark (esit/fazla/eksik).
+  | 'SAYIM_YAZ'
+  | 'SAYIM_AYNI'
 
 export interface DepoHareketGirdi {
   olay: DepoOlay

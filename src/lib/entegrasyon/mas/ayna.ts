@@ -33,6 +33,7 @@ export interface MasAynaOzet {
   kapatilan: number
   durusAcilan: number
   durusKapatilan: number
+  durusBaslangicYok: number
   hurdaOkunan: number // MAS'tan çekilen reject satırı (hedef loglar için)
   hurdaYazilan: number // IproHurdaKaydi upsert (yeni/güncel)
   hurdaLogGuncellenen: number // qtyScrap güncellenen log sayısı
@@ -78,7 +79,7 @@ export async function runMasAyna(opts: { dryRun?: boolean; limit?: number | null
 
   const ozet: MasAynaOzet = {
     dryRun, acikOkunan: acikSatir.length, acikUygun: 0, acilan: 0, guncellenen: 0, mukerrer: 0,
-    kapatilan: 0, durusAcilan: 0, durusKapatilan: 0, hurdaOkunan: 0, hurdaYazilan: 0, hurdaLogGuncellenen: 0,
+    kapatilan: 0, durusAcilan: 0, durusKapatilan: 0, durusBaslangicYok: 0, hurdaOkunan: 0, hurdaYazilan: 0, hurdaLogGuncellenen: 0,
     eslesmeyenDurusSebepleri: [], atlanan: [],
   }
 
@@ -311,6 +312,12 @@ export async function runMasAyna(opts: { dryRun?: boolean; limit?: number | null
       ozet.atlanan.push({ sebep: 'durus_tezgah_eslesmedi', anahtar: `durus:${d.id}`, detay: d.tezgahKod ?? '—' })
       continue
     }
+    // BAŞLANGIÇ YOK → YAZMA: StartDateTime NULL/geçersiz (masTarih null) duruşu 'simdi' ile UYDURMA (phantom
+    // "Belirsiz Duruş" kök sebebi). Başlangıcı olmayan MAS duruşu IPRO'ya yazılmaz.
+    if (!d.baslangic) {
+      ozet.durusBaslangicYok++
+      continue
+    }
     const sebepId = d.sebepKod ? sebepByKod.get(d.sebepKod) ?? null : null
     if (!sebepId && d.sebepKod && !ozet.eslesmeyenDurusSebepleri.includes(`${d.sebepKod} — ${d.sebepAd ?? ''}`.trim())) {
       ozet.eslesmeyenDurusSebepleri.push(`${d.sebepKod} — ${d.sebepAd ?? ''}`.trim())
@@ -328,11 +335,11 @@ export async function runMasAyna(opts: { dryRun?: boolean; limit?: number | null
         // MAS kaydı öncelikli (partial unique tezgah başına tek açık duruşa izin verir; kapatılmadan açılamaz).
         await prisma.iproMachineDowntime.updateMany({
           where: { tezgahId: tz.id, kaynak: { in: ['OTO', 'TAKVIM'] }, bitis: null },
-          data: { bitis: d.baslangic ?? simdi },
+          data: { bitis: d.baslangic },
         })
         await prisma.iproMachineDowntime.create({
           data: {
-            tezgahId: tz.id, durusSebebiId: sebepId, baslangic: d.baslangic ?? simdi, kaynak: KAYNAK,
+            tezgahId: tz.id, durusSebebiId: sebepId, baslangic: d.baslangic, kaynak: KAYNAK,
             yorum: sebepId ? null : `MAS: ${d.sebepKod ?? '?'} - ${d.sebepAd ?? ''}`.trim(),
           },
         })

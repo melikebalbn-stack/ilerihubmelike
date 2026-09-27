@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
+import { eslesenHedefBolumler } from '@/lib/announcements/hedef'
 
 // GET - Kullanıcının HENÜZ GÖRMEDİĞİ (AnnouncementRead kaydı olmayan) yayındaki,
 // hedef kitlesine uygun, süresi dolmamış duyurular. Otomatik popup kaynağı.
@@ -20,6 +21,10 @@ export async function GET() {
     })
     const userSlugs = userRoleRows.map((r) => r.role.slug)
 
+    // Hedef departman eşleşmesi tam-metin DEĞİL — normalize (ek soyma) ile
+    // eşleşen hedef string'leri hesaplanıp hasSome ile filtrelenir.
+    const eslesenBolumler = await eslesenHedefBolumler(prisma, userDepartment)
+
     const announcements = await prisma.announcement.findMany({
       where: {
         AND: [
@@ -27,7 +32,7 @@ export async function GET() {
           {
             OR: [
               { targetType: 'ALL' },
-              { targetType: 'DEPARTMENTS', targetDepartments: { has: userDepartment } },
+              { targetType: 'DEPARTMENTS', targetDepartments: { hasSome: eslesenBolumler } },
               { targetType: 'ROLES', targetRoles: { hasSome: userSlugs } },
             ],
           },

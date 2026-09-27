@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
 import { notifyAnnouncementPublished } from '@/lib/announcements/notify-announcement'
+import { eslesenHedefBolumler } from '@/lib/announcements/hedef'
 
 // GET - Duyuruları listele
 export async function GET(request: NextRequest) {
@@ -41,11 +42,13 @@ export async function GET(request: NextRequest) {
 
     // Admin değilse sadece yayınlanmış ve hedef kitlesine uygun duyuruları göster
     if (!isAdmin) {
+      // Hedef departman eşleşmesi normalize (ek soyma) ile — tam-metin DEĞİL.
+      const eslesenBolumler = await eslesenHedefBolumler(prisma, userDepartment)
       andConditions.push({ status: 'PUBLISHED' })
       andConditions.push({
         OR: [
           { targetType: 'ALL' },
-          { targetType: 'DEPARTMENTS', targetDepartments: { has: userDepartment } },
+          { targetType: 'DEPARTMENTS', targetDepartments: { hasSome: eslesenBolumler } },
           // targetRoles ∩ userSlugs ≠ ∅ — Postgres array overlap (hasSome)
           { targetType: 'ROLES', targetRoles: { hasSome: userSlugs } },
         ],

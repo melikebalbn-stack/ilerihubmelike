@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { createManyNotificationsWithPush } from "@/lib/push-notifications";
+import { eslesenKullaniciIdleri } from "@/lib/announcements/hedef";
 
 /**
  * Duyuru yayınlanınca hedef kitleye in-app + push bildirim (MAİL YOK).
@@ -32,12 +33,10 @@ export async function resolveAudienceUserIds(
   } as const;
 
   if (ann.targetType === "DEPARTMENTS") {
-    if (!ann.targetDepartments.length) return [];
-    const users = await prisma.user.findMany({
-      where: { ...base, department: { in: ann.targetDepartments } },
-      select: { id: true },
+    // Tam-metin DEĞİL: aday kullanıcılar çekilip normalize (ek soyma) ile süzülür.
+    return eslesenKullaniciIdleri(prisma, ann.targetDepartments, {
+      excludeUserId: ann.authorId,
     });
-    return users.map((u) => u.id);
   }
 
   if (ann.targetType === "ROLES") {

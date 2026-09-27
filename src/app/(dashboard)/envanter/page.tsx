@@ -3855,6 +3855,24 @@ function StokYonetimi() {
     }
   }
 
+  // Ürün seçici seçenekleri — etiket "KOD - Ad", arama ayrıca kategori ve
+  // varyant özetinde de çalışır (varyantOzeti liste ucundan geliyor).
+  const urunSecenekleri = useMemo(
+    () =>
+      urunler
+        .filter(
+          (urun) =>
+            urun.id === selectedUrunId ||
+            envanterAramaEslesir(arama, [urun.kod, urun.ad, urun.kategori, urun.varyantOzeti]),
+        )
+        .map((urun) => ({
+          id: urun.id,
+          etiket: `${urun.kod} - ${urun.ad}`,
+          aramaEk: [urun.kategori, urun.varyantOzeti, urun.tip],
+        })),
+    [urunler, selectedUrunId, arama],
+  )
+
   // Faz 2 — hareketi geri al (ters hareket oluşur; stok mevcut güncellenir).
   async function geriAl(hareketId: string) {
     if (!confirm('Bu hareketi geri almak istediğinize emin misiniz? Ters bir hareket oluşturulacak.')) return
@@ -3895,25 +3913,18 @@ function StokYonetimi() {
           <h3 className="font-semibold text-slate-900">Stoklar</h3>
 
           <div className="mt-4 grid gap-4 md:grid-cols-2">
-            <select
-              value={selectedUrunId}
-              onChange={(event) => setSelectedUrunId(event.target.value)}
-              className="rounded-xl border px-3 py-2 text-sm"
-            >
-              {/* Seçili ürün aramaya uymasa bile listede KALIR — aksi halde seçim
-                  görünmez olur ve altındaki stok/hareket paneli sahipsiz kalırdı. */}
-              {urunler
-                .filter(
-                  (urun) =>
-                    urun.id === selectedUrunId ||
-                    envanterAramaEslesir(arama, [urun.kod, urun.ad, urun.kategori]),
-                )
-                .map((urun) => (
-                  <option key={urun.id} value={urun.id}>
-                    {urun.kod} - {urun.ad}
-                  </option>
-                ))}
-            </select>
+            {/* Uzun liste (yüzlerce ürün): native select yerine aranabilir
+                combobox. Sekme araması listeyi ÖNDEN daraltır; seçili ürün
+                aramaya uymasa bile listede KALIR — aksi halde seçim görünmez
+                olur ve altındaki stok/hareket paneli sahipsiz kalırdı. */}
+            <AramaliSecim
+              deger={selectedUrunId}
+              onChange={setSelectedUrunId}
+              placeholder="Ürün seçin"
+              aramaPlaceholder="Kod, ad veya varyant ara..."
+              className="mt-0"
+              secenekler={urunSecenekleri}
+            />
             <div className="mt-2">
               <PasifUrunUyarisi
                 urun={urunler.find((u) => u.id === selectedUrunId)}

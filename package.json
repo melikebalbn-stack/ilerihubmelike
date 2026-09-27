@@ -10,6 +10,7 @@
     "type-check": "NODE_OPTIONS=--max-old-space-size=8192 tsc --noEmit",
     "test": "vitest",
     "test:ci": "vitest run --project unit",
+    "verify": "npm run type-check && npm run lint && npm run test:ci",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",

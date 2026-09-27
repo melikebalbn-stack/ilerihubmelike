@@ -1,3 +1,13 @@
+> **HISTORICAL / NOT AUTHORITATIVE**
+>
+> Bu belge 2026-09-27 tarihinde `docs/archive/` altına alındı. İçeriği
+> güncel kod tabanıyla **uyuşmuyor** (ör. `servis-yonetimi` ve `akademi`
+> modüllerini hiç bilmiyor). Tarihsel kayıt olarak saklanıyor.
+>
+> Güncel teknik gerçek için: `context/README.md`
+
+---
+
 # İleriHub - Proje Yapısı Özeti
 
 **Oluşturulma Tarihi:** 1 Şubat 2026

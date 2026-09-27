@@ -38,17 +38,21 @@ const tanim: VeriSetiTanim = {
 SELECT bolum, tezgah, parca, operasyon,
        round(planli::numeric,1) AS planli_cevrim_sn,
        round(olculen::numeric,1) AS olculen_cevrim_sn,
-       round((100 * (planli - olculen) / NULLIF(planli,0))::numeric,1) AS sapma_yuzde,
+       CASE WHEN planli <= 1 THEN 'TANIMSIZ' WHEN olculen > planli THEN 'YAVAŞ' ELSE 'HIZLI' END AS durum,
+       round((olculen / NULLIF(planli,0))::numeric,2) AS oran,
        is_sayisi, toplam_adet, son_is
 FROM g
-ORDER BY abs((planli - olculen) / NULLIF(planli,0)) * toplam_adet DESC NULLS LAST`,
+ORDER BY (CASE WHEN planli <= 1 THEN 0 ELSE 1 END),
+         CASE WHEN planli <= 1 THEN toplam_adet
+              ELSE abs(ln(NULLIF(abs(olculen / NULLIF(planli,0)),0))) * toplam_adet END DESC NULLS LAST`,
       parametreler: ['baslangic', 'bitis'],
     },
   ],
   birlestir: [],
   alanlar: {
     bolum: 'cs.bolum', tezgah: 'cs.tezgah', parca: 'cs.parca', operasyon: 'cs.operasyon',
-    planliCevrim: 'cs.planli_cevrim_sn', olculenCevrim: 'cs.olculen_cevrim_sn', sapma: 'cs.sapma_yuzde',
+    planliCevrim: 'cs.planli_cevrim_sn', olculenCevrim: 'cs.olculen_cevrim_sn',
+    durum: 'cs.durum', oran: 'cs.oran',
     isSayisi: 'cs.is_sayisi', toplamAdet: 'cs.toplam_adet', sonIs: 'cs.son_is',
   },
 }
@@ -68,17 +72,18 @@ const icerik: EtkilesimliIcerik = {
       { alan: 'tezgah', baslik: 'Tezgah', gorunur: true },
       { alan: 'parca', baslik: 'Parça', gorunur: true },
       { alan: 'operasyon', baslik: 'Op', gorunur: true },
+      { alan: 'durum', baslik: 'Durum', gorunur: true },
       { alan: 'planliCevrim', baslik: 'Planlı çevrim (sn)', gorunur: true, bicim: '#.##0,00' },
       { alan: 'olculenCevrim', baslik: 'Ölçülen çevrim (sn)', gorunur: true, bicim: '#.##0,00' },
-      { alan: 'sapma', baslik: 'Sapma %', gorunur: true, bicim: '#.##0,00' },
+      { alan: 'oran', baslik: 'Ölçülen/Planlı', gorunur: true, bicim: '#.##0,00' },
       { alan: 'isSayisi', baslik: 'İş sayısı', gorunur: true, toplam: 'topla', bicim: '#.##0' },
       { alan: 'toplamAdet', baslik: 'Toplam adet', gorunur: true, toplam: 'topla', bicim: '#.##0' },
       { alan: 'sonIs', baslik: 'Son iş', gorunur: true, bicim: 'gg.aa.yyyy' },
     ],
     gruplar: [],
     siralama: null, // SQL sırası korunur (|sapma| × toplam adet azalan)
-    filtreler: {}, // bölüm süzgeci kullanıcı tarafından buradan (opsiyonel)
-    grafik: { grupla: 'bolum', deger: 'toplamAdet', fn: 'topla' },
+    filtreler: {}, // Durum/bölüm süzgeci görünümde kolon bazında (durum kolonu görünür → süzgeç aktif)
+    grafik: { grupla: 'durum', deger: 'toplamAdet', fn: 'topla' },
   },
 }
 

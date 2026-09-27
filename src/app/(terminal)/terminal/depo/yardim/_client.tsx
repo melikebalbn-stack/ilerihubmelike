@@ -2,171 +2,16 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import {
-  AlertTriangle,
-  ArrowLeft,
-  ArrowDownUp,
-  Boxes,
-  Check,
-  ClipboardCheck,
-  ClipboardList,
-  Forklift,
-  LifeBuoy,
-  PackageMinus,
-  PackageSearch,
-  ScanLine,
-  Send,
-  Truck,
-} from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
+import { ArrowLeft, Check, LifeBuoy, ScanLine } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { OperatorBadge, TERMINAL_ACCENT } from '../../_shared'
+import { MODULLER, type ModulYardim } from '../_yardim-icerik'
+import { YardimGovde } from '../_yardim-govde'
 
 interface Props {
   operatorName: string
 }
-
-interface Modul {
-  /** Ana menüdeki kart adı ve ikonu (sıra da ana menüyle aynı). */
-  label: string
-  Icon: LucideIcon
-  /** Genel bakış kartının alt yazısı. */
-  kisa: string
-  /** Modül sayfası başlığı. */
-  baslik: string
-  neZaman: string
-  adimlar: string[]
-  dikkat: string
-}
-
-// ── İçerik (statik; metinler depo ekibinin onayladığı hâliyle — sade, mavi yaka için) ──
-const MODULLER: Modul[] = [
-  {
-    label: 'Stok Taşıma',
-    Icon: ArrowDownUp,
-    kisa: 'Bir malzemeyi bir raftan başka rafa taşırken',
-    baslik: 'Stok Taşıma',
-    neZaman: 'Bir malzemeyi bulunduğu raftan başka bir rafa koyacağın zaman.',
-    adimlar: [
-      'Malzemenin barkodunu okut.',
-      'Nereden alacağını sistem gösterir.',
-      'Miktarı gir.',
-      'Koyacağın rafı okut, TAŞI\'ya bas.',
-    ],
-    dikkat: 'Rafı okutmadan malzemeyi yerleştirme; sistem malzemeyi eski yerinde sanır.',
-  },
-  {
-    label: 'Malzeme Toplama',
-    Icon: ClipboardList,
-    kisa: 'Üretime iş emri için malzeme hazırlarken',
-    baslik: 'Malzeme Toplama',
-    neZaman: 'Üretime bir iş emri için malzeme hazırlayacağın zaman.',
-    adimlar: [
-      'Listeden iş emrini seç ya da iş emri etiketini okut.',
-      'Toplanacak malzemeyi ve gideceğin rafı görürsün.',
-      'Rafa git, malzeme etiketini okut.',
-      'Miktarı onayla.',
-    ],
-    dikkat: 'Gri görünen iş emirleri henüz serbest bırakılmamıştır, toplanamaz; planlamaya haber ver.',
-  },
-  {
-    label: 'Stok Bilgisi',
-    Icon: PackageSearch,
-    kisa: 'Bir malzeme nerede, ne kadar var bakmak için',
-    baslik: 'Stok Bilgisi',
-    neZaman: 'Bir malzeme nerede, ne kadar var merak ettiğinde.',
-    adimlar: [
-      'Malzeme barkodunu, stok numarasını ya da raf etiketini okut.',
-      'Hangi rafta ne kadar olduğunu görürsün.',
-      'Detay için karta dokun.',
-    ],
-    dikkat: 'Bu ekran sadece bakmak içindir, hiçbir şeyi değiştirmez.',
-  },
-  {
-    label: 'Taşıma Birimi',
-    Icon: Boxes,
-    kisa: 'Palet hazırlarken, paleti taşırken',
-    baslik: 'Taşıma Birimi (Palet)',
-    neZaman: 'Palet hazırlarken, paleti bir yere taşırken ya da malzemeyi bir paletten diğerine aktarırken.',
-    adimlar: [
-      'Yeni palet için "Palet Oluştur"a bas, türünü seç; çıkan palet numarasını palete yaz/yapıştır.',
-      '"Palet İçeriği"nden paleti okut, "Ekle" ile malzeme koy, "Çıkar" ile al.',
-      'Paleti taşımak için "Palet Taşı": paleti okut, gideceği rafı okut.',
-      'Aktarmak için "Palet Değiştir".',
-    ],
-    dikkat: 'Palet alanına okuttuğun numara her zaman palet sayılır; malzemeyi malzeme alanına okut.',
-  },
-  {
-    label: 'Toplu Taşıma',
-    Icon: Forklift,
-    kisa: 'Birçok malzemeyi aynı yere tek seferde taşırken',
-    baslik: 'Toplu Taşıma',
-    neZaman: 'Birçok malzemeyi aynı rafa tek seferde taşıyacağın zaman.',
-    adimlar: [
-      'Gideceğin rafı okut, "Yeni Fiş" aç.',
-      'Her malzeme için: aldığın rafı okut, malzemeyi okut, miktarı gir, EKLE.',
-      'Hepsi bitince TRANSFER ET.',
-    ],
-    dikkat: 'Fişe eklemek malzemeyi ayırmaz; TRANSFER ET\'e basana kadar başkası da o malzemeyi alabilir. Fişi uzun süre açık bırakma.',
-  },
-  {
-    label: 'Transfer Talebi',
-    Icon: Send,
-    kisa: 'Üretimin istediği malzemeyi götürürken',
-    baslik: 'Transfer Talebi',
-    neZaman: 'Üretim ya da başka bir birim sistemden malzeme istediğinde.',
-    adimlar: [
-      'Bekleyen talepler listesinden talebi seç.',
-      'İstenen malzemeleri ve kalan miktarı görürsün.',
-      'Malzemeye dokun, aldığın rafı ve malzemeyi okut, miktarı gir, EKLE.',
-      'Tüm kalanlar sıfır olunca TRANSFER ET.',
-    ],
-    dikkat: 'Talep tamamlanmadan transfer yapılamaz; eksik malzeme varsa şefine haber ver.',
-  },
-  {
-    label: 'Sevkiyat',
-    Icon: Truck,
-    kisa: 'Müşteriye gidecek ürünü hazırlarken',
-    baslik: 'Sevkiyat',
-    neZaman: 'Müşteriye gidecek ürünü hazırlayacağın zaman.',
-    adimlar: [
-      'Listeden sevkiyatı seç.',
-      'Her ürün için sistemin gösterdiği rafa git.',
-      'Kutuları tek tek okut, miktarı gir; okuttukların listede birikir.',
-      'Hepsi bitince TOPLAMAYI BİTİR.',
-    ],
-    dikkat: 'Eksik toplarsan kalan miktar için sevkiyat yeniden hazırlanmalı; ekrandaki uyarıyı oku. İrsaliye ofiste kesilir.',
-  },
-  {
-    label: 'Malzeme Talebi',
-    Icon: PackageMinus,
-    kisa: 'Eldiven, yağ gibi sarf malzeme verirken',
-    baslik: 'Malzeme Talebi (Sarf)',
-    neZaman: 'Eldiven, yağ, conta gibi sarf malzemeyi bir birime verdiğin zaman.',
-    adimlar: [
-      'Talep numarasını okut ya da hangi birim için olduğunu seçip "Yeni Talep" aç.',
-      'Rafı ve malzemeyi okut, miktarı gir, EKLE.',
-      'Yanlış eklediysen "Çıkar".',
-      'TÜKET\'e bas; malzeme stoktan düşer.',
-    ],
-    dikkat: 'TÜKET\'e bastıktan sonra geri alınamaz; miktarı kontrol et.',
-  },
-  {
-    label: 'Sayım',
-    Icon: ClipboardCheck,
-    kisa: 'Rafları sayarken',
-    baslik: 'Sayım',
-    neZaman: 'Ofis bir sayım listesi açtığında, rafları saymak için.',
-    adimlar: [
-      'Listeden sayım raporunu seç.',
-      'Saydığın rafı okut.',
-      'Malzemeyi okut, saydığın miktarı gir, KAYDET.',
-      'Rafın hepsi bitince sonraki rafa geç.',
-    ],
-    dikkat: 'Sistemdeki miktar sana gösterilmez; gördüğünü say, tahmin yazma. Farkları ofis onaylar.',
-  },
-]
 
 const KURALLAR = [
   'Önce okut, sonra miktar gir.',
@@ -332,7 +177,7 @@ function GenelBakis({ onSec }: { onSec: (i: number) => void }) {
   )
 }
 
-function ModulEkrani({ modul }: { modul: Modul }) {
+function ModulEkrani({ modul }: { modul: ModulYardim }) {
   const { Icon } = modul
   return (
     <div className="flex flex-col gap-3 pt-1">
@@ -351,30 +196,7 @@ function ModulEkrani({ modul }: { modul: Modul }) {
         </span>
       </div>
 
-      <div className="flex flex-col gap-1 rounded-xl border bg-card p-3.5">
-        <span className="text-xs font-semibold" style={{ color: TERMINAL_ACCENT }}>Ne zaman?</span>
-        <span className="text-sm leading-snug">{modul.neZaman}</span>
-      </div>
-
-      <div className="flex flex-col gap-2">
-        <span className="text-xs font-semibold" style={{ color: TERMINAL_ACCENT }}>Nasıl?</span>
-        {modul.adimlar.map((a, i) => (
-          <div key={i} className="flex gap-3 rounded-xl border bg-card p-3.5">
-            <span
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-bold"
-              style={{ color: TERMINAL_ACCENT }}
-            >
-              {i + 1}
-            </span>
-            <span className="text-sm leading-snug">{a}</span>
-          </div>
-        ))}
-      </div>
-
-      <div className="flex items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3.5 py-3 text-amber-900">
-        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-        <p className="text-sm leading-snug"><span className="font-semibold">Dikkat: </span>{modul.dikkat}</p>
-      </div>
+      <YardimGovde modul={modul} />
     </div>
   )
 }

@@ -16,7 +16,7 @@ import { GUN, IzinGirdiHatasi } from './gun-sayimi'
 
 /**
  * Ekrandan açılış import'u (/izin/yonetim/ice-aktarim). Deneme (dry-run) izin.admin; gerçek aktarım
- * izin.bakiye.admin + AYNI dosyanın (sha256) deneme sonucu + eşik kapısı. Rapor <repo>/uploads/izin/ (600).
+ * izin.bakiye.admin + AYNI dosyanın (sha256) deneme sonucu + eşik kapısı. Rapor slot dışı IZIN_IMPORT_DIR (700/600).
  */
 export const MAKS_DOSYA = 5 * 1024 * 1024
 

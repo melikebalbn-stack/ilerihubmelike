@@ -9,7 +9,8 @@
  * - --db=<ad> zorunlu; bağlanılan veritabanıyla birebir eşleşmeli.
  * - --tarih: açılış (= geçiş) tarihi. Excel'deki kalan bu tarih İTİBARIYLA; bu tarihe kadarki yıldönümleri
  *   Excel'de sayılmış kabul edilir. Apply SystemSetting izin_gecis_tarihi'ni yazar (varsa ve farklıysa DURUR).
- * - Rapor: <repo>/uploads/izin/ (dizin 700, dosyalar 600). KİŞİ VERİSİ — public/ ASLA.
+ * - Rapor: slot dışı IZIN_IMPORT_DIR (varsayılan /home/rokunet/shared/izin-import; dizin 700, dosyalar 600;
+ *   yoksa oluşturulur). Ekranla AYNI dizin. KİŞİ VERİSİ — public/ ASLA.
  * - --apply: eşleşmeyen oranı --esik'i (varsayılan 0.10) aşarsa DURUR. --aktor gerçek User.id (denetim FK).
  * - GERÇEK apply canlıya geçiş gününde (Melih 27.09); öncesinde yalnız dry-run.
  */

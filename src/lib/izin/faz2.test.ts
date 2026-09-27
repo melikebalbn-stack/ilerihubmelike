@@ -5,7 +5,7 @@ import path from 'node:path'
 import * as XLSX from 'xlsx'
 import { describe, expect, it } from 'vitest'
 import { kisiBakiyeOzeti, kidemSuresi } from './bakiye-ozet'
-import { acilisExcelOku, acilisKapisi, acilisRaporYaz, acilisSiniflandir, kalanCoz, sicilNormalize, type HubKisi } from './acilis-import'
+import { IZIN_IMPORT_DIR_VARSAYILAN, acilisExcelOku, acilisKapisi, acilisRaporDizini, acilisRaporYaz, acilisSiniflandir, kalanCoz, sicilNormalize, type HubKisi } from './acilis-import'
 import { hakEdisPlani, type HakEdisKisi } from './hak-edis-isi'
 
 const xlsx = (satirlar: unknown[][]) => {
@@ -121,12 +121,23 @@ describe('açılış import — sınıflandırma ve kapı', () => {
   it('rapor 600 izinle yazılır; public/ altına yazmayı reddeder', () => {
     const r = acilisSiniflandir([{ satir: 2, sicil: 'ILR-00001', degerHam: '12' }], hub, new Set())
     const dizin = fs.mkdtempSync(path.join(os.tmpdir(), 'izin-acilis-'))
-    const { csv, json } = acilisRaporYaz(path.join(dizin, 'uploads', 'izin'), r, { mod: 'DRY-RUN' }, 'test')
+    const hedef = acilisRaporDizini({ IZIN_IMPORT_DIR: path.join(dizin, 'izin-import') })
+    fs.mkdirSync(hedef, { mode: 0o755 }) // önceden geniş izinle var olan dizin daraltılmalı
+    const { csv, json } = acilisRaporYaz(hedef, r, { mod: 'DRY-RUN' }, 'test')
+    expect(fs.statSync(hedef).mode & 0o777).toBe(0o700)
     expect(fs.statSync(csv).mode & 0o777).toBe(0o600)
     expect(fs.statSync(json).mode & 0o777).toBe(0o600)
     expect(fs.readFileSync(csv, 'utf8')).toContain('HUB_AKTIF_DOSYADA_YOK')
     expect(() => acilisRaporYaz(path.join(dizin, 'public', 'uploads'), r, {}, 'x')).toThrow(/public/)
     fs.rmSync(dizin, { recursive: true, force: true })
+  })
+
+  it('rapor dizini slot DIŞI: varsayılan ortak dizin, env ile değişir, göreli yol reddedilir, repo cwd kullanılmaz', () => {
+    expect(acilisRaporDizini({})).toBe(IZIN_IMPORT_DIR_VARSAYILAN)
+    expect(acilisRaporDizini({ IZIN_IMPORT_DIR: '  ' })).toBe('/home/rokunet/shared/izin-import')
+    expect(acilisRaporDizini({ IZIN_IMPORT_DIR: '/srv/x/' })).toBe('/srv/x')
+    expect(() => acilisRaporDizini({ IZIN_IMPORT_DIR: 'uploads/izin' })).toThrow(/mutlak/)
+    expect(acilisRaporDizini({}).startsWith(process.cwd())).toBe(false)
   })
 })
 

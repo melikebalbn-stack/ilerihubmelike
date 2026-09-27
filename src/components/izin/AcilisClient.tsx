@@ -100,7 +100,7 @@ export function AcilisClient({ canApply }: { canApply: boolean }) {
           </div>
           <ul className="list-disc space-y-0.5 pl-5 text-xs text-slate-500">
             <li>Dosyadan yalnız <strong>sicil</strong> ve <strong>kalan</strong> sütunları okunur (başlıkta &quot;Sicil&quot; ve &quot;Kalan&quot; ya da &quot;Bakiye&quot; geçmeli). Ondalık yalnız 0,5.</li>
-            <li>Deneme veritabanına yazmaz; rapor sunucuda korumalı dizine (uploads/izin, yalnız sahip okur) kaydedilir.</li>
+            <li>Deneme veritabanına yazmaz; rapor sunucuda slot dışı korumalı dizine (yalnız sahip okur) kaydedilir.</li>
             <li>Bakiye tarihine kadarki yıldönümleri Excel&apos;de sayılmış kabul edilir; otomatik hak ediş sonraki yıldönümünden başlar.</li>
           </ul>
         </CardContent>

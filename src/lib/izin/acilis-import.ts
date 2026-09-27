@@ -164,20 +164,27 @@ export function acilisSiniflandir(satirlar: AcilisSatiri[], personeller: HubKisi
   return { kayitlar, hubAktifDosyadaYok, ozet, toplamGun, eslesmeyen: { pay, payda: kayitlar.length, oran: kayitlar.length ? pay / kayitlar.length : 0 } }
 }
 
-// ── Rapor (KİŞİ VERİSİ: <repo>/uploads/izin/, dizin 700, dosya 600; public/ ASLA) ─────────
+// ── Rapor (KİŞİ VERİSİ: slot DIŞI IZIN_IMPORT_DIR, dizin 700, dosya 600; public/ ASLA) ─────────
+// <repo>/uploads slot başına ayrıdır: ekrandan alınan rapor swap'tan sonra görünmez olurdu. Bu yüzden
+// CLI ve ekran aynı ortak dizine yazar (varsayılan /home/rokunet/shared/izin-import).
 
 const csvAlan = (v: unknown) => {
   const s = v === null || v === undefined ? '' : String(v)
   return /[;"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
 }
 
-export function acilisRaporDizini(kok = process.cwd()) {
-  return path.join(kok, 'uploads', 'izin')
+export const IZIN_IMPORT_DIR_VARSAYILAN = '/home/rokunet/shared/izin-import'
+
+export function acilisRaporDizini(env: NodeJS.ProcessEnv = process.env) {
+  const d = env.IZIN_IMPORT_DIR?.trim() || IZIN_IMPORT_DIR_VARSAYILAN
+  if (!path.isAbsolute(d)) throw new Error(`IZIN_IMPORT_DIR mutlak yol olmalı: ${d}`)
+  return path.resolve(d)
 }
 
 export function acilisRaporYaz(dizin: string, sonuc: AcilisSonucu, meta: Record<string, unknown>, etiket: string): { csv: string; json: string } {
   if (dizin.split(path.sep).includes('public')) throw new Error('rapor public/ altına yazılamaz')
   fs.mkdirSync(dizin, { recursive: true, mode: 0o700 })
+  fs.chmodSync(dizin, 0o700) // önceden var olan dizin de daraltılır
   const csv = path.join(dizin, `acilis-${etiket}.csv`)
   const json = path.join(dizin, `acilis-${etiket}.json`)
   const satirlar = [

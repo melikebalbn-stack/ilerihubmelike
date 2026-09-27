@@ -7,7 +7,7 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 // POST /api/izin/acilis/deneme (multipart: dosya, tarih) — açılış bakiyesi DENEMESİ (izin.admin).
-// DB'ye YAZMAZ; rapor <repo>/uploads/izin/ altına (600).
+// DB'ye YAZMAZ; rapor slot dışı IZIN_IMPORT_DIR altına (700/600).
 export async function POST(req: NextRequest) {
   const { error, userId } = await requirePermission(['izin.admin', 'izin.bakiye.admin'])
   if (error) return error

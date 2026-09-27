@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
 import { getBulkCardScanAccess } from '../_lib/access'
-import { getManagedPersonnelIds } from '../_lib/approvers'
+import { getManagedPersonnelIds } from '@/lib/onay/yonetici-cozumu'
 
 export const dynamic = 'force-dynamic'
 

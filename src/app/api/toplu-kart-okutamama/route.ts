@@ -10,7 +10,8 @@ import {
 } from './_lib/notify-hr'
 import { VALID_NEDEN } from './_lib/neden'
 import { hasDuplicateRecord, DUPLICATE_ERROR_MESSAGE } from './_lib/duplicate-check'
-import { onayKarariBelirle, getManagedPersonnelIds } from './_lib/approvers'
+import { onayKarariBelirle } from './_lib/approvers'
+import { getManagedPersonnelIds } from '@/lib/onay/yonetici-cozumu'
 
 export const dynamic = 'force-dynamic'
 

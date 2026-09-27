@@ -199,6 +199,12 @@ export const PERMISSION_KEYS = {
   // === PDKS (Personel Devam Kontrol — Hikvision ISAPI) ===
   PDKS_VIEW: 'pdks.view',
   PDKS_MANAGE: 'pdks.manage',
+
+  // === İZİN MODÜLÜ (27.09) — eski izin.* anahtarları SAHİPLENİLDİ (Melih): izin.admin = İV yönetimi
+  // (yukarıda, mevcut rol bağlarıyla: hr-yoneticisi + super-admin). izin.create / izin.approve KULLANILMAZ —
+  // çalışan ve yönetici kapsamı izin gerektirmez, sunucuda (User.personnelId / sorumlu1-3Id) hesaplanır.
+  IZIN_RAPOR_GOR: 'izin.rapor.gor',
+  IZIN_BAKIYE_ADMIN: 'izin.bakiye.admin',
 } as const;
 
 export type PermissionKey = typeof PERMISSION_KEYS[keyof typeof PERMISSION_KEYS];
@@ -273,9 +279,9 @@ export const PERMISSION_DESCRIPTIONS: Record<string, string> = {
   'calisanrehberi.view': 'Çalışan rehberi görüntüleme',
   'calisanrehberi.admin': 'Personel yönetimi (ekle/düzenle/sil)',
 
-  'izin.create': 'İzin talebi oluşturma',
-  'izin.approve': 'İzin onaylama (kapsam: kendi departmanı)',
-  'izin.admin': 'İzin modülü tam yönetim',
+  'izin.create': 'İzin talebi oluşturma (KULLANILMIYOR — çalışan kapsamı sunucuda hesaplanır)',
+  'izin.approve': 'İzin onaylama (KULLANILMIYOR — yönetici kapsamı sunucuda sorumlu1-3 ile hesaplanır)',
+  'izin.admin': 'İzin: İV kademesi onayı, sahipsiz talepler, tüm takvim, adına talep, tür ve bakiye yönetimi',
 
   'kalibrasyon.view': 'Kalibrasyon görüntüleme',
   'kalibrasyon.admin': 'Kalibrasyon yönetimi',
@@ -372,4 +378,7 @@ export const PERMISSION_DESCRIPTIONS: Record<string, string> = {
 
   'pdks.view': 'PDKS geçiş kayıtları, puantaj ve kart listesini görüntüleme',
   'pdks.manage': 'PDKS kart tanımlama, cihaz/kapı/okuyucu yönetimi, içe aktarım ve ay kilidi',
+
+  'izin.rapor.gor': 'İzin: rapor belgesini açma (özel nitelikli veri — her açılış denetime yazılır)',
+  'izin.bakiye.admin': 'İzin: açılış bakiyesi import apply, negatife düşürerek onay, defter düzeltmesi',
 };

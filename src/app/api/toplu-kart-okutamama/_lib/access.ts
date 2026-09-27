@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import { isIvBolumuFk } from '@/lib/auth/iv-bolum-fk'
-import { getManagedPersonnelIds } from './approvers'
+import { getManagedPersonnelIds } from '@/lib/onay/yonetici-cozumu'
 
 export type BulkCardScanAccessLevel = 'NONE' | 'FULL' | 'GRI' | 'SELF'
 

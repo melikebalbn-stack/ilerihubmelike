@@ -9,7 +9,8 @@ import {
   notifyApproverOfPendingRecord,
   notifyHrManagerOfUnresolvedApprover,
 } from '../_lib/notify-hr'
-import { onayKarariBelirle, getManagedPersonnelIds } from '../_lib/approvers'
+import { onayKarariBelirle } from '../_lib/approvers'
+import { getManagedPersonnelIds } from '@/lib/onay/yonetici-cozumu'
 
 export const dynamic = 'force-dynamic'
 

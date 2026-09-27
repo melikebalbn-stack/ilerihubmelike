@@ -9546,6 +9546,10 @@ model Personnel {
   pdksGecisler                   PdksGecis[]
   pdksPuantajGunleri             PdksPuantajGun[]
   pdksVardiyalari                PdksPersonelVardiya[]
+  // İzin modülü (Faz 1) — ters ilişkiler (DB kolonu eklemez)
+  izinTalepleri                  IzinTalep[]
+  izinTalepGunleri               IzinTalepGun[]
+  izinBakiyeHareketleri          IzinBakiyeHareketi[]
   servisSorumlulari              ServisSorumlusu[]
   servisDurumlari                ServisPersonelDurum[]
   // MASTER madde 30 — gönderilmiş liste snapshot'larındaki satırları (ters uç)
@@ -15661,6 +15665,8 @@ enum PdksGunDurum {
   TAM
   TAM_FORMLA // eksik giriş/çıkış onaylı Kart Okutamama formuyla tamamlandı (Faz 4)
   MESAI // hafta sonu / akşam — onaylı mesai formu (Faz 4)
+  IZINLI // onaylı tam gün izin (İzin modülü) — gelmedi SAYILMAZ
+  RAPORLU // onaylı tam gün rapor (İzin modülü; tür adı/belge puantajda görünmez)
   EKSIK_GIRIS
   EKSIK_CIKIS
   GELMEDI
@@ -15857,6 +15863,11 @@ model PdksPuantajGun {
   dusulenMolaDakika Int? // çalışmadan düşülen molalar (düşülür=true olanlar)
   mesaiPersonelId   String? // onaylı mesai formundaki kişi satırı
   mesaiPersonel     OvertimePersonnel?   @relation(fields: [mesaiPersonelId], references: [id], onDelete: SetNull)
+  // İzin modülü — onaylı izin günü (tam ya da yarım). izinEtiketi = IzinTuru.pdksEtiketi ("İzinli"/"Raporlu").
+  izinTalepId       String?
+  izinTalep         IzinTalep?           @relation(fields: [izinTalepId], references: [id], onDelete: SetNull)
+  izinPay           Decimal?             @db.Decimal(2, 1) // 1 | 0.5
+  izinEtiketi       String?
   kilitAt           DateTime?
   fazlaDakika       Int?
   uyarilar          String[]             @default([]) // ONAYSIZ_FAZLA | MESAI_ONAYLI_GELMEDI | ...
@@ -15870,6 +15881,7 @@ model PdksPuantajGun {
   @@index([vardiyaId])
   @@index([kartOkutamamaId])
   @@index([mesaiPersonelId])
+  @@index([izinTalepId])
   @@map("pdks_puantaj_gun")
 }
 
@@ -15953,4 +15965,178 @@ model PdksVardiyaMola {
   @@index([vardiyaId])
   @@index([departmentId])
   @@map("pdks_vardiya_mola")
+}
+
+// ============================================================
+// İZİN MODÜLÜ (Faz 1: şema + yasal türler + bakiye motoru)
+// Plan: "İzin Modülü — Tasarım Planı" §2. Bakiye = izin_bakiye_hareketi DEFTERİNİN toplamı
+// (INSERT-only; UPDATE/DELETE/TRUNCATE trigger'la reddedilir — migration.sql Bölüm 2).
+// Onay: Kart Okutamama'nın kişi bazlı yönetici çözümü + İV kademesi (mesai zinciri KULLANILMAZ).
+// Kullanıcı kimlikleri (talepEdenId, onayci*, onaylayanId, olusturanId) düz String = User.id
+// (PDKS deseni — User modeline dokunulmaz); otomatik işler 'sistem'.
+// ============================================================
+
+enum IzinDurumu {
+  BEKLIYOR_YONETICI
+  BEKLIYOR_IV
+  ONAYLANDI
+  REDDEDILDI
+  IPTAL
+}
+
+enum IzinYarim {
+  SABAH
+  OGLEDEN_SONRA // pdks_yarim_gun_bitis (13:00) sonrası
+}
+
+enum IzinOnayAkisi {
+  YONETICI_IV
+  YALNIZ_IV // rapor
+}
+
+enum IzinGunSayimi {
+  IS_GUNU // Cmt/Paz + tatil düşülür (PDKS takvimi)
+  TAKVIM_GUNU
+}
+
+enum IzinHareketTuru {
+  HAK_EDIS
+  KULLANIM
+  IPTAL_IADE
+  ACILIS
+  DUZELTME
+}
+
+model IzinTuru {
+  id            String        @id @default(cuid())
+  kod           String        @unique // YILLIK, EVLILIK, OLUM, EVLAT_EDINME, BABALIK, ANALIK, RAPOR, UCRETSIZ, <şirkete özel>
+  ad            String
+  yasal         Boolean       @default(false) // true: kod/süre/kurallar KİLİTLİ, ekrandan değişmez
+  bakiyeli      Boolean       @default(false) // yalnız YILLIK
+  sabitGun      Int? // evlilik 3, ölüm 3, evlat edinme 3, babalık 10, analık 168
+  gunSayimi     IzinGunSayimi @default(IS_GUNU)
+  ucretli       Boolean       @default(true) // bilgi amaçlı — bordro kararı henüz yok
+  yarimGunOlur  Boolean       @default(false)
+  onayAkisi     IzinOnayAkisi @default(YONETICI_IV)
+  belgeZorunlu  Boolean       @default(false)
+  ozelNitelikli Boolean       @default(false) // sağlık verisi: belge yalnız çalışan + izin.rapor.gor
+  pdksEtiketi   String // "İzinli" | "Raporlu" — yönetici / ekip takvimi / puantaj YALNIZ bunu görür
+  kosul         String? // ek kural anahtarı (BABALIK: DOGUM_TARIHI_GTE:2026-05-01)
+  aktif         Boolean       @default(true)
+  sira          Int           @default(0)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  talepler          IzinTalep[]
+  bakiyeHareketleri IzinBakiyeHareketi[]
+
+  @@map("izin_turu")
+}
+
+model IzinTalep {
+  id             String     @id @default(cuid())
+  personnelId    String
+  personnel      Personnel  @relation(fields: [personnelId], references: [id], onDelete: Restrict)
+  turId          String
+  tur            IzinTuru   @relation(fields: [turId], references: [id], onDelete: Restrict)
+  baslangic      DateTime   @db.Date
+  bitis          DateTime   @db.Date
+  baslangicYarim IzinYarim? // ilk gün yalnız öğleden sonra izinli
+  bitisYarim     IzinYarim? // son gün yalnız sabah izinli (tek günlük talepte ikisi aynı günü tanımlar)
+  gunSayisi      Decimal    @db.Decimal(5, 1)
+  aciklama       String?
+  durum          IzinDurumu
+  talepEdenId    String // User.id — çalışan ya da "adına" açan yönetici/İV
+  onayci1Id      String? // talep anında çözülen yönetici adayları (biri yeter)
+  onayci2Id      String?
+  onayci3Id      String?
+  iptalEdenId    String?
+  iptalAt        DateTime?
+  iptalGerekcesi String?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  gunler             IzinTalepGun[]
+  onaylar            IzinOnay[]
+  belgeler           IzinBelge[]
+  bakiyeHareketleri  IzinBakiyeHareketi[]
+  pdksPuantajGunleri PdksPuantajGun[]
+
+  @@index([personnelId, baslangic])
+  @@index([durum])
+  @@index([onayci1Id])
+  @@index([onayci2Id])
+  @@index([onayci3Id])
+  @@map("izin_talep")
+}
+
+// Talebin günlere açılmış hali — onay anında pay DONDURULUR (tatil takvimi sonradan değişse de geçmiş oynamaz).
+model IzinTalepGun {
+  id          String     @id @default(cuid())
+  talepId     String
+  talep       IzinTalep  @relation(fields: [talepId], references: [id], onDelete: Cascade)
+  personnelId String // denormalize (PDKS sorgusu)
+  personnel   Personnel  @relation(fields: [personnelId], references: [id], onDelete: Restrict)
+  tarih       DateTime   @db.Date
+  pay         Decimal    @db.Decimal(2, 1) // 1 | 0.5 | 0 (hafta sonu / tatil — sayılmaz ama kayıtlı)
+  yarim       IzinYarim?
+
+  @@unique([talepId, tarih])
+  @@index([personnelId, tarih])
+  @@map("izin_talep_gun")
+}
+
+model IzinOnay {
+  id          String    @id @default(cuid())
+  talepId     String
+  talep       IzinTalep @relation(fields: [talepId], references: [id], onDelete: Cascade)
+  kademe      String // YONETICI | IV
+  onaylayanId String // User.id
+  karar       String // ONAY | RED
+  gerekce     String? // RED'de ZORUNLU (API)
+  createdAt   DateTime  @default(now())
+
+  @@index([talepId])
+  @@map("izin_onay")
+}
+
+// DEFTER — yalnız EKLENİR (trigger). Bakiye = Σ gun. Düzeltme yeni DUZELTME satırıyla yapılır.
+// FK'lar Restrict: SET NULL bir UPDATE üretir ve trigger'a takılır.
+model IzinBakiyeHareketi {
+  id          String          @id @default(cuid())
+  personnelId String
+  personnel   Personnel       @relation(fields: [personnelId], references: [id], onDelete: Restrict)
+  turId       String
+  tur         IzinTuru        @relation(fields: [turId], references: [id], onDelete: Restrict)
+  hareket     IzinHareketTuru
+  gun         Decimal         @db.Decimal(5, 1) // + hak ediş / iade / açılış, − kullanım
+  tarih       DateTime        @db.Date
+  talepId     String?
+  talep       IzinTalep?      @relation(fields: [talepId], references: [id], onDelete: Restrict)
+  aciklama    String?
+  olusturanId String // User.id; otomatik işler 'sistem'
+  anahtar     String?         @unique // idempotency: "HAK:<personel>:<yıl>", "ACILIS:<personel>"
+  createdAt   DateTime        @default(now())
+
+  @@index([personnelId, turId, tarih])
+  @@index([talepId])
+  @@map("izin_bakiye_hareketi")
+}
+
+// RAPOR belgesi — ÖZEL NİTELİKLİ. Dosya /home/rokunet/shared/izin-rapor (IZIN_BELGE_DIR), 600. Faz 4.
+model IzinBelge {
+  id         String    @id @default(cuid())
+  talepId    String
+  talep      IzinTalep @relation(fields: [talepId], references: [id], onDelete: Restrict)
+  dosyaAdi   String // sunucu üretimli, tek yol segmenti
+  orijinalAd String
+  mime       String
+  boyut      Int
+  sha256     String
+  yukleyenId String
+  imhaAt     DateTime? // saklama süresi dolunca dosya silinir, satır kalır
+  createdAt  DateTime  @default(now())
+
+  @@index([talepId])
+  @@map("izin_belge")
 }

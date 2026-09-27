@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { cevrilmisYanit } from '../_hata'
 import { z } from 'zod'
 import { Prisma } from '@/generated/prisma'
 import { tanimDogrula } from '@/lib/rapor/veri-seti'
@@ -38,7 +39,16 @@ export async function veriSetiGovdesi(req: Request): Promise<{ veri: z.infer<typ
     return { hata: NextResponse.json({ error: govde.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ') }, { status: 400 }) }
   }
   const hatalar = tanimHatalari(govde.data.tanim as VeriSetiTanim)
-  if (hatalar.length) return { hata: NextResponse.json({ error: 'Tanım geçersiz', hatalar }, { status: 400 }) }
+  if (hatalar.length) {
+    return {
+      hata: cevrilmisYanit({
+        baslik: 'Veri seti kaydedilemedi', agirlik: 'uyari',
+        aciklama: `Tanımda ${hatalar.length} sorun var: ${hatalar[0]}${hatalar.length > 1 ? ` (ve ${hatalar.length - 1} tane daha)` : ''}`,
+        cozum: 'Aşağıdaki maddeleri düzeltin: kaynak adları benzersiz olmalı, birleştirme yolları kaynakAd.alan biçiminde ve çıktı alanları tanımlı kaynaklardan seçilmelidir.',
+        teknikDetay: hatalar.join('\n'),
+      }, 400, { hatalar }),
+    }
+  }
   return { veri: govde.data }
 }
 

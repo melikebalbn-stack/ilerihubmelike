@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { hataYaniti } from '../../_hata'
 import { z } from 'zod'
 import { requirePermission } from '@/lib/auth/require-permission'
 import { PERMISSION_KEYS } from '@/lib/auth/permissions'
@@ -46,7 +47,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       parametreler: JSON.parse(JSON.stringify(degerler)),
     })
   } catch (e) {
-    const mesaj = await calistirmaHatasiKaydet(kayit, sablon.kod, Date.now() - t0, e)
-    return NextResponse.json({ error: `Rapor çalıştırılamadı: ${mesaj}` }, { status: 500 })
+    // Ham metin rapor_calistirma.hata'ya ve loga yazılır; istemciye çevrilmiş yapı gider.
+    await calistirmaHatasiKaydet(kayit, sablon.kod, Date.now() - t0, e)
+    return hataYaniti(e, {}, 500, `rapor:${sablon.kod}`)
   }
 }

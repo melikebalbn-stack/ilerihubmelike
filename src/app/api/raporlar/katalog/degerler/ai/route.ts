@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { hataYaniti } from '../../../_hata'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/auth/require-permission'
@@ -90,9 +91,6 @@ export async function POST(req: Request) {
     console.info(`[rapor-ai-deger] ${gonderilecek.length} alan / ${gonderilenDeger} değer → ${donen} etiket · ${sonuc.olcum.sureMs} ms · ${sonuc.olcum.girisToken}+${sonuc.olcum.cikisToken} token · ${sonuc.olcum.model}`)
     return NextResponse.json({ cevriler: sonuc.cevriler, gonderilenDeger, donenEtiket: donen, atlanan, olcum: sonuc.olcum })
   } catch (e) {
-    if (e instanceof AiYapilandirmaHatasi) return NextResponse.json({ error: 'Yapay zekâ yapılandırılmamış (ANTHROPIC_API_KEY yok) — etiketleri elle girebilirsiniz.' }, { status: 503 })
-    const mesaj = e instanceof Error ? e.message : String(e)
-    console.error('[rapor-ai-deger] hata:', e)
-    return NextResponse.json({ error: `Yapay zekâ isteği başarısız: ${mesaj.slice(0, 200)}` }, { status: 502 })
+    return hataYaniti(e, { kaynakTipi: 'ai' }, e instanceof AiYapilandirmaHatasi ? 503 : 502, 'rapor-ai-deger')
   }
 }

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { hataYaniti } from '../../_hata'
 import { z } from 'zod'
 import { requirePermission } from '@/lib/auth/require-permission'
 import { PERMISSION_KEYS } from '@/lib/auth/permissions'
@@ -19,8 +20,6 @@ export async function POST(req: Request) {
     const sonuc = await projeksiyonYukle(govde.data.projeksiyon)
     return NextResponse.json({ projeksiyon: govde.data.projeksiyon, ...sonuc })
   } catch (e) {
-    const mesaj = e instanceof Error ? e.message : String(e)
-    console.error('[rapor] katalog yükleme hatası:', e)
-    return NextResponse.json({ error: `Katalog yüklenemedi: ${mesaj}` }, { status: 502 })
+    return hataYaniti(e, { kaynakTipi: 'ifs', kaynakAd: govde.data.projeksiyon }, 502, 'rapor-katalog-yukle')
   }
 }

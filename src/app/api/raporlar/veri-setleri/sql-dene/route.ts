@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { hataYaniti } from '../../_hata'
 import { z } from 'zod'
 import { requirePermission } from '@/lib/auth/require-permission'
 import { PERMISSION_KEYS } from '@/lib/auth/permissions'
@@ -39,8 +40,7 @@ export async function POST(req: Request) {
     const kolonlar = satirlar.length ? Object.keys(satirlar[0]) : []
     return NextResponse.json({ kolonlar, satirlar: satirlar.slice(0, SATIR), toplamSatir: satirlar.length, sureMs: Date.now() - t0, ...(kolonlar.length === 0 ? { uyari: 'Satır dönmedi; kolon adları alınamadı' } : {}) })
   } catch (e) {
-    const m = e instanceof Error ? e.message : String(e)
-    const kisa = /statement timeout|canceling statement/i.test(m) ? 'Sorgu 30 sn zaman aşımına uğradı' : /read-only transaction/i.test(m) ? 'Yalnız okuma: veri değiştiren ifade reddedildi' : m.split('\n').slice(-3).join(' ').slice(0, 400)
-    return NextResponse.json({ error: kisa }, { status: 400 })
+    // Çeviri hata-cevir.ts'te (42P01/42703/57014/25006/42601 → Türkçe başlık + çözüm).
+    return hataYaniti(e, { kaynakTipi: 'postgres' }, 400, 'rapor-sql-dene')
   }
 }

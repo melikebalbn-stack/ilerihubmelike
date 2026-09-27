@@ -25,7 +25,9 @@ import { BICIMLER, veriSetiParametreleri } from '@/lib/rapor/sablon-dogrula'
 import { listedenTuval } from '@/lib/rapor/tuval-render'
 import type { AltToplamFn, Bicim, GrupTanim, HesaplananAlan, Kolon, KosulluBicim, SablonIcerik, SablonParametre, VeriSetiTanim } from '@/lib/rapor/tipler'
 import { GeriRozet } from '../../../_components/rozet-link'
-import { apiGet, apiGonder, hataListesi, hataMetni } from '../../../_components/api'
+import { apiGet, apiGonder, hataListesi, hataMetni, hataYapisi } from '../../../_components/api'
+import HataKutusu from '../../../_components/hata-kutusu'
+import type { CevrilmisHata } from '@/lib/rapor/hata-cevir'
 
 const NAVY = '#1B4F72'
 
@@ -114,7 +116,7 @@ export default function SablonTasarimClient({ veriSetleri, kategoriler = [], mev
   const [altBaslik, setAltBaslik] = useState(ic?.altBaslik ?? '')
   const [kategori, setKategori] = useState(ic?.kategori ?? '')
   const [kaydediliyor, setKaydediliyor] = useState(false)
-  const [kayitHata, setKayitHata] = useState<string | null>(null)
+  const [kayitHata, setKayitHata] = useState<CevrilmisHata | null>(null)
   const [kayitHatalari, setKayitHatalari] = useState<string[]>([])
   const [kayitMesaj, setKayitMesaj] = useState<string | null>(null)
 
@@ -138,7 +140,7 @@ export default function SablonTasarimClient({ veriSetleri, kategoriler = [], mev
   const [onizParam, setOnizParam] = useState<Record<string, string>>({})
   const [onizHtml, setOnizHtml] = useState<string | null>(null)
   const [onizBilgi, setOnizBilgi] = useState<string | null>(null)
-  const [onizHata, setOnizHata] = useState<string | null>(null)
+  const [onizHata, setOnizHata] = useState<CevrilmisHata | null>(null)
   const [onizleniyor, setOnizleniyor] = useState(false)
   const [onizBuyuk, setOnizBuyuk] = useState(false)
   const iframeRef = useRef<HTMLIFrameElement>(null)
@@ -218,7 +220,7 @@ export default function SablonTasarimClient({ veriSetleri, kategoriler = [], mev
       )
       setKayitMesaj(mevcut ? `Kaydedildi (sürüm ${d.sablon.surum})` : 'Oluşturuldu')
       if (!mevcut) router.replace(`/raporlar/tasarim/${d.sablon.id}`)
-    } catch (e) { setKayitHata(hataMetni(e)); setKayitHatalari(hataListesi(e)) }
+    } catch (e) { setKayitHata(hataYapisi(e)); setKayitHatalari(hataListesi(e)) }
     finally { setKaydediliyor(false) }
   }
 
@@ -228,7 +230,7 @@ export default function SablonTasarimClient({ veriSetleri, kategoriler = [], mev
       const d = await apiGonder<{ html: string; satirSayisi: number; toplamSatir: number; sureMs: number }>(`/api/raporlar/sablonlar/${mevcut?.id ?? 'yeni'}/onizle`, 'POST', { parametreler: onizParam, icerik, veriSetiId })
       setOnizHtml(d.html)
       setOnizBilgi(`${d.satirSayisi}/${d.toplamSatir} satır · ${d.sureMs} ms`)
-    } catch (e) { setOnizHtml(null); setOnizHata([hataMetni(e), ...hataListesi(e)].join(' · ')) }
+    } catch (e) { setOnizHtml(null); setOnizHata(hataYapisi(e)) }
     finally { setOnizleniyor(false) }
   }
 
@@ -317,12 +319,7 @@ export default function SablonTasarimClient({ veriSetleri, kategoriler = [], mev
           <div className="space-y-1.5 sm:col-span-2 xl:col-span-7"><Label htmlFor="s-aciklama">Açıklama (listede görünür)</Label><Input id="s-aciklama" value={aciklama} onChange={(e) => setAciklama(e.target.value)} /></div>
         </CardContent>
       </Card>
-      {(kayitHata || kayitHatalari.length > 0) && (
-        <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          <div className="font-medium">{kayitHata}</div>
-          {kayitHatalari.length > 0 && <ul className="list-disc ml-5 mt-1">{kayitHatalari.map((h, i) => <li key={i}>{h}</li>)}</ul>}
-        </div>
-      )}
+      <HataKutusu hata={kayitHata} maddeler={kayitHatalari} />
 
       <DndContext sensors={sensors} collisionDetection={carpisma} onDragStart={onDragStart} onDragEnd={onDragEnd} onDragCancel={() => setSurukleAktif(null)}>
       <div className="grid gap-4 xl:grid-cols-[280px_1fr_400px]">
@@ -527,7 +524,7 @@ export default function SablonTasarimClient({ veriSetleri, kategoriler = [], mev
                 <Button onClick={onizle} disabled={onizleniyor || !veriSetiId || kolonlar.length === 0} className="w-full" style={{ backgroundColor: NAVY }}>
                   {onizleniyor ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Play className="h-4 w-4 mr-2" />}Önizle (ilk 50 satır)
                 </Button>
-                {onizHata && <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 break-words">{onizHata}</div>}
+                <HataKutusu hata={onizHata} />
                 {onizHtml && (
                   <div className="space-y-1">
                     <div className="flex items-center justify-between gap-2">

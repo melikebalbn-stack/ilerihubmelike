@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { hataYaniti } from '../../_hata'
 import { z } from 'zod'
 import ExcelJS from 'exceljs'
 import { requirePermission } from '@/lib/auth/require-permission'
@@ -121,7 +122,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     await calistirmaKaydet(kayit, render.satirSayisi, sureMs)
     return NextResponse.json({ html: render.html, satirSayisi: render.satirSayisi, sureMs, kaynakIstatistik: veri.kaynakIstatistik })
   } catch (e) {
-    const mesaj = await calistirmaHatasiKaydet(kayit, sablon.kod, Date.now() - t0, e)
-    return NextResponse.json({ error: `Rapor çalıştırılamadı: ${mesaj}` }, { status: 500 })
+    await calistirmaHatasiKaydet(kayit, sablon.kod, Date.now() - t0, e)
+    return hataYaniti(e, {}, 500, `rapor:${sablon.kod}`)
   }
 }

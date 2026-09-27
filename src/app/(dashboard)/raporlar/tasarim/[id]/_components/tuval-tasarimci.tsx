@@ -38,7 +38,9 @@ import {
 } from '@/lib/rapor/tipler'
 import type { VeriSetiAlan } from '@/lib/rapor/veri-seti-alanlar'
 import { GeriRozet } from '../../../_components/rozet-link'
-import { apiGonder, apiIstek, hataListesi, hataMetni } from '../../../_components/api'
+import { apiGonder, apiIstek, hataMetni, hataYapisi } from '../../../_components/api'
+import HataKutusu from '../../../_components/hata-kutusu'
+import type { CevrilmisHata } from '@/lib/rapor/hata-cevir'
 
 const NAVY = '#1B4F72'
 const CYAN = '#2AA5C7'
@@ -93,6 +95,7 @@ export default function TuvalTasarimci({ sablon, icerik, alanlar, tuval: ilkTuva
   const [surum, setSurum] = useState(sablon.surum)
   const [kaydediliyor, setKaydediliyor] = useState(false)
   const [hatalar, setHatalar] = useState<string[]>([])
+  const [kayitHata, setKayitHata] = useState<CevrilmisHata | null>(null)
   const [yukleniyor, setYukleniyor] = useState(false)
   const sayacRef = useRef(1)
   const dosyaRef = useRef<HTMLInputElement>(null)
@@ -369,7 +372,7 @@ export default function TuvalTasarimci({ sablon, icerik, alanlar, tuval: ilkTuva
   const [onizBuyuk, setOnizBuyuk] = useState(false)
   const [onizHtml, setOnizHtml] = useState<string | null>(null)
   const [onizBilgi, setOnizBilgi] = useState<string | null>(null)
-  const [onizHata, setOnizHata] = useState<string | null>(null)
+  const [onizHata, setOnizHata] = useState<CevrilmisHata | null>(null)
   const [onizleniyor, setOnizleniyor] = useState(false)
   const [onizParam, setOnizParam] = useState<Record<string, string>>({})
   async function onizle() {
@@ -388,7 +391,7 @@ export default function TuvalTasarimci({ sablon, icerik, alanlar, tuval: ilkTuva
       setOnizHtml(cikti.html)
       setOnizBilgi(`${cikti.satirSayisi.toLocaleString('tr-TR')} satır · ${cikti.sayfaSayisi} sayfa · A4 ${tuval.sayfa.yon}`)
       setOnizBuyuk(true)
-    } catch (e) { setOnizHata(hataMetni(e)) }
+    } catch (e) { setOnizHata(hataYapisi(e)) }
     finally { setOnizleniyor(false) }
   }
 
@@ -396,11 +399,12 @@ export default function TuvalTasarimci({ sablon, icerik, alanlar, tuval: ilkTuva
   async function kaydet() {
     setKaydediliyor(true)
     try {
+      setKayitHata(null)
       const d = await apiGonder<{ sablon: { surum: number } }>(`/api/raporlar/sablonlar/${sablon.id}`, 'PUT', { kod: sablon.kod, ad: sablon.ad, aciklama: sablon.aciklama, veriSetiId: sablon.veriSetiId, durum: sablon.durum, izinAnahtari: sablon.izinAnahtari || null, icerik: { ...icerik, yerlesim: 'tuval', tuval } })
       setSurum(d.sablon.surum)
       toast.success(`Kaydedildi (sürüm ${d.sablon.surum})`)
       router.refresh()
-    } catch (e) { toast.error([hataMetni(e), ...hataListesi(e)].join(' · ')) }
+    } catch (e) { setKayitHata(hataYapisi(e)); toast.error(hataMetni(e)) }
     finally { setKaydediliyor(false) }
   }
 
@@ -511,6 +515,7 @@ export default function TuvalTasarimci({ sablon, icerik, alanlar, tuval: ilkTuva
         </CardContent>
       </Card>
 
+      <HataKutusu hata={kayitHata} />
       {hatalar.length > 0 && (
         <div className={`rounded-md border px-3 py-2 text-xs ${hatalar.some((h) => !h.startsWith('Uyarı:')) ? 'border-red-200 bg-red-50 text-red-700' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
           <ul className="list-disc ml-4">{hatalar.slice(0, 6).map((h, i) => <li key={i}>{h}</li>)}</ul>
@@ -888,7 +893,7 @@ export default function TuvalTasarimci({ sablon, icerik, alanlar, tuval: ilkTuva
                   : <Input className="h-8" type={p.tip === 'sayi' ? 'number' : 'text'} value={onizParam[p.ad] ?? ''} onChange={(ev) => setOnizParam((m) => ({ ...m, [p.ad]: ev.target.value }))} />}
               </div>
             ))}
-            {onizHata && <span className="text-xs text-red-700 pb-2">{onizHata}</span>}
+            {onizHata && <div className="w-full"><HataKutusu hata={onizHata} /></div>}
           </CardContent>
         </Card>
       )}

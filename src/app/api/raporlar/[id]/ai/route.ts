@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { hataYaniti } from '../../_hata'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/auth/require-permission'
@@ -86,9 +87,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   } catch (e) {
     const mesaj = e instanceof Error ? e.message : String(e)
     console.error(`[rapor-ai] ${kullanici?.email ?? userId} · ${sablon.kod} · HATA (${Date.now() - t0}ms):`, mesaj)
-    if (e instanceof AiYapilandirmaHatasi) {
-      return NextResponse.json({ error: 'Yapay zekâ özelliği bu sunucuda yapılandırılmamış' }, { status: 503 })
-    }
-    return NextResponse.json({ error: `Yapay zekâ isteği başarısız: ${mesaj}` }, { status: 502 })
+    return hataYaniti(e, { kaynakTipi: 'ai' }, e instanceof AiYapilandirmaHatasi ? 503 : 502, 'rapor-ai')
   }
 }

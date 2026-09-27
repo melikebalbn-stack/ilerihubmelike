@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { cevrilmisYanit } from '../../_hata'
 import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/auth/require-permission'
 import { PERMISSION_KEYS } from '@/lib/auth/permissions'
@@ -33,7 +34,14 @@ export async function PUT(req: Request, { params }: Ctx) {
   const veriSeti = await prisma.raporVeriSeti.findUnique({ where: { id: govde.data.veriSetiId }, select: { tanim: true } })
   if (!veriSeti) return NextResponse.json({ error: 'Veri seti bulunamadı' }, { status: 400 })
   const hatalar = sablonDogrula(govde.data.icerik as SablonIcerikHer, Object.keys((veriSeti.tanim as unknown as VeriSetiTanim).alanlar ?? {}))
-  if (hatalar.length) return NextResponse.json({ error: 'Şablon geçersiz', hatalar }, { status: 400 })
+  if (hatalar.length) {
+    return cevrilmisYanit({
+      baslik: 'Şablon kaydedilemedi', agirlik: 'uyari',
+      aciklama: `Tasarımda ${hatalar.length} sorun var: ${hatalar[0]}${hatalar.length > 1 ? ` (ve ${hatalar.length - 1} tane daha)` : ''}`,
+      cozum: 'Aşağıdaki maddeleri düzeltip tekrar kaydedin; "Uyarı:" ile başlayanlar kaydı engellemez.',
+      teknikDetay: hatalar.join('\n'),
+    }, 400, { hatalar })
+  }
   try {
     const s = await prisma.$transaction(async (tx) => {
       await tx.raporSablonSurum.upsert({

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { hataYaniti } from '../../_hata'
 import { z } from 'zod'
 import { requirePermission } from '@/lib/auth/require-permission'
 import { PERMISSION_KEYS } from '@/lib/auth/permissions'
@@ -52,6 +53,6 @@ export async function POST(req: Request) {
       not: `IFS kaynakları önizlemede en fazla ${ONIZLEME_IFS_TOP} satır çeker`,
     })
   } catch (e) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 400 })
+    return hataYaniti(e, {}, 400, 'rapor-onizle')
   }
 }

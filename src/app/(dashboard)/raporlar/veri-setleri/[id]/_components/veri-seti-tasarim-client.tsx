@@ -15,7 +15,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { ChevronDown, ChevronRight, Database, Download, List, Loader2, Maximize2, Pencil, Play, Plus, Save, Search, Sparkles, Trash2, X } from 'lucide-react'
 import type { Birlestirme, Kaynak, KaynakIfs, KaynakPostgres, VeriSetiTanim } from '@/lib/rapor/tipler'
 import { GeriRozet } from '../../../_components/rozet-link'
-import { apiGet, apiGonder, hataListesi, hataMetni } from '../../../_components/api'
+import { apiGet, apiGonder, hataListesi, hataMetni, hataYapisi } from '../../../_components/api'
+import HataKutusu from '../../../_components/hata-kutusu'
+import type { CevrilmisHata } from '@/lib/rapor/hata-cevir'
 import { birlestirmeAnahtariMi, enIyiAnahtarEslesmesi, referansMi } from '@/lib/rapor/katalog-siniflama'
 
 const NAVY = '#1B4F72'
@@ -159,7 +161,7 @@ export default function VeriSetiTasarimClient({ katalogYukleyebilir, mevcut }: P
   const [ad, setAd] = useState(mevcut?.ad ?? '')
   const [aciklama, setAciklama] = useState(mevcut?.aciklama ?? '')
   const [kaydediliyor, setKaydediliyor] = useState(false)
-  const [kayitHata, setKayitHata] = useState<string | null>(null)
+  const [kayitHata, setKayitHata] = useState<CevrilmisHata | null>(null)
   const [kayitHatalari, setKayitHatalari] = useState<string[]>([])
   const [kayitMesaj, setKayitMesaj] = useState<string | null>(null)
 
@@ -179,7 +181,7 @@ export default function VeriSetiTasarimClient({ katalogYukleyebilir, mevcut }: P
   /** Değerler dialogu: hangi alan + satırlar (etiket kutuları). */
   const [degerlerAlani, setDegerlerAlani] = useState<{ entity: string; alan: string; alanEtiket: string | null } | null>(null)
   const [degerSatirlari, setDegerSatirlari] = useState<{ deger: string; etiket: string; kaynak: string; degisti?: boolean }[]>([])
-  const [degerDurum, setDegerDurum] = useState<{ yukleniyor?: boolean; aiCalisiyor?: boolean; kaydediliyor?: boolean; hata?: string | null; not?: string | null }>({})
+  const [degerDurum, setDegerDurum] = useState<{ yukleniyor?: boolean; aiCalisiyor?: boolean; kaydediliyor?: boolean; hata?: CevrilmisHata | null; not?: string | null }>({})
   const [yeniDeger, setYeniDeger] = useState('')
   const [topluAi, setTopluAi] = useState<{ acik: boolean; calisiyor?: boolean; sonuc?: string | null }>({ acik: false })
   const [entityEtiketDuzenle, setEntityEtiketDuzenle] = useState<{ entity: string; metin: string } | null>(null)
@@ -196,7 +198,7 @@ export default function VeriSetiTasarimClient({ katalogYukleyebilir, mevcut }: P
   const [aramaSonuclari, setAramaSonuclari] = useState<AramaSonucu[] | null>(null)
   const [kaynakTip, setKaynakTip] = useState<'ifs' | 'hub' | 'sql'>('ifs')
   /** SQL kaynağı deneme sonuçları (takma ad → sonuç). */
-  const [sqlDeneme, setSqlDeneme] = useState<Record<string, { kolonlar: string[]; satirlar: Record<string, unknown>[]; toplamSatir: number; sureMs: number; uyari?: string; hata?: string; calisiyor?: boolean }>>({})
+  const [sqlDeneme, setSqlDeneme] = useState<Record<string, { kolonlar: string[]; satirlar: Record<string, unknown>[]; toplamSatir: number; sureMs: number; uyari?: string; hata?: CevrilmisHata; calisiyor?: boolean }>>({})
   const [projeksiyonlar, setProjeksiyonlar] = useState<Projeksiyon[]>([])
   const [seciliProjeksiyon, setSeciliProjeksiyon] = useState('')
   const [entityAra, setEntityAra] = useState('')
@@ -209,22 +211,22 @@ export default function VeriSetiTasarimClient({ katalogYukleyebilir, mevcut }: P
   const [seciliTablo, setSeciliTablo] = useState('')
   const [hubKolonlar, setHubKolonlar] = useState<HubKolon[]>([])
   const [yukleniyor, setYukleniyor] = useState<string | null>(null)
-  const [solHata, setSolHata] = useState<string | null>(null)
+  const [solHata, setSolHata] = useState<CevrilmisHata | null>(null)
 
   // Sağ — önizleme
   const [paramDegerleri, setParamDegerleri] = useState<Record<string, { tip: ParamTip; deger: string }>>({})
   const [onizleme, setOnizleme] = useState<Onizleme | null>(null)
-  const [onizlemeHata, setOnizlemeHata] = useState<string | null>(null)
+  const [onizlemeHata, setOnizlemeHata] = useState<CevrilmisHata | null>(null)
   const [onizleniyor, setOnizleniyor] = useState(false)
 
   // ── Katalog yükleme ───────────────────────────────────────────────────
 
   const projeksiyonlariYukle = useCallback(() => {
-    getJson<{ projeksiyonlar: Projeksiyon[] }>('/api/raporlar/katalog/projeksiyonlar').then((d) => setProjeksiyonlar(d.projeksiyonlar)).catch((e: Error) => setSolHata(e.message))
+    getJson<{ projeksiyonlar: Projeksiyon[] }>('/api/raporlar/katalog/projeksiyonlar').then((d) => setProjeksiyonlar(d.projeksiyonlar)).catch((e) => setSolHata(hataYapisi(e)))
   }, [])
   useEffect(projeksiyonlariYukle, [projeksiyonlariYukle])
   useEffect(() => {
-    getJson<{ tablolar: HubTablo[] }>('/api/raporlar/hub-tablolar').then((d) => setHubTablolar(d.tablolar)).catch((e: Error) => setSolHata(e.message))
+    getJson<{ tablolar: HubTablo[] }>('/api/raporlar/hub-tablolar').then((d) => setHubTablolar(d.tablolar)).catch((e) => setSolHata(hataYapisi(e)))
     getJson<{ varsayilan: string; siteler: { contract: string; aciklama: string }[] }>('/api/raporlar/katalog/siteler').then((d) => setSiteler({ varsayilan: d.varsayilan, siteler: d.siteler })).catch(() => {})
   }, [])
 
@@ -234,26 +236,26 @@ export default function VeriSetiTasarimClient({ katalogYukleyebilir, mevcut }: P
     setEntityUyari(null)
     getJson<{ entityler: Entity[]; uyari?: string }>(`/api/raporlar/katalog/entityler?projeksiyon=${encodeURIComponent(seciliProjeksiyon)}&ara=${encodeURIComponent(entityAra)}`)
       .then((d) => { setEntityler(d.entityler); setEntityUyari(d.uyari ?? null) })
-      .catch((e: Error) => setSolHata(e.message))
+      .catch((e) => setSolHata(hataYapisi(e)))
       .finally(() => setYukleniyor(null))
   }, [seciliProjeksiyon, entityAra])
 
   useEffect(() => {
     if (!seciliEntity || !seciliProjeksiyon) { setKatalogAlanlari([]); return }
     getJson<{ alanlar: KatalogAlan[] }>(`/api/raporlar/katalog/alanlar?projeksiyon=${encodeURIComponent(seciliProjeksiyon)}&entity=${encodeURIComponent(seciliEntity.entity)}`)
-      .then((d) => setKatalogAlanlari(d.alanlar)).catch((e: Error) => setSolHata(e.message))
+      .then((d) => setKatalogAlanlari(d.alanlar)).catch((e) => setSolHata(hataYapisi(e)))
   }, [seciliEntity, seciliProjeksiyon])
 
   useEffect(() => {
     if (!seciliTablo) { setHubKolonlar([]); return }
-    getJson<{ kolonlar: HubKolon[] }>(`/api/raporlar/hub-tablolar?tablo=${encodeURIComponent(seciliTablo)}`).then((d) => setHubKolonlar(d.kolonlar)).catch((e: Error) => setSolHata(e.message))
+    getJson<{ kolonlar: HubKolon[] }>(`/api/raporlar/hub-tablolar?tablo=${encodeURIComponent(seciliTablo)}`).then((d) => setHubKolonlar(d.kolonlar)).catch((e) => setSolHata(hataYapisi(e)))
   }, [seciliTablo])
 
   // Arama (debounce)
   useEffect(() => {
     if (arama.trim().length < 2) { setAramaSonuclari(null); return }
     const t = setTimeout(() => {
-      getJson<{ sonuclar: AramaSonucu[]; entityler: AramaEntity[] }>(`/api/raporlar/katalog/ara?q=${encodeURIComponent(arama.trim())}`).then((d) => { setAramaSonuclari(d.sonuclar); setAramaEntityler(d.entityler ?? []); setAramaReferansAcik(false) }).catch((e: Error) => setSolHata(e.message))
+      getJson<{ sonuclar: AramaSonucu[]; entityler: AramaEntity[] }>(`/api/raporlar/katalog/ara?q=${encodeURIComponent(arama.trim())}`).then((d) => { setAramaSonuclari(d.sonuclar); setAramaEntityler(d.entityler ?? []); setAramaReferansAcik(false) }).catch((e) => setSolHata(hataYapisi(e)))
     }, 300)
     return () => clearTimeout(t)
   }, [arama])
@@ -280,7 +282,7 @@ export default function VeriSetiTasarimClient({ katalogYukleyebilir, mevcut }: P
       await apiGonder('/api/raporlar/katalog/yukle', 'POST', { projeksiyon })
       projeksiyonlariYukle()
       if (seciliProjeksiyon === projeksiyon) setEntityAra((s) => s + '')
-    } catch (e) { setSolHata(hataMetni(e)) }
+    } catch (e) { setSolHata(hataYapisi(e)) }
     finally { setYukleniyor(null) }
   }
 
@@ -308,7 +310,7 @@ export default function VeriSetiTasarimClient({ katalogYukleyebilir, mevcut }: P
     setKaynaklar((l) => [...l, k])
     setAcikKaynak(takma)
     if (!secenek?.projeksiyon && katalogAlanlari.length) uygula(katalogAlanlari)
-    else getJson<{ alanlar: KatalogAlan[] }>(`/api/raporlar/katalog/alanlar?projeksiyon=${encodeURIComponent(projeksiyon)}&entity=${encodeURIComponent(entity.entity)}`).then((d) => uygula(d.alanlar)).catch((e: Error) => setSolHata(e.message))
+    else getJson<{ alanlar: KatalogAlan[] }>(`/api/raporlar/katalog/alanlar?projeksiyon=${encodeURIComponent(projeksiyon)}&entity=${encodeURIComponent(entity.entity)}`).then((d) => uygula(d.alanlar)).catch((e) => setSolHata(hataYapisi(e)))
   }
 
   /** Arama sonucundan doğrudan kaynak: EntitySet adı entityler ucundan ($metadata) çözülür, alan seçili gelir. */
@@ -318,10 +320,10 @@ export default function VeriSetiTasarimClient({ katalogYukleyebilir, mevcut }: P
       const d = await getJson<{ entityler: Entity[] }>(`/api/raporlar/katalog/entityler?projeksiyon=${encodeURIComponent(s.kaynakAd)}&ara=${encodeURIComponent(s.entity)}`)
       const e = d.entityler.find((x) => x.entity === s.entity) ?? { entity: s.entity, alanSayisi: 0, entitySetleri: [] }
       const set = e.entitySetleri.find((x) => !x.startsWith('Reference_')) ?? e.entitySetleri[0] ?? `${s.entity}s`
-      if (!e.entitySetleri.length) setSolHata(`${s.kaynakAd} › ${s.entity}: EntitySet adı $metadata'dan alınamadı; '${set}' varsayıldı — kaynak kartından düzeltin.`)
+      if (!e.entitySetleri.length) setSolHata({ baslik: 'EntitySet adı bulunamadı', agirlik: 'uyari', aciklama: `${s.kaynakAd} › ${s.entity} için $metadata'da set adı yok; '${set}' varsayıldı.`, cozum: 'Kaynak kartındaki "EntitySet" kutusundan doğru adı yazın (IFS listesinde Reference_ ile başlamayan set).', teknikDetay: `${s.kaynakAd} › ${s.entity}: entitySetleri boş` })
       ifsKaynakEkle(e, set, { projeksiyon: s.kaynakAd, ekAlan: s.alan || undefined })
       setKaynakTip('ifs'); setSeciliProjeksiyon(s.kaynakAd); setEntityAra(''); setSeciliEntity(e); setArama('')
-    } catch (e) { setSolHata(hataMetni(e)) }
+    } catch (e) { setSolHata(hataYapisi(e)) }
   }
 
   /** Veri setinde hâlihazırda çekilen (kaynak takma adı, alan) çiftleri — otomatik birleştirme için. */
@@ -357,7 +359,7 @@ export default function VeriSetiTasarimClient({ katalogYukleyebilir, mevcut }: P
       ])
       const e = entityYanit.entityler.find((x) => x.entity === o.entity) ?? { entity: o.entity, alanSayisi: 0, entitySetleri: [] }
       const entitySet = e.entitySetleri.find((x) => !x.startsWith('Reference_')) ?? e.entitySetleri[0] ?? `${o.entity}s`
-      if (!e.entitySetleri.length) setSolHata(`${o.kaynakAd} › ${o.entity}: EntitySet adı $metadata'dan alınamadı; '${entitySet}' varsayıldı — kaynak kartından düzeltin.`)
+      if (!e.entitySetleri.length) setSolHata({ baslik: 'EntitySet adı bulunamadı', agirlik: 'uyari', aciklama: `${o.kaynakAd} › ${o.entity} için $metadata'da set adı yok; '${entitySet}' varsayıldı.`, cozum: 'Kaynak kartındaki "EntitySet" kutusundan doğru adı yazın.', teknikDetay: `${o.kaynakAd} › ${o.entity}: entitySetleri boş` })
 
       const anahtarlar = alanYanit.alanlar.filter((a) => a.anahtarMi).map((a) => a.alan)
       // Otomatik birleştirmede site/şirket kolonları kullanılmaz (satır patlaması).
@@ -399,7 +401,7 @@ export default function VeriSetiTasarimClient({ katalogYukleyebilir, mevcut }: P
         break
       }
       setOneriSerit((s2) => (s2 ? { ...s2, takma, birlestirme: birlestirmeMetni } : s2))
-    } catch (e) { setSolHata(hataMetni(e)) }
+    } catch (e) { setSolHata(hataYapisi(e)) }
   }
 
   // AI Rapor'dan gelen öneri bağlantısı: ?ekle=kaynakAd|entity|alan&rapor=<id>&kod=<kod>
@@ -426,7 +428,7 @@ export default function VeriSetiTasarimClient({ katalogYukleyebilir, mevcut }: P
       const d = await getJson<{ degerler: { deger: string; etiket: string | null; kaynak: string }[]; not?: string }>(`/api/raporlar/katalog/degerler?kaynakAd=${encodeURIComponent(seciliProjeksiyon)}&entity=${encodeURIComponent(seciliEntity.entity)}&alan=${encodeURIComponent(alan)}`)
       setDegerSatirlari(d.degerler.map((x) => ({ deger: x.deger, etiket: x.etiket ?? '', kaynak: x.kaynak })))
       setDegerDurum({ not: d.not ?? null })
-    } catch (e) { setDegerDurum({ hata: hataMetni(e) }) }
+    } catch (e) { setDegerDurum({ hata: hataYapisi(e) }) }
   }
 
   /** AI önerileri kutulara yazılır — KAYDEDİLMEZ. Elle düzeltilmiş (ELLE) satırların üzerine yazılmaz. */
@@ -439,7 +441,7 @@ export default function VeriSetiTasarimClient({ katalogYukleyebilir, mevcut }: P
       const sayi = Object.keys(oneriler).length
       setDegerSatirlari((l) => l.map((x) => (x.kaynak === 'ELLE' && x.etiket ? x : oneriler[x.deger] ? { ...x, etiket: oneriler[x.deger], kaynak: 'AI', degisti: true } : x)))
       setDegerDurum((s2) => ({ ...s2, aiCalisiyor: false, not: sayi ? `${sayi} öneri dolduruldu — kontrol edip Kaydet deyin.` : (d.not ?? 'Yeni öneri gelmedi.') }))
-    } catch (e) { setDegerDurum((s2) => ({ ...s2, aiCalisiyor: false, hata: hataMetni(e) })) }
+    } catch (e) { setDegerDurum((s2) => ({ ...s2, aiCalisiyor: false, hata: hataYapisi(e) })) }
   }
 
   async function degerleriKaydet() {
@@ -453,7 +455,7 @@ export default function VeriSetiTasarimClient({ katalogYukleyebilir, mevcut }: P
       })
       setDegerSatirlari(d.degerler.map((x) => ({ deger: x.deger, etiket: x.etiket ?? '', kaynak: x.kaynak })))
       setDegerDurum({ not: 'Kaydedildi.' })
-    } catch (e) { setDegerDurum((s2) => ({ ...s2, kaydediliyor: false, hata: hataMetni(e) })) }
+    } catch (e) { setDegerDurum((s2) => ({ ...s2, kaydediliyor: false, hata: hataYapisi(e) })) }
     finally { setDegerDurum((s2) => ({ ...s2, kaydediliyor: false })) }
   }
 
@@ -494,7 +496,7 @@ export default function VeriSetiTasarimClient({ katalogYukleyebilir, mevcut }: P
     try {
       const d = await apiGonder<{ etiket: string | null }>('/api/raporlar/katalog/etiket', 'PATCH', { kaynakAd: seciliProjeksiyon, entity: seciliEntity?.entity, alan, etiket: etiket.trim() || null })
       setKatalogAlanlari((l) => l.map((a) => (a.alan === alan ? { ...a, etiket: d.etiket } : a)))
-    } catch (e) { setSolHata(hataMetni(e)) }
+    } catch (e) { setSolHata(hataYapisi(e)) }
   }
 
   /** Entity Türkçe etiketi kaydet (rapor.katalog). Boş → siler. */
@@ -503,7 +505,7 @@ export default function VeriSetiTasarimClient({ katalogYukleyebilir, mevcut }: P
     try {
       const d = await apiGonder<{ etiket: string | null }>('/api/raporlar/katalog/entity-etiket', 'PATCH', { kaynakAd: seciliProjeksiyon, entity, etiket: etiket.trim() || null })
       setEntityler((l) => l.map((e) => (e.entity === entity ? { ...e, etiket: d.etiket } : e)))
-    } catch (e) { setSolHata(hataMetni(e)) }
+    } catch (e) { setSolHata(hataYapisi(e)) }
   }
 
   /** Arama sonuçları entity'ye göre gruplu; sıra: etiket eşleşmesi → ana tablo (referans değil) → alan sayısı. */
@@ -559,7 +561,7 @@ export default function VeriSetiTasarimClient({ katalogYukleyebilir, mevcut }: P
       setSqlDeneme((m) => ({ ...m, [k.ad]: { kolonlar: d.kolonlar, satirlar: d.satirlar, toplamSatir: d.toplamSatir, sureMs: d.sureMs, uyari: d.uyari } }))
       if (d.kolonlar.length) setKaynakAlanlari((m) => ({ ...m, [k.ad]: d.kolonlar }))
     } catch (e) {
-      setSqlDeneme((m) => ({ ...m, [k.ad]: { ...(m[k.ad] ?? { kolonlar: [], satirlar: [], toplamSatir: 0, sureMs: 0 }), calisiyor: false, hata: hataMetni(e) } }))
+      setSqlDeneme((m) => ({ ...m, [k.ad]: { ...(m[k.ad] ?? { kolonlar: [], satirlar: [], toplamSatir: 0, sureMs: 0 }), calisiyor: false, hata: hataYapisi(e) } }))
     }
   }
 
@@ -658,7 +660,7 @@ export default function VeriSetiTasarimClient({ katalogYukleyebilir, mevcut }: P
       )
       setKayitMesaj('Kaydedildi')
       if (!mevcut) router.replace(`/raporlar/veri-setleri/${d.veriSeti.id}`)
-    } catch (e) { setKayitHata(hataMetni(e)); setKayitHatalari(hataListesi(e)) }
+    } catch (e) { setKayitHata(hataYapisi(e)); setKayitHatalari(hataListesi(e)) }
     finally { setKaydediliyor(false) }
   }
 
@@ -669,7 +671,7 @@ export default function VeriSetiTasarimClient({ katalogYukleyebilir, mevcut }: P
       const parametreler = Object.fromEntries(parametreAdlari.map((p) => [p, paramDegerleri[p] ?? { tip: 'metin', deger: '' }]))
       const d = await apiGonder<Onizleme>('/api/raporlar/veri-setleri/onizle', 'POST', { tanim, parametreler })
       setOnizleme(d)
-    } catch (e) { setOnizleme(null); setOnizlemeHata([hataMetni(e), ...hataListesi(e)].join(' · ')) }
+    } catch (e) { setOnizleme(null); setOnizlemeHata(hataYapisi(e)) }
     finally { setOnizleniyor(false) }
   }
 
@@ -747,12 +749,7 @@ export default function VeriSetiTasarimClient({ katalogYukleyebilir, mevcut }: P
           </div>
         </CardContent>
       </Card>
-      {(kayitHata || kayitHatalari.length > 0) && (
-        <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          <div className="font-medium">{kayitHata}</div>
-          {kayitHatalari.length > 0 && <ul className="list-disc ml-5 mt-1">{kayitHatalari.map((h, i) => <li key={i}>{h}</li>)}</ul>}
-        </div>
-      )}
+      <HataKutusu hata={kayitHata} maddeler={kayitHatalari} />
 
       <div className={`grid gap-4 ${aramaGruplari ? 'xl:grid-cols-[640px_1fr_380px]' : 'xl:grid-cols-[300px_1fr_380px]'}`}>
         {/* SOL — Katalog */}
@@ -763,7 +760,12 @@ export default function VeriSetiTasarimClient({ katalogYukleyebilir, mevcut }: P
               <Search className="h-4 w-4 absolute left-2.5 top-3 text-muted-foreground" />
               <Input className="pl-8" placeholder="Alan / entity ara (≥2 harf)" value={arama} onChange={(e) => setArama(e.target.value)} />
             </div>
-            {solHata && <div className="text-xs text-red-700 flex items-start gap-1"><span className="flex-1">{solHata}</span><button onClick={() => setSolHata(null)}><X className="h-3 w-3" /></button></div>}
+            {solHata && (
+              <div className="relative">
+                <HataKutusu hata={solHata} kucuk />
+                <button type="button" className="absolute right-1.5 top-1.5 opacity-60 hover:opacity-100" title="Kapat" onClick={() => setSolHata(null)}><X className="h-3 w-3" /></button>
+              </div>
+            )}
 
             {aramaGruplari ? (
               <div className="space-y-2">
@@ -1017,7 +1019,7 @@ export default function VeriSetiTasarimClient({ katalogYukleyebilir, mevcut }: P
                                     {(k.parametreler ?? []).length > 0 && <span className="text-[11px] text-muted-foreground">Parametre değerleri sağdaki Önizleme panelinden alınır.</span>}
                                     {d && !d.calisiyor && !d.hata && <span className="text-[11px] text-muted-foreground ml-auto">{d.toplamSatir} satır · {d.sureMs} ms · {d.kolonlar.length} kolon</span>}
                                   </div>
-                                  {d?.hata && <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 break-words">{d.hata}</div>}
+                                  <HataKutusu hata={d?.hata} kucuk />
                                   {d?.uyari && <div className="text-[11px] text-amber-700">{d.uyari}</div>}
                                   {d && d.kolonlar.length > 0 && (
                                     <>
@@ -1116,7 +1118,7 @@ export default function VeriSetiTasarimClient({ katalogYukleyebilir, mevcut }: P
             <Button onClick={onizle} disabled={onizleniyor || kaynaklar.length === 0} className="w-full" style={{ backgroundColor: NAVY }}>
               {onizleniyor ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Play className="h-4 w-4 mr-2" />}Önizle (ilk 20 satır)
             </Button>
-            {onizlemeHata && <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 break-words">{onizlemeHata}</div>}
+            <HataKutusu hata={onizlemeHata} />
             {onizleme && (
               <div className="space-y-2">
                 <div className="text-xs text-muted-foreground">
@@ -1182,7 +1184,7 @@ export default function VeriSetiTasarimClient({ katalogYukleyebilir, mevcut }: P
               <span className="text-[11px] text-muted-foreground">Elle düzelttiğiniz satırların üzerine yazılmaz.</span>
               {degerDurum.not && <span className="ml-auto text-[11px] text-green-700">{degerDurum.not}</span>}
             </div>
-            {degerDurum.hata && <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{degerDurum.hata}</div>}
+            <HataKutusu hata={degerDurum.hata} />
             {degerDurum.yukleniyor ? (
               <div className="flex items-center gap-2 text-xs text-muted-foreground py-6 justify-center"><Loader2 className="h-4 w-4 animate-spin" />Yükleniyor…</div>
             ) : (

@@ -26,7 +26,9 @@ import type { EtkilesimliIcerik, Gorunum, GorunumKolon, GorunumToplamFn, SablonP
 import type { VeriSetiAlan } from '@/lib/rapor/veri-seti-alanlar'
 import type { AlanOnerisi } from '@/lib/rapor/alan-onerisi'
 import { GeriRozet, RozetLink } from '../../_components/rozet-link'
-import { apiGonder, apiYanit, hataListesi, hataMetni } from '../../_components/api'
+import { apiGonder, apiYanit, hataListesi, hataMetni, hataYapisi } from '../../_components/api'
+import HataKutusu from '../../_components/hata-kutusu'
+import type { CevrilmisHata } from '@/lib/rapor/hata-cevir'
 import { TUR_ADI } from '@/lib/rapor/tur-adlari'
 
 const NAVY = '#1B4F72'
@@ -141,7 +143,7 @@ export default function EtkilesimliRapor({ sablon, icerik, alanlar, tasarlayabil
   const [veri, setVeri] = useState<Satir[] | null>(null)
   const [veriBilgi, setVeriBilgi] = useState<{ sureMs: number; toplamSatir: number; uyari?: string } | null>(null)
   const [yukleniyor, setYukleniyor] = useState(false)
-  const [hata, setHata] = useState<string | null>(null)
+  const [hata, setHata] = useState<CevrilmisHata | null>(null)
   const [excelIniyor, setExcelIniyor] = useState(false)
   const [kaydediliyor, setKaydediliyor] = useState(false)
   const eksikZorunlu = parametreler.filter((p) => p.zorunlu && !(paramDegerleri[p.ad] ?? '').trim()).map((p) => p.etiket)
@@ -153,7 +155,7 @@ export default function EtkilesimliRapor({ sablon, icerik, alanlar, tasarlayabil
       setVeri(d.satirlar)
       setVeriBilgi({ sureMs: d.sureMs, toplamSatir: d.toplamSatir, uyari: d.uyari })
       setKapali(new Set()); setAcilanSegmentler(new Set())
-    } catch (e) { setVeri(null); setHata(hataMetni(e)) }
+    } catch (e) { setVeri(null); setHata(hataYapisi(e)) }
     finally { setYukleniyor(false) }
   }, [sablon.id, paramDegerleri])
 
@@ -197,7 +199,7 @@ export default function EtkilesimliRapor({ sablon, icerik, alanlar, tasarlayabil
   // ── Doğal dil çubuğu ──────────────────────────────────────────────────
   const [aiIstek, setAiIstek] = useState('')
   const [aiCalisiyor, setAiCalisiyor] = useState(false)
-  const [aiSerit, setAiSerit] = useState<{ aciklama: string; uyari: boolean; oneriler?: AlanOnerisi[] } | null>(null)
+  const [aiSerit, setAiSerit] = useState<{ aciklama: string; uyari: boolean; oneriler?: AlanOnerisi[]; hataYapisi?: CevrilmisHata } | null>(null)
   /** Geri al yığını: AI her görünüm kurduğunda öncekini iter (çok adım geri alınabilir). */
   const [aiGecmis, setAiGecmis] = useState<Gorunum[]>([])
 
@@ -244,7 +246,7 @@ export default function EtkilesimliRapor({ sablon, icerik, alanlar, tasarlayabil
       setAiSerit({ aciklama: d.aciklama ?? 'Görünüm güncellendi.', uyari: false })
       setAiIstek('')
     } catch (e) {
-      setAiSerit({ aciklama: hataMetni(e), uyari: true })
+      setAiSerit({ aciklama: hataMetni(e), uyari: true, hataYapisi: hataYapisi(e) })
     } finally {
       setAiCalisiyor(false)
     }
@@ -439,13 +441,14 @@ export default function EtkilesimliRapor({ sablon, icerik, alanlar, tasarlayabil
           <div className="mt-2.5 max-w-4xl space-y-2">
           <div className={`flex items-start gap-2 rounded-md border px-3 py-2 text-xs ${aiSerit.uyari ? 'border-amber-300 bg-amber-50 text-amber-900' : 'border-[#2AA5C7]/40 bg-[#F2F9FC] text-[#1B4F72]'}`}>
             {aiSerit.uyari ? <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" /> : <Sparkles className="h-3.5 w-3.5 mt-0.5 shrink-0" />}
-            <span className="flex-1">{aiSerit.uyari ? aiSerit.aciklama : <><span className="font-semibold">Kurulan görünüm:</span> {aiSerit.aciklama}</>}</span>
+            <span className="flex-1">{aiSerit.hataYapisi ? 'Yapay zekâ isteği tamamlanamadı.' : aiSerit.uyari ? aiSerit.aciklama : <><span className="font-semibold">Kurulan görünüm:</span> {aiSerit.aciklama}</>}</span>
             {aiGecmis.length > 0 && (
               <Button variant="ghost" size="sm" className="h-6 px-2 text-[11px]" onClick={aiGeriAl}>
                 <Undo2 className="h-3 w-3 mr-1" />Geri al{aiGecmis.length > 1 ? ` (${aiGecmis.length})` : ''}
               </Button>
             )}
           </div>
+          {aiSerit.hataYapisi && <HataKutusu hata={aiSerit.hataYapisi} />}
           {!!aiSerit.oneriler?.length && (
             <div className="rounded-md border border-slate-200 bg-white px-3 py-2 text-xs">
               <p className="m-0 mb-1.5 font-semibold text-[#1B4F72]">Bu alan veri setinde yok. Şunları ekleyebilirsin:</p>
@@ -493,7 +496,7 @@ export default function EtkilesimliRapor({ sablon, icerik, alanlar, tasarlayabil
           </CardContent>
         </Card>
       )}
-      {hata && <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{hata}</div>}
+      <HataKutusu hata={hata} />
       {veriBilgi?.uyari && <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800">{veriBilgi.uyari}</div>}
       {yukleniyor && !veri && <div className="flex items-center gap-2 text-sm text-muted-foreground py-10 justify-center"><Loader2 className="h-4 w-4 animate-spin" /> Veri çekiliyor…</div>}
 

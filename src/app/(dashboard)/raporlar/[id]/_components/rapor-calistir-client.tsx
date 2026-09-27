@@ -9,7 +9,9 @@ import { Badge } from '@/components/ui/badge'
 import { DateField } from '@/components/ui/date-field'
 import { FileBarChart2, FileSpreadsheet, Loader2, PencilRuler, Play, Printer } from 'lucide-react'
 import { GeriRozet, RozetLink } from '../../_components/rozet-link'
-import { apiGonder, apiYanit, hataListesi, hataMetni } from '../../_components/api'
+import { apiGonder, apiYanit, hataListesi, hataYapisi } from '../../_components/api'
+import HataKutusu from '../../_components/hata-kutusu'
+import type { CevrilmisHata } from '@/lib/rapor/hata-cevir'
 import type { SablonParametre } from '@/lib/rapor/tipler'
 
 const NAVY = '#1B4F72'
@@ -25,7 +27,8 @@ interface Sonuc { html: string; satirSayisi: number; sureMs: number }
 export default function RaporCalistirClient({ sablon, parametreler, tasarlayabilir }: Props) {
   const [degerler, setDegerler] = useState<Record<string, string>>({})
   const [sonuc, setSonuc] = useState<Sonuc | null>(null)
-  const [hata, setHata] = useState<string | null>(null)
+  const [hata, setHata] = useState<CevrilmisHata | null>(null)
+  const [hataMaddeleri, setHataMaddeleri] = useState<string[]>([])
   const [calisiyor, setCalisiyor] = useState<'EKRAN' | 'XLSX' | null>(null)
   const iframeRef = useRef<HTMLIFrameElement>(null)
 
@@ -41,7 +44,7 @@ export default function RaporCalistirClient({ sablon, parametreler, tasarlayabil
       setSonuc(d)
     } catch (e) {
       setSonuc(null)
-      setHata([hataMetni(e), ...hataListesi(e)].join(' · '))
+      setHata(hataYapisi(e)); setHataMaddeleri(hataListesi(e))
     } finally {
       setCalisiyor(null)
     }
@@ -65,7 +68,7 @@ export default function RaporCalistirClient({ sablon, parametreler, tasarlayabil
       a.remove()
       URL.revokeObjectURL(url)
     } catch (e) {
-      setHata(hataMetni(e))
+      setHata(hataYapisi(e)); setHataMaddeleri([])
     } finally {
       setCalisiyor(null)
     }
@@ -145,9 +148,7 @@ export default function RaporCalistirClient({ sablon, parametreler, tasarlayabil
               <span className="text-xs text-muted-foreground ml-auto">{sonuc.satirSayisi.toLocaleString('tr-TR')} satır · {sonuc.sureMs} ms</span>
             )}
           </div>
-          {hata && (
-            <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{hata}</div>
-          )}
+          <HataKutusu hata={hata} maddeler={hataMaddeleri} />
         </CardContent>
       </Card>
 

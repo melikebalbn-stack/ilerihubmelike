@@ -7,7 +7,8 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { error } = await requirePermission('ipro.takvim.yonet')
+  // PDKS (Faz 4): /pdks/tatiller aynı takvimi pdks.manage ile düzenler.
+  const { error } = await requirePermission(['ipro.takvim.yonet', 'pdks.manage'])
   if (error) return error
   const { id } = await params
   try {

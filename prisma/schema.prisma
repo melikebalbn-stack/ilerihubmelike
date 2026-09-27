@@ -261,7 +261,7 @@ model User {
   zimmetFormlariOlusturan ZimmetFormu[] @relation("ZimmetFormuOlusturan")
   zimmetIadeAldiklari     ZimmetFormu[] @relation("ZimmetIadeAlan")
 
-  depoHareketleri DepoHareketLog[] @relation("DepoHareketKullanici")
+  depoHareketleri    DepoHareketLog[] @relation("DepoHareketKullanici")
   sevkiyatOkutmalari SevkiyatOkutma[] @relation("SevkiyatOkutmaKullanici")
 
   // Başvuru Değerlendirme Workflow — bu kullanıcıya atanan başvurular
@@ -8918,9 +8918,11 @@ enum OvertimeStatus {
 }
 
 model OvertimePersonnel {
-  id             String       @id @default(cuid())
-  overtimeFormId String
-  overtimeForm   OvertimeForm @relation(fields: [overtimeFormId], references: [id], onDelete: Cascade)
+  // PDKS puantajı onaylı mesai satırına bağlanır — ters ilişki (DB kolonu eklemez)
+  pdksPuantajGunleri PdksPuantajGun[]
+  id                 String           @id @default(cuid())
+  overtimeFormId     String
+  overtimeForm       OvertimeForm     @relation(fields: [overtimeFormId], references: [id], onDelete: Cascade)
 
   // Personel bilgileri — Personnel (IV) tablosundan
   personnelId String
@@ -9755,16 +9757,18 @@ model JobTitle {
 // İV Ayarları: Bölüm Tanımları
 // PR-FAZ-B1: org omurgası — hiyerarşi (parent) + sorumlular/müdür (Personnel FK). Yetki türetme Faz-B2.
 model DepartmentDefinition {
-  id          String   @id @default(cuid())
-  name        String   @unique
-  isActive    Boolean  @default(true)
+  // PDKS: bölüme özel mola (mavi yaka yemek saati) — ters ilişki (DB kolonu eklemez)
+  pdksMolalari PdksVardiyaMola[]
+  id           String            @id @default(cuid())
+  name         String            @unique
+  isActive     Boolean           @default(true)
   // Mesai performans FAZ 1: eksik-veri raporunun ayracı. Üretim yapan bölümde
   // hedef/parça beklenir; false olan bölüm (ör. Bakımhane) rapordan dışlanır.
   // @default(true): mevcut TÜM bölümler üretim-yapar varsayılır; istisnalar veri
   // güncellemesiyle (ayrı adım) false yapılır. Nullable değil ama default'lu → additive.
-  uretimYapar Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  uretimYapar  Boolean           @default(true)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
 
   // Hiyerarşi
   parentId  String?
@@ -11945,11 +11949,7 @@ model IproVardiya {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  // PDKS puantajı vardiya tanımını buradan OKUR (ikinci vardiya tablosu yok) —
-  // ters ilişkiler, DB kolonu eklemez.
-  pdksPuantajGunleri PdksPuantajGun[]
-  pdksAtamalari      PdksPersonelVardiya[]
-  molaTanimlari      IproMolaTanim[]
+  molaTanimlari IproMolaTanim[]
 
   @@map("ipro_vardiya")
 }
@@ -12662,20 +12662,20 @@ model DepoHareketLog {
 model SevkiyatOkutma {
   id String @id @default(cuid())
 
-  shipmentId  Int
+  shipmentId    Int
   /// IFS PickReservation keyref (rezerv satırı tam anahtarı — PICK_LIST_NO dahil).
   satirAnahtari String
-  pickListNo  String?
+  pickListNo    String?
   /// Okutulan IFS barkod ID (elle stok no girişinde null).
-  barkodId    Int?
-  partNo      String
-  lotBatchNo  String?
+  barkodId      Int?
+  partNo        String
+  lotBatchNo    String?
   /// Rezerv lokasyonu (okutma anı) — geri almada dönüş hedefi.
-  lokasyon    String
-  miktar      Decimal @db.Decimal(18, 6)
+  lokasyon      String
+  miktar        Decimal @db.Decimal(18, 6)
 
   userId      String
-  user        User    @relation("SevkiyatOkutmaKullanici", fields: [userId], references: [id], onDelete: Restrict)
+  user        User   @relation("SevkiyatOkutmaKullanici", fields: [userId], references: [id], onDelete: Restrict)
   kullaniciAd String
 
   raporlandi   Boolean   @default(false)
@@ -15655,6 +15655,8 @@ enum PdksGecisKaynak {
 
 enum PdksGunDurum {
   TAM
+  TAM_FORMLA // eksik giriş/çıkış onaylı Kart Okutamama formuyla tamamlandı (Faz 4)
+  MESAI // hafta sonu / akşam — onaylı mesai formu (Faz 4)
   EKSIK_GIRIS
   EKSIK_CIKIS
   GELMEDI
@@ -15827,8 +15829,8 @@ model PdksPuantajGun {
   personnel         Personnel            @relation(fields: [personnelId], references: [id], onDelete: Restrict)
   gun               DateTime             @db.Date
   vardiyaId         String?
-  vardiya           IproVardiya?         @relation(fields: [vardiyaId], references: [id], onDelete: SetNull)
-  vardiyaKaynak     String? // ATAMA | VARDIYA_FORMU | VARSAYILAN | CIKARIM
+  vardiya           PdksVardiya?         @relation(fields: [vardiyaId], references: [id], onDelete: SetNull)
+  vardiyaKaynak     String? // ATAMA | VARSAYILAN (Faz 4: vardiya ataması PDKS içinde; VARDIYA formu kullanılmaz)
   beklenenBaslangic DateTime?            @db.Timestamptz(3)
   beklenenBitis     DateTime?            @db.Timestamptz(3)
   ilkGiris          DateTime?            @db.Timestamptz(3)
@@ -15845,7 +15847,13 @@ model PdksPuantajGun {
   gecDakika         Int                  @default(0)
   erkenCikisDakika  Int                  @default(0)
   calismaDakika     Int?
-  onayliMesaiDakika Int?
+  onayliMesaiDakika Int? // onaylı mesai formunun süresi (hesap FORM esaslı)
+  // Faz 4 — form süresi ile fiili turnike süresi YAN YANA gösterilir.
+  fiiliDakika       Int? // sonCikis − ilkGiris (mola düşülmemiş, turnike)
+  dusulenMolaDakika Int? // çalışmadan düşülen molalar (düşülür=true olanlar)
+  mesaiPersonelId   String? // onaylı mesai formundaki kişi satırı
+  mesaiPersonel     OvertimePersonnel?   @relation(fields: [mesaiPersonelId], references: [id], onDelete: SetNull)
+  kilitAt           DateTime?
   fazlaDakika       Int?
   uyarilar          String[]             @default([]) // ONAYSIZ_FAZLA | MESAI_ONAYLI_GELMEDI | ...
   kilitli           Boolean              @default(false) // ay kapanışı sonrası yeniden hesap yok
@@ -15857,16 +15865,19 @@ model PdksPuantajGun {
   @@index([gun, durum])
   @@index([vardiyaId])
   @@index([kartOkutamamaId])
+  @@index([mesaiPersonelId])
   @@map("pdks_puantaj_gun")
 }
 
-// Kişi–vardiya ataması (tarih aralıklı). Faz 4'te kullanılır; bitis null = açık uçlu.
+// Kişi–vardiya ataması (tarih aralıklı; bitis null = açık uçlu). Faz 4: PdksVardiya'ya bağlı
+// (Faz 1'de IproVardiya'ya bağlıydı — tablo boştu, FK taşındı). Atama yoksa kişinin yakasına
+// uyan varsayılan vardiya kullanılır.
 model PdksPersonelVardiya {
   id          String      @id @default(cuid())
   personnelId String
   personnel   Personnel   @relation(fields: [personnelId], references: [id], onDelete: Restrict)
   vardiyaId   String
-  vardiya     IproVardiya @relation(fields: [vardiyaId], references: [id], onDelete: Restrict)
+  vardiya     PdksVardiya @relation(fields: [vardiyaId], references: [id], onDelete: Restrict)
   baslangic   DateTime    @db.Date
   bitis       DateTime?   @db.Date
   createdById String
@@ -15875,4 +15886,67 @@ model PdksPersonelVardiya {
   @@index([personnelId, baslangic])
   @@index([vardiyaId])
   @@map("pdks_personel_vardiya")
+}
+
+// ── PDKS Faz 4 — vardiya / mola ─────────────────────────────────────────────
+
+enum PdksYakaTipi {
+  BEYAZ
+  MAVI
+  HEPSI
+}
+
+enum PdksMolaTuru {
+  YEMEK
+  CAY
+}
+
+// PDKS personel vardiyası. IproVardiya'dan AYRI: o üretim (OEE) vardiyasıdır; burada yaka tipi,
+// toleranslar ve gün dönümü var. Saatler "HH:mm" İstanbul yerel.
+// gunDonumSaat: vardiya gününün sınırı — bir olay bu saatten ÖNCEYSE önceki vardiya gününe aittir
+// (gece vardiyası 21:00→07:00 için ör. 12:00; gündüz 07:00→17:00 için ör. 04:00).
+model PdksVardiya {
+  id              String       @id @default(cuid())
+  kod             String       @unique // BEYAZ-GUNDUZ, MAVI-GUNDUZ, MAVI-GECE
+  ad              String
+  girisSaat       String // "07:00"
+  cikisSaat       String // "17:00" — girisSaat'ten küçükse ertesi güne taşar
+  gunDonumSaat    String // "04:00"
+  yakaTipi        PdksYakaTipi @default(HEPSI)
+  gecToleransDk   Int          @default(0)
+  erkenToleransDk Int          @default(0)
+  // Atamasız kişi için yakasına uyan VARSAYILAN vardiya (yaka tipi başına en fazla bir aktif — uygulama denetler).
+  varsayilan      Boolean      @default(false)
+  sira            Int          @default(0)
+  aktif           Boolean      @default(true)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  molalar    PdksVardiyaMola[]
+  atamalar   PdksPersonelVardiya[]
+  puantajlar PdksPuantajGun[]
+
+  @@map("pdks_vardiya")
+}
+
+// Vardiya molası. departmentId null = vardiyanın tüm kişileri; dolu = yalnız o bölüm (mavi yaka
+// yemek saati bölüme göre değişir — İV verisi). Aynı türde bölüme özel satır varsa genel satırı EZER.
+// dusulur: net çalışmadan düşülür mü (varsayılan: yemek düşülür, çay düşülmez — İV kararı bekleniyor).
+model PdksVardiyaMola {
+  id           String                @id @default(cuid())
+  vardiyaId    String
+  vardiya      PdksVardiya           @relation(fields: [vardiyaId], references: [id], onDelete: Cascade)
+  tur          PdksMolaTuru
+  baslangic    String // "12:00"
+  bitis        String // "13:00"
+  dusulur      Boolean
+  departmentId String?
+  department   DepartmentDefinition? @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  aktif        Boolean               @default(true)
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+
+  @@index([vardiyaId])
+  @@index([departmentId])
+  @@map("pdks_vardiya_mola")
 }

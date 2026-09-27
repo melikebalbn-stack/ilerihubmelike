@@ -302,10 +302,14 @@ const offboardingMenuItems = [
 
 // PDKS (Personel Devam Kontrol) — İV altında kendi alt grubu. Görünürlük sayfa guard'ıyla
 // birebir (permission; IPRO/zimmet deseni). Faz 1: cihaz tanımları (pdks.manage);
-// Faz 2: Kartlar, Faz 3: Geçiş Kayıtları (pdks.view okur). Puantaj Faz 4'te buraya eklenir.
+// Faz 2: Kartlar, Faz 3: Geçiş Kayıtları, Faz 4: Günlük Puantaj (pdks.view) + Vardiyalar / Tatil (pdks.manage).
+// "Geçişlerim" (herkes, kendi verisi) Formlar › İV altında — SUNUCU bayrağıyla (pdks_gecislerim_acik).
 const pdksMenuItems = [
+  { name: "Günlük Puantaj", icon: ClipboardList, href: "/pdks/puantaj", roles: [] as string[], permission: ["pdks.view", "pdks.manage"] },
   { name: "Geçiş Kayıtları", icon: ScanLine, href: "/pdks/gecisler", roles: [] as string[], permission: ["pdks.view", "pdks.manage"], note: "canlı" },
   { name: "Kartlar", icon: CreditCard, href: "/pdks/kartlar", roles: [] as string[], permission: ["pdks.view", "pdks.manage"] },
+  { name: "Vardiyalar", icon: Clock, href: "/pdks/vardiyalar", roles: [] as string[], permission: ["pdks.manage"] },
+  { name: "Tatil Takvimi", icon: CalendarDays, href: "/pdks/tatiller", roles: [] as string[], permission: ["pdks.manage", "ipro.takvim.yonet"] },
   { name: "Cihazlar & Kapılar", icon: DoorOpen, href: "/pdks/cihazlar", roles: [] as string[], permission: ["pdks.manage"] },
 ]
 
@@ -513,6 +517,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   // IV-FR-27 menü başlığı sunucudan gelir: İV → "Deneme Değerlendirme", zincir üyesi → "Deneme Formlarım".
   const [denemeBaslik, setDenemeBaslik] = useState("Deneme Değerlendirme")
   const [avansBayrak, setAvansBayrak] = useState<{ kendim: boolean; sorumlu: boolean }>({ kendim: false, sorumlu: false })
+  const [gecislerimGorunur, setGecislerimGorunur] = useState(false)
 
   // Collapse/pin (yalnız masaüstü; mobil sheet'te isOpen=true → her zaman geniş)
   const { collapsed, pinned, hovering, setCollapsed, setPinned, setHovering } = useSidebar()
@@ -662,6 +667,18 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         if (!r.ok) return
         const d = await r.json()
         setIfsRaporGorunur(!!d.gorunur)
+      })
+      .catch(() => {})
+  }, [session])
+
+  // PDKS "Geçişlerim" — SUNUCU bayrağı (SystemSetting pdks_gecislerim_acik); cihaz canlıya geçince açılır.
+  useEffect(() => {
+    if (!session?.user) return
+    fetch('/api/pdks/gecislerim/menu-bayrak')
+      .then(async (r) => {
+        if (!r.ok) return
+        const d = await r.json()
+        setGecislerimGorunur(!!d.gorunur)
       })
       .catch(() => {})
   }, [session])
@@ -823,11 +840,13 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   // Avans formu — SUNUCU bayraklariyla (avansBayrak); client'ta yetki hesaplanmaz.
   const avansKendimItem = { name: "Avans Talebim", icon: Wallet, href: "/avans-formu/kendi", roles: ["*"], subgroup: "iv" as FormAltGrup }
   const avansSorumluItem = { name: "Avans Formu (Ekibim)", icon: Wallet, href: "/avans-formu", roles: ["*"], subgroup: "iv" as FormAltGrup }
+  const gecislerimItem = { name: "Geçişlerim", icon: ScanLine, href: "/pdks/gecislerim", roles: ["*"], subgroup: "iv" as FormAltGrup }
   const filteredFormsItems = [
     ...filterItems(formsMenuItems),
     ...(kadroTalepAcabilir ? [kadroTalepItem] : []),
     ...(avansBayrak.kendim ? [avansKendimItem] : []),
     ...(avansBayrak.sorumlu ? [avansSorumluItem] : []),
+    ...(gecislerimGorunur ? [gecislerimItem] : []),
   ]
   // Formlar alt grupları — YETKİ FİLTRESİNDEN GEÇMİŞ listeden bölünür, yani
   // görünürlük mantığı burada tekrarlanmaz. Alt grubu olmayan bir kalem

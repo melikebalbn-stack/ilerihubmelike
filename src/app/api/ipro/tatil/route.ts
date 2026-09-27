@@ -7,7 +7,8 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 export async function GET(request: Request) {
-  const { error } = await requirePermission(['ipro.view', 'ipro.admin', 'ipro.takvim.yonet'])
+  // PDKS (Faz 4): tek tatil takvimi — PDKS puantajı da bu tabloyu okur; pdks.view / pdks.manage da görür.
+  const { error } = await requirePermission(['ipro.view', 'ipro.admin', 'ipro.takvim.yonet', 'pdks.view', 'pdks.manage'])
   if (error) return error
   try {
     const url = new URL(request.url)
@@ -19,7 +20,8 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const { userId, error } = await requirePermission('ipro.takvim.yonet')
+  // PDKS (Faz 4): /pdks/tatiller aynı takvimi pdks.manage ile düzenler.
+  const { userId, error } = await requirePermission(['ipro.takvim.yonet', 'pdks.manage'])
   if (error) return error
   try {
     const b = await request.json()

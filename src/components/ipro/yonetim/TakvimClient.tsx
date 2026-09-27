@@ -165,7 +165,8 @@ function VardiyaBolumu({ canEdit }: { canEdit: boolean }) {
 }
 
 // ── Çalışma takvimi (aylık) ──
-function TakvimBolumu({ canEdit }: { canEdit: boolean }) {
+// PDKS (Faz 4): /pdks/tatiller aynı bileşeni kullanır — tek tatil takvimi.
+export function TakvimBolumu({ canEdit }: { canEdit: boolean }) {
   const bugun = useMemo(() => new Date(), [])
   const [yil, setYil] = useState(bugun.getUTCFullYear())
   const [ay, setAy] = useState(bugun.getUTCMonth()) // 0-11

@@ -74,6 +74,11 @@ export type AuditTargetType =
   // PDKS kart yaşam döngüsü. action: PDKS_KART_CREATED / PDKS_KART_PASIFLENDI (neden:
   // KAYIP|BOZUK|DEGISTI|IPTAL|AYRILDI) / PDKS_KART_IMPORT (targetId boş, özet satırı).
   | 'PDKS_KART'
+  // PDKS puantaj. action: PDKS_PUANTAJ_KILITLENDI / _KILIT_ACILDI (targetId "bas..bit"),
+  // PDKS_PUANTAJ_HESAPLANDI (elle yeniden hesap), PDKS_PUANTAJ_EXPORT (Excel).
+  | 'PDKS_PUANTAJ'
+  // PDKS vardiya / mola / personel-vardiya ataması. action: PDKS_VARDIYA_* / PDKS_MOLA_* / PDKS_ATAMA_*
+  | 'PDKS_VARDIYA'
 
 export interface AuditLogParams {
   action: string

@@ -26,7 +26,6 @@ const SERVIS_PERMISSIONS: Record<string, string> = {
   // üretmek; servis.create ise servis kaydı oluşturmak. Ayrı anahtar olmasaydı
   // servis.create'i olan idari-isler yan etkiyle yayımcı olurdu.
   'servis.liste.publish': 'Versiyonlu servis listesi yayımlama (REV)',
-  'servis.admin': 'Servis yönetimi tam yetkisi',
   // MASTER madde 46 — şikâyet/uygunsuzluk. servis.view TEK BAŞINA YETMEZ:
   // şikâyet kaydı şikâyetçi kimliğini taşır (KVKK sınıfı) ve yalnız
   // İK/İdari İşler görmelidir, bu yüzden ayrı anahtar.

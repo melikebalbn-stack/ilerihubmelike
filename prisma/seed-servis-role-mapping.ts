@@ -1,5 +1,5 @@
 /**
- * Servis Yönetimi Yetki Matrisi hedef tablosu (14 anahtar):
+ * Servis Yönetimi Yetki Matrisi hedef tablosu (13 anahtar):
  *
  * | Anahtar                | super-admin | admin | hr-yoneticisi | idari-isler |
  * |------------------------|-------------|-------|---------------|--------------|
@@ -14,7 +14,6 @@
  * | servis.export          | ✓ | ✓ | ✓ | — |
  * | servis.kvkk.view       | ✓ | — | ✓ | — |
  * | servis.liste.publish   | ✓ | — | ✓ | — |
- * | servis.admin           | ✓ | ✓ | — | — |
  * | servis.sikayet.view    | ✓ | — | ✓ | ✓ |
  * | servis.sikayet.manage  | ✓ | — | ✓ | ✓ |
  *
@@ -70,7 +69,6 @@ const ROLE_MAPPING: Record<string, string[]> = {
   // admin YOK — gerekçe dosya başındaki nota bakınız (telefon içeren listeyi
   // yayımlayan, servis.kvkk.view ile onu görmeye de yetkili olmalı).
   'servis.liste.publish': ['super-admin', 'hr-yoneticisi'],
-  'servis.admin': ['super-admin', 'admin'],
   // MASTER madde 46 — `admin` BİLEREK yok (şikâyetçi kimliği yalnız
   // İK/İdari İşler'e açık); gerekçe dosya başındaki nota bakın.
   'servis.sikayet.view': ['super-admin', 'hr-yoneticisi', 'idari-isler'],

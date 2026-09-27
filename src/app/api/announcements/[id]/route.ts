@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
 import { notifyAnnouncementPublished } from '@/lib/announcements/notify-announcement'
 import { bolumEsit } from '@/lib/announcements/hedef'
+import { viewCountDelta } from '@/lib/announcements/view-count'
 
 // GET - Tek duyuru getir
 export async function GET(
@@ -98,31 +99,23 @@ export async function GET(
       }
     }
 
-    // Görüntüleme sayısını artır ve okundu kaydı oluştur
-    await prisma.$transaction([
-      prisma.announcement.update({
-        where: { id },
-        data: { viewCount: { increment: 1 } }
-      }),
-      prisma.announcementRead.upsert({
-        where: {
-          announcementId_userEmail: {
-            announcementId: id,
-            userEmail
-          }
-        },
-        create: {
-          announcementId: id,
-          userEmail,
-          userName: user.name || userEmail,
-          userDepartment
-        },
-        update: {} // Zaten varsa değiştirme
-      })
-    ])
+    // Görüntülenme = TEKİL okuyucu. Yalnız İLK okundu kaydı (INSERT) oluşurken
+    // viewCount +1; aynı kişinin tekrar açması sayacı artırmaz (eskiden her GET +1
+    // ediyordu → viewCount şişiyordu).
+    const existingRead = await prisma.announcementRead.findUnique({
+      where: { announcementId_userEmail: { announcementId: id, userEmail } }
+    })
+    if (viewCountDelta(Boolean(existingRead)) === 1) {
+      await prisma.$transaction([
+        prisma.announcementRead.create({
+          data: { announcementId: id, userEmail, userName: user.name || userEmail, userDepartment }
+        }),
+        prisma.announcement.update({ where: { id }, data: { viewCount: { increment: 1 } } })
+      ])
+    }
 
-    // Kullanıcının okundu durumunu kontrol et
-    const readRecord = await prisma.announcementRead.findUnique({
+    // Kullanıcının okundu durumunu kontrol et (ilk kayıt yeni oluşmuş olabilir)
+    const readRecord = existingRead ?? await prisma.announcementRead.findUnique({
       where: {
         announcementId_userEmail: {
           announcementId: id,

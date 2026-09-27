@@ -138,11 +138,20 @@ export async function GET(request: NextRequest) {
 
     const readMap = new Map(readAnnouncements.map(r => [r.announcementId, r]))
 
+    // Onaylayan sayısı (acknowledgedAt dolu) — yönetim listesi "Onaylayan n" sütunu.
+    const ackCounts = await prisma.announcementRead.groupBy({
+      by: ['announcementId'],
+      where: { announcementId: { in: announcements.map(a => a.id) }, acknowledged: true },
+      _count: { _all: true },
+    })
+    const ackMap = new Map(ackCounts.map(a => [a.announcementId, a._count._all]))
+
     // Duyurulara okunma durumu ekle
     const announcementsWithReadStatus = announcements.map(announcement => ({
       ...announcement,
       isRead: readMap.has(announcement.id),
-      isAcknowledged: readMap.get(announcement.id)?.acknowledged || false
+      isAcknowledged: readMap.get(announcement.id)?.acknowledged || false,
+      acknowledgedCount: ackMap.get(announcement.id) ?? 0
     }))
 
     return NextResponse.json({

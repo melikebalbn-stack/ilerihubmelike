@@ -116,6 +116,7 @@ interface Announcement {
   publishedAt: string | null
   createdAt: string
   viewCount: number
+  acknowledgedCount?: number
   _count: {
     reads: number
     comments: number
@@ -651,6 +652,7 @@ export default function AnnouncementManagePage() {
                     <TableHead>Oncelik</TableHead>
                     <TableHead>Yayin Tarihi</TableHead>
                     <TableHead className="text-center">Goruntulenme</TableHead>
+                    <TableHead className="text-center">Onaylayan</TableHead>
                     <TableHead className="text-right">Islemler</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -679,6 +681,9 @@ export default function AnnouncementManagePage() {
                           <Eye className="h-4 w-4" />
                           {announcement.viewCount}
                         </div>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {announcement.acknowledgedCount ?? 0}
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-2">

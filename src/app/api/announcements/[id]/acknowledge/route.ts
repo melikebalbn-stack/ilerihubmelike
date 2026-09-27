@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
+import { viewCountDelta } from '@/lib/announcements/view-count'
 
 // POST - Okundu onayı ver
 export async function POST(
@@ -29,27 +30,35 @@ export async function POST(
       return NextResponse.json({ error: 'Bu duyuru okundu onayi gerektirmiyor' }, { status: 400 })
     }
 
-    // Okundu kaydını güncelle veya oluştur
-    const readRecord = await prisma.announcementRead.upsert({
-      where: {
-        announcementId_userEmail: {
-          announcementId: id,
-          userEmail
-        }
-      },
-      create: {
-        announcementId: id,
-        userEmail,
-        userName: user.name || userEmail,
-        userDepartment,
-        acknowledged: true,
-        acknowledgedAt: new Date()
-      },
-      update: {
-        acknowledged: true,
-        acknowledgedAt: new Date()
-      }
+    // Görüntülenme = TEKİL okuyucu. İlk kayıt (INSERT) oluşurken viewCount +1;
+    // zaten kaydı varsa yalnız onay güncellenir, sayaç artmaz.
+    const existing = await prisma.announcementRead.findUnique({
+      where: { announcementId_userEmail: { announcementId: id, userEmail } },
+      select: { id: true }
     })
+
+    let readRecord
+    if (viewCountDelta(Boolean(existing)) === 1) {
+      const [created] = await prisma.$transaction([
+        prisma.announcementRead.create({
+          data: {
+            announcementId: id,
+            userEmail,
+            userName: user.name || userEmail,
+            userDepartment,
+            acknowledged: true,
+            acknowledgedAt: new Date()
+          }
+        }),
+        prisma.announcement.update({ where: { id }, data: { viewCount: { increment: 1 } } })
+      ])
+      readRecord = created
+    } else {
+      readRecord = await prisma.announcementRead.update({
+        where: { announcementId_userEmail: { announcementId: id, userEmail } },
+        data: { acknowledged: true, acknowledgedAt: new Date() }
+      })
+    }
 
     return NextResponse.json(readRecord)
   } catch (error) {

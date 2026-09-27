@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
+import { viewCountDelta } from '@/lib/announcements/view-count'
 
 // POST - Popup GÖRÜLDÜ (onay değil): AnnouncementRead upsert (readAt now).
 // Onay gerektirmeyen duyuru popup'ı kapatılınca çağrılır → bir daha çıkmaz.
@@ -25,16 +26,20 @@ export async function POST(
       return NextResponse.json({ error: 'Duyuru bulunamadi' }, { status: 404 })
     }
 
-    await prisma.announcementRead.upsert({
+    // Görüntülenme = TEKİL okuyucu. Yalnız İLK kayıt (INSERT) oluşurken viewCount +1;
+    // aynı kişi ikinci kez çağırınca (AnnouncementRead unique zaten var) sayaç artmaz.
+    const existing = await prisma.announcementRead.findUnique({
       where: { announcementId_userEmail: { announcementId: id, userEmail } },
-      create: {
-        announcementId: id,
-        userEmail,
-        userName: user.name || userEmail,
-        userDepartment,
-      },
-      update: {}, // zaten görülmüş/onaylanmışsa dokunma
+      select: { id: true },
     })
+    if (viewCountDelta(Boolean(existing)) === 1) {
+      await prisma.$transaction([
+        prisma.announcementRead.create({
+          data: { announcementId: id, userEmail, userName: user.name || userEmail, userDepartment },
+        }),
+        prisma.announcement.update({ where: { id }, data: { viewCount: { increment: 1 } } }),
+      ])
+    }
 
     return NextResponse.json({ ok: true })
   } catch (error) {

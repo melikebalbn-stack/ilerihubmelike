@@ -12,7 +12,13 @@ const BG: Record<SplitBadgeColor, string> = {
 
 /**
  * İki parçalı aksiyon rozeti (Tremor "Badge 11" deseni): sol durum, sağ eylem + ↗.
- * Akademi dashboard kartlarının ve IFS bandının tek aksiyonu. Tümü link.
+ * Akademi dashboard kartlarının ve IFS bandının tek aksiyonu.
+ *
+ * 27.09.2026 — Envanter modülü de bu deseni kullanıyor; oradaki aksiyonlar
+ * gezinme DEĞİL işlem (kaydet/sil/onayla). Bu yüzden `href` artık opsiyonel:
+ * `onClick` verilirse <button> (type=button, disabled destekli), `href`
+ * verilirse eskisi gibi <Link>/<a download> render edilir. Link yolunun
+ * davranışı DEĞİŞMEDİ — Akademi kartları aynı çıktıyı üretir.
  */
 export function SplitBadge({
   color,
@@ -22,17 +28,27 @@ export function SplitBadge({
   className = "",
   ariaLabel,
   download = false,
+  onClick,
+  disabled = false,
+  title,
 }: {
   color: SplitBadgeColor;
   left: string;
   right: string;
-  href: string;
+  /** Gezinme aksiyonu. onClick ile BİRLİKTE verilmez — biri seçilir. */
+  href?: string;
   className?: string;
   ariaLabel?: string;
   /** true → next/link yerine düz <a download> (PDF indirme; prefetch/soft-nav yok). */
   download?: boolean;
+  /** İşlem aksiyonu (kaydet/sil/onayla…) → <button type="button"> olarak render edilir. */
+  onClick?: () => void;
+  disabled?: boolean;
+  title?: string;
 }) {
-  const cls = `inline-flex items-stretch overflow-hidden rounded-lg text-[12.5px] font-semibold leading-none text-white ${BG[color]} ${className}`;
+  const cls = `inline-flex items-stretch overflow-hidden rounded-lg text-[12.5px] font-semibold leading-none text-white ${BG[color]} ${className}${
+    onClick ? " disabled:cursor-not-allowed disabled:opacity-60" : ""
+  }`;
   const inner = (
     <>
       <span className="flex items-center gap-1.5 whitespace-nowrap px-[11px] py-2">
@@ -40,13 +56,34 @@ export function SplitBadge({
       </span>
       <span className="flex items-center gap-1.5 whitespace-nowrap border-l border-white/35 px-[11px] py-2">
         {right}
-        <span aria-hidden className="ml-0.5 text-[11px]">
-          ↗
-        </span>
+        {/* ↗ "git" demek — yalnız gezinme (href) modunda. onClick modunda rozet
+            bir işlem tetikler (kaydet/sil/onayla), gezinme yok → ok gösterilmez. */}
+        {!onClick && (
+          <span aria-hidden className="ml-0.5 text-[11px]">
+            ↗
+          </span>
+        )}
       </span>
     </>
   );
   const label = ariaLabel ?? `${left} — ${right}`;
+
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} disabled={disabled} aria-label={label} title={title} className={cls}>
+        {inner}
+      </button>
+    );
+  }
+
+  if (!href) {
+    // Ne href ne onClick → tıklanamaz rozet (ör. kapalı kayıtta "Kapalı" durumu).
+    return (
+      <span aria-label={label} title={title} className={`${cls} opacity-60`}>
+        {inner}
+      </span>
+    );
+  }
 
   if (download) {
     // PDF indirme: DAİMA yeni sekme. target'sız düz <a href download> tıklamada

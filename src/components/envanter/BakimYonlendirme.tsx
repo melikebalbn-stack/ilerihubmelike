@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Plus, Eye } from 'lucide-react'
+import { EnvanterArama, envanterAramaEslesir } from './EnvanterArama'
+import { SplitBadge } from '@/components/akademi/SplitBadge'
 import type { BakimYonlendirmeDurumTip } from '@/lib/envanter/bakim-yonlendirme'
 
 // IV / Envanter Faz 2 — 2b-3 · Bakım Yönlendirme (Satın Alma alt sekmesi).
@@ -50,11 +51,14 @@ const BAKIM_TERMINAL_DURUMLAR: BakimYonlendirmeDurumTip[] = [
 ]
 
 export function BakimYonlendirmeYonetimi() {
+  // Sekme araması (27.09) — kayıt tablosunu süzer (durum filtresiyle birlikte).
+  const [arama, setArama] = useState('')
   const [kayitlar, setKayitlar] = useState<BakimYonlendirmeListItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
   const [durumFiltre, setDurumFiltre] = useState<BakimYonlendirmeDurumTip | ''>('')
+
 
   const [showNewForm, setShowNewForm] = useState(false)
   const [yeniKonu, setYeniKonu] = useState('')
@@ -74,6 +78,18 @@ export function BakimYonlendirmeYonetimi() {
     loadKayitlar(durumFiltre || undefined)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [durumFiltre])
+
+  const kayitlarSuzulmus = kayitlar.filter((k) =>
+    envanterAramaEslesir(arama, [
+      k.kayitNo,
+      k.konu,
+      k.lokasyon,
+      k.aciklama,
+      k.tespitEdenAd,
+      k.servisReferansi,
+      BAKIM_DURUM_ETIKET[k.durum],
+    ]),
+  )
 
   async function loadKayitlar(durum?: BakimYonlendirmeDurumTip) {
     setLoading(true)
@@ -210,14 +226,12 @@ export function BakimYonlendirmeYonetimi() {
             </p>
           </div>
 
-          <button
-            type="button"
+          <SplitBadge
+            color={showNewForm ? 'gray' : 'green'}
+            left="Bakım Kaydı"
+            right={showNewForm ? 'Vazgeç' : 'Yeni Kayıt'}
             onClick={() => setShowNewForm((prev) => !prev)}
-            className="flex items-center gap-2 rounded-xl bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800"
-          >
-            <Plus className="h-4 w-4" />
-            {showNewForm ? 'Vazgeç' : 'Yeni Kayıt'}
-          </button>
+          />
         </div>
 
         {showNewForm && (
@@ -252,16 +266,22 @@ export function BakimYonlendirmeYonetimi() {
               />
             </div>
 
-            <button
-              type="button"
+            <SplitBadge
+              color="green"
+              left="Yeni Kayıt"
+              right={yeniSaving ? 'Kaydediliyor...' : 'Kaydı Oluştur'}
               onClick={handleYeniKayit}
               disabled={yeniSaving}
-              className="rounded-xl bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800 disabled:opacity-60"
-            >
-              {yeniSaving ? 'Kaydediliyor...' : 'Kaydı Oluştur'}
-            </button>
+            />
           </div>
         )}
+
+        <EnvanterArama
+          value={arama}
+          onChange={setArama}
+          placeholder="Kayıt no, konu, lokasyon veya servis referansı ara..."
+          className="mt-4 max-w-xl"
+        />
 
         <div className="mt-4">
           <label className="text-sm font-medium">Durum Filtresi</label>
@@ -288,8 +308,10 @@ export function BakimYonlendirmeYonetimi() {
       <div className="rounded-2xl border bg-white p-6 shadow-sm">
         {loading ? (
           <p className="text-sm text-slate-500">Yükleniyor...</p>
-        ) : kayitlar.length === 0 ? (
-          <p className="text-sm text-slate-500">Kayıt bulunamadı.</p>
+        ) : kayitlarSuzulmus.length === 0 ? (
+          <p className="text-sm text-slate-500">
+            {arama.trim() ? 'Aramaya uyan kayıt yok.' : 'Kayıt bulunamadı.'}
+          </p>
         ) : (
           <div className="overflow-hidden overflow-x-auto rounded-xl border">
             <table className="w-full text-xs">
@@ -305,7 +327,7 @@ export function BakimYonlendirmeYonetimi() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {kayitlar.map((kayit) => {
+                {kayitlarSuzulmus.map((kayit) => {
                   const kapali = BAKIM_TERMINAL_DURUMLAR.includes(kayit.durum)
                   return (
                     <tr key={kayit.id} className={selectedId === kayit.id ? 'bg-slate-50' : ''}>
@@ -327,26 +349,23 @@ export function BakimYonlendirmeYonetimi() {
                       </td>
                       <td className="px-3 py-3">
                         <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => handleKayitSec(kayit)}
-                            disabled={kapali}
-                            className="flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-40"
-                          >
-                            <Eye className="h-3.5 w-3.5" />
-                            {kapali ? 'Kapalı' : 'Güncelle'}
-                          </button>
+                          {/* Kapalı kayıtta tıklanamaz rozet (eski disabled buton davranışı). */}
+                          <SplitBadge
+                            color={kapali ? 'gray' : 'blue'}
+                            left={BAKIM_DURUM_ETIKET[kayit.durum] ?? kayit.durum}
+                            right={kapali ? 'Kapalı' : 'Güncelle'}
+                            onClick={kapali ? undefined : () => handleKayitSec(kayit)}
+                          />
                           {kayit.durum === 'TESPIT_EDILDI' &&
                             !kayit.servisReferansi &&
                             !kayit.sonucNotu && (
-                              <button
-                                type="button"
+                              <SplitBadge
+                                color="red"
+                                left={kayit.kayitNo}
+                                right={silSaving[kayit.id] ? 'Siliniyor...' : 'Sil'}
                                 onClick={() => handleSil(kayit)}
                                 disabled={!!silSaving[kayit.id]}
-                                className="rounded-lg border border-rose-300 px-2.5 py-1 text-xs font-medium text-rose-700 hover:bg-rose-50 disabled:opacity-60"
-                              >
-                                {silSaving[kayit.id] ? 'Siliniyor...' : 'Sil'}
-                              </button>
+                              />
                             )}
                         </div>
                       </td>
@@ -398,14 +417,13 @@ export function BakimYonlendirmeYonetimi() {
           </div>
 
           <div className="mt-4 flex gap-2">
-            <button
-              type="button"
+            <SplitBadge
+              color="green"
+              left="Kayıt"
+              right={duzenleSaving ? 'Kaydediliyor...' : 'Güncelle'}
               onClick={handleGuncelle}
               disabled={duzenleSaving}
-              className="rounded-xl bg-teal-700 px-4 py-2 text-sm font-medium text-white hover:bg-teal-800 disabled:opacity-60"
-            >
-              {duzenleSaving ? 'Kaydediliyor...' : 'Güncelle'}
-            </button>
+            />
             <button
               type="button"
               onClick={() => setSelectedId('')}

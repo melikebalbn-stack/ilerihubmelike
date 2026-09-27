@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { SplitBadge } from '@/components/akademi/SplitBadge'
 import type { TumStokSatiri } from '@/lib/envanter/tum-stoklar'
 
 // IV / Envanter — Stok Yönetimi altındaki "Tüm Stoklar" tablosu.
@@ -126,13 +127,13 @@ export function TumStoklarTablosu({ onUrunSec }: { onUrunSec: (urunId: string) =
                   </span>
                 </td>
                 <td className="px-3 py-2.5 text-right">
-                  <button
-                    type="button"
+                  {/* Badge 11 deseni: sol stok durumu, sağ eylem. */}
+                  <SplitBadge
+                    color={s.durum === 'KRITIK' || s.durum === 'EKSIK' ? 'red' : s.durum === 'MINIMUM' ? 'amber' : 'gray'}
+                    left={s.durum}
+                    right="İşle"
                     onClick={() => onUrunSec(s.urunId)}
-                    className="rounded-lg border px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100"
-                  >
-                    İşle
-                  </button>
+                  />
                 </td>
               </tr>
             ))}

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
+import { toplantiKullaniciIdCoz } from '@/lib/meetings/kullanici-coz'
+import { toplantiHataYaniti, enumDogrula, TOPLANTI_TURLERI } from '@/lib/meetings/hata'
 
 // Toplantı numarası oluştur
 async function generateMeetingNumber(): Promise<string> {
@@ -131,8 +133,7 @@ export async function GET(request: NextRequest) {
       }
     })
   } catch (error) {
-    console.error('Toplantılar yüklenirken hata:', error)
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })
+    return toplantiHataYaniti('meetings/GET', error)
   }
 }
 
@@ -171,25 +172,21 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // meetingType Prisma'ya GİTMEDEN doğrulanır — geçersiz enum eskiden
+    // PrismaClientValidationError ile 500 veriyordu ve kullanıcı hangi alanın
+    // sorunlu olduğunu göremiyordu (03.09.2026: "SUPPLIER").
+    const turKontrol = enumDogrula('meetingType', meetingType, TOPLANTI_TURLERI)
+    if (!turKontrol.ok) return turKontrol.yanit
+
     // Chairman ve Rapporteur için email'den database ID'ye çevir
     let resolvedChairmanId: string | null = null
     let resolvedRapporteurId: string | null = null
 
-    if (typeof chairmanEmail === 'string' && chairmanEmail) {
-      const chairmanUser = await prisma.user.findUnique({
-        where: { email: chairmanEmail.toLowerCase() },
-        select: { id: true }
-      })
-      resolvedChairmanId = chairmanUser?.id || null
-    }
-
-    if (typeof rapporteurEmail === 'string' && rapporteurEmail) {
-      const rapporteurUser = await prisma.user.findUnique({
-        where: { email: rapporteurEmail.toLowerCase() },
-        select: { id: true }
-      })
-      resolvedRapporteurId = rapporteurUser?.id || null
-    }
+    // Ortak çözücü: e-posta VEYA gerçek User.id kabul eder, LDAP id'sinde null
+    // döner. Legacy alanlar (chairmanId/rapporteurId) da artık VARLIK kontrolünden
+    // geçiyor — eskiden doğrudan yazılıyordu ve aynı FK ihlalini üretebiliyordu.
+    resolvedChairmanId = await toplantiKullaniciIdCoz(prisma, chairmanEmail ?? legacyChairmanId)
+    resolvedRapporteurId = await toplantiKullaniciIdCoz(prisma, rapporteurEmail ?? legacyRapporteurId)
 
     const meetingNumber = await generateMeetingNumber()
 
@@ -263,13 +260,21 @@ export async function POST(request: NextRequest) {
       if (agendaItems.length > 0) {
         for (let i = 0; i < agendaItems.length; i++) {
           const item = agendaItems[i]
+          // KÖK SEBEP (28.09.2026): burası `item.presenterId`'yi çözümlemeden
+          // yazıyordu; seçici LDAP kaynaklı olduğunda distinguishedName geliyor
+          // ve MeetingAgendaItem_presenterId_fkey ihlali TÜM transaction'ı
+          // geri alıyordu. Artık başkan/raportörle aynı çözümden geçiyor.
+          const presenterId = await toplantiKullaniciIdCoz(
+            tx,
+            item.presenterEmail ?? item.presenterId,
+          )
           await tx.meetingAgendaItem.create({
             data: {
               meetingId: newMeeting.id,
               orderNo: i + 1,
               title: item.title,
               description: item.description || null,
-              presenterId: item.presenterId || null,
+              presenterId,
               presenterName: item.presenterName || null,
               plannedDuration: item.plannedDuration || null,
               status: 'PENDING'
@@ -309,7 +314,6 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(meetingWithRelations, { status: 201 })
   } catch (error) {
-    console.error('Toplantı oluşturulurken hata:', error)
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })
+    return toplantiHataYaniti('meetings/POST', error)
   }
 }

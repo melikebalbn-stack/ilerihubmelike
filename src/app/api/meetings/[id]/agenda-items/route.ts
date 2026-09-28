@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { AgendaOutcome, AgendaItemStatus } from '@/generated/prisma'
 import { requireSession } from '@/lib/auth/require-session'
+import { toplantiKullaniciIdCoz } from '@/lib/meetings/kullanici-coz'
+import { toplantiHataYaniti } from '@/lib/meetings/hata'
 
 // POST - Gündem maddesi ekle
 export async function POST(
@@ -28,6 +30,7 @@ export async function POST(
     const {
       title,
       description,
+      presenterEmail,
       presenterId,
       presenterName,
       plannedDuration
@@ -45,13 +48,17 @@ export async function POST(
 
     const orderNo = (lastItem?.orderNo || 0) + 1
 
+    // POST /api/meetings ile AYNI çözüm — bu uç şu an UI'dan çağrılmıyor ama
+    // aynı FK ihlalini üretebilecek tek diğer yazma noktası, açık bırakılmadı.
+    const cozulmusPresenterId = await toplantiKullaniciIdCoz(prisma, presenterEmail ?? presenterId)
+
     const agendaItem = await prisma.meetingAgendaItem.create({
       data: {
         meetingId,
         orderNo,
         title,
         description,
-        presenterId: presenterId || null,
+        presenterId: cozulmusPresenterId,
         presenterName: presenterName || null,
         plannedDuration: plannedDuration || null,
         status: 'PENDING'
@@ -65,8 +72,7 @@ export async function POST(
 
     return NextResponse.json(agendaItem, { status: 201 })
   } catch (error) {
-    console.error('Gündem maddesi eklenirken hata:', error)
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })
+    return toplantiHataYaniti('agenda-items/POST', error)
   }
 }
 
@@ -120,8 +126,7 @@ export async function PUT(
 
     return NextResponse.json(agendaItems)
   } catch (error) {
-    console.error('Gündem maddeleri güncellenirken hata:', error)
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })
+    return toplantiHataYaniti('agenda-items/PUT', error)
   }
 }
 
@@ -148,7 +153,6 @@ export async function DELETE(
 
     return NextResponse.json({ message: 'Gündem maddesi silindi' })
   } catch (error) {
-    console.error('Gündem maddesi silinirken hata:', error)
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })
+    return toplantiHataYaniti('agenda-items/DELETE', error)
   }
 }

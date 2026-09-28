@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
+import { toplantiKullaniciIdCoz } from '@/lib/meetings/kullanici-coz'
+import {
+  toplantiHataYaniti, enumDogrula, TOPLANTI_TURLERI, TOPLANTI_DURUMLARI,
+} from '@/lib/meetings/hata'
 
 // Yetki kontrolü
 const MANAGEMENT_ROLES = [
@@ -96,8 +100,7 @@ export async function GET(
 
     return NextResponse.json(meeting)
   } catch (error) {
-    console.error('Toplantı detayı yüklenirken hata:', error)
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })
+    return toplantiHataYaniti('meetings/[id]/GET', error)
   }
 }
 
@@ -157,6 +160,12 @@ export async function PUT(
       minutesApproved
     } = body
 
+    // Enum'lar Prisma'ya GİTMEDEN doğrulanır (POST ucuyla aynı kural).
+    const turKontrol = enumDogrula('meetingType', meetingType, TOPLANTI_TURLERI)
+    if (!turKontrol.ok) return turKontrol.yanit
+    const durumKontrol = enumDogrula('status', status, TOPLANTI_DURUMLARI)
+    if (!durumKontrol.ok) return durumKontrol.yanit
+
     const updateData: Record<string, unknown> = {}
 
     if (title !== undefined) updateData.title = title
@@ -170,34 +179,15 @@ export async function PUT(
     if (isOnline !== undefined) updateData.isOnline = isOnline
     if (onlineLink !== undefined) updateData.onlineLink = onlineLink
 
-    // Chairman - email veya ID ile
-    if (chairmanEmail !== undefined) {
-      if (typeof chairmanEmail === 'string' && chairmanEmail) {
-        const chairmanUser = await prisma.user.findUnique({
-          where: { email: chairmanEmail.toLowerCase() },
-          select: { id: true }
-        })
-        updateData.chairmanId = chairmanUser?.id || null
-      } else {
-        updateData.chairmanId = null
-      }
-    } else if (chairmanId !== undefined) {
-      updateData.chairmanId = chairmanId || null
+    // Chairman / Rapporteur — ortak çözücü (e-posta VEYA gerçek User.id).
+    // Legacy `chairmanId`/`rapporteurId` dalı eskiden değeri doğrudan yazıyordu;
+    // LDAP id'si geldiğinde aynı FK ihlalini üretebilirdi. Artık o dal da
+    // varlık kontrolünden geçiyor, çözülemezse null yazılıyor.
+    if (chairmanEmail !== undefined || chairmanId !== undefined) {
+      updateData.chairmanId = await toplantiKullaniciIdCoz(prisma, chairmanEmail ?? chairmanId)
     }
-
-    // Rapporteur - email veya ID ile
-    if (rapporteurEmail !== undefined) {
-      if (typeof rapporteurEmail === 'string' && rapporteurEmail) {
-        const rapporteurUser = await prisma.user.findUnique({
-          where: { email: rapporteurEmail.toLowerCase() },
-          select: { id: true }
-        })
-        updateData.rapporteurId = rapporteurUser?.id || null
-      } else {
-        updateData.rapporteurId = null
-      }
-    } else if (rapporteurId !== undefined) {
-      updateData.rapporteurId = rapporteurId || null
+    if (rapporteurEmail !== undefined || rapporteurId !== undefined) {
+      updateData.rapporteurId = await toplantiKullaniciIdCoz(prisma, rapporteurEmail ?? rapporteurId)
     }
 
     if (department !== undefined) updateData.department = department
@@ -253,8 +243,7 @@ export async function PUT(
 
     return NextResponse.json(updatedMeeting)
   } catch (error) {
-    console.error('Toplantı güncellenirken hata:', error)
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })
+    return toplantiHataYaniti('meetings/[id]/PUT', error)
   }
 }
 
@@ -304,7 +293,6 @@ export async function DELETE(
 
     return NextResponse.json({ message: 'Toplantı silindi' })
   } catch (error) {
-    console.error('Toplantı silinirken hata:', error)
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })
+    return toplantiHataYaniti('meetings/[id]/DELETE', error)
   }
 }

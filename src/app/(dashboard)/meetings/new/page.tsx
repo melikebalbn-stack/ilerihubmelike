@@ -62,7 +62,13 @@ interface AgendaItemInput {
   id: string
   title: string
   description?: string
-  presenterId?: string
+  /**
+   * Sunucunun ÇÖZÜMLENEBİLİR anahtarı — e-posta. Seçicinin `id` alanı LDAP
+   * kaynağında `User.id` DEĞİL (distinguishedName / `ldap_<user>`), doğrudan
+   * gönderilince FK ihlali oluşuyordu. Başkan/raportör alanları da e-posta
+   * gönderiyor; sunucu artık aynı deseni izliyor.
+   */
+  presenterEmail?: string | null
   presenterName?: string
   plannedDuration?: number
 }
@@ -205,7 +211,7 @@ export default function NewMeetingPage() {
       id: generateId(),
       title: newAgendaTitle.trim(),
       description: newAgendaDescription.trim() || undefined,
-      presenterId: newAgendaPresenter?.id,
+      presenterEmail: newAgendaPresenter?.email ?? null,
       presenterName: newAgendaPresenter?.name,
       plannedDuration: newAgendaDuration ? parseInt(newAgendaDuration) : undefined,
     }
@@ -272,7 +278,7 @@ export default function NewMeetingPage() {
         agendaItems: agendaItems.map((item) => ({
           title: item.title,
           description: item.description || null,
-          presenterId: item.presenterId || null,
+          presenterEmail: item.presenterEmail || null,
           presenterName: item.presenterName || null,
           plannedDuration: item.plannedDuration || null,
         })),

@@ -139,15 +139,18 @@ export function sayacIsle(g: SayacGirdi): SayacIsleSonuc {
     // cur===0 ASLA baseline değil (bozuk okuma imzası): prev KORUNUR (undefined olabilir),
     // bayrak çağıran tarafta tüketilmez → gerçek değer dönene dek hayalet üretilmez.
     if (g.cur === 0) return { delta: 0, yeniPrev: g.prev, olay: 'sifir-suphesi' }
+    // ref YOKSA veya ref<=0 → gerçek referans DEĞİL: yalnız baseline kur (delta 0). 0'ı referans
+    // sayıp cur−0 yazmak SAHTE ÜRETİM üretir (pin100 0→5918 olayı). Gerçek gap yalnız ref>0 ile kurtarılır.
     const ref = g.prev !== undefined ? g.prev : g.sonDeger
-    if (ref === undefined) return { delta: 0, yeniPrev: g.cur, olay: 'baseline-tazelendi' }
+    if (ref === undefined || ref <= 0) return { delta: 0, yeniPrev: g.cur, olay: 'baseline-tazelendi' }
     return gapKarar(g.cur, ref, makul)
   }
 
   // İlk okuma (soğuk açılış). Kalıcı sonDeger varsa restart boşluğu KAYIPSIZ kurtarılır.
   if (g.prev === undefined) {
-    // cur===0 veya kalıcı yok → birikmiş sayaç üretim sayılmaz, baseline kurulur.
-    if (g.cur === 0 || g.sonDeger === undefined) return { delta: 0, yeniPrev: g.cur, olay: 'ilk' }
+    // cur===0 VEYA kalıcı sonDeger yok/≤0 → referans yok, birikmiş sayaç üretim sayılmaz: baseline kur.
+    // sonDeger<=0 asla referans değildir (cur−0 = sahte üretim). Gerçek gap yalnız sonDeger>0 ile.
+    if (g.cur === 0 || !g.sonDeger || g.sonDeger <= 0) return { delta: 0, yeniPrev: g.cur, olay: 'ilk' }
     return gapKarar(g.cur, g.sonDeger, makul)
   }
 

@@ -155,6 +155,27 @@ describe('sayacIsle — kalıcı değerden (sonDeger) restart kurtarma', () => {
     expect(r.yeniPrev).toBe(2053)
   })
 
+  it('REF=0 SAHTE ÜRETİM ENGELİ: kalıcı değersiz pin + ilk okuma 5918 → delta 0 (baseline)', () => {
+    // pin100 0→5918 olayı: kalıcı yok → ref yok → cur baseline sayılır, delta ÜRETİLMEZ.
+    const r = sayacIsle({ prev: undefined, cur: 5918, baselineTazele: false, blokGecersiz: false, deltaMakulUst: MAKUL })
+    expect(r.delta).toBe(0)
+    expect(r.olay).toBe('ilk')
+    expect(r.yeniPrev).toBe(5918)
+  })
+
+  it('REF=0 (sonDeger=0) → referans DEĞİL: ilk okuma 5918 → delta 0', () => {
+    const r = sayacIsle({ prev: undefined, cur: 5918, baselineTazele: false, blokGecersiz: false, sonDeger: 0, deltaMakulUst: MAKUL })
+    expect(r.delta).toBe(0)
+    expect(r.olay).toBe('ilk')
+  })
+
+  it('REF=0 reconnect (prev=0) → sahte üretim yok: cur 5918 → delta 0 (baseline-tazelendi)', () => {
+    const r = sayacIsle({ prev: 0, cur: 5918, baselineTazele: true, blokGecersiz: false, deltaMakulUst: MAKUL })
+    expect(r.delta).toBe(0)
+    expect(r.olay).toBe('baseline-tazelendi')
+    expect(r.yeniPrev).toBe(5918)
+  })
+
   it('RESTART BOŞLUĞU KAYIPSIZ: prev yok + sonDeger=1146, cur=1203 → delta 57 (gap-kurtarma)', () => {
     const r = sayacIsle({ prev: undefined, cur: 1203, baselineTazele: false, blokGecersiz: false, sonDeger: 1146, deltaMakulUst: MAKUL })
     expect(r.olay).toBe('gap-kurtarma')

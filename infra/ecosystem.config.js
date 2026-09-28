@@ -38,6 +38,8 @@ module.exports = {
       // IFS TLS: ifscloudtest.ilerigroup.com ara CA'sını (RapidSSL TLS RSA CA G1)
       // sunmuyor; Node kendi kök deposuyla zinciri kuramıyor → "fetch failed".
       // Node sistem CA deposunu (/etc/ssl/certs) okumaz, bu yüzden ek CA şart.
+      // Akademi sertifikası HTML→PDF: Chromium (playwright-core headless_shell).
+      // CHROMIUM_LD_LIBRARY_PATH tarayıcı sürecine geçilir (sistem libatk/… eksik).
       env: { NODE_ENV: 'production', PORT: 3000, NODE_EXTRA_CA_CERTS: '/home/rokunet/certs/rapidssl-tls-rsa-ca-g1.pem', CHROMIUM_PATH: '/home/rokunet/.cache/ms-playwright/chromium_headless_shell-1208/chrome-headless-shell-linux64/chrome-headless-shell', CHROMIUM_LD_LIBRARY_PATH: '/home/rokunet/chrome-libs/root/usr/lib/x86_64-linux-gnu' },
       // SINIR 512M -> 1536M (2026-09-05 gece, SAHA KANITIYLA).
       // 512M degeri, PM2 npm sarmalayicisini (~60 MB) olctugu donemde kondu ve

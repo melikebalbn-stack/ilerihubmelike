@@ -17,7 +17,7 @@ import type { SablonParametre } from '@/lib/rapor/tipler'
 const NAVY = '#1B4F72'
 
 interface Props {
-  sablon: { id: string; kod: string; ad: string; aciklama: string | null; durum: 'TASLAK' | 'YAYINDA' | 'ARSIV' }
+  sablon: { id: string; kod: string; ad: string; aciklama: string | null; durum: 'TASLAK' | 'YAYINDA' | 'ARSIV'; veriSetiAd?: string; teknikAciklama?: string | null }
   parametreler: SablonParametre[]
   tasarlayabilir?: boolean
 }
@@ -105,9 +105,15 @@ export default function RaporCalistirClient({ sablon, parametreler, tasarlayabil
             {sablon.ad}
             {sablon.durum === 'TASLAK' && <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100">Taslak</Badge>}
           </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            <span className="font-mono">{sablon.kod}</span>{sablon.aciklama ? ` · ${sablon.aciklama}` : ''}
-          </p>
+          {/* Kullanıcı açıklaması herkese; teknik satır (veri seti + kaynak) yalnız rapor.tasarla. */}
+          {sablon.aciklama && <p className="text-sm text-muted-foreground mt-1">{sablon.aciklama}</p>}
+          {tasarlayabilir && (
+            <p className="text-xs text-muted-foreground/80 mt-1">
+              <span className="font-mono">{sablon.kod}</span>
+              {sablon.veriSetiAd ? <> · veri seti: <span className="font-mono">{sablon.veriSetiAd}</span></> : null}
+              {sablon.teknikAciklama ? ` · ${sablon.teknikAciklama}` : ''}
+            </p>
+          )}
         </div>
         {tasarlayabilir && (
           <RozetLink href={`/raporlar/tasarim/${sablon.id}`} icon={<PencilRuler className="h-3.5 w-3.5" />}>Tasarımı düzenle</RozetLink>

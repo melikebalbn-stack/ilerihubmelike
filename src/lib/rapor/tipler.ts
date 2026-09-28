@@ -223,6 +223,11 @@ export function tuvalYukseklik(sayfa: TuvalSayfa): number {
 export interface SablonIcerik {
   baslik: string
   altBaslik?: string
+  /**
+   * TEKNİK açıklama (veri seti/kaynak detayı) — yalnız rapor.tasarla yetkisi olana gösterilir.
+   * Kullanıcıya dönük sade açıklama DB'deki RaporSablon.aciklama alanıdır (liste + başlık altı).
+   */
+  teknikAciklama?: string
   /** 'liste' (varsayılan, mevcut kolon tabanlı) | 'tuval' (serbest yerleşim). */
   yerlesim?: 'liste' | 'tuval'
   tuval?: TuvalTasarim
@@ -281,6 +286,8 @@ export interface EtkilesimliIcerik {
   tur: 'etkilesimli'
   baslik: string
   altBaslik?: string
+  /** Bkz. SablonIcerik.teknikAciklama — yalnız tasarımcıya görünür teknik satır. */
+  teknikAciklama?: string
   kategori?: string
   parametreler?: SablonParametre[]
   gorunum: Gorunum

@@ -45,7 +45,7 @@ export default async function RaporCalistirPage({ params }: { params: Promise<{ 
   const icerik = sablon.icerik as unknown as SablonIcerik
   return (
     <RaporCalistirClient
-      sablon={{ id: sablon.id, kod: sablon.kod, ad: sablon.ad, aciklama: sablon.aciklama, durum: sablon.durum }}
+      sablon={{ id: sablon.id, kod: sablon.kod, ad: sablon.ad, aciklama: sablon.aciklama, durum: sablon.durum, veriSetiAd: sablon.veriSeti.ad, teknikAciklama: icerik.teknikAciklama ?? icerik.altBaslik ?? null }}
       parametreler={icerik.parametreler ?? []}
       tasarlayabilir={tasarlayabilir}
     />

@@ -18,7 +18,7 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { DateField } from '@/components/ui/date-field'
 import { NativeSelect } from '@/components/ui/select'
-import { AlertTriangle, FileBarChart2, FileSpreadsheet, GripVertical, Loader2, Play, Plus, Printer, RotateCcw, Save, Sparkles, Undo2, X } from 'lucide-react'
+import { AlertTriangle, ChevronDown, ChevronRight, FileBarChart2, FileSpreadsheet, GripVertical, Loader2, Play, Plus, Printer, RotateCcw, Save, Sparkles, Undo2, X } from 'lucide-react'
 import { gorunumUygula, MAX_GRUP, type GrupDugum, type KolonTipi, type Satir } from '@/lib/rapor/gorunum'
 import { bicimle } from '@/lib/rapor/bicim'
 import { gorunumHtml } from '@/lib/rapor/gorunum-html'
@@ -146,6 +146,11 @@ export default function EtkilesimliRapor({ sablon, icerik, alanlar, tasarlayabil
   const [hata, setHata] = useState<CevrilmisHata | null>(null)
   const [excelIniyor, setExcelIniyor] = useState(false)
   const [kaydediliyor, setKaydediliyor] = useState(false)
+  // Açıklama katmanları: kullanıcıAciklama = RaporSablon.aciklama (herkese), teknikAciklama = icerik (yalnız tasarımcı).
+  const [kullaniciAciklama, setKullaniciAciklama] = useState(sablon.aciklama ?? '')
+  const [teknikAciklama, setTeknikAciklama] = useState(icerik.teknikAciklama ?? icerik.altBaslik ?? '')
+  const [teknikAcik, setTeknikAcik] = useState(false)
+  const aciklamaDegisti = kullaniciAciklama !== (sablon.aciklama ?? '') || teknikAciklama !== (icerik.teknikAciklama ?? icerik.altBaslik ?? '')
   const eksikZorunlu = parametreler.filter((p) => p.zorunlu && !(paramDegerleri[p.ad] ?? '').trim()).map((p) => p.etiket)
 
   const calistir = useCallback(async () => {
@@ -320,9 +325,13 @@ export default function EtkilesimliRapor({ sablon, icerik, alanlar, tasarlayabil
   async function gorunumuKaydet() {
     setKaydediliyor(true)
     try {
-      const d = await apiGonder<{ sablon: { surum: number } }>(`/api/raporlar/sablonlar/${sablon.id}`, 'PUT', { kod: sablon.kod, ad: sablon.ad, aciklama: sablon.aciklama, veriSetiId: sablon.veriSetiId, durum: sablon.durum, izinAnahtari: sablon.izinAnahtari || null, icerik: { ...icerik, gorunum } })
+      const d = await apiGonder<{ sablon: { surum: number } }>(`/api/raporlar/sablonlar/${sablon.id}`, 'PUT', {
+        kod: sablon.kod, ad: sablon.ad, aciklama: kullaniciAciklama.trim() || null, veriSetiId: sablon.veriSetiId,
+        durum: sablon.durum, izinAnahtari: sablon.izinAnahtari || null,
+        icerik: { ...icerik, gorunum, teknikAciklama: teknikAciklama.trim() || undefined },
+      })
       setKayitliGorunum(gorunum); setSurum(d.sablon.surum)
-      toast.success(`Görünüm kaydedildi (sürüm ${d.sablon.surum}) — herkes bu görünümle açar`)
+      toast.success(`Kaydedildi (sürüm ${d.sablon.surum}) — görünüm ve açıklamalar herkeste geçerli`)
     } catch (e) { toast.error([hataMetni(e), ...hataListesi(e)].join(' · ')) }
     finally { setKaydediliyor(false) }
   }
@@ -392,13 +401,34 @@ export default function EtkilesimliRapor({ sablon, icerik, alanlar, tasarlayabil
             {sablon.durum === 'TASLAK' && <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100">Taslak</Badge>}
             <Badge variant="outline" className="font-normal">sürüm {surum}</Badge>
           </h1>
-          <p className="text-sm text-muted-foreground mt-1"><span className="font-mono">{sablon.kod}</span> · veri seti: <span className="font-mono">{sablon.veriSetiAd}</span>{icerik.altBaslik ? ` · ${icerik.altBaslik}` : ''}</p>
+          {/* Kullanıcı açıklaması herkese görünür; teknik satır (veri seti + kaynak) yalnız rapor.tasarla. */}
+          {kullaniciAciklama && <p className="text-sm text-muted-foreground mt-1">{kullaniciAciklama}</p>}
+          {tasarlayabilir && (
+            <div className="mt-1">
+              <button type="button" onClick={() => setTeknikAcik((a) => !a)} className="text-xs text-muted-foreground/80 hover:text-foreground inline-flex items-center gap-1">
+                {teknikAcik ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}Teknik detay
+                <span className="font-mono">{sablon.kod}</span> · veri seti: <span className="font-mono">{sablon.veriSetiAd}</span>
+                {teknikAciklama ? ` · ${teknikAciklama}` : ''}
+              </button>
+              {teknikAcik && (
+                <div className="mt-2 grid gap-2 sm:grid-cols-2 max-w-3xl">
+                  <label className="text-xs text-muted-foreground">Kullanıcı açıklaması (herkese görünür)
+                    <Input value={kullaniciAciklama} onChange={(e) => setKullaniciAciklama(e.target.value)} maxLength={500} className="mt-1 h-8 text-sm" placeholder="Raporun ne işe yaradığı, sade cümle" />
+                  </label>
+                  <label className="text-xs text-muted-foreground">Teknik açıklama (yalnız tasarımcıya)
+                    <Input value={teknikAciklama} onChange={(e) => setTeknikAciklama(e.target.value)} maxLength={500} className="mt-1 h-8 text-sm" placeholder="Veri seti / IFS kaynak detayı" />
+                  </label>
+                  <p className="text-[11px] text-muted-foreground/80 sm:col-span-2">Değişiklikler “Kaydet” ile birlikte yazılır.</p>
+                </div>
+              )}
+            </div>
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" size="sm" onClick={yazdir} disabled={!veri} title="Mevcut görünümü A4 olarak yazdır / PDF kaydet"><Printer className="h-4 w-4 mr-1.5" />PDF / Yazdır</Button>
           <Button variant="outline" size="sm" onClick={excelIndir} disabled={!veri || excelIniyor}>{excelIniyor ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <FileSpreadsheet className="h-4 w-4 mr-1.5" />}Excel</Button>
           <Button variant="outline" size="sm" onClick={varsayilanaDon} disabled={!degisti} title="Kayıtlı görünüme dön"><RotateCcw className="h-4 w-4 mr-1.5" />Varsayılana dön</Button>
-          {tasarlayabilir && <Button size="sm" onClick={gorunumuKaydet} disabled={!degisti || kaydediliyor} style={{ backgroundColor: CYAN, color: '#06222C' }} className="font-semibold">{kaydediliyor ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Save className="h-4 w-4 mr-1.5" />}Görünümü kaydet</Button>}
+          {tasarlayabilir && <Button size="sm" onClick={gorunumuKaydet} disabled={(!degisti && !aciklamaDegisti) || kaydediliyor} style={{ backgroundColor: CYAN, color: '#06222C' }} className="font-semibold">{kaydediliyor ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Save className="h-4 w-4 mr-1.5" />}Görünümü kaydet</Button>}
           {tasarlayabilir && <RozetLink href="/raporlar/veri-setleri" className="text-xs">Veri setleri</RozetLink>}
         </div>
       </div>

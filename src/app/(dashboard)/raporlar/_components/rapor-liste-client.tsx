@@ -102,6 +102,7 @@ export default function RaporListeClient() {
       {s.durum !== 'YAYINDA' && <Badge className={DURUM_ETIKET[s.durum].sinif}>{DURUM_ETIKET[s.durum].metin}</Badge>}
     </span>
   )
+  const tasarlayabilir = cevap?.tasarlayabilir ?? false
   const kart = (s: Sablon) => (
     <Link key={s.id} href={`/raporlar/${s.id}`} className="group focus:outline-none">
       <Card className="h-full transition-shadow group-hover:shadow-md group-focus-visible:ring-2 group-focus-visible:ring-ring">
@@ -114,7 +115,7 @@ export default function RaporListeClient() {
             <h3 className="font-semibold leading-snug" style={{ color: NAVY }}>{s.ad}</h3>
             {s.aciklama && <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{s.aciklama}</p>}
           </div>
-          <p className="text-[11px] text-muted-foreground flex items-center gap-1"><Database className="h-3 w-3" />{s.veriSetiAd} · {tarihMetni(s.guncellenme)}</p>
+          <p className="text-[11px] text-muted-foreground flex items-center gap-1">{tasarlayabilir && <><Database className="h-3 w-3" />{s.veriSetiAd} · </>}{tarihMetni(s.guncellenme)}</p>
         </CardContent>
       </Card>
     </Link>
@@ -125,7 +126,7 @@ export default function RaporListeClient() {
       <span className="font-mono text-xs text-muted-foreground w-24 shrink-0">{s.kod}</span>
       <span className="font-medium truncate" style={{ color: NAVY }}>{s.ad}</span>
       <span className="text-muted-foreground truncate hidden md:inline flex-1">{s.aciklama}</span>
-      <span className="text-[11px] text-muted-foreground hidden lg:inline shrink-0">{s.veriSetiAd}</span>
+      {tasarlayabilir && <span className="text-[11px] text-muted-foreground hidden lg:inline shrink-0">{s.veriSetiAd}</span>}
       {rozetler(s)}
       <span className="text-[11px] text-muted-foreground w-20 text-right shrink-0">{tarihMetni(s.guncellenme)}</span>
     </Link>

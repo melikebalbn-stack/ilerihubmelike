@@ -114,6 +114,8 @@ export default function SablonTasarimClient({ veriSetleri, kategoriler = [], mev
   const [veriSetiId, setVeriSetiId] = useState(mevcut?.veriSetiId ?? '')
   const [durum, setDurum] = useState<'TASLAK' | 'YAYINDA'>(mevcut?.durum === 'YAYINDA' ? 'YAYINDA' : 'TASLAK')
   const [altBaslik, setAltBaslik] = useState(ic?.altBaslik ?? '')
+  // Teknik açıklama: yalnız rapor.tasarla yetkisi olana gösterilen kaynak/veri seti notu (icerik JSON'unda).
+  const [teknikAciklama, setTeknikAciklama] = useState(ic?.teknikAciklama ?? '')
   const [kategori, setKategori] = useState(ic?.kategori ?? '')
   const [kaydediliyor, setKaydediliyor] = useState(false)
   const [kayitHata, setKayitHata] = useState<CevrilmisHata | null>(null)
@@ -161,6 +163,7 @@ export default function SablonTasarimClient({ veriSetleri, kategoriler = [], mev
   const icerik = useMemo<SablonIcerik>(() => ({
     baslik: ad.trim() || 'Rapor',
     altBaslik: altBaslik.trim() || undefined,
+    teknikAciklama: teknikAciklama.trim() || undefined,
     kategori: kategori.trim() || undefined,
     parametreler,
     hesaplananAlanlar: hesaplananlar,
@@ -168,7 +171,7 @@ export default function SablonTasarimClient({ veriSetleri, kategoriler = [], mev
     kolonlar,
     genelToplam,
     sayfaAlti: sayfaAltiSol || sayfaAltiSag ? { sol: sayfaAltiSol || undefined, sag: sayfaAltiSag || undefined } : undefined,
-  }), [ad, altBaslik, kategori, parametreler, hesaplananlar, gruplar, kolonlar, genelToplam, sayfaAltiSol, sayfaAltiSag])
+  }), [ad, altBaslik, teknikAciklama, kategori, parametreler, hesaplananlar, gruplar, kolonlar, genelToplam, sayfaAltiSol, sayfaAltiSag])
 
   // ── Kolon işlemleri ───────────────────────────────────────────────────
   function kolonEkle(alan: string) {
@@ -316,7 +319,8 @@ export default function SablonTasarimClient({ veriSetleri, kategoriler = [], mev
           </div>
           <div className="space-y-1.5"><Label htmlFor="s-alt">Alt başlık</Label><Input id="s-alt" value={altBaslik} onChange={(e) => setAltBaslik(e.target.value)} /></div>
           <div className="space-y-1.5"><Label htmlFor="s-kat">Kategori</Label><Input id="s-kat" list="kategori-onerileri" value={kategori} onChange={(e) => setKategori(e.target.value)} placeholder="Üretim" /><datalist id="kategori-onerileri">{kategoriler.map((k) => <option key={k} value={k} />)}</datalist></div>
-          <div className="space-y-1.5 sm:col-span-2 xl:col-span-7"><Label htmlFor="s-aciklama">Açıklama (listede görünür)</Label><Input id="s-aciklama" value={aciklama} onChange={(e) => setAciklama(e.target.value)} /></div>
+          <div className="space-y-1.5 sm:col-span-2 xl:col-span-4"><Label htmlFor="s-aciklama">Kullanıcı açıklaması (listede ve rapor başlığının altında)</Label><Input id="s-aciklama" value={aciklama} onChange={(e) => setAciklama(e.target.value)} maxLength={500} placeholder="Raporun ne işe yaradığı, sade cümle" /></div>
+          <div className="space-y-1.5 sm:col-span-2 xl:col-span-3"><Label htmlFor="s-teknik">Teknik açıklama (yalnız tasarımcıya)</Label><Input id="s-teknik" value={teknikAciklama} onChange={(e) => setTeknikAciklama(e.target.value)} maxLength={500} placeholder="Veri seti / IFS kaynak detayı" /></div>
         </CardContent>
       </Card>
       <HataKutusu hata={kayitHata} maddeler={kayitHatalari} />

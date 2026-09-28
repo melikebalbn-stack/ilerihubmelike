@@ -27,6 +27,22 @@ async function loadRecordWithAccessCheck(id: string, userId: string) {
   // sorumlu karara bağlayana kadar VE İV onaylayana kadar düzenlenebilir.
   // Kayıt EKİBİ için girilmişse (onay akışı yok, direkt onaylı), sadece İV
   // onaylayana kadar düzenlenebilir.
+  // GÜVENLİK: yalnız KENDİ açtığı ve AMİR kararı henüz verilmemiş (BEKLIYOR) kayıt — karar sonrası
+  // değişiklik onayın arkasından veriyi değiştirirdi.
+  if (access.level === 'GUVENLIK') {
+    if (record.createdById !== userId) {
+      return { error: NextResponse.json({ error: 'Bu kaydı düzenleme yetkiniz yok' }, { status: 403 }) }
+    }
+    if (record.onayDurumu !== 'BEKLIYOR' || record.ivOnaylandi) {
+      return {
+        error: NextResponse.json(
+          { error: 'Amir kararı verilmiş bir kayıt artık düzenlenemez veya silinemez' },
+          { status: 403 }
+        ),
+      }
+    }
+  }
+
   if (access.level === 'GRI' || access.level === 'SELF') {
     if (record.createdById !== userId) {
       return { error: NextResponse.json({ error: 'Bu kaydı düzenleme yetkiniz yok' }, { status: 403 }) }
@@ -74,6 +90,10 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     const access = await getBulkCardScanAccess(user.id)
+    // GÜVENLİK kişiyi değiştiremez: onaycılar o kişinin amirlerinden çözüldü — sil + yeniden aç.
+    if (access.level === 'GUVENLIK' && personnelId && personnelId !== record!.personnelId) {
+      return NextResponse.json({ error: 'Personel değiştirilemez; kaydı silip doğru kişi için yeniden açın' }, { status: 400 })
+    }
     if ((access.level === 'GRI' || access.level === 'SELF') && personnelId && personnelId !== record!.personnelId) {
       const managedIds =
         access.scopePersonnelIds ??

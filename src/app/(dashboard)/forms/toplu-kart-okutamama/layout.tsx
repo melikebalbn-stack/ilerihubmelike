@@ -2,6 +2,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { redirect } from "next/navigation"
 import { getBulkCardScanAccess } from "@/app/api/toplu-kart-okutamama/_lib/access"
+import { GuvenlikKartClient } from "./_components/guvenlik-client"
 
 /**
  * Toplu Kart Okutamama modülü erişim guard'ı (server component).
@@ -24,6 +25,10 @@ export default async function TopluKartOkutamamaLayout({
   const access = await getBulkCardScanAccess(session.user.id)
   if (access.level === "NONE") {
     redirect("/")
+  }
+  // GÜVENLİK (28.09, İV): ayrı, sade görünüm — tam form (toplu/import/İV onayı/istatistik) gösterilmez.
+  if (access.level === "GUVENLIK") {
+    return <GuvenlikKartClient />
   }
 
   return <>{children}</>

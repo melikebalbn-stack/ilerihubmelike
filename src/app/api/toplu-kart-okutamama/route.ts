@@ -82,7 +82,10 @@ export async function GET(request: NextRequest) {
     if (ivDurum === 'onaylandi') where.ivOnaylandi = true
     else if (ivDurum === 'bekliyor') where.ivOnaylandi = false
 
-    if (kapsam === 'kendi') {
+    if (access.level === 'GUVENLIK') {
+      // GÜVENLİK: kapsam parametresinden BAĞIMSIZ — yalnız KENDİ AÇTIĞI kayıtlar (tüm statüler).
+      where.createdById = user.id
+    } else if (kapsam === 'kendi') {
       // "Geçmiş Kayıtlarım": YALNIZ kişinin KENDİ kayıtları (personnelId = kendisi),
       // erişim seviyesinden bağımsız (FULL dahil). Tüm statüler (kendi BEKLIYOR dahil).
       where.personnelId = access.personnelId ?? '__none__'
@@ -181,7 +184,8 @@ export async function POST(request: NextRequest) {
     }
 
     // GRI/SELF: kendi adına, ya da (varsa) 1./2./3. Sorumlusu olduğu kişiler
-    // için kayıt açabilir — başkası için açamaz. Full'da kısıtlama yok.
+    // için kayıt açabilir — başkası için açamaz. Full'da ve GÜVENLİK'te kısıtlama yok
+    // (güvenlik herhangi bir aktif personel adına açar; kayıt AMİR onayına gider).
     if ((access.level === 'GRI' || access.level === 'SELF') && personnelId !== access.personnelId) {
       // Bölüm hesabında kapsam hazır gelir (scopePersonnelIds); kişiye bağlı
       // kullanıcıda eskisi gibi çağrı anında Sorumlu alanlarından çözülür.
@@ -225,7 +229,8 @@ export async function POST(request: NextRequest) {
     // aynı yardımcıyı çağırır). MUAFİYET (2026-08) kuralı da orada.
     const { onayDurumu, approverId, approverId2, approverId3 } = await onayKarariBelirle(
       personnel.id,
-      access.personnelId
+      access.personnelId,
+      { guvenlik: access.level === 'GUVENLIK' }
     )
 
     const record = await prisma.bulkCardScanFailure.create({

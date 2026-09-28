@@ -1,8 +1,12 @@
 import { prisma } from '@/lib/prisma'
 import { isIvBolumuFk } from '@/lib/auth/iv-bolum-fk'
 import { getManagedPersonnelIds } from '@/lib/onay/yonetici-cozumu'
+import { getUserPermissions } from '@/lib/auth/get-user-permissions'
 
-export type BulkCardScanAccessLevel = 'NONE' | 'FULL' | 'GRI' | 'SELF'
+export type BulkCardScanAccessLevel = 'NONE' | 'FULL' | 'GRI' | 'SELF' | 'GUVENLIK'
+
+/** Güvenlik personeli (28.09, İV): herhangi bir personel adına kayıt açar → AMİR → İV. */
+export const GUVENLIK_IZNI = 'kart_okutamama.guvenlik'
 
 export interface BulkCardScanAccess {
   level: BulkCardScanAccessLevel
@@ -51,6 +55,12 @@ export async function getBulkCardScanAccess(userId: string): Promise<BulkCardSca
   // FAZ 3a: karar Personnel.departmentId FK'sından; FK boşsa eski normalize yolu.
   if (await isIvBolumuFk(user?.personnel?.departmentId, bolum)) {
     return { level: 'FULL', personnelId, bolum, scopePersonnelIds: null }
+  }
+  // GÜVENLİK (28.09, İV): rol yönetim ekranından verilen kart_okutamama.guvenlik izni. Yakadan ve
+  // Personnel bağından ÖNCE bakılır — personelli (mavi yaka dahil) ve personelsiz hesapta aynı çalışır.
+  // Yalnız kayıt açar + KENDİ açtıklarını görür; kayıt her zaman AMİR onayına gider (approvers.ts).
+  if ((await getUserPermissions(userId)).has(GUVENLIK_IZNI)) {
+    return { level: 'GUVENLIK', personnelId, bolum, scopePersonnelIds: null }
   }
   // MAVI -> forma erişemez.
   if (yakaRengi === 'MAVI') {

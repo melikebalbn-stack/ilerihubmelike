@@ -82,7 +82,7 @@ export async function POST(request: NextRequest) {
     if (error) return error
 
     const access = await getBulkCardScanAccess(user.id)
-    if (access.level === 'NONE' || access.level === 'SELF') {
+    if (access.level === 'NONE' || access.level === 'SELF' || access.level === 'GUVENLIK') {
       return NextResponse.json({ error: 'Bu forma erişim yetkiniz yok' }, { status: 403 })
     }
 

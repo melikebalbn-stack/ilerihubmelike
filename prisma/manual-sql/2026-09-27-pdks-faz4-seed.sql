@@ -18,7 +18,8 @@ ON CONFLICT (kod) DO NOTHING;
 
 INSERT INTO pdks_vardiya_mola (id, "vardiyaId", tur, baslangic, bitis, dusulur, "departmentId", aktif, "updatedAt")
 VALUES
-  ('pdksm_beyaz_yemek', 'pdksv_beyaz_gunduz', 'YEMEK', '12:00', '13:00', true,  NULL, true, now()),
+  -- 28.09 İV: molalar puantajı ETKİLEMEZ → yemek de düşülmez (2026-09-28-pdks-iv-kurallari.sql).
+  ('pdksm_beyaz_yemek', 'pdksv_beyaz_gunduz', 'YEMEK', '12:00', '13:00', false, NULL, true, now()),
   ('pdksm_beyaz_cay1',  'pdksv_beyaz_gunduz', 'CAY',   '10:00', '10:15', false, NULL, true, now()),
   ('pdksm_beyaz_cay2',  'pdksv_beyaz_gunduz', 'CAY',   '15:00', '15:15', false, NULL, true, now()),
   ('pdksm_mavi_cay1',   'pdksv_mavi_gunduz',  'CAY',   '10:00', '10:15', false, NULL, true, now()),

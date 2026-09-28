@@ -31,7 +31,8 @@ export interface OnayKarari {
  */
 export async function onayKarariBelirle(
   personnelId: string,
-  gonderenPersonnelId: string | null
+  gonderenPersonnelId: string | null,
+  o: { guvenlik?: boolean } = {}
 ): Promise<OnayKarari> {
   const bos: OnayKarari = {
     onayDurumu: 'ONAYLANDI',
@@ -39,8 +40,13 @@ export async function onayKarariBelirle(
     approverId2: null,
     approverId3: null,
   }
-  if (!gonderenPersonnelId || personnelId !== gonderenPersonnelId) return bos
-  if (await selfEntryOnaydanMuafMi(personnelId)) return bos
+  // GÜVENLİK (28.09, İV): güvenliğin açtığı kayıt "başkası adına → ONAYLANDI" kuralından ÇIKAR —
+  // her zaman BEKLIYOR + personelin AMİRLERİ. Müdür muafiyeti UYGULANMAZ (o, kişinin KENDİ girişi içindir).
+  // Amir çözülemezse orphan (BEKLIYOR, onaycısız) → İ.V. Müdürü bilgilendirilir (çağıran).
+  if (!o.guvenlik) {
+    if (!gonderenPersonnelId || personnelId !== gonderenPersonnelId) return bos
+    if (await selfEntryOnaydanMuafMi(personnelId)) return bos
+  }
 
   const resolved = await resolveApprovers(personnelId)
   return {

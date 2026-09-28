@@ -200,6 +200,9 @@ export const PERMISSION_KEYS = {
   // === PDKS (Personel Devam Kontrol — Hikvision ISAPI) ===
   PDKS_VIEW: 'pdks.view',
   PDKS_MANAGE: 'pdks.manage',
+  // Kart Okutamama — güvenlik personeli (28.09, İV): herhangi bir personel adına kayıt açar → AMİR → İV.
+  // Yalnız kayıt açma + kendi açtıklarını görme. Rol yönetim ekranından atanır (rol: guvenlik).
+  KART_OKUTAMAMA_GUVENLIK: 'kart_okutamama.guvenlik',
 
   // === İZİN MODÜLÜ (27.09) — eski izin.* anahtarları SAHİPLENİLDİ (Melih): izin.admin = İV yönetimi
   // (yukarıda, mevcut rol bağlarıyla: hr-yoneticisi + super-admin). izin.create / izin.approve KULLANILMAZ —

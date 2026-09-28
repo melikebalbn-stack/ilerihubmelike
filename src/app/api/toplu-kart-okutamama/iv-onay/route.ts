@@ -30,9 +30,25 @@ export async function POST(request: NextRequest) {
 
     const records = await prisma.bulkCardScanFailure.findMany({
       where: { id: { in: ids } },
-      select: { id: true, ivOnaylandi: true },
+      select: { id: true, ivOnaylandi: true, onayDurumu: true },
     })
     const recordMap = new Map(records.map((r) => [r.id, r]))
+
+    // İV onayı AMİR kararından SONRA (28.09, İV): seçimde amir kararı ONAYLANDI olmayan kayıt varsa
+    // HİÇBİRİ onaylanmaz → 409 + hangi kaydın neden engellendiği (kısmi İV onayı yok).
+    const amirEngeli = ids
+      .map((id) => recordMap.get(id))
+      .filter((r): r is NonNullable<typeof r> => !!r && !r.ivOnaylandi && r.onayDurumu !== 'ONAYLANDI')
+      .map((r) => ({
+        id: r.id,
+        message: r.onayDurumu === 'REDDEDILDI' ? 'Amir reddetti — İV onayı verilemez' : 'Amir onayı bekleniyor — İV onayı amir kararından sonra verilir',
+      }))
+    if (amirEngeli.length > 0) {
+      return NextResponse.json(
+        { error: `${amirEngeli.length} kayıtta amir kararı yok ya da red — İV onayı amir onayından sonra verilir; hiçbir kayıt onaylanmadı`, errors: amirEngeli },
+        { status: 409 },
+      )
+    }
 
     let approved = 0
     const errors: { id: string; message: string }[] = []
@@ -48,6 +64,7 @@ export async function POST(request: NextRequest) {
         errors.push({ id, message: 'Bu kayıt zaten İV onaylı' })
         continue
       }
+
       toApprove.push(id)
     }
 

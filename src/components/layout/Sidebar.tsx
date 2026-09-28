@@ -775,6 +775,10 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   // admin rol VEYA İnsan Varlıkları departmanı. "Görünüyorsa girebilir" tutarlılığı.
   const canSeeIk = canAccessPersonnel(userRole, userDepartment)
   const userPermissions = session?.user?.permissions || []
+  // GÜVENLİK (28.09, İV): kart_okutamama.guvenlik izinli hesap menüde YALNIZ Kart Okutamama'yı görür
+  // (tam kilit değil — /dashboard middleware'de forma yönlenir). İV kullanıcısı bu izni taşısa da tam menü.
+  const guvenlikModu = userPermissions.includes("kart_okutamama.guvenlik") && !canSeeIk
+  const guvenlikKartItem = { name: "Kart Okutamama", icon: ClipboardList, href: "/forms/toplu-kart-okutamama", roles: ["*"] }
   const userOu = session?.user?.ou || ''
   // QDMS (Kalite Yönetim) menü görünürlüğü — layout + API guard'ıyla AYNI koşul:
   // kalite ekibi/admin (canAccessKalite) VEYA qdms.view permission.
@@ -1306,7 +1310,9 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
 
       {/* Navigation */}
       <nav className="flex-1 space-y-1 overflow-y-auto p-4 sidebar-dark-nav">
-        {isSearching ? (
+        {guvenlikModu ? (
+          renderMenuItem(guvenlikKartItem as unknown as (typeof mainMenuItems)[number])
+        ) : isSearching ? (
           /* Arama modu: gruplama/collapse mantığına DOKUNULMAZ — ağaç yalnızca
              gizlenir, eşleşenler düz liste olarak gösterilir. */
           searchResults.length > 0 ? (

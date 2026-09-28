@@ -636,6 +636,10 @@ export default function TopluKartOkutamamaPage() {
       if (res.ok) {
         setSelectedIvIds(new Set())
         loadRecords()
+      } else {
+        // 409: seçimde amir kararı olmayan kayıt var (İV onayı amir onayından sonra) — açıklamayı göster.
+        const d = await res.json().catch(() => ({}))
+        window.alert(d.error ?? "İV onayı işlenemedi")
       }
     } finally {
       setIvApproving(false)

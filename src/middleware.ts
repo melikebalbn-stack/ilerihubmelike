@@ -39,6 +39,18 @@ export async function middleware(req: NextRequest) {
   //     host'u publicBase(req)'e taşındı (req.url DEĞİL).
   // Not: /tasks tüm kullanıcılara açık - sayfa içinde viewMode ile kişisel/departman filtreleme yapılıyor
   // Not: /calibration tüm kullanıcılara açık - yazma yetkileri API ve frontend'de kontrol ediliyor
+  // GÜVENLİK (28.09, İV): kart_okutamama.guvenlik izinli hesap açılışta ana sayfa yerine Kart Okutamama'ya
+  // gider. TAM KİLİT DEĞİL (Melih 28.09: menü + /dashboard yönlendirmesi yeterli); İV departmanındaysa
+  // (erişimi FULL kalır) yönlendirilmez.
+  const perms = (token?.permissions as string[] | undefined) ?? [];
+  if (
+    (path === '/dashboard' || path.startsWith('/dashboard/')) &&
+    perms.includes('kart_okutamama.guvenlik') &&
+    !isInsanVarliklari((token?.department as string) || '')
+  ) {
+    return NextResponse.redirect(new URL('/forms/toplu-kart-okutamama', publicBase(req)));
+  }
+
   const roleRequirements: Record<string, string[]> = {
     '/settings': ['ADMIN', 'SUPER_ADMIN', 'QUALITY_MANAGER'],
     '/fire-safety': ['ADMIN', 'SUPER_ADMIN', 'QUALITY_MANAGER'],

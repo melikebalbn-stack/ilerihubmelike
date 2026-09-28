@@ -32,7 +32,8 @@ export async function GET(request: Request) {
     if (error) return error
 
     const access = await getBulkCardScanAccess(user.id)
-    if (access.level === 'NONE') {
+    // GÜVENLİK: yalnız kayıt açma + kendi açtıklarını görme — export/istatistik YOK.
+    if (access.level === 'NONE' || access.level === 'GUVENLIK') {
       return NextResponse.json({ error: 'Bu forma erişim yetkiniz yok' }, { status: 403 })
     }
 

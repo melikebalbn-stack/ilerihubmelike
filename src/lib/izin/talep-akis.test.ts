@@ -18,18 +18,21 @@ const db = vi.hoisted(() => ({
   seq: 0,
   mailler: [] as { fn: string; args: unknown[] }[],
   pdks: [] as { personnelId: string; bas: string; bit: string }[],
+  izinler: {} as Record<string, string[]>,
+  dosyalar: new Map<string, Uint8Array>(),
 }))
 
 vi.mock('@/lib/prisma', () => {
   const tarihMi = (x: unknown): x is Date => x instanceof Date
   const esit = (a: unknown, b: unknown) => (tarihMi(a) && tarihMi(b) ? a.getTime() === b.getTime() : a === b)
   const kiyas = (a: unknown, b: unknown) => (tarihMi(a) ? a.getTime() : (a as number)) - (tarihMi(b) ? b.getTime() : (b as number))
-  const OPS = ['in', 'not', 'gt', 'gte', 'lt', 'lte', 'contains', 'some']
+  const OPS = ['in', 'not', 'gt', 'gte', 'lt', 'lte', 'contains', 'some', 'has']
   const uyar = (row: Row, where: Row | undefined): boolean => {
     if (!where) return true
     return Object.entries(where).every(([k, v]) => {
       if (k === 'OR') return (v as Row[]).some((w) => uyar(row, w))
       if (k === 'AND') return (v as Row[]).every((w) => uyar(row, w))
+      if (k === 'NOT') return !uyar(row, v as Row)
       const x = row[k]
       if (v && typeof v === 'object' && !tarihMi(v) && !Array.isArray(v)) {
         const o = v as Row
@@ -41,6 +44,7 @@ vi.mock('@/lib/prisma', () => {
           if ('lt' in o && !(x !== null && x !== undefined && kiyas(x, o.lt) < 0)) return false
           if ('lte' in o && !(x !== null && x !== undefined && kiyas(x, o.lte) <= 0)) return false
           if ('some' in o && !((x as Row[]) ?? []).some((y) => uyar(y, o.some as Row))) return false
+          if ('has' in o && !((x as unknown[]) ?? []).includes(o.has)) return false
           return true
         }
         return x && typeof x === 'object' ? uyar(x as Row, o) : false
@@ -57,7 +61,15 @@ vi.mock('@/lib/prisma', () => {
         return { ...p, department: null, user: db.t.user.find((u) => u.personnelId === p.id) ?? null }
       })(),
       onaylar: db.t.izinOnay.filter((o) => o.talepId === r.id).sort((a, b) => (a.createdAt as Date).getTime() - (b.createdAt as Date).getTime()),
+      belgeler: (db.t.izinBelge ?? []).filter((b) => b.talepId === r.id),
+      gunler: (db.t.izinTalepGun ?? []).filter((g) => g.talepId === r.id),
+      erkenDonus: (db.t.izinErkenDonus ?? []).find((e) => e.talepId === r.id) ?? null,
+      _count: { belgeler: (db.t.izinBelge ?? []).filter((b) => b.talepId === r.id).length },
     }),
+    izinTalepGun: (r) => ({ ...r, talep: zengin.izinTalep(db.t.izinTalep.find((t) => t.id === r.talepId)!) }),
+    izinBelge: (r) => ({ ...r, talep: zengin.izinTalep(db.t.izinTalep.find((t) => t.id === r.talepId)!) }),
+    izinErkenDonus: (r) => ({ ...r, personnel: db.t.personnel.find((p) => p.id === r.personnelId), talep: zengin.izinTalep(db.t.izinTalep.find((t) => t.id === r.talepId)!) }),
+    pdksPuantajGun: (r) => ({ ...r, izinTalep: r.izinTalepId ? zengin.izinTalep(db.t.izinTalep.find((t) => t.id === r.izinTalepId)!) : null }),
     izinOnay: (r) => ({ ...r, talep: zengin.izinTalep(db.t.izinTalep.find((t) => t.id === r.talepId)!) }),
     personnel: (r) => ({
       ...r, department: null, user: db.t.user.find((u) => u.personnelId === r.id) ?? null,
@@ -65,25 +77,48 @@ vi.mock('@/lib/prisma', () => {
     }),
   }
   const oku = (m: string, r: Row) => (zengin[m] ? zengin[m](r) : r)
+  // Eşleşme ZENGİN satır üzerinde (ilişki filtreleri: talep: {durum}, NOT: {tur: {kod}}); dönüş de zengin.
+  const es = (m: string, x: Row, w?: Row) => uyar(oku(m, x), w)
   const model = (m: string) => ({
-    findUnique: async ({ where }: { where: Row }) => { const r = (db.t[m] ?? []).find((x) => uyar(x, where)); return r ? oku(m, r) : null },
-    findUniqueOrThrow: async ({ where }: { where: Row }) => { const r = (db.t[m] ?? []).find((x) => uyar(x, where)); if (!r) throw new Error(`${m} yok`); return oku(m, r) },
-    findFirst: async ({ where }: { where?: Row } = {}) => { const r = (db.t[m] ?? []).find((x) => uyar(x, where)); return r ? oku(m, r) : null },
-    findMany: async ({ where }: { where?: Row } = {}) => (db.t[m] ?? []).filter((x) => uyar(x, where)).map((r) => oku(m, r)),
-    count: async ({ where }: { where?: Row } = {}) => (db.t[m] ?? []).filter((x) => uyar(x, where)).length,
+    findUnique: async ({ where }: { where: Row }) => { const r = (db.t[m] ?? []).find((x) => es(m, x, where)); return r ? oku(m, r) : null },
+    findUniqueOrThrow: async ({ where }: { where: Row }) => { const r = (db.t[m] ?? []).find((x) => es(m, x, where)); if (!r) throw new Error(`${m} yok`); return oku(m, r) },
+    findFirst: async ({ where }: { where?: Row } = {}) => { const r = (db.t[m] ?? []).find((x) => es(m, x, where)); return r ? oku(m, r) : null },
+    findMany: async ({ where }: { where?: Row } = {}) => (db.t[m] ?? []).filter((x) => es(m, x, where)).map((r) => oku(m, r)),
+    count: async ({ where }: { where?: Row } = {}) => (db.t[m] ?? []).filter((x) => es(m, x, where)).length,
     create: async ({ data }: { data: Row }) => { const r = { id: `${m}-${++db.seq}`, createdAt: new Date(Date.now() + db.seq), ...data }; (db.t[m] ??= []).push(r); return r },
-    createMany: async ({ data }: { data: Row[] }) => { for (const d of data) (db.t[m] ??= []).push({ id: `${m}-${++db.seq}`, createdAt: new Date(), ...d }); return { count: data.length } },
-    updateMany: async ({ where, data }: { where: Row; data: Row }) => { const rs = (db.t[m] ?? []).filter((x) => uyar(x, where)); rs.forEach((r) => Object.assign(r, data)); return { count: rs.length } },
+    createMany: async ({ data, skipDuplicates }: { data: Row[]; skipDuplicates?: boolean }) => {
+      let n = 0
+      for (const d of data) {
+        if (skipDuplicates && m === 'izinErkenDonus' && (db.t[m] ?? []).some((x) => x.talepId === d.talepId)) continue
+        ;(db.t[m] ??= []).push({ id: `${m}-${++db.seq}`, createdAt: new Date(), ...d })
+        n++
+      }
+      return { count: n }
+    },
+    updateMany: async ({ where, data }: { where: Row; data: Row }) => { const rs = (db.t[m] ?? []).filter((x) => es(m, x, where)); rs.forEach((r) => Object.assign(r, data)); return { count: rs.length } },
     // Defter ve talep için DELETE YOK (trigger / kural) — sahte istemcide de tanımlanmaz.
   })
   const prisma: Record<string, unknown> = {}
-  for (const m of ['user', 'personnel', 'personnelSensitive', 'izinTuru', 'izinTalep', 'izinOnay', 'izinTalepGun', 'izinBakiyeHareketi', 'systemSetting', 'iproTatil']) prisma[m] = model(m)
-  prisma.$transaction = async (fn: (tx: unknown) => unknown) => fn(prisma)
+  for (const m of [
+    'user', 'personnel', 'personnelSensitive', 'izinTuru', 'izinTalep', 'izinOnay', 'izinTalepGun', 'izinBakiyeHareketi', 'systemSetting', 'iproTatil',
+    'izinBelge', 'izinErkenDonus', 'pdksPuantajGun', 'personnelAccessLog', 'permissionAuditLog',
+  ]) prisma[m] = model(m)
+  prisma.$transaction = async (a: unknown) => (Array.isArray(a) ? Promise.all(a) : (a as (tx: unknown) => unknown)(prisma))
   return { prisma }
 })
 vi.mock('@/lib/audit-log', () => ({ logAuditEvent: async () => ({ ok: true }), SISTEM_AKTOR_ID: 'sistem' }))
 vi.mock('@/lib/pdks/puantaj-servis', () => ({ bugunStr: () => '2026-10-01', gunuHesapla: async () => ({ yazilan: 0, kilitliAtlanan: 0 }) }))
-vi.mock('@/lib/auth/get-user-permissions', () => ({ getUserPermissions: async () => new Set() }))
+vi.mock('@/lib/auth/get-user-permissions', () => ({ getUserPermissions: async (id: string) => new Set(db.izinler[id] ?? []) }))
+vi.mock('./belge-depo', async (orj) => ({
+  ...(await orj<typeof import('./belge-depo')>()),
+  belgeYaz: (talepId: string, icerik: Uint8Array, uzanti: string) => {
+    const dosyaAdi = `${talepId}-${String(db.dosyalar.size).padStart(16, '0')}.${uzanti}`
+    db.dosyalar.set(dosyaAdi, icerik)
+    return { dosyaAdi, sha256: 'x'.repeat(64), boyut: icerik.length }
+  },
+  belgeOku: (ad: string) => Buffer.from(db.dosyalar.get(ad) ?? new Uint8Array()),
+  belgeGeriAl: (ad: string) => { db.dosyalar.delete(ad) },
+}))
 vi.mock('@/lib/onay/muafiyet', () => ({ selfEntryOnaydanMuafMi: async () => false }))
 vi.mock('@/lib/onay/yonetici-cozumu', () => ({
   // çalışan p-c'nin yöneticisi u-m (p-m); p-m'nin yöneticisi yok (sahipsiz)
@@ -92,7 +127,10 @@ vi.mock('@/lib/onay/yonetici-cozumu', () => ({
 }))
 vi.mock('./mail', () => {
   const kaydet = (fn: string) => async (...args: unknown[]) => { db.mailler.push({ fn, args }) }
-  return { yoneticiyeTalep: kaydet('yoneticiyeTalep'), iveTalep: kaydet('iveTalep'), calisanaSonuc: kaydet('calisanaSonuc'), yoneticiyeBilgi: kaydet('yoneticiyeBilgi'), iptalBildir: kaydet('iptalBildir') }
+  return {
+    yoneticiyeTalep: kaydet('yoneticiyeTalep'), iveTalep: kaydet('iveTalep'), calisanaSonuc: kaydet('calisanaSonuc'), yoneticiyeBilgi: kaydet('yoneticiyeBilgi'),
+    iptalBildir: kaydet('iptalBildir'), erkenDonusBildir: kaydet('erkenDonusBildir'),
+  }
 })
 vi.mock('./talep-ortak', async (orj) => {
   const gercek = await orj<typeof import('./talep-ortak')>()
@@ -106,11 +144,14 @@ import { geriCek, ivIptal, onizlemeHesapla, talepOlustur } from './talep-servis'
 import { kararVer, onayListesi } from './onay-servis'
 import { turSiziyorMu } from './gorunum'
 import type { Baglam } from './talep-ortak'
+import { belgeAc } from './belge-servis'
+import { erkenDonusKarar, erkenDonusListesi, erkenDonusTara } from './erken-donus'
+import { IzinYetkiHatasi } from './gun-sayimi'
 
 const tur = (kod: string, o: Row = {}) => ({
   id: `t-${kod}`, kod, ad: kod === 'YILLIK' ? 'Yıllık izin' : kod === 'EVLILIK' ? 'Evlilik izni' : kod, yasal: true, bakiyeli: kod === 'YILLIK', sabitGun: null,
   gunSayimi: 'IS_GUNU', ucretli: true, yarimGunOlur: kod === 'YILLIK', onayAkisi: 'YONETICI_IV', belgeZorunlu: false, ozelNitelikli: false,
-  pdksEtiketi: 'İzinli', kosul: null, aktif: true, sira: 0, ...o,
+  pdksEtiketi: 'İzinli', kosul: null, aktif: true, sira: 0, birim: 'GUN', yillikKotaDakika: null, yakaKisiti: null, ...o,
 })
 const ctx = (userId: string, personnelId: string | null, ivMi = false): Baglam => ({ userId, personnelId, ivMi, bakiyeAdmin: false })
 const CALISAN = ctx('u-c', 'p-c')
@@ -122,14 +163,17 @@ beforeEach(() => {
   db.seq = 0
   db.mailler = []
   db.pdks = []
+  db.izinler = { 'u-iv': ['izin.admin'] }
+  db.dosyalar = new Map()
   db.t = {
     user: [{ id: 'u-c', personnelId: 'p-c' }, { id: 'u-m', personnelId: 'p-m' }, { id: 'u-iv', personnelId: 'p-iv' }],
     personnel: ['p-c', 'p-d', 'p-m', 'p-iv'].map((id) => ({
       id, adSoyad: id.toUpperCase(), sicilNo: id, aktif: true, departmentId: 'dep', iseGirisTarihi: d('2020-01-01'), bolum: 'Kaynak',
+      yakaRengi: id === 'p-d' ? 'MAVI' : 'BEYAZ',
     })),
     personnelSensitive: [],
     izinTuru: [tur('YILLIK'), tur('EVLILIK', { sabitGun: 3 }), tur('RAPOR', { ozelNitelikli: true, belgeZorunlu: true, onayAkisi: 'YALNIZ_IV' })],
-    izinTalep: [], izinOnay: [], izinTalepGun: [],
+    izinTalep: [], izinOnay: [], izinTalepGun: [], izinBelge: [], izinErkenDonus: [], pdksPuantajGun: [], personnelAccessLog: [], permissionAuditLog: [],
     izinBakiyeHareketi: [{ id: 'h0', personnelId: 'p-c', turId: 't-YILLIK', hareket: 'ACILIS', gun: 12, tarih: d('2026-09-20') }],
     systemSetting: [{ key: 'izin_gecis_tarihi', value: '2026-09-20' }],
     // 28 Ekim 2026 yarım gün (arefe), 29 Ekim tatil — plan §3.2 senaryosu
@@ -172,8 +216,8 @@ describe('geçiş tarihi (açılış aktarımı) yok kapısı', () => {
     await expect(talepOlustur(CALISAN, YILLIK_26_30)).rejects.toThrow('İzin bakiyeleri henüz yüklenmedi')
     await expect(talepOlustur(CALISAN, { turId: 't-EVLILIK', baslangic: '2026-11-02', bitis: '2026-11-04' })).resolves.toMatchObject({ durum: 'BEKLIYOR_YONETICI' })
   })
-  it('RAPOR bu fazda formdan açılamaz', async () => {
-    await expect(talepOlustur(CALISAN, { turId: 't-RAPOR', baslangic: '2026-11-02', bitis: '2026-11-02' })).rejects.toThrow(/talep edilemez/)
+  it('Faz 4: RAPOR formdan açılır ama BELGESİZ gönderilemez', async () => {
+    await expect(talepOlustur(CALISAN, { turId: 't-RAPOR', baslangic: '2026-11-02', bitis: '2026-11-02' })).rejects.toThrow(/belge yüklemek zorunlu/)
   })
 })
 
@@ -248,5 +292,171 @@ describe('tür sızıntısı — yönetici kalemi ve maili', () => {
     expect(turSiziyorMu(await onayListesi(YONETICI, 'karar'))).toBeNull()
     const iv = await onayListesi(IV, 'bekleyen')
     expect(iv.kalemler[0]).toMatchObject({ kademe: 'IV', iv: { turAd: 'Evlilik izni', not: 'düğün' } })
+  })
+})
+
+// ═══════════════════════════════ İZİN FAZ 4 (İV kuralları 28.09) ═══════════════════════════════
+
+const PDF = { icerik: new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x34]), ad: 'nikah-cuzdani.pdf' }
+const sabitTur = (kod: string, sabitGun: number) => ({ gunSayimi: 'PZT_CMT', belgeZorunlu: true, sabitGun, ad: kod === 'EVLILIK' ? 'Evlilik izni' : kod })
+const onayla = async (id: string) => {
+  await kararVer(YONETICI, id, { karar: 'ONAY' })
+  return kararVer(IV, id, { karar: 'ONAY' })
+}
+
+describe('Faz 4 — sabit süreli izin Pzt–Cmt (Pazar sayılmaz)', () => {
+  beforeEach(() => {
+    db.t.izinTuru = [tur('YILLIK'), tur('EVLILIK', sabitTur('EVLILIK', 3)), tur('RAPOR', { ozelNitelikli: true, belgeZorunlu: true, onayAkisi: 'YALNIZ_IV' })]
+  })
+  it('Cuma → Pazartesi = 3 gün (Cumartesi sayılır, Pazar sayılmaz)', async () => {
+    const on = await onizlemeHesapla(CALISAN, { turId: 't-EVLILIK', baslangic: '2026-10-30', bitis: '2026-11-02' })
+    expect(on.hesap.toplam).toBe(3)
+    expect(on.hesap.notlar).toContain('1 Pazar günü sayılmadı')
+  })
+  it('resmi tatil: ayar false (varsayılan) sayılmaz, true sayılır', async () => {
+    const r = { turId: 't-EVLILIK', baslangic: '2026-10-29', bitis: '2026-10-31' } // Per tatil, Cum, Cmt
+    expect((await onizlemeHesapla(CALISAN, r)).hesap.toplam).toBe(2)
+    db.t.systemSetting.push({ key: 'izin_sabit_tatil_sayilir', value: 'true' })
+    expect((await onizlemeHesapla(CALISAN, r)).hesap.toplam).toBe(3)
+  })
+})
+
+describe('Faz 4 — belge zorunlu + erişim', () => {
+  beforeEach(() => {
+    db.t.izinTuru = [tur('YILLIK'), tur('EVLILIK', sabitTur('EVLILIK', 3)), tur('RAPOR', { ozelNitelikli: true, belgeZorunlu: true, onayAkisi: 'YALNIZ_IV' })]
+  })
+  const EVL = { turId: 't-EVLILIK', baslangic: '2026-11-02', bitis: '2026-11-04' }
+
+  it('belgesiz gönderilemez; PDF ile açılır (imhaAt = +15 yıl); PDF/JPG/PNG dışı reddedilir', async () => {
+    await expect(talepOlustur(CALISAN, EVL)).rejects.toThrow('belge yüklemek zorunlu')
+    await expect(talepOlustur(CALISAN, EVL, { icerik: new TextEncoder().encode('merhaba'), ad: 'x.txt' })).rejects.toThrow(/PDF, JPG ya da PNG/)
+    expect(db.dosyalar.size).toBe(0)
+    const { id } = await talepOlustur(CALISAN, EVL, PDF)
+    const b = db.t.izinBelge.find((x) => x.talepId === id)!
+    expect(b).toMatchObject({ mime: 'application/pdf', orijinalAd: 'nikah-cuzdani.pdf', yukleyenId: 'u-c' })
+    expect((b.imhaAt as Date).getUTCFullYear() - new Date().getUTCFullYear()).toBe(15)
+  })
+
+  it('belgeyi çalışan + İV görür, YÖNETİCİ göremez; her açılış denetime yazılır', async () => {
+    const { id } = await talepOlustur(CALISAN, EVL, PDF)
+    const bid = db.t.izinBelge.find((x) => x.talepId === id)!.id as string
+    await expect(belgeAc(YONETICI, bid, null)).rejects.toBeInstanceOf(IzinYetkiHatasi)
+    expect((await belgeAc(CALISAN, bid, '10.0.0.1')).mime).toBe('application/pdf')
+    expect((await belgeAc(IV, bid, null)).ad).toBe('nikah-cuzdani.pdf')
+    expect(db.t.personnelAccessLog.map((x) => [x.accessedBy, x.accessType])).toEqual([['u-c', 'IZIN_BELGE'], ['u-iv', 'IZIN_BELGE']])
+    expect(db.t.permissionAuditLog.filter((x) => x.action === 'IZIN_BELGE_ACILDI')).toHaveLength(2)
+    // yöneticinin onay kaleminde belge listesi YOK
+    expect(JSON.stringify(await onayListesi(YONETICI, 'bekleyen'))).not.toMatch(/nikah|belgeler/)
+  })
+
+  it('RAPOR belgesi: izin.admin YETMEZ, izin.rapor.gor gerekir', async () => {
+    const { id } = await talepOlustur(CALISAN, { turId: 't-RAPOR', baslangic: '2026-11-02', bitis: '2026-11-03' }, { ...PDF, ad: 'rapor.pdf' })
+    const bid = db.t.izinBelge.find((x) => x.talepId === id)!.id as string
+    await expect(belgeAc(IV, bid, null)).rejects.toBeInstanceOf(IzinYetkiHatasi)
+    db.izinler['u-iv'] = ['izin.admin', 'izin.rapor.gor']
+    await belgeAc(IV, bid, null)
+    expect(db.t.personnelAccessLog.at(-1)).toMatchObject({ accessType: 'IZIN_RAPOR_BELGE' })
+  })
+})
+
+describe('Faz 4 — rapor, onaylı yıllık izinle çakışırsa yıllık günleri iade', () => {
+  it('yıllık 26–30 Eki onaylı; rapor 27–28 İV onayı → 1,5 gün IPTAL_IADE (RAPOR:<rapor>:<yıllık>), gün satırları kalır, not düşer', async () => {
+    const y = await talepOlustur(CALISAN, YILLIK_26_30)
+    await onayla(y.id)
+    const r = await talepOlustur(CALISAN, { turId: 't-RAPOR', baslangic: '2026-10-27', bitis: '2026-10-28' }, PDF)
+    expect(r.durum).toBe('BEKLIYOR_IV') // YALNIZ_IV; yıllıkla çakışma engeli rapora uygulanmaz
+    const k = await kararVer(IV, r.id, { karar: 'ONAY' })
+    expect(k.uyari).toMatch(/1,5 gün bakiyeye iade/)
+    const yGun = db.t.izinTalepGun.filter((x) => x.talepId === y.id)
+    expect(yGun.filter((x) => x.iadeAt).map((x) => [(x.tarih as Date).toISOString().slice(8, 10), x.iadeNedeni, x.iadeTalepId])).toEqual([['27', 'RAPOR', r.id], ['28', 'RAPOR', r.id]])
+    expect(yGun).toHaveLength(5) // silinmedi
+    expect(db.t.izinBakiyeHareketi.filter((h) => h.anahtar === `RAPOR:${r.id}:${y.id}`)).toMatchObject([{ hareket: 'IPTAL_IADE', gun: 1.5, talepId: y.id }])
+    expect(db.t.izinOnay.find((o) => o.talepId === y.id && o.kademe === 'SISTEM')!.gerekce).toBe('rapor nedeniyle kısaldı (1,5 gün iade)')
+  })
+})
+
+describe('Faz 4 — mazeret izni (saatlik, 54 saat, yalnız beyaz yaka)', () => {
+  beforeEach(() => {
+    db.t.izinTuru.push(tur('MAZERET', { ad: 'Mazeret izni (saatlik)', birim: 'SAAT', yillikKotaDakika: 3240, yakaKisiti: 'BEYAZ' }))
+  })
+  const MZ = (o: Row = {}) => ({ turId: 't-MAZERET', baslangic: '2026-11-03', baslangicSaat: '08:00', bitisSaat: '10:00', ...o })
+
+  it('mavi yaka talep edemez', async () => {
+    await expect(talepOlustur(YONETICI, MZ({ personnelId: 'p-d' }))).rejects.toThrow('yalnız beyaz yaka')
+  })
+  it('54 saat sınırı: 53 saat kullanılmışken 2 saat reddedilir, 1 saat açılır (gün 0, dakika 60)', async () => {
+    db.t.izinTalep.push({ id: 'eski', personnelId: 'p-c', turId: 't-MAZERET', durum: 'ONAYLANDI', baslangic: d('2026-03-02'), bitis: d('2026-03-02'), dakika: 3180, gunSayisi: 0 })
+    await expect(talepOlustur(CALISAN, MZ())).rejects.toThrow(/kotası yetersiz: kalan 1 sa, talep 2 sa/)
+    const { id } = await talepOlustur(CALISAN, MZ({ bitisSaat: '09:00' }))
+    expect(db.t.izinTalep.find((t) => t.id === id)).toMatchObject({ dakika: 60, gunSayisi: 0, baslangicSaat: '08:00', bitisSaat: '09:00' })
+    // geçen yılın kullanımı dönemi etkilemez (takvim yılı)
+    db.t.izinTalep.find((t) => t.id === 'eski')!.baslangic = d('2025-12-15')
+    expect((await onizlemeHesapla(CALISAN, MZ({ baslangic: '2026-11-04' }))).kota).toMatchObject({ kalanDk: 3180, yeterli: true })
+  })
+  it('hafta sonuna / ters aralığa saatlik izin alınmaz', async () => {
+    await expect(onizlemeHesapla(CALISAN, MZ({ baslangic: '2026-11-07' }))).rejects.toThrow('çalışma gününe')
+    await expect(onizlemeHesapla(CALISAN, MZ({ bitisSaat: '07:00' }))).rejects.toThrow('sonra olmalı')
+  })
+  it('İV onayı: defter YOK, gün dondurulmaz; puantaj o gün için yeniden hesaplanır', async () => {
+    const { id } = await talepOlustur(CALISAN, MZ())
+    await onayla(id)
+    expect(db.t.izinTalep.find((t) => t.id === id)!.durum).toBe('ONAYLANDI')
+    expect(db.t.izinTalepGun.filter((x) => x.talepId === id)).toEqual([])
+    expect(db.t.izinBakiyeHareketi.filter((h) => h.talepId === id)).toEqual([])
+    expect(db.pdks.at(-1)).toEqual({ personnelId: 'p-c', bas: '2026-11-03', bit: '2026-11-03' })
+  })
+})
+
+describe('Faz 4 — eksi bakiye: personel seçemez, yalnız İV dilekçe gerekçesiyle', () => {
+  it('İV onayında yetersiz bakiye: "eksiye düşür" + gerekçe şart; gerekçeyle onaylanır, bakiye eksiye iner', async () => {
+    const { id } = await talepOlustur(CALISAN, YILLIK_26_30)
+    await kararVer(YONETICI, id, { karar: 'ONAY' })
+    db.t.izinBakiyeHareketi.push({ id: 'dz', personnelId: 'p-c', turId: 't-YILLIK', hareket: 'DUZELTME', gun: -10, tarih: d('2026-09-30') }) // bakiye 2
+    await expect(kararVer(IV, id, { karar: 'ONAY' })).rejects.toThrow(/Yetersiz bakiye/)
+    await expect(kararVer(IV, id, { karar: 'ONAY', negatifeDusur: true })).rejects.toThrow('dilekçe gerekçesi zorunlu')
+    await kararVer(IV, id, { karar: 'ONAY', negatifeDusur: true, gerekce: 'Dilekçe 2026/41 — acil aile durumu' })
+    const top = db.t.izinBakiyeHareketi.filter((h) => h.personnelId === 'p-c').reduce((t, h) => t + Number(h.gun), 0)
+    expect(top).toBe(-1.5)
+    expect(db.t.izinOnay.find((o) => o.talepId === id && o.kademe === 'IV')!.gerekce).toMatch(/Dilekçe/)
+  })
+})
+
+describe('Faz 4 — erken dönüş kuyruğu (otomatik iade YOK)', () => {
+  const hazirla = async () => {
+    const y = await talepOlustur(CALISAN, YILLIK_26_30)
+    await onayla(y.id)
+    db.t.pdksPuantajGun.push({ id: 'pg1', personnelId: 'p-c', gun: d('2026-10-27'), izinTalepId: y.id, uyarilar: ['IZINLI_GUNDE_GECIS'] })
+    return y.id
+  }
+  it('tarama kuyruğa alır + İV bildirimi; defter DEĞİŞMEZ; ikinci tarama tekrar eklemez', async () => {
+    await hazirla()
+    const once = db.t.izinBakiyeHareketi.length
+    expect(await erkenDonusTara()).toEqual({ yeni: 1 })
+    expect(await erkenDonusTara()).toEqual({ yeni: 0 })
+    expect(db.t.izinBakiyeHareketi.length).toBe(once)
+    expect(db.mailler.filter((m) => m.fn === 'erkenDonusBildir')).toHaveLength(1)
+    const l = await erkenDonusListesi(IV)
+    expect(l).toMatchObject([{ durum: 'BEKLIYOR', tarih: '2026-10-27', iadeEdilebilir: 2.5 }]) // 27 (1) + 28 arefe (0,5) + 30 (1); 29 tatil
+    await expect(erkenDonusListesi(CALISAN)).rejects.toBeInstanceOf(IzinYetkiHatasi)
+  })
+  it('İV onayı: tespit gününden itibaren kalan günler iade (ERKEN:<talep>), satırlar kalır; red: iade yok', async () => {
+    const yid = await hazirla()
+    await erkenDonusTara()
+    const e = db.t.izinErkenDonus[0]
+    await expect(erkenDonusKarar(YONETICI, e.id as string, { karar: 'ONAY' })).rejects.toBeInstanceOf(IzinYetkiHatasi)
+    expect(await erkenDonusKarar(IV, e.id as string, { karar: 'ONAY' })).toEqual({ durum: 'ONAYLANDI', iadeGun: 2.5 })
+    expect(db.t.izinBakiyeHareketi.filter((h) => h.anahtar === `ERKEN:${yid}`)).toMatchObject([{ hareket: 'IPTAL_IADE', gun: 2.5 }])
+    const gunler = db.t.izinTalepGun.filter((x) => x.talepId === yid)
+    expect(gunler.filter((x) => x.iadeAt).map((x) => (x.tarih as Date).toISOString().slice(8, 10))).toEqual(['27', '28', '30'])
+    expect(gunler.find((x) => (x.tarih as Date).toISOString().startsWith('2026-10-26'))!.iadeAt).toBeUndefined()
+    expect(db.t.izinOnay.find((o) => o.talepId === yid && o.kademe === 'SISTEM')!.gerekce).toBe('erken dönüş: 27.10.2026 itibarıyla 2,5 gün iade')
+    await expect(erkenDonusKarar(IV, e.id as string, { karar: 'RED' })).rejects.toThrow('karar verilmiş')
+  })
+  it('red → iade yapılmaz', async () => {
+    await hazirla()
+    await erkenDonusTara()
+    const once = db.t.izinBakiyeHareketi.length
+    expect(await erkenDonusKarar(IV, db.t.izinErkenDonus[0].id as string, { karar: 'RED', not: 'mesaiye çağrıldı, izin sürüyor' })).toEqual({ durum: 'REDDEDILDI', iadeGun: 0 })
+    expect(db.t.izinBakiyeHareketi.length).toBe(once)
   })
 })

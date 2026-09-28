@@ -10,10 +10,14 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 
-type Tur = { id: string; kod: string; ad: string; bakiyeli: boolean; sabitGun: number | null; yarimGunOlur: boolean; gunSayimi: string; kapali: string | null }
+type Tur = {
+  id: string; kod: string; ad: string; bakiyeli: boolean; sabitGun: number | null; yarimGunOlur: boolean; gunSayimi: string; kapali: string | null
+  birim: 'GUN' | 'SAAT'; belgeZorunlu: boolean; ozelNitelikli: boolean
+}
 type Talep = {
   id: string; tur: string; baslangic: string; bitis: string; baslangicYarim: string | null; bitisYarim: string | null
   gun: number; durum: string; durumMetni: string; adim: string; geriCekilebilir: boolean
+  baslangicSaat: string | null; bitisSaat: string | null; dakika: number | null; belgeSayisi: number
 }
 type Veri =
   | { bagli: false }
@@ -23,16 +27,19 @@ type Veri =
       gecisTarihi: string | null
       kartlar: { kalan: number; bakiye: number; bekleyenTalep: number; bekleyenGun: number; kullanilanBuYil: number; sonraki: { tarih: string; gun: number; ilk: boolean } | null }
       turler: Tur[]
+      kotalar: { turId: string; ad: string; kotaDk: number; kullanilanDk: number }[]
       talepler: Talep[]
     }
 type Onizleme = {
-  toplam: number; notlar: string[]; bakiye: { kalan: number; sonrasi: number; yeterli: boolean } | null
+  toplam: number; dakika: number | null; notlar: string[]; bakiye: { kalan: number; sonrasi: number; yeterli: boolean } | null
+  kota: { kotaDk: number; kalanDk: number; sonrasiDk: number; yeterli: boolean } | null; belgeZorunlu: boolean
   cakisan: { baslangic: string; bitis: string } | null; ekipCakisma: number; onayMetni: string
 }
 type TakvimGunu = { tarih: string; takvim: string; tatil: string | null; ekipIzinli: number }
 type Aday = { id: string; adSoyad: string; sicil: string | null; departman: string | null; hesapVar: boolean }
 
 const gunFmt = (n: number) => n.toLocaleString('tr-TR', { maximumFractionDigits: 1 })
+const saatFmt = (dk: number) => (dk / 60).toLocaleString('tr-TR', { maximumFractionDigits: 2 })
 const tarihFmt = (s: string) => `${s.slice(8, 10)}.${s.slice(5, 7)}.${s.slice(0, 4)}`
 const AYLAR = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık']
 const bugun = () => new Date(Date.now() + 3 * 3600_000).toISOString().slice(0, 10)
@@ -96,6 +103,11 @@ export function IzinlerimClient({ adinaAcabilir, ilkBaslangic }: { adinaAcabilir
             </div>
           )}
           <Kartlar k={veri.kartlar} gecis={veri.gecisTarihi} />
+          {veri.kotalar.map((k) => (
+            <p key={k.turId} className="-mt-2 text-sm text-slate-600">
+              {k.ad}: bu dönem kalan <span className="font-mono font-semibold text-blue-800">{saatFmt(k.kotaDk - k.kullanilanDk)} sa</span> / {saatFmt(k.kotaDk)} sa
+            </p>
+          ))}
           <div className="grid gap-4 lg:grid-cols-[minmax(0,620px)_minmax(0,1fr)]">
             <TalepFormu key={veri.personel.id} turler={veri.turler} personnelId={kisi?.id ?? null} bitti={yukle} ilkBaslangic={veri.personel.kendi ? ilkBaslangic : undefined} />
             {(veri.personel.kendi || veri.talepler.length > 0) && <Taleplerim talepler={veri.talepler} degisti={yukle} />}
@@ -206,42 +218,58 @@ function TalepFormu({ turler, personnelId, bitti, ilkBaslangic }: { turler: Tur[
   const [ilk, setIlk] = useState('TAM')
   const [son, setSon] = useState('TAM')
   const [aciklama, setAciklama] = useState('')
+  const [saatBas, setSaatBas] = useState('')
+  const [saatBit, setSaatBit] = useState('')
+  const [belge, setBelge] = useState<File | null>(null)
   const [on, setOn] = useState<Onizleme | null>(null)
   const [onHata, setOnHata] = useState<string | null>(null)
   const [gonderiliyor, setGonderiliyor] = useState(false)
   const [sonuc, setSonuc] = useState<string | null>(null)
   const tur = turler.find((t) => t.id === turId)
 
+  const saatlik = tur?.birim === 'SAAT'
   const govde = useMemo(
-    () => ({ turId, baslangic: bas, bitis: bit, baslangicYarim: ilk === 'OGLEDEN_SONRA' ? 'OGLEDEN_SONRA' : null, bitisYarim: son === 'SABAH' ? 'SABAH' : null, ...(personnelId ? { personnelId } : {}) }),
-    [turId, bas, bit, ilk, son, personnelId],
+    () =>
+      saatlik
+        ? { turId, baslangic: bas, bitis: bas, baslangicSaat: saatBas, bitisSaat: saatBit, ...(personnelId ? { personnelId } : {}) }
+        : { turId, baslangic: bas, bitis: bit, baslangicYarim: ilk === 'OGLEDEN_SONRA' ? 'OGLEDEN_SONRA' : null, bitisYarim: son === 'SABAH' ? 'SABAH' : null, ...(personnelId ? { personnelId } : {}) },
+    [saatlik, turId, bas, bit, ilk, son, saatBas, saatBit, personnelId],
   )
   useEffect(() => {
     setOn(null)
     setOnHata(null)
-    if (!turId || !bas || !bit || tur?.kapali) return
+    if (!turId || !bas || (!saatlik && !bit) || (saatlik && (!saatBas || !saatBit)) || tur?.kapali) return
     const t = setTimeout(async () => {
       const { ok, veri } = await istek<Onizleme>('/api/izin/talebim/onizleme', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(govde) })
       if (ok) setOn(veri)
       else setOnHata(veri.error ?? 'Önizleme hesaplanamadı')
     }, 300)
     return () => clearTimeout(t)
-  }, [govde, turId, bas, bit, tur?.kapali])
+  }, [govde, turId, bas, bit, saatlik, saatBas, saatBit, tur?.kapali])
   useEffect(() => {
     if (!tur?.yarimGunOlur) { setIlk('TAM'); setSon('TAM') }
   }, [tur?.yarimGunOlur])
 
   const gonder = async () => {
     setGonderiliyor(true)
-    const { ok, veri } = await istek<{ durum: string }>('/api/izin/talepler', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...govde, aciklama }) })
+    // Belge varsa multipart (veri = JSON alanlar, belge = dosya); yoksa JSON
+    let init: RequestInit
+    if (belge) {
+      const fd = new FormData()
+      fd.append('veri', JSON.stringify({ ...govde, aciklama }))
+      fd.append('belge', belge)
+      init = { method: 'POST', body: fd }
+    } else init = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...govde, aciklama }) }
+    const { ok, veri } = await istek<{ durum: string }>('/api/izin/talepler', init)
     setGonderiliyor(false)
     if (!ok) return setOnHata(veri.error ?? 'Talep gönderilemedi')
     setSonuc(veri.durum === 'BEKLIYOR_YONETICI' ? 'Talep yöneticinize gönderildi.' : 'Talep İnsan Varlıkları onayına gönderildi.')
-    setBas(''); setBit(''); setAciklama(''); setOn(null)
+    setBas(''); setBit(''); setAciklama(''); setSaatBas(''); setSaatBit(''); setBelge(null); setOn(null)
     bitti()
   }
 
-  const gonderilebilir = !!on && !on.cakisan && (!on.bakiye || on.bakiye.yeterli) && !gonderiliyor
+  const gonderilebilir =
+    !!on && !on.cakisan && (!on.bakiye || on.bakiye.yeterli) && (!on.kota || on.kota.yeterli) && (!tur?.belgeZorunlu || !!belge) && !gonderiliyor
   return (
     <section aria-labelledby="yeni-talep" className="space-y-4 rounded-lg border bg-white p-4 sm:p-5">
       <h2 id="yeni-talep" className="text-base font-semibold">Yeni izin talebi</h2>
@@ -261,16 +289,38 @@ function TalepFormu({ turler, personnelId, bitti, ilkBaslangic }: { turler: Tur[
           </Select>
           {turler.some((t) => t.kapali) && <p className="mt-1 text-xs text-amber-700">İzin bakiyeleri henüz yüklenmedi — yıllık izin talebi şimdilik açılamaz; diğer türler açılabilir.</p>}
         </div>
-        <div>
-          <Label htmlFor="izin-bas" className="text-xs text-slate-500">Başlangıç</Label>
+        <div className={saatlik ? 'col-span-2' : ''}>
+          <Label htmlFor="izin-bas" className="text-xs text-slate-500">{saatlik ? 'Tarih' : 'Başlangıç'}</Label>
           <Input id="izin-bas" type="date" value={bas} onChange={(e) => { setBas(e.target.value); if (!bit || e.target.value > bit) setBit(e.target.value); setSonuc(null) }} className="mt-1 h-11 bg-white" />
         </div>
-        <div>
-          <Label htmlFor="izin-bit" className="text-xs text-slate-500">Bitiş</Label>
-          <Input id="izin-bit" type="date" value={bit} min={bas || undefined} onChange={(e) => setBit(e.target.value)} className="mt-1 h-11 bg-white" />
-        </div>
-        <Parcali ad="İlk gün" secenekler={[['TAM', 'Tam gün'], ['OGLEDEN_SONRA', 'Öğleden sonra']]} deger={ilk} sec={setIlk} kapali={!tur?.yarimGunOlur} />
-        <Parcali ad="Son gün" secenekler={[['TAM', 'Tam gün'], ['SABAH', 'Sabah']]} deger={son} sec={setSon} kapali={!tur?.yarimGunOlur} />
+        {saatlik ? (
+          <>
+            <div>
+              <Label htmlFor="izin-saat-bas" className="text-xs text-slate-500">Başlangıç saati</Label>
+              <Input id="izin-saat-bas" type="time" step={900} value={saatBas} onChange={(e) => setSaatBas(e.target.value)} className="mt-1 h-11 bg-white" />
+            </div>
+            <div>
+              <Label htmlFor="izin-saat-bit" className="text-xs text-slate-500">Bitiş saati</Label>
+              <Input id="izin-saat-bit" type="time" step={900} value={saatBit} onChange={(e) => setSaatBit(e.target.value)} className="mt-1 h-11 bg-white" />
+            </div>
+          </>
+        ) : (
+          <>
+            <div>
+              <Label htmlFor="izin-bit" className="text-xs text-slate-500">Bitiş</Label>
+              <Input id="izin-bit" type="date" value={bit} min={bas || undefined} onChange={(e) => setBit(e.target.value)} className="mt-1 h-11 bg-white" />
+            </div>
+            <Parcali ad="İlk gün" secenekler={[['TAM', 'Tam gün'], ['OGLEDEN_SONRA', 'Öğleden sonra']]} deger={ilk} sec={setIlk} kapali={!tur?.yarimGunOlur} />
+            <Parcali ad="Son gün" secenekler={[['TAM', 'Tam gün'], ['SABAH', 'Sabah']]} deger={son} sec={setSon} kapali={!tur?.yarimGunOlur} />
+          </>
+        )}
+        {tur?.belgeZorunlu && (
+          <div className="col-span-2">
+            <Label htmlFor="izin-belge" className="text-xs text-slate-500">Belge (zorunlu · PDF, JPG ya da PNG · en çok 10 MB)</Label>
+            <Input id="izin-belge" type="file" accept="application/pdf,image/jpeg,image/png" capture="environment" onChange={(e) => setBelge(e.target.files?.[0] ?? null)} className="mt-1 bg-white" />
+            <p className="mt-1 text-xs text-slate-500">Belgeyi yalnız siz ve İnsan Varlıkları görür; yöneticiniz göremez.</p>
+          </div>
+        )}
       </div>
 
       {on && on.ekipCakisma > 0 && (
@@ -283,7 +333,7 @@ function TalepFormu({ turler, personnelId, bitti, ilkBaslangic }: { turler: Tur[
         <AyTakvimi bas={bas} bit={bit} ilk={ilk} son={son} personnelId={personnelId} />
         <div className="flex flex-col gap-2.5 rounded-lg border border-blue-100 bg-slate-50 p-3.5 sm:w-56 sm:shrink-0">
           <span className="text-xs text-slate-500">Düşülecek</span>
-          <span className="font-mono text-3xl font-semibold text-blue-800">{on ? `${gunFmt(on.toplam)} gün` : '—'}</span>
+          <span className="font-mono text-3xl font-semibold text-blue-800">{on ? (on.dakika !== null ? `${saatFmt(on.dakika)} sa` : `${gunFmt(on.toplam)} gün`) : '—'}</span>
           {on && on.notlar.length > 0 && (
             <ul className="space-y-1 text-xs leading-snug text-slate-600">{on.notlar.map((n) => <li key={n}>{n}</li>)}</ul>
           )}
@@ -292,6 +342,13 @@ function TalepFormu({ turler, personnelId, bitti, ilkBaslangic }: { turler: Tur[
               <div className="text-xs text-slate-500">Kalan bakiye</div>
               <div className={cn('font-mono text-lg font-semibold', on.bakiye.yeterli ? 'text-slate-900' : 'text-amber-800')}>{gunFmt(on.bakiye.kalan)} → {gunFmt(on.bakiye.sonrasi)}</div>
               {!on.bakiye.yeterli && <div className="text-xs text-amber-800">Bakiye yetersiz</div>}
+            </div>
+          )}
+          {on?.kota && (
+            <div className="border-t border-blue-100 pt-2.5">
+              <div className="text-xs text-slate-500">Kalan dönem kotası</div>
+              <div className={cn('font-mono text-lg font-semibold', on.kota.yeterli ? 'text-slate-900' : 'text-amber-800')}>{saatFmt(on.kota.kalanDk)} → {saatFmt(on.kota.sonrasiDk)} sa</div>
+              {!on.kota.yeterli && <div className="text-xs text-amber-800">Kota yetersiz</div>}
             </div>
           )}
           {on?.cakisan && <div className="text-xs text-amber-800">Bu tarihlerle çakışan talebiniz var ({tarihFmt(on.cakisan.baslangic)} – {tarihFmt(on.cakisan.bitis)})</div>}
@@ -400,8 +457,9 @@ function Taleplerim({ talepler, degisti }: { talepler: Talep[]; degisti: () => v
             <span>
               {t.baslangic === t.bitis ? tarihFmt(t.baslangic) : `${tarihFmt(t.baslangic)} – ${tarihFmt(t.bitis)}`}
               {t.baslangicYarim === 'OGLEDEN_SONRA' ? ' · öğleden sonra' : ''}{t.bitisYarim === 'SABAH' ? ' · sabah' : ''}
+              {t.baslangicSaat && t.bitisSaat ? ` · ${t.baslangicSaat}–${t.bitisSaat}` : ''}{t.belgeSayisi > 0 ? ' · belgeli' : ''}
             </span>
-            <span>{gunFmt(t.gun)} gün</span>
+            <span>{t.dakika ? `${saatFmt(t.dakika)} sa` : `${gunFmt(t.gun)} gün`}</span>
           </div>
           <div className="text-xs text-slate-500">{t.adim}</div>
           {t.geriCekilebilir && (

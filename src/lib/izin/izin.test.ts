@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { IzinGirdiHatasi, izinGunleri } from './gun-sayimi'
-import { hakEdisleri, kidemBaslangici, yasHesapla, yildonumu, yillikIzinSuresi } from './hak-edis'
+import { hakEdisleri, toplulukGirisi, yasHesapla, yildonumu, yillikIzinSuresi } from './hak-edis'
 import { acilisHareketi, ayrilisBakiyesi, bakiye, iptalIadeHareketi, kismiIadeGunu, kullanimHareketi, onizleme, type DefterSatiri } from './bakiye'
 
 // Prod'daki IproTatil kayıtlarıyla aynı: 28 Ekim 2026 YARIM (arife), 29 Ekim 2026 TATIL.
@@ -64,12 +64,14 @@ describe('hak ediş (4857 m.53)', () => {
   it('§3.2 yaş kuralı: 51 yaşında, 2. yıldönümü → 20 (14 değil)', () => {
     expect(hakEdisleri({ personnelId: 'p', iseGirisTarihi: '2024-06-01', donemler: [], dogumTarihi: '1975-01-01', bas: '2026-06-01', bit: '2026-06-01' })[0].gun).toBe(20)
   })
-  it('kıdem: önceki dönemler birleştirilir (m.54), boşluk sayılmaz', () => {
-    // 2018-01-01..2019-12-31 (730 gün) + 2022-01-01'den beri → etkin başlangıç 2020-01-02
+  it('kıdem (İV 28.09): hak ediş SON işe girişten — önceki dönemler birleştirilMEZ; gösterim ilk dönemden', () => {
     const d = [{ giris: '2018-01-01', cikis: '2019-12-31' }, { giris: '2022-01-01', cikis: null }]
-    expect(kidemBaslangici(d, '2022-01-01')).toBe('2020-01-02')
     const r = hakEdisleri({ personnelId: 'p', iseGirisTarihi: '2022-01-01', donemler: d, dogumTarihi: null, bas: '2026-01-01', bit: '2026-12-31' })
-    expect(r).toEqual([{ tarih: '2026-01-02', kidemYil: 6, gun: 20, anahtar: 'HAK:p:2026' }])
+    expect(r).toEqual([{ tarih: '2026-01-01', kidemYil: 4, gun: 14, anahtar: 'HAK:p:2026' }]) // birleştirilseydi 2026-01-02 / 6. yıl / 20
+    expect(toplulukGirisi(d, '2022-01-01')).toBe('2018-01-01')
+    expect(toplulukGirisi([], '2022-01-01')).toBe('2022-01-01')
+    // 2 hafta arayla yeniden işe alınan: yeni girişten 1 yıl dolmadan hak yok
+    expect(hakEdisleri({ personnelId: 'p', iseGirisTarihi: '2026-06-01', donemler: [{ giris: '2011-12-26', cikis: '2026-05-17' }], dogumTarihi: null, bas: '2026-01-01', bit: '2026-12-31' })).toEqual([])
   })
   it('29 Şubat başlangıç: artık olmayan yılda 28 Şubat', () => {
     expect(yildonumu('2024-02-29', 1)).toBe('2025-02-28')

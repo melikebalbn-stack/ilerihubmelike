@@ -6,12 +6,15 @@
  * IS_GUNU:  hafta sonu / TATIL 0 · YARIM tatil 0,5 · diğer 1.
  *           Yarım gün izin 0,5; YARIM tatil gününe SABAH izni 0,5, ÖĞLEDEN SONRA izni 0 (13:00 zaten çıkış).
  * TAKVIM_GUNU: her gün 1 (yarım 0,5) — tatil/hafta sonu düşülmez (ANALIK).
+ * PZT_CMT (Faz 4, İV 28.09): sabit süreli yasal izinler (evlilik, ölüm, evlat edinme, babalık) — Pazartesi–
+ *           Cumartesi 1, PAZAR 0. Resmi tatil (IproTatil TATIL) `sabitTatilSayilir` ile: false (varsayılan) → 0,
+ *           true → 1. Arefe (YARIM) 1 sayılır — sabit izin bütün günü kapsar.
  * Hesap içeride tam sayı "yarım" biriminde yapılır (0,5 adımları kayan nokta hatasına düşmesin).
  */
 import { pdksTakvimTipi, type TakvimTipi } from '../pdks/puantaj-motor'
 
 export type IzinYarim = 'SABAH' | 'OGLEDEN_SONRA'
-export type IzinGunSayimi = 'IS_GUNU' | 'TAKVIM_GUNU'
+export type IzinGunSayimi = 'IS_GUNU' | 'TAKVIM_GUNU' | 'PZT_CMT'
 
 export class IzinGirdiHatasi extends Error {
   constructor(mesaj: string) {
@@ -55,6 +58,8 @@ export function izinGunleri(g: {
   gunSayimi: IzinGunSayimi
   /** 'YYYY-MM-DD' → IproTatil tipi ('TATIL' | 'YARIM' | 'MESAI') */
   tatiller: ReadonlyMap<string, string>
+  /** PZT_CMT: resmi tatil sayılır mı (SystemSetting izin_sabit_tatil_sayilir; varsayılan false) */
+  sabitTatilSayilir?: boolean
 }): { gunler: IzinGunu[]; toplam: number } {
   const { baslangic, bitis } = g
   if (!GUN.test(baslangic) || !GUN.test(bitis)) throw new IzinGirdiHatasi('Tarihler YYYY-MM-DD olmalı')
@@ -73,6 +78,10 @@ export function izinGunleri(g: {
     const yarim: IzinYarim | null = t === baslangic && bY ? bY : t === bitis && sY ? sY : null
     let birim: number
     if (g.gunSayimi === 'TAKVIM_GUNU') birim = yarim ? 1 : 2
+    else if (g.gunSayimi === 'PZT_CMT') {
+      const pazar = new Date(`${t}T12:00:00Z`).getUTCDay() === 0
+      birim = pazar || (takvim === 'TATIL' && !g.sabitTatilSayilir) ? 0 : yarim ? 1 : 2
+    }
     else if (takvim === 'HAFTA_SONU' || takvim === 'TATIL') birim = 0
     else if (takvim === 'YARIM') birim = yarim === 'OGLEDEN_SONRA' ? 0 : 1 // yarım tatil günü zaten 13:00'te biter
     else birim = yarim ? 1 : 2

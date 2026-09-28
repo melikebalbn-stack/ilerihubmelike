@@ -82,6 +82,12 @@ export interface OnayKalemiGirdi {
   /** İV'ye özel — yönetici kaleminde KOPYALANMAZ */
   turAd: string
   aciklama: string | null
+  /** Faz 4: saatlik izin süresi/aralığı (tür bilgisi değil; yöneticinin onaylayabilmesi için gerekli) */
+  dakika?: number | null
+  baslangicSaat?: string | null
+  bitisSaat?: string | null
+  /** Faz 4: belgeler — YALNIZ İV kalemine; yönetici kaleminde KOPYALANMAZ */
+  belgeler?: { id: string; ad: string; mime: string; boyut: number }[]
 }
 
 /**
@@ -93,7 +99,8 @@ export function onayKalemi(t: OnayKalemiGirdi, iv: boolean) {
     id: t.id, personnelId: t.personnelId, personelAd: t.personelAd, sicil: t.sicil, bolum: t.bolum, durum: t.durum,
     baslangic: t.baslangic, bitis: t.bitis, baslangicYarim: t.baslangicYarim, bitisYarim: t.bitisYarim,
     gunSayisi: t.gunSayisi, olusturma: t.olusturma, sahipsiz: t.sahipsiz, ekipCakisma: t.ekipCakisma, talepEden: t.talepEden,
+    dakika: t.dakika ?? null, baslangicSaat: t.baslangicSaat ?? null, bitisSaat: t.bitisSaat ?? null,
     etiket: 'İzin' as const,
   }
-  return iv ? { ...temel, iv: { turAd: t.turAd, not: t.aciklama } } : temel
+  return iv ? { ...temel, iv: { turAd: t.turAd, not: t.aciklama, belgeler: t.belgeler ?? [] } } : temel
 }

@@ -6,12 +6,15 @@ import { kullanimHareketi } from './bakiye'
 import { kidemSuresi } from './bakiye-ozet'
 import { ekipIzinGunu, onayKalemi, type OnayKalemiGirdi } from './gorunum'
 import { IzinGirdiHatasi, gunEkle, izinGunleri } from './gun-sayimi'
-import { kidemBaslangici } from './hak-edis'
+import { toplulukGirisi } from './hak-edis'
 import * as mail from './mail'
-import { ATLAMA_METNI, bakiyeEtkisi, kararDogrula, onayYetkisi, talepHesapla, type Kademe } from './talep-kurallari'
+import {
+  ATLAMA_METNI, bakiyeEtkisi, fmt, kararDogrula, mazeretDonemi, onayYetkisi, saatFmt, saatKotasi, saatlikHesapla, talepHesapla, type Kademe,
+} from './talep-kurallari'
 import { ekipCakismasi } from './talep-servis'
 import {
-  BEKLEYEN_DURUMLAR, TUR_SEC, dbGun, ekipKisileri, g, mailTalebi, puantajYenidenHesapla, tatilHaritasi, yillikDurum, type Baglam,
+  BEKLEYEN_DURUMLAR, TUR_SEC, dbGun, ekipKisileri, g, izinAyarlari, mailTalebi, puantajYenidenHesapla, saatKullanimi, tatilHaritasi,
+  yillikDurum, type Baglam,
 } from './talep-ortak'
 
 /**
@@ -24,6 +27,8 @@ import {
 const TALEP_SEC = {
   id: true, personnelId: true, durum: true, baslangic: true, bitis: true, baslangicYarim: true, bitisYarim: true, gunSayisi: true,
   aciklama: true, createdAt: true, onayci1Id: true, onayci2Id: true, onayci3Id: true, talepEdenId: true,
+  baslangicSaat: true, bitisSaat: true, dakika: true,
+  belgeler: { select: { id: true, orijinalAd: true, mime: true, boyut: true, createdAt: true } },
   tur: { select: TUR_SEC },
   personnel: { select: { adSoyad: true, sicilNo: true, bolum: true, department: { select: { name: true } } } },
   onaylar: { orderBy: { createdAt: 'asc' as const }, select: { kademe: true, karar: true, gerekce: true, onaylayanId: true, createdAt: true } },
@@ -44,6 +49,8 @@ async function kalemGirdisi(t: NonNullable<TalepSatiri>): Promise<OnayKalemiGird
     sahipsiz: sahipsizMi(t), ekipCakisma: await ekipCakismasi(t.personnelId, g(t.baslangic)!, g(t.bitis)!),
     talepEden: talepEden && talepEden.personnelId !== t.personnelId ? talepEden.name : null,
     turAd: t.tur.ad, aciklama: t.aciklama,
+    dakika: t.dakika, baslangicSaat: t.baslangicSaat, bitisSaat: t.bitisSaat,
+    belgeler: t.belgeler.map((x) => ({ id: x.id, ad: x.orijinalAd, mime: x.mime, boyut: x.boyut })),
   }
 }
 
@@ -96,7 +103,8 @@ export async function onayDetay(ctx: Baglam, id: string) {
     where: { id: t.personnelId },
     select: { iseGirisTarihi: true, employmentPeriods: { select: { girisTarihi: true, cikisTarihi: true } } },
   })
-  const bas = kidemBaslangici(p.employmentPeriods.map((d) => ({ giris: g(d.girisTarihi)!, cikis: g(d.cikisTarihi) })), g(p.iseGirisTarihi)!)
+  // Gösterim kıdemi: topluluğa giriş (ilk dönem) — İV 28.09
+  const bas = toplulukGirisi(p.employmentPeriods.map((d) => ({ giris: g(d.girisTarihi)!, cikis: g(d.cikisTarihi) })), g(p.iseGirisTarihi)!)
   const kidem = kidemSuresi(bas, bugunStr())
   const kalem = onayKalemi(await kalemGirdisi(t), ivGorunum)
 
@@ -193,20 +201,43 @@ export async function kararVer(ctx: Baglam, id: string, b: Record<string, unknow
       await tx.izinOnay.create({ data: { talepId: id, kademe, onaylayanId: ctx.userId, karar: 'ONAY', gerekce } })
       await logAuditEvent({ tx, action: 'IZIN_TALEP_ONAYLANDI', actorId: ctx.userId, targetType: 'IZIN_TALEP', targetId: id, details: { kademe } })
     })
+  } else if (t.tur.birim === 'SAAT') {
+    // Faz 4 — saatlik (MAZERET) İV onayı: aynı hesap + kota yeniden kontrol; defter YOK (kota talepten hesaplanır);
+    // gün DONDURULMAZ — PDKS kaynağı onaylı saat aralığını talepten okur.
+    const tarih = g(t.baslangic)!
+    const r = saatlikHesapla(t.tur, { tarih, baslangicSaat: t.baslangicSaat ?? '', bitisSaat: t.bitisSaat ?? '' }, await tatilHaritasi(tarih, tarih))
+    if (t.tur.yillikKotaDakika) {
+      const d = mazeretDonemi(tarih, (await izinAyarlari()).mazeretDonem)
+      const k = saatKotasi({ kotaDk: t.tur.yillikKotaDakika, kullanilanDk: await saatKullanimi(t.personnelId, t.tur.id, d.bas, d.bit, t.id), talepDk: r.dakika })
+      if (!k.yeterli) throw new IzinGirdiHatasi(`${t.tur.ad} kotası yetersiz: kalan ${saatFmt(k.kalanDk)}, talep ${saatFmt(r.dakika)}`)
+    }
+    await prisma.$transaction(async (tx) => {
+      const u = await tx.izinTalep.updateMany({ where: { id, durum: 'BEKLIYOR_IV' }, data: { durum: 'ONAYLANDI', dakika: r.dakika } })
+      if (u.count !== 1) throw new IzinGirdiHatasi('Talep bu arada değişti; sayfayı yenileyin')
+      await tx.izinOnay.create({ data: { talepId: id, kademe, onaylayanId: ctx.userId, karar: 'ONAY', gerekce } })
+      await logAuditEvent({ tx, action: 'IZIN_TALEP_ONAYLANDI', actorId: ctx.userId, targetType: 'IZIN_TALEP', targetId: id, details: { kademe, dakika: r.dakika } })
+    })
+    pdksKilitli = (await puantajYenidenHesapla(t.personnelId, tarih, tarih)).kilitli
   } else {
     // İV onayı: günler TALEPLE AYNI fonksiyonla yeniden sayılır ve DONDURULUR; bakiyeli türde KULLANIM yazılır.
     const bas = g(t.baslangic)!
     const bit = g(t.bitis)!
-    const hesap = talepHesapla(t.tur, { baslangic: bas, bitis: bit, baslangicYarim: t.baslangicYarim, bitisYarim: t.bitisYarim }, await tatilHaritasi(bas, bit))
+    const ayar = await izinAyarlari()
+    const hesap = talepHesapla(t.tur, { baslangic: bas, bitis: bit, baslangicYarim: t.baslangicYarim, bitisYarim: t.bitisYarim }, await tatilHaritasi(bas, bit), { sabitTatilSayilir: ayar.sabitTatilSayilir })
     if (hesap.toplam !== Number(t.gunSayisi)) uyari = `Tatil takvimi talepten sonra değişmiş: gün ${Number(t.gunSayisi)} → ${hesap.toplam} olarak donduruldu`
+    let negatif = false
     if (t.tur.bakiyeli) {
       const yd = await yillikDurum(t.personnelId, t.id)
       const e = bakiyeEtkisi(t.tur, { bakiye: yd.bakiye, bekleyen: yd.bekleyen, talep: hesap.toplam })!
       if (!e.yeterli) {
-        if (b.negatifeDusur !== true) throw new IzinGirdiHatasi(`Yetersiz bakiye: kalan ${e.kalan}, talep ${hesap.toplam} gün. Negatife düşürerek onay izin.bakiye.admin ister`)
-        if (!ctx.bakiyeAdmin) throw new IzinGirdiHatasi('Negatife düşürerek onay için izin.bakiye.admin yetkisi gerekli')
+        // Faz 4 (İV): eksiye YALNIZ İV (izin.admin — bu kademe zaten İV) dilekçe gerekçesiyle düşürür.
+        if (b.negatifeDusur !== true) throw new IzinGirdiHatasi(`Yetersiz bakiye: kalan ${e.kalan}, talep ${hesap.toplam} gün. Eksiye düşürmek için "eksiye düşür" + dilekçe gerekçesi gerekli`)
+        if (!gerekce || gerekce.length < 5) throw new IzinGirdiHatasi('Eksiye düşürerek onayda dilekçe gerekçesi zorunlu (en az 5 karakter)')
+        negatif = true
       }
     }
+    // Faz 4 (İV): RAPOR onayında çakışan ONAYLI YILLIK izin günleri bakiyeye iade edilir (satırlar kalır, iadeAt).
+    const raporIade = t.tur.kod === 'RAPOR' ? await raporCakismasi(t.personnelId, id, hesap.gunler.filter((d) => d.pay > 0).map((d) => d.tarih)) : []
     const bugun = bugunStr()
     await prisma.$transaction(async (tx) => {
       const r = await tx.izinTalep.updateMany({ where: { id, durum: 'BEKLIYOR_IV' }, data: { durum: 'ONAYLANDI', gunSayisi: hesap.toplam } })
@@ -218,13 +249,24 @@ export async function kararVer(ctx: Baglam, id: string, b: Record<string, unknow
         const h = kullanimHareketi({ id, gunSayisi: hesap.toplam }, bugun)
         await tx.izinBakiyeHareketi.create({ data: { ...h, tarih: dbGun(h.tarih), personnelId: t.personnelId, turId: t.tur.id, olusturanId: ctx.userId } })
       }
+      for (const c of raporIade) {
+        await tx.izinTalepGun.updateMany({ where: { id: { in: c.gunIdleri }, iadeAt: null }, data: { iadeAt: new Date(), iadeNedeni: 'RAPOR', iadeTalepId: id } })
+        await tx.izinBakiyeHareketi.create({
+          data: {
+            personnelId: t.personnelId, turId: c.turId, hareket: 'IPTAL_IADE', gun: c.gun, tarih: dbGun(bugun), talepId: c.yillikId,
+            aciklama: 'rapor nedeniyle iade', olusturanId: ctx.userId, anahtar: `RAPOR:${id}:${c.yillikId}`,
+          },
+        })
+        await tx.izinOnay.create({ data: { talepId: c.yillikId, kademe: 'SISTEM', onaylayanId: ctx.userId, karar: 'NOT', gerekce: `rapor nedeniyle kısaldı (${fmt(c.gun)} gün iade)` } })
+      }
       await tx.izinOnay.create({ data: { talepId: id, kademe, onaylayanId: ctx.userId, karar: 'ONAY', gerekce } })
       await logAuditEvent({
         tx, action: 'IZIN_TALEP_ONAYLANDI', actorId: ctx.userId, targetType: 'IZIN_TALEP', targetId: id,
-        details: { kademe, gun: hesap.toplam, negatifeDusur: b.negatifeDusur === true, uyari },
+        details: { kademe, gun: hesap.toplam, negatifeDusur: negatif, negatifGerekce: negatif ? gerekce : null, raporIade: raporIade.map((c) => ({ yillik: c.yillikId, gun: c.gun })), uyari },
       })
     })
     pdksKilitli = (await puantajYenidenHesapla(t.personnelId, bas, bit)).kilitli
+    if (raporIade.length) uyari = [uyari, `Çakışan yıllık izinden ${fmt(raporIade.reduce((a, c) => a + c.gun, 0))} gün bakiyeye iade edildi`].filter(Boolean).join(' · ')
     if (pdksKilitli.length) uyari = [uyari, `Puantajı kilitli ${pdksKilitli.length} güne düştü (${pdksKilitli.join(', ')}) — elle kontrol edin`].filter(Boolean).join(' · ')
   }
 
@@ -243,4 +285,27 @@ export async function bekleyenSayisi(ctx: Baglam) {
     ctx.ivMi ? prisma.izinTalep.count({ where: { durum: 'BEKLIYOR_IV', ...kendisiHaric } }) : 0,
   ])
   return y + i
+}
+
+/**
+ * RAPOR günleriyle çakışan ONAYLI YILLIK izin günleri (donmuş, pay>0, iade edilmemiş). Yıllık talep başına
+ * iade edilecek gün toplamı + gün satırları. SAF DEĞİL (DB okur) ama yazma yapmaz.
+ */
+export async function raporCakismasi(personnelId: string, raporId: string, raporGunleri: string[]) {
+  if (!raporGunleri.length) return []
+  const gunler = await prisma.izinTalepGun.findMany({
+    where: {
+      personnelId, tarih: { in: raporGunleri.map(dbGun) }, pay: { gt: 0 }, iadeAt: null, talepId: { not: raporId },
+      talep: { durum: 'ONAYLANDI', tur: { kod: 'YILLIK' } },
+    },
+    select: { id: true, talepId: true, pay: true, talep: { select: { turId: true } } },
+  })
+  const by = new Map<string, { yillikId: string; turId: string; gun: number; gunIdleri: string[] }>()
+  for (const x of gunler) {
+    const c = by.get(x.talepId) ?? { yillikId: x.talepId, turId: x.talep.turId, gun: 0, gunIdleri: [] }
+    c.gun = Math.round((c.gun + Number(x.pay)) * 2) / 2
+    c.gunIdleri.push(x.id)
+    by.set(x.talepId, c)
+  }
+  return [...by.values()]
 }

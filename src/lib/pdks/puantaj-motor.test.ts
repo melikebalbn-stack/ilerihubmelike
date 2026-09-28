@@ -242,3 +242,24 @@ describe('izin (İzin Faz 3 — kural sürümü 2)', () => {
     expect(puantajHesapla(gun({ gun: CMT, takvim: 'HAFTA_SONU', izin: izin(null) })).durum).toBe('HAFTA_SONU')
   })
 })
+
+describe('saatlik izin — mazeret (İzin Faz 4, kural sürümü 3)', () => {
+  const mz = (bas: string, bit: string) => ({ izinli: false, saatlik: [{ bas, bit, dakika: (Number(bit.slice(0, 2)) * 60 + Number(bit.slice(3))) - (Number(bas.slice(0, 2)) * 60 + Number(bas.slice(3))) }] })
+
+  it('vardiya başını kapsayan mazeret (07:00–09:00): 09:00 girişte geç kalma YOK, "Mazeret 2 sa" notu', () => {
+    const r = puantajHesapla(gun({ gecisler: tamGun(PZT, '09:00', '17:00'), izin: mz('07:00', '09:00') }))
+    expect(r.beklenenBaslangic).toEqual(t(PZT, '09:00'))
+    expect(r).toMatchObject({ durum: 'TAM', gecDakika: 0 })
+    expect(r.uyarilar).toContain('MAZERET_DK:120')
+  })
+  it('vardiya sonunu kapsayan mazeret (15:00–17:00): 15:00 çıkışta erken çıkış YOK', () => {
+    const r = puantajHesapla(gun({ gecisler: tamGun(PZT, '07:00', '15:00'), izin: mz('15:00', '17:00') }))
+    expect(r).toMatchObject({ durum: 'TAM', erkenCikisDakika: 0 })
+  })
+  it('mazeretin ötesindeki gecikme yine geç sayılır; ortadaki mazeret yalnız not', () => {
+    expect(puantajHesapla(gun({ gecisler: tamGun(PZT, '09:30', '17:00'), izin: mz('07:00', '09:00') })).gecDakika).toBe(30)
+    const orta = puantajHesapla(gun({ gecisler: tamGun(), izin: mz('10:00', '11:00') }))
+    expect(orta.beklenenBaslangic).toEqual(t(PZT, '07:00'))
+    expect(orta.uyarilar).toContain('MAZERET_DK:60')
+  })
+})

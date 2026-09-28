@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { araligiHesapla, bugunStr, gunEkle } from '@/lib/pdks/puantaj-servis'
+import { erkenDonusTara } from '@/lib/izin/erken-donus'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -23,7 +24,16 @@ export async function POST(req: NextRequest) {
       console.log(`[pdks-puantaj] ${g.gun} hesaplanan=${g.hesaplanan} yazilan=${g.yazilan} kilitli=${g.kilitliAtlanan} vardiyasiz=${g.vardiyasiz.length}`)
       if (g.vardiyasiz.length) console.warn(`[pdks-puantaj] ${g.gun} VARDİYASIZ (varsayılan vardiya yok): ${g.vardiyasiz.join(',')}`)
     }
-    return NextResponse.json({ ok: true, gunler: ozet })
+    // İzin Faz 4: erken dönüş taraması (izinli günde geçiş → İV kuyruğu). Hata puantajı düşürmez.
+    let erkenDonus: { yeni: number } | { hata: string }
+    try {
+      erkenDonus = await erkenDonusTara()
+      if ('yeni' in erkenDonus && erkenDonus.yeni) console.log(`[pdks-puantaj] erken dönüş: ${erkenDonus.yeni} yeni kayıt İV kuyruğunda`)
+    } catch (e) {
+      console.error('[pdks-puantaj] erken dönüş taraması hata', e)
+      erkenDonus = { hata: 'tarama hata' }
+    }
+    return NextResponse.json({ ok: true, gunler: ozet, erkenDonus })
   } catch (e) {
     console.error('[pdks-puantaj] cron hata', e)
     return NextResponse.json({ ok: false, error: 'puantaj hata' }, { status: 500 })

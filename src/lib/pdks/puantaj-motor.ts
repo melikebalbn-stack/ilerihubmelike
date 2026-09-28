@@ -22,9 +22,12 @@
  *   (sabah izni: yarım gün bitişi → vardiya sonu; öğleden sonra izni: vardiya başı → yarım gün bitişi), durum
  *   normal hesaplanır, YARIM_GUN_IZINLI uyarısı + izinPay 0,5. İzin kaydı yoksa gelmeyen GELMEDI + IZIN_BILGISI_YOK.
  *   Etiket yalnız "İzinli" gibi PDKS etiketidir — tür adı motora hiç gelmez.
+ * - Saatlik izin (İzin Faz 4, kural sürümü 3 — MAZERET): onaylı saat aralığı vardiya BAŞINI kapsıyorsa beklenen
+ *   başlangıç aralık sonuna, vardiya SONUNU kapsıyorsa beklenen bitiş aralık başına kayar → geç giriş / erken çıkış
+ *   o kadar düşülür. Ortadaki aralık yalnız not. Uyarı MAZERET_DK:<toplam dk> ("Mazeret X sa").
  */
 
-export const KURAL_SURUMU = 2
+export const KURAL_SURUMU = 3
 
 export type PuantajDurum =
   | 'TAM'
@@ -136,6 +139,8 @@ export interface IzinGunuGirdi {
   pay?: number
   /** PDKS etiketi ("İzinli") — tür adı DEĞİL */
   etiket?: string
+  /** Faz 4: onaylı SAATLİK izin aralıkları ("HH:mm") — izinli=false olabilir (yalnız saatlik) */
+  saatlik?: { bas: string; bit: string; dakika: number }[]
 }
 
 // ── Zaman (Europe/Istanbul, +03:00 sabit — Türkiye 2016'dan beri DST yok) ────
@@ -314,6 +319,17 @@ export function puantajHesapla(g: PuantajGirdi): PuantajSonucu {
     }
   }
   if (izin?.yarim) uyarilar.push('YARIM_GUN_IZINLI')
+  // 6b. Saatlik izin (MAZERET): vardiya başını / sonunu kapsayan aralık beklenen aralığı kısaltır.
+  const saatlik = g.izin?.saatlik ?? []
+  if (saatlik.length) {
+    for (const a of saatlik) {
+      const ab = vardiyaSaati(g.gun, a.bas, v.gunDonumSaat)
+      const at = vardiyaSaati(g.gun, a.bit, v.gunDonumSaat)
+      if (ab <= beklenen.bas && at > beklenen.bas && at < beklenen.bit) beklenen.bas = at
+      else if (at >= beklenen.bit && ab > beklenen.bas && ab < beklenen.bit) beklenen.bit = ab
+    }
+    uyarilar.push(`MAZERET_DK:${saatlik.reduce((t, a) => t + a.dakika, 0)}`)
+  }
   // Normal çalışma vardiya penceresine kırpılır — vardiya dışı süre yalnız mesai formuyla sayılır.
   let normalNet: number | null = null
   if (ilkGiris && sonCikis && sonCikis > ilkGiris) {

@@ -154,3 +154,15 @@ export async function iptalBildir(t: MailTalep, o: { calisanUserId: string | nul
     konu: `${baslik} — ${aralik(t)}`, baslik, satirlar: tamSatirlar(t), sonra: p(esc(o.neden)), link: '/izin/talebim', buton: 'İzinlerim',
   })
 }
+
+/** Faz 4 — erken dönüş tespit edildi → İV'ye özet bildirim (kişi/tür mailde YOK; ekranda). */
+export async function erkenDonusBildir(adet: number) {
+  await gonder(await ivAlicilari(), {
+    konu: `Erken dönüş: ${adet} izin kararınızı bekliyor`,
+    baslik: 'İzinli günde geçiş görüldü',
+    altBaslik: 'Kalan günleri bakiyeye iade etmek İV kararıdır — otomatik iade yapılmaz',
+    satirlar: [{ label: 'Yeni kayıt', value: String(adet) }],
+    link: '/izin/onay?sekme=erken',
+    buton: 'Erken dönüş kuyruğu',
+  })
+}

@@ -11,11 +11,13 @@ import { takvimGorurMu } from './takvim-servis'
 import { GUN, IzinGirdiHatasi, gunEkle, izinGunleri, type IzinYarim } from './gun-sayimi'
 import * as mail from './mail'
 import {
-  ATLAMA_METNI, bakiyeEtkisi, formdaGorunurMu, geriCekilebilirMi, ilkDurum, iptalEdilebilirMi, talepHesapla, type Atlama,
+  ATLAMA_METNI, bakiyeEtkisi, belgeDogrula, formdaGorunurMu, geriCekilebilirMi, ilkDurum, iptalEdilebilirMi, mazeretDonemi,
+  saatFmt, saatKotasi, saatlikHesapla, talepHesapla, type Atlama,
 } from './talep-kurallari'
+import { belgeGeriAl, belgeYaz, imhaTarihi } from './belge-depo'
 import {
-  BEKLEYEN_DURUMLAR, TUR_SEC, baglam, cakisanTalep, dbGun, ekipKisileri, g, gecisTarihi, mailTalebi, puantajYenidenHesapla,
-  talepAcikMi, tatilHaritasi, turGetir, yillikDurum, type Baglam,
+  BEKLEYEN_DURUMLAR, TUR_SEC, baglam, cakisanTalep, dbGun, ekipKisileri, g, gecisTarihi, izinAyarlari, mailTalebi,
+  puantajYenidenHesapla, saatKullanimi, talepAcikMi, tatilHaritasi, turGetir, yillikDurum, type Baglam,
 } from './talep-ortak'
 
 /**
@@ -38,7 +40,7 @@ const DURUM_METNI: Record<string, string> = {
 async function hedefKisi(ctx: Baglam, personnelId: unknown) {
   const hedef = typeof personnelId === 'string' && personnelId ? personnelId : ctx.personnelId
   if (!hedef) throw new IzinGirdiHatasi('Hesabınız bir personel kaydına bağlı değil; talep için İnsan Varlıkları ile görüşün')
-  const p = await prisma.personnel.findUnique({ where: { id: hedef }, select: { id: true, aktif: true, adSoyad: true } })
+  const p = await prisma.personnel.findUnique({ where: { id: hedef }, select: { id: true, aktif: true, adSoyad: true, yakaRengi: true } })
   if (!p?.aktif) throw new IzinGirdiHatasi('Personel bulunamadı ya da aktif değil')
   const onaycilar = await resolveApprovers(hedef)
   const liste = [onaycilar.approverId, onaycilar.approverId2, onaycilar.approverId3]
@@ -56,23 +58,50 @@ function girdi(b: Record<string, unknown>) {
   return { baslangic, bitis, baslangicYarim: yarim(b.baslangicYarim, 'OGLEDEN_SONRA'), bitisYarim: yarim(b.bitisYarim, 'SABAH') }
 }
 
+const YAKA_AD: Record<string, string> = { BEYAZ: 'beyaz', MAVI: 'mavi', GRI: 'gri' }
+
 // ── Önizleme (talep kaydı ve İV onayı AYNI hesabı kullanır) ──────────────────
 
 export async function onizlemeHesapla(ctx: Baglam, b: Record<string, unknown>) {
   const { personel, yoneticiAdina, onaycilar } = await hedefKisi(ctx, b.personnelId)
   const tur = await turGetir(String(b.turId ?? ''))
-  const gi = girdi(b)
-  const gecis = await gecisTarihi()
-  if (tur.bakiyeli && !gecis) throw new IzinGirdiHatasi('İzin bakiyeleri henüz yüklenmedi — yıllık izin talebi açılamaz')
-  const hesap = talepHesapla(tur, gi, await tatilHaritasi(gi.baslangic, gi.bitis))
-  const cakisan = await cakisanTalep(personel.id, gi.baslangic, gi.bitis)
+  if (tur.yakaKisiti && personel.yakaRengi !== tur.yakaKisiti) {
+    throw new IzinGirdiHatasi(`${tur.ad} yalnız ${YAKA_AD[tur.yakaKisiti] ?? tur.yakaKisiti} yaka personel içindir`)
+  }
+  const ayar = await izinAyarlari()
+  let gi: ReturnType<typeof girdi>
+  let hesap: { gunler: ReturnType<typeof talepHesapla>['gunler']; toplam: number; notlar: string[] }
+  let saat: { dakika: number; baslangicSaat: string; bitisSaat: string } | null = null
+  let kota: ReturnType<typeof saatKotasi> | null = null
+  if (tur.birim === 'SAAT') {
+    // Faz 4 — saatlik (MAZERET): tek gün + saat aralığı; dönem kotası (bekleyen + onaylı rezerve)
+    const tarih = String(b.baslangic ?? '')
+    const bs = String(b.baslangicSaat ?? '')
+    const bt = String(b.bitisSaat ?? '')
+    const r = saatlikHesapla(tur, { tarih, baslangicSaat: bs, bitisSaat: bt }, await tatilHaritasi(tarih, tarih))
+    gi = { baslangic: tarih, bitis: tarih, baslangicYarim: null, bitisYarim: null }
+    hesap = { gunler: [], toplam: 0, notlar: [] }
+    saat = { dakika: r.dakika, baslangicSaat: bs, bitisSaat: bt }
+    if (tur.yillikKotaDakika) {
+      const d = mazeretDonemi(tarih, ayar.mazeretDonem)
+      kota = saatKotasi({ kotaDk: tur.yillikKotaDakika, kullanilanDk: await saatKullanimi(personel.id, tur.id, d.bas, d.bit), talepDk: r.dakika })
+    }
+  } else {
+    gi = girdi(b)
+    if (tur.bakiyeli && !(await gecisTarihi())) throw new IzinGirdiHatasi('İzin bakiyeleri henüz yüklenmedi — yıllık izin talebi açılamaz')
+    hesap = talepHesapla(tur, gi, await tatilHaritasi(gi.baslangic, gi.bitis), { sabitTatilSayilir: ayar.sabitTatilSayilir })
+  }
+  const cakisan = await cakisanTalep(personel.id, gi.baslangic, gi.bitis, undefined, {
+    raporMu: tur.kod === 'RAPOR',
+    saat: saat ? { bas: saat.baslangicSaat, bit: saat.bitisSaat } : undefined,
+  })
   const yd = tur.bakiyeli ? await yillikDurum(personel.id) : null
   const bakiye = yd ? bakiyeEtkisi(tur, { bakiye: yd.bakiye, bekleyen: yd.bekleyen, talep: hesap.toplam }) : null
   const ekip = await ekipCakismasi(personel.id, gi.baslangic, gi.bitis)
   const muaf = await selfEntryOnaydanMuafMi(personel.id)
   const akis = ilkDurum({ onayAkisi: tur.onayAkisi, muaf, yoneticiAdina, onaycilar })
   return {
-    personel, tur, girdi: gi, hesap, bakiye, cakisan, ekipCakisma: ekip, akis, onaycilar,
+    personel, tur, girdi: gi, hesap, saat, kota, bakiye, cakisan, ekipCakisma: ekip, akis, onaycilar,
     onayMetni: akis.durum === 'BEKLIYOR_YONETICI' ? 'Onay: Yöneticin → İnsan Varlıkları' : `Onay: İnsan Varlıkları (${ATLAMA_METNI[akis.atlama!]})`,
   }
 }
@@ -80,8 +109,11 @@ export async function onizlemeHesapla(ctx: Baglam, b: Record<string, unknown>) {
 export function onizlemeYaniti(o: Awaited<ReturnType<typeof onizlemeHesapla>>) {
   return {
     toplam: o.hesap.toplam,
+    dakika: o.saat?.dakika ?? null,
     notlar: o.hesap.notlar,
     bakiye: o.bakiye ? { kalan: o.bakiye.kalan, sonrasi: o.bakiye.sonrasi, yeterli: o.bakiye.yeterli } : null,
+    kota: o.kota ? { kotaDk: o.kota.kotaDk, kalanDk: o.kota.kalanDk, sonrasiDk: o.kota.sonrasiDk, yeterli: o.kota.yeterli } : null,
+    belgeZorunlu: o.tur.belgeZorunlu,
     cakisan: o.cakisan ? { baslangic: g(o.cakisan.baslangic), bitis: g(o.cakisan.bitis) } : null,
     ekipCakisma: o.ekipCakisma,
     onayMetni: o.onayMetni,
@@ -101,39 +133,72 @@ export async function ekipCakismasi(personnelId: string, bas: string, bit: strin
 
 // ── Talep oluştur ────────────────────────────────────────────────────────────
 
-export async function talepOlustur(ctx: Baglam, b: Record<string, unknown>) {
+export interface YuklenenBelge {
+  icerik: Uint8Array
+  ad: string
+}
+
+export async function talepOlustur(ctx: Baglam, b: Record<string, unknown>, belge?: YuklenenBelge | null) {
   const o = await onizlemeHesapla(ctx, b)
   if (o.cakisan) throw new IzinGirdiHatasi(`Bu tarihlerle çakışan bir izin talebiniz var (${g(o.cakisan.baslangic)} – ${g(o.cakisan.bitis)})`)
+  // Faz 4 (İV): personel formda hak edişinden fazlasını SEÇEMEZ — eksiye düşürme yalnız İV onayında, gerekçeyle.
   if (o.bakiye && !o.bakiye.yeterli) throw new IzinGirdiHatasi(`Yetersiz bakiye: kalan ${o.bakiye.kalan}, talep ${o.hesap.toplam} gün`)
+  if (o.kota && !o.kota.yeterli) throw new IzinGirdiHatasi(`${o.tur.ad} kotası yetersiz: kalan ${saatFmt(o.kota.kalanDk)}, talep ${saatFmt(o.saat!.dakika)}`)
+  // Faz 4 (İV): belge ZORUNLU türler (evlilik, ölüm, evlat edinme, babalık, rapor) — belgesiz gönderilemez.
+  if (o.tur.belgeZorunlu && !belge) throw new IzinGirdiHatasi(`${o.tur.ad} için belge yüklemek zorunlu`)
+  const belgeTur = belge ? belgeDogrula(belge.icerik) : null
   const aciklama = typeof b.aciklama === 'string' && b.aciklama.trim() ? b.aciklama.trim().slice(0, 500) : null
   const [o1, o2, o3] = o.onaycilar
   const atlama: Atlama | null = o.akis.atlama
+  const ayar = belge ? await izinAyarlari() : null
 
-  const talep = await prisma.$transaction(async (tx) => {
-    const t = await tx.izinTalep.create({
-      data: {
-        personnelId: o.personel.id, turId: o.tur.id, baslangic: dbGun(o.girdi.baslangic), bitis: dbGun(o.girdi.bitis),
-        baslangicYarim: o.girdi.baslangicYarim, bitisYarim: o.girdi.bitisYarim, gunSayisi: o.hesap.toplam, aciklama,
-        durum: o.akis.durum, talepEdenId: ctx.userId, onayci1Id: o1, onayci2Id: o2, onayci3Id: o3,
-      },
-      select: { id: true },
-    })
-    // Atlanan yönetici kademesinin izi (şema değişmeden): yönetici "adına" açtıysa ONAY (onaylamış sayılır),
-    // diğer nedenlerde ATLANDI.
-    if (atlama) {
-      await tx.izinOnay.create({
+  // Dosya önce yazılır (DB işlemi düşerse geri alınır) — satırda yalnız sunucu üretimli ad + SHA-256.
+  const yazilan = belge && belgeTur ? belgeYaz(`talep${Date.now().toString(36)}`, belge.icerik, belgeTur.uzanti) : null
+  let talep: { id: string }
+  try {
+    talep = await prisma.$transaction(async (tx) => {
+      const t = await tx.izinTalep.create({
         data: {
-          talepId: t.id, kademe: 'YONETICI', karar: atlama === 'YONETICI_ADINA' ? 'ONAY' : 'ATLANDI',
-          onaylayanId: atlama === 'YONETICI_ADINA' ? ctx.userId : SISTEM_AKTOR_ID, gerekce: ATLAMA_METNI[atlama],
+          personnelId: o.personel.id, turId: o.tur.id, baslangic: dbGun(o.girdi.baslangic), bitis: dbGun(o.girdi.bitis),
+          baslangicYarim: o.girdi.baslangicYarim, bitisYarim: o.girdi.bitisYarim, gunSayisi: o.hesap.toplam, aciklama,
+          baslangicSaat: o.saat?.baslangicSaat ?? null, bitisSaat: o.saat?.bitisSaat ?? null, dakika: o.saat?.dakika ?? null,
+          durum: o.akis.durum, talepEdenId: ctx.userId, onayci1Id: o1, onayci2Id: o2, onayci3Id: o3,
+        },
+        select: { id: true },
+      })
+      if (yazilan && belgeTur && belge) {
+        const simdi = new Date()
+        await tx.izinBelge.create({
+          data: {
+            talepId: t.id, dosyaAdi: yazilan.dosyaAdi, orijinalAd: belge.ad.replace(/[\\/\u0000-\u001f]/g, '_').slice(0, 120) || 'belge',
+            mime: belgeTur.mime, boyut: yazilan.boyut, sha256: yazilan.sha256, yukleyenId: ctx.userId,
+            imhaAt: imhaTarihi(simdi, ayar!.belgeSaklamaYil),
+          },
+        })
+      }
+      // Atlanan yönetici kademesinin izi (şema değişmeden): yönetici "adına" açtıysa ONAY (onaylamış sayılır),
+      // diğer nedenlerde ATLANDI.
+      if (atlama) {
+        await tx.izinOnay.create({
+          data: {
+            talepId: t.id, kademe: 'YONETICI', karar: atlama === 'YONETICI_ADINA' ? 'ONAY' : 'ATLANDI',
+            onaylayanId: atlama === 'YONETICI_ADINA' ? ctx.userId : SISTEM_AKTOR_ID, gerekce: ATLAMA_METNI[atlama],
+          },
+        })
+      }
+      await logAuditEvent({
+        tx, action: 'IZIN_TALEP_OLUSTURULDU', actorId: ctx.userId, targetType: 'IZIN_TALEP', targetId: t.id,
+        details: {
+          personnelId: o.personel.id, tur: o.tur.kod, baslangic: o.girdi.baslangic, bitis: o.girdi.bitis, gun: o.hesap.toplam,
+          dakika: o.saat?.dakika ?? null, durum: o.akis.durum, atlama, adina: o.personel.id !== ctx.personnelId, belge: !!yazilan,
         },
       })
-    }
-    await logAuditEvent({
-      tx, action: 'IZIN_TALEP_OLUSTURULDU', actorId: ctx.userId, targetType: 'IZIN_TALEP', targetId: t.id,
-      details: { personnelId: o.personel.id, tur: o.tur.kod, baslangic: o.girdi.baslangic, bitis: o.girdi.bitis, gun: o.hesap.toplam, durum: o.akis.durum, atlama, adina: o.personel.id !== ctx.personnelId },
+      return t
     })
-    return t
-  })
+  } catch (e) {
+    if (yazilan) belgeGeriAl(yazilan.dosyaAdi)
+    throw e
+  }
 
   const m = await mailTalebi(talep.id)
   if (o.akis.durum === 'BEKLIYOR_YONETICI') await mail.yoneticiyeTalep(m, o.onaycilar)
@@ -195,7 +260,7 @@ export async function izinlerim(ctx: Baglam, personnelId?: string | null) {
   const [p, gecis, turler, talepler, hassas] = await Promise.all([
     prisma.personnel.findUniqueOrThrow({
       where: { id: hedef },
-      select: { id: true, adSoyad: true, sicilNo: true, aktif: true, iseGirisTarihi: true, employmentPeriods: { select: { girisTarihi: true, cikisTarihi: true } } },
+      select: { id: true, adSoyad: true, sicilNo: true, aktif: true, yakaRengi: true, iseGirisTarihi: true, employmentPeriods: { select: { girisTarihi: true, cikisTarihi: true } } },
     }),
     gecisTarihi(),
     prisma.izinTuru.findMany({ where: { aktif: true }, orderBy: [{ sira: 'asc' }, { ad: 'asc' }], select: TUR_SEC }),
@@ -206,6 +271,7 @@ export async function izinlerim(ctx: Baglam, personnelId?: string | null) {
       select: {
         id: true, baslangic: true, bitis: true, baslangicYarim: true, bitisYarim: true, gunSayisi: true, durum: true, aciklama: true,
         createdAt: true, iptalGerekcesi: true, iptalAt: true, tur: { select: { ad: true } },
+        baslangicSaat: true, bitisSaat: true, dakika: true, _count: { select: { belgeler: true } },
         onaylar: { orderBy: { createdAt: 'asc' }, select: { kademe: true, karar: true, gerekce: true, createdAt: true } },
       },
     }),
@@ -220,6 +286,15 @@ export async function izinlerim(ctx: Baglam, personnelId?: string | null) {
   const bekleyenSayi = talepler.filter((t) => (BEKLEYEN_DURUMLAR as readonly string[]).includes(t.durum)).length
   // Talep listesi (tür adıyla) yalnız kişinin KENDİSİNE ve İV'ye; yönetici "adına" açarken görmez.
   const listeGorur = hedef === ctx.personnelId || ctx.ivMi
+  // Faz 4: saatlik türlerde (MAZERET) dönem kotası — yalnız kişinin yakası uyuyorsa
+  const gorunur = turler.filter((t) => formdaGorunurMu(t, p.yakaRengi))
+  const ayar = await izinAyarlari()
+  const kotalar = await Promise.all(
+    gorunur.filter((t) => t.birim === 'SAAT' && t.yillikKotaDakika).map(async (t) => {
+      const d = mazeretDonemi(bugun, ayar.mazeretDonem)
+      return { turId: t.id, ad: t.ad, kotaDk: t.yillikKotaDakika!, kullanilanDk: await saatKullanimi(hedef, t.id, d.bas, d.bit) }
+    }),
+  )
   return {
     bagli: true as const,
     personel: { id: p.id, adSoyad: p.adSoyad, sicil: p.sicilNo, kendi: hedef === ctx.personnelId },
@@ -228,12 +303,15 @@ export async function izinlerim(ctx: Baglam, personnelId?: string | null) {
       kalan: ozet.kalan, bakiye: ozet.bakiye, bekleyenTalep: bekleyenSayi, bekleyenGun: ozet.bekleyen,
       kullanilanBuYil: ozet.kullanilanBuYil, sonraki: ozet.sonraki,
     },
-    turler: turler.filter(formdaGorunurMu).map((t) => ({
+    turler: gorunur.map((t) => ({
       id: t.id, kod: t.kod, ad: t.ad, bakiyeli: t.bakiyeli, sabitGun: t.sabitGun, yarimGunOlur: t.yarimGunOlur, gunSayimi: t.gunSayimi,
+      birim: t.birim, belgeZorunlu: t.belgeZorunlu, ozelNitelikli: t.ozelNitelikli,
       kapali: t.bakiyeli && !gecis ? 'İzin bakiyeleri henüz yüklenmedi' : null,
     })),
+    kotalar,
     talepler: (listeGorur ? talepler : []).map((t) => ({
       id: t.id, tur: t.tur.ad, baslangic: g(t.baslangic), bitis: g(t.bitis), baslangicYarim: t.baslangicYarim, bitisYarim: t.bitisYarim,
+      baslangicSaat: t.baslangicSaat, bitisSaat: t.bitisSaat, dakika: t.dakika, belgeSayisi: t._count.belgeler,
       gun: Number(t.gunSayisi), durum: t.durum, durumMetni: DURUM_METNI[t.durum] ?? t.durum, adim: adimMetni(t), geriCekilebilir: geriCekilebilirMi(t),
     })),
   }
@@ -241,11 +319,13 @@ export async function izinlerim(ctx: Baglam, personnelId?: string | null) {
 
 function adimMetni(t: { durum: string; iptalGerekcesi: string | null; iptalAt: Date | null; onaylar: { kademe: string; karar: string; gerekce: string | null; createdAt: Date }[] }) {
   const tr = (d: Date) => new Date(d.getTime() + 3 * 3600_000).toISOString().slice(0, 10).split('-').reverse().join('.')
-  const son = t.onaylar.at(-1)
+  // Faz 4: kademe SISTEM satırları talebin sonradan değişen geçmişi (rapor nedeniyle kısaldı / erken dönüş)
+  const sistem = t.onaylar.filter((o) => o.kademe === 'SISTEM' && o.gerekce).map((o) => o.gerekce)
+  const son = t.onaylar.filter((o) => o.kademe !== 'SISTEM').at(-1)
   switch (t.durum) {
     case 'BEKLIYOR_YONETICI': return 'Yöneticinin onayı bekleniyor'
     case 'BEKLIYOR_IV': return son?.kademe === 'YONETICI' && son.karar === 'ONAY' ? 'Yönetici onayladı · İnsan Varlıkları bekleniyor' : 'İnsan Varlıkları onayı bekleniyor'
-    case 'ONAYLANDI': return `Onaylandı · ${son ? tr(son.createdAt) : ''}`
+    case 'ONAYLANDI': return [`Onaylandı · ${son ? tr(son.createdAt) : ''}`, ...sistem].join(' · ')
     case 'REDDEDILDI': return `Reddedildi${son?.gerekce ? `: ${son.gerekce}` : ''}`
     case 'IPTAL': return `${t.iptalGerekcesi ?? 'Geri çekildi'}${t.iptalAt ? ` · ${tr(t.iptalAt)}` : ''}`
     default: return ''

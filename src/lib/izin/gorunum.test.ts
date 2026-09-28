@@ -51,7 +51,8 @@ describe('izin API rota taraması', () => {
   // İV DIŞI rotaların (çalışan / yönetici — requireUser + izinErisim) import edebileceği izin modülleri. Bu
   // servislerin yönetici/ekip çıktısı gorunum.ts'den geçer (aşağıdaki servis taraması + talep-akis.test.ts
   // çalışma zamanı sızıntı testleri). Yeni bir modül eklemek = bu listeye bilinçli ekleme + sızıntı testi.
-  const GUVENLI = ['gorunum', 'talep-servis', 'onay-servis', 'takvim-servis', 'erisim', 'talep-ortak', 'yonetim']
+  // belge-servis: JSON değil DOSYA döner; erişimi (sahip + İV) ve denetimi faz4.test.ts sabitler.
+  const GUVENLI = ['gorunum', 'talep-servis', 'onay-servis', 'takvim-servis', 'belge-servis', 'erisim', 'talep-ortak', 'yonetim']
 
   it('her rota ya yalnız İV izniyle korunur ya da yalnız güvenli servisleri kullanır ve tür SEÇMEZ', () => {
     expect(rotalar.length).toBeGreaterThanOrEqual(18) // Faz 2 (7) + Faz 3 (10) + Faz 5 (takvim) — kapsam boşa geçmesin

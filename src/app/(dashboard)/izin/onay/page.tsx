@@ -29,7 +29,7 @@ export default async function IzinOnayPage({ searchParams }: { searchParams: Pro
         <h1 className="mt-1 flex items-center gap-2 text-2xl font-bold text-[#1B4F72]"><ClipboardCheck className="h-6 w-6" />Onay Bekleyenler</h1>
         {!acik && <p className="mt-1 text-sm text-amber-700">İzin talebi henüz herkese açık değil — İV deneme görünümü.</p>}
       </div>
-      <OnayClient bakiyeAdmin={ctx.bakiyeAdmin} ilkSekme={sekme === 'karar' ? 'karar' : 'bekleyen'} />
+      <OnayClient ivMi={ctx.ivMi} ilkSekme={sekme === 'karar' ? 'karar' : sekme === 'erken' ? 'erken' : 'bekleyen'} />
     </div>
   )
 }

@@ -2,7 +2,8 @@
  * Yıllık izin hak edişi — SAF. Plan §3.1. 4857 sayılı İş Kanunu:
  *   m.53/2: hizmet 1–5 yıl (5 dahil) 14 gün; 5'ten fazla 15'ten az 20 gün; 15 (dahil) ve üzeri 26 gün.
  *   m.53/3: 18 ve daha küçük, 50 ve daha büyük yaştakilere 20 günden az olamaz → max(süre, 20).
- *   m.54:   aynı işverende geçen süreler birleştirilir → kıdem EmploymentPeriod toplamı.
+ *   KIDEM (İV 28.09, iç karar): hak ediş SON İŞE GİRİŞ tarihinden (Personnel.iseGirisTarihi) — önceki
+ *   dönemler BİRLEŞTİRİLMEZ. Ekranlardaki kıdem gösterimi topluluğa girişten (toplulukGirisi).
  * Hak ediş kıdem YILDÖNÜMÜNDE. 1 yıl dolmadan hak yok.
  * Doğum tarihi yalnız sunucuda (PersonnelSensitive) okunur; bu modül yalnız hesaplar — log/yanıt YOK.
  */
@@ -21,23 +22,17 @@ export function yasHesapla(dogum: string, tarih: string): number {
   return ty - dy - (tm < dm || (tm === dm && td < dd) ? 1 : 0)
 }
 
-const gunFarki = (a: string, b: string) => Math.round((Date.parse(`${b}T12:00:00Z`) - Date.parse(`${a}T12:00:00Z`)) / 86_400_000)
-
 export interface CalismaDonemi {
   giris: string
   cikis: string | null
 }
 
 /**
- * Kıdemin "etkin başlangıcı": son (açık) dönemin girişinden, ÖNCEKİ dönemlerde çalışılan gün toplamı kadar
- * geri. Yıldönümleri buradan takvim yılıyla sayılır. Dönem yoksa iseGirisTarihi.
+ * TOPLULUĞA GİRİŞ (yalnız GÖSTERİM kıdemi — İV 28.09): ilk çalışma döneminin başlangıcı; dönem yoksa
+ * iseGirisTarihi. Hak edişte KULLANILMAZ.
  */
-export function kidemBaslangici(donemler: CalismaDonemi[], iseGirisTarihi: string): string {
-  if (!donemler.length) return iseGirisTarihi
-  const sirali = [...donemler].sort((a, b) => a.giris.localeCompare(b.giris))
-  const son = sirali[sirali.length - 1]
-  const onceki = sirali.slice(0, -1).reduce((t, d) => t + (d.cikis ? gunFarki(d.giris, d.cikis) + 1 : 0), 0)
-  return gunEkle(son.giris, -onceki)
+export function toplulukGirisi(donemler: CalismaDonemi[], iseGirisTarihi: string): string {
+  return donemler.reduce((m, d) => (d.giris < m ? d.giris : m), iseGirisTarihi)
 }
 
 /** n. yıldönümü. 29 Şubat başlangıçlı kıdemde artık olmayan yılda 28 Şubat. */
@@ -63,7 +58,8 @@ export interface HakEdis {
 export function hakEdisleri(k: {
   personnelId: string
   iseGirisTarihi: string
-  donemler: CalismaDonemi[]
+  /** Kullanılmaz (hak ediş son girişten) — geriye uyumluluk için kabul edilir. */
+  donemler?: CalismaDonemi[]
   dogumTarihi: string | null
   ayrilisTarihi?: string | null
   acilisTarihi?: string | null
@@ -71,7 +67,7 @@ export function hakEdisleri(k: {
   bit: string
 }): HakEdis[] {
   if (![k.iseGirisTarihi, k.bas, k.bit].every((x) => GUN.test(x))) throw new IzinGirdiHatasi('Tarihler YYYY-MM-DD olmalı')
-  const etkin = kidemBaslangici(k.donemler, k.iseGirisTarihi)
+  const etkin = k.iseGirisTarihi // SON işe giriş (İV 28.09)
   const sonuc: HakEdis[] = []
   for (let n = 1; n <= 80; n++) {
     const t = yildonumu(etkin, n)

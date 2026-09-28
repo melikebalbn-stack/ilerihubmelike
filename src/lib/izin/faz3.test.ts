@@ -24,7 +24,10 @@ describe('talep kuralları (saf)', () => {
     expect(() => talepHesapla({ ...YILLIK, bakiyeli: false, sabitGun: 3, ad: 'Evlilik izni' }, g({ bitis: '2026-11-03' }), tatil)).toThrow(/en fazla 3 iş günü/)
     expect(() => talepHesapla({ ...YILLIK, kosul: 'DOGUM_TARIHI_GTE:2026-05-01', ad: 'Babalık izni' }, g({ baslangic: '2026-04-27', bitis: '2026-04-30' }), new Map())).toThrow(/sonrası doğumlar/)
     expect(() => talepHesapla(YILLIK, g({ baslangic: '2026-10-31', bitis: '2026-11-01' }), tatil)).toThrow(/iş günü yok/)
-    expect(formdaGorunurMu({ ...YILLIK, kod: 'RAPOR', ozelNitelikli: true, belgeZorunlu: true })).toBe(false)
+    // Faz 4: belge isteyen türler (RAPOR dahil) formda AÇIK; yaka kısıtlı tür başka yakaya gizli
+    expect(formdaGorunurMu({ ...YILLIK, kod: 'RAPOR', ozelNitelikli: true, belgeZorunlu: true })).toBe(true)
+    expect(formdaGorunurMu({ aktif: true, yakaKisiti: 'BEYAZ' }, 'MAVI')).toBe(false)
+    expect(formdaGorunurMu({ aktif: true, yakaKisiti: 'BEYAZ' }, 'BEYAZ')).toBe(true)
   })
 
   it('ilk durum: adına (yönetici) / muaf / YALNIZ_IV / sahipsiz → İV; normal → yönetici', () => {
@@ -61,6 +64,7 @@ describe('mail — yöneticiye TÜR gitmez', () => {
 describe('PDKS izin kaynağı', () => {
   it('yalnız ONAYLANDI talebin pay>0 donmuş günleri; etiket her türde "İzinli", tür gitmez', async () => {
     let sorgu: unknown
+    let saatSorgu: unknown
     const kaynak = prismaIzinKaynagi({
       izinTalepGun: {
         findMany: async (q: unknown) => {
@@ -68,10 +72,19 @@ describe('PDKS izin kaynağı', () => {
           return [{ personnelId: 'p1', talepId: 't1', pay: { toString: () => '0.5' }, yarim: 'SABAH' }]
         },
       },
+      izinTalep: {
+        findMany: async (q: unknown) => {
+          saatSorgu = q
+          return [{ personnelId: 'p3', baslangicSaat: '07:00', bitisSaat: '09:00', dakika: 120 }]
+        },
+      },
     } as never)
     const m = await kaynak.izinDurumlari(['p1', 'p2'], '2026-10-26')
-    expect(sorgu).toMatchObject({ where: { personnelId: { in: ['p1', 'p2'] }, pay: { gt: 0 }, talep: { durum: 'ONAYLANDI' } } })
+    // Faz 4: iade edilmiş gün (rapor / erken dönüş) sayılmaz; saatlik izin aralığı ayrıca gelir
+    expect(sorgu).toMatchObject({ where: { personnelId: { in: ['p1', 'p2'] }, pay: { gt: 0 }, iadeAt: null, talep: { durum: 'ONAYLANDI' } } })
+    expect(saatSorgu).toMatchObject({ where: { durum: 'ONAYLANDI', dakika: { not: null } } })
     expect(m.get('p1')).toEqual({ izinli: true, yarim: 'SABAH', talepId: 't1', pay: 0.5, etiket: 'İzinli' })
+    expect(m.get('p3')).toEqual({ izinli: false, saatlik: [{ bas: '07:00', bit: '09:00', dakika: 120 }] })
     expect(m.has('p2')).toBe(false)
     expect(await prismaIzinKaynagi({ izinTalepGun: { findMany: async () => { throw new Error('çağrılmamalı') } } } as never).izinDurumlari([], '2026-10-26')).toEqual(new Map())
   })

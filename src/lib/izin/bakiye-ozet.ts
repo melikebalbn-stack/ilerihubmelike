@@ -12,7 +12,7 @@
  */
 import { bakiye, type DefterSatiri } from './bakiye'
 import { gunEkle } from './gun-sayimi'
-import { kidemBaslangici, yasHesapla, yildonumu, yillikIzinSuresi, type CalismaDonemi } from './hak-edis'
+import { toplulukGirisi, yasHesapla, yildonumu, yillikIzinSuresi, type CalismaDonemi } from './hak-edis'
 
 export interface KisiBakiyeGirdisi {
   defter: DefterSatiri[]
@@ -25,7 +25,10 @@ export interface KisiBakiyeGirdisi {
 }
 
 export interface KisiBakiyeOzeti {
+  /** GÖSTERİM kıdeminin başlangıcı = topluluğa giriş (ilk dönem) */
   kidemBaslangici: string
+  /** Hak edişin başlangıcı = SON işe giriş */
+  hakEdisBaslangici: string
   kidemYil: number
   kidemAy: number
   yillikHak: number | null
@@ -50,8 +53,11 @@ export function kidemSuresi(baslangic: string, bugun: string): { yil: number; ay
 }
 
 export function kisiBakiyeOzeti(g: KisiBakiyeGirdisi): KisiBakiyeOzeti {
-  const bas = kidemBaslangici(g.donemler, g.iseGirisTarihi)
-  const { yil, ay } = kidemSuresi(bas, g.bugun)
+  // İV 28.09: hak ediş SON girişten; ekrandaki kıdem topluluğa girişten (ilk dönem).
+  const bas = g.iseGirisTarihi
+  const { yil } = kidemSuresi(bas, g.bugun)
+  const gosterim = toplulukGirisi(g.donemler, g.iseGirisTarihi)
+  const kidemG = kidemSuresi(gosterim, g.bugun)
   const yas = (t: string) => (g.dogumTarihi ? yasHesapla(g.dogumTarihi, t) : null)
 
   const b = bakiye(g.defter, g.bugun)
@@ -69,9 +75,10 @@ export function kisiBakiyeOzeti(g: KisiBakiyeGirdisi): KisiBakiyeOzeti {
     : null
 
   return {
-    kidemBaslangici: bas,
-    kidemYil: yil,
-    kidemAy: ay,
+    kidemBaslangici: gosterim,
+    hakEdisBaslangici: bas,
+    kidemYil: kidemG.yil,
+    kidemAy: kidemG.ay,
     yillikHak,
     kullanilanBuYil: kullanilanBuYil === 0 ? 0 : kullanilanBuYil,
     bekleyen,

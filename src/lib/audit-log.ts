@@ -87,6 +87,10 @@ export type AuditTargetType =
   // İzin talebi yaşam döngüsü. action: IZIN_TALEP_OLUSTURULDU / _GERI_CEKILDI / _IPTAL_EDILDI /
   // IZIN_TALEP_ONAYLANDI / _REDDEDILDI (details.kademe YONETICI|IV).
   | 'IZIN_TALEP'
+  // İzin belgesi (Faz 4). action: IZIN_BELGE_ACILDI (her görüntüleme; details.kendi / ozelNitelikli).
+  | 'IZIN_BELGE'
+  // Erken dönüş kuyruğu (Faz 4). action: IZIN_ERKEN_DONUS_TESPIT / _ONAYLANDI / _REDDEDILDI.
+  | 'IZIN_ERKEN_DONUS'
 
 export interface AuditLogParams {
   action: string

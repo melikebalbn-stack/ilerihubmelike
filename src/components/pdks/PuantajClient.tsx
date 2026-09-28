@@ -191,6 +191,9 @@ export function PuantajClient({ canManage }: { canManage: boolean }) {
                     {DURUM[s.durum].etiket}
                   </span>
                   {s.uyarilar.includes('GUN_SURUYOR') && <div className="text-[11px] text-slate-500">gün sürüyor</div>}
+                  {s.uyarilar.filter((u) => u.startsWith('MAZERET_DK:')).map((u) => (
+                    <div key={u} className="text-[11px] text-blue-800">Mazeret {(Number(u.slice(11)) / 60).toLocaleString('tr-TR', { maximumFractionDigits: 2 })} sa</div>
+                  ))}
                   {s.uyarilar.includes('KART_OKUTAMAMA_ONAY_BEKLIYOR') && <div className="text-[11px] text-amber-800">form onay bekliyor</div>}
                 </td>
                 <td className="whitespace-nowrap px-3 py-1.5 text-right text-xs">

@@ -9557,6 +9557,7 @@ model Personnel {
   izinTalepleri                  IzinTalep[]
   izinTalepGunleri               IzinTalepGun[]
   izinBakiyeHareketleri          IzinBakiyeHareketi[]
+  izinErkenDonusleri             IzinErkenDonus[]
   servisSorumlulari              ServisSorumlusu[]
   servisDurumlari                ServisPersonelDurum[]
   // MASTER madde 30 — gönderilmiş liste snapshot'larındaki satırları (ters uç)
@@ -12043,18 +12044,18 @@ model IproPlcSayacDurum {
 // Tekillik: (parcaNo,operasyonNo,tezgahKod) — tezgahsız (NULL) için ayrıca partial unique
 // (migration'da: ipro_sayac_carpani_genel_uq WHERE tezgahKod IS NULL; PG14 NULLS NOT DISTINCT yok).
 model IproSayacCarpani {
-  id           String   @id @default(cuid())
-  parcaNo      String // IFS PartNo = MAS MaterialCode
-  operasyonNo  String // IFS/MAS OperationCode
-  tezgahKod    String? // NULL = tezgahsız (genel) satır
-  carpan       Int
-  kaynak       String   @default("MAS") // 'MAS' | 'MANUEL'
-  baskinPay    Decimal? // MAS tohumda baskın çarpanın payı (%) — <80 ise dogrulanacak
-  isSayisi     Int? // MAS tohumda katkı veren iş (WorkOrder) sayısı
-  dogrulanacak Boolean  @default(false)
+  id            String   @id @default(cuid())
+  parcaNo       String // IFS PartNo = MAS MaterialCode
+  operasyonNo   String // IFS/MAS OperationCode
+  tezgahKod     String? // NULL = tezgahsız (genel) satır
+  carpan        Int
+  kaynak        String   @default("MAS") // 'MAS' | 'MANUEL'
+  baskinPay     Decimal? // MAS tohumda baskın çarpanın payı (%) — <80 ise dogrulanacak
+  isSayisi      Int? // MAS tohumda katkı veren iş (WorkOrder) sayısı
+  dogrulanacak  Boolean  @default(false)
   guncelleyenId String? // User.id (MANUEL düzenleyen; IproAyarGecmis deseni — bare FK, relation'sız)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   @@unique([parcaNo, operasyonNo, tezgahKod])
   @@index([dogrulanacak])
@@ -16157,6 +16158,19 @@ enum IzinOnayAkisi {
 enum IzinGunSayimi {
   IS_GUNU // Cmt/Paz + tatil düşülür (PDKS takvimi)
   TAKVIM_GUNU
+  PZT_CMT // İzin Faz 4 (İV): Pzt–Cmt sayılır, PAZAR sayılmaz; resmi tatil izin_sabit_tatil_sayilir ayarına göre
+}
+
+// İzin Faz 4: saatlik türler (MAZERET) — gün değil dakika sayılır, kota dönem başına
+enum IzinBirim {
+  GUN
+  SAAT
+}
+
+enum IzinErkenDonusDurumu {
+  BEKLIYOR
+  ONAYLANDI // kalan günler iade edildi
+  REDDEDILDI // iade yok, izin olduğu gibi kaldı
 }
 
 enum IzinHareketTuru {
@@ -16168,24 +16182,28 @@ enum IzinHareketTuru {
 }
 
 model IzinTuru {
-  id            String        @id @default(cuid())
-  kod           String        @unique // YILLIK, EVLILIK, OLUM, EVLAT_EDINME, BABALIK, ANALIK, RAPOR, UCRETSIZ, <şirkete özel>
-  ad            String
-  yasal         Boolean       @default(false) // true: kod/süre/kurallar KİLİTLİ, ekrandan değişmez
-  bakiyeli      Boolean       @default(false) // yalnız YILLIK
-  sabitGun      Int? // evlilik 3, ölüm 3, evlat edinme 3, babalık 10, analık 168
-  gunSayimi     IzinGunSayimi @default(IS_GUNU)
-  ucretli       Boolean       @default(true) // bilgi amaçlı — bordro kararı henüz yok
-  yarimGunOlur  Boolean       @default(false)
-  onayAkisi     IzinOnayAkisi @default(YONETICI_IV)
-  belgeZorunlu  Boolean       @default(false)
-  ozelNitelikli Boolean       @default(false) // sağlık verisi: belge yalnız çalışan + izin.rapor.gor
-  pdksEtiketi   String // "İzinli" | "Raporlu" — yönetici / ekip takvimi / puantaj YALNIZ bunu görür
-  kosul         String? // ek kural anahtarı (BABALIK: DOGUM_TARIHI_GTE:2026-05-01)
-  aktif         Boolean       @default(true)
-  sira          Int           @default(0)
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  id               String        @id @default(cuid())
+  kod              String        @unique // YILLIK, EVLILIK, OLUM, EVLAT_EDINME, BABALIK, ANALIK, RAPOR, UCRETSIZ, <şirkete özel>
+  ad               String
+  yasal            Boolean       @default(false) // true: kod/süre/kurallar KİLİTLİ, ekrandan değişmez
+  bakiyeli         Boolean       @default(false) // yalnız YILLIK
+  sabitGun         Int? // evlilik 3, ölüm 3, evlat edinme 3, babalık 10, analık 168
+  gunSayimi        IzinGunSayimi @default(IS_GUNU)
+  ucretli          Boolean       @default(true) // bilgi amaçlı — bordro kararı henüz yok
+  yarimGunOlur     Boolean       @default(false)
+  onayAkisi        IzinOnayAkisi @default(YONETICI_IV)
+  belgeZorunlu     Boolean       @default(false)
+  ozelNitelikli    Boolean       @default(false) // sağlık verisi: belge yalnız çalışan + izin.rapor.gor
+  pdksEtiketi      String // "İzinli" | "Raporlu" — yönetici / ekip takvimi / puantaj YALNIZ bunu görür
+  kosul            String? // ek kural anahtarı (BABALIK: DOGUM_TARIHI_GTE:2026-05-01)
+  // Faz 4 — saatlik tür (MAZERET): birim SAAT, dönem kotası dakika, yaka kısıtı
+  birim            IzinBirim     @default(GUN)
+  yillikKotaDakika Int? // MAZERET: 54 saat = 3240 dk / dönem (izin_mazeret_donem, varsayılan takvim yılı)
+  yakaKisiti       YakaRengi? // yalnız bu yaka talep edebilir (MAZERET: BEYAZ)
+  aktif            Boolean       @default(true)
+  sira             Int           @default(0)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
 
   talepler          IzinTalep[]
   bakiyeHareketleri IzinBakiyeHareketi[]
@@ -16205,6 +16223,10 @@ model IzinTalep {
   bitisYarim     IzinYarim? // son gün yalnız sabah izinli (tek günlük talepte ikisi aynı günü tanımlar)
   gunSayisi      Decimal    @db.Decimal(5, 1)
   aciklama       String?
+  // Faz 4 — saatlik izin (birim SAAT): tek gün, saat aralığı; gunSayisi 0, süre dakika
+  baslangicSaat  String? // "HH:mm"
+  bitisSaat      String?
+  dakika         Int?
   durum          IzinDurumu
   talepEdenId    String // User.id — çalışan ya da "adına" açan yönetici/İV
   onayci1Id      String? // talep anında çözülen yönetici adayları (biri yeter)
@@ -16221,6 +16243,7 @@ model IzinTalep {
   belgeler           IzinBelge[]
   bakiyeHareketleri  IzinBakiyeHareketi[]
   pdksPuantajGunleri PdksPuantajGun[]
+  erkenDonus         IzinErkenDonus?
 
   @@index([personnelId, baslangic])
   @@index([durum])
@@ -16240,6 +16263,11 @@ model IzinTalepGun {
   tarih       DateTime   @db.Date
   pay         Decimal    @db.Decimal(2, 1) // 1 | 0.5 | 0 (hafta sonu / tatil — sayılmaz ama kayıtlı)
   yarim       IzinYarim?
+  // Faz 4 — gün sonradan bakiyeye iade edildiyse (rapor çakışması / erken dönüş). Satır SİLİNMEZ;
+  // PDKS kaynağı iadeli günü izinli saymaz.
+  iadeAt      DateTime?
+  iadeNedeni  String? // RAPOR | ERKEN_DONUS
+  iadeTalepId String? // RAPOR nedeninde iadeye yol açan rapor talebi
 
   @@unique([talepId, tarih])
   @@index([personnelId, tarih])
@@ -16294,9 +16322,32 @@ model IzinBelge {
   boyut      Int
   sha256     String
   yukleyenId String
-  imhaAt     DateTime? // saklama süresi dolunca dosya silinir, satır kalır
+  imhaAt     DateTime? // Faz 4 (İV): PLANLANAN imha tarihi = yükleme + izin_belge_saklama_yil (15 yıl)
+  silindiAt  DateTime? // imha işi dosyayı sildiğinde (iş henüz YOK); satır kalır
   createdAt  DateTime  @default(now())
 
   @@index([talepId])
   @@map("izin_belge")
+}
+
+// Faz 4 — ERKEN DÖNÜŞ kuyruğu: onaylı izin gününde PDKS'te geçerli geçiş görüldü → İV'ye "kalan günleri iade
+// edeyim mi?" sorusu. OTOMATİK İADE YOK: İV onaylarsa o günden itibaren kalan günler IzinTalepGun.iadeAt +
+// IPTAL_IADE (anahtar ERKEN:<talep>). Talep başına tek kayıt (ilk tespit günü).
+model IzinErkenDonus {
+  id           String               @id @default(cuid())
+  talepId      String               @unique
+  talep        IzinTalep            @relation(fields: [talepId], references: [id], onDelete: Restrict)
+  personnelId  String
+  personnel    Personnel            @relation(fields: [personnelId], references: [id], onDelete: Restrict)
+  tarih        DateTime             @db.Date // izinliyken ilk geçerli geçişin görüldüğü gün
+  durum        IzinErkenDonusDurumu @default(BEKLIYOR)
+  iadeGun      Decimal?             @db.Decimal(5, 1)
+  kararVerenId String?
+  kararAt      DateTime?
+  kararNotu    String?
+  createdAt    DateTime             @default(now())
+
+  @@index([durum])
+  @@index([personnelId])
+  @@map("izin_erken_donus")
 }

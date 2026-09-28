@@ -49,7 +49,34 @@ export async function tatilHaritasi(bas: string, bit: string) {
 export const TUR_SEC = {
   id: true, kod: true, ad: true, bakiyeli: true, sabitGun: true, gunSayimi: true, yarimGunOlur: true, onayAkisi: true,
   ozelNitelikli: true, belgeZorunlu: true, kosul: true, aktif: true, sira: true, pdksEtiketi: true,
+  birim: true, yillikKotaDakika: true, yakaKisiti: true,
 } as const
+
+/** Faz 4 ayarları (İV teyidi bekleyen varsayılanlar): sabit izinde tatil sayılmaz; mazeret dönemi takvim yılı; belge 15 yıl. */
+export async function izinAyarlari() {
+  const rs = await prisma.systemSetting.findMany({
+    where: { key: { in: ['izin_sabit_tatil_sayilir', 'izin_mazeret_donem', 'izin_belge_saklama_yil'] } },
+    select: { key: true, value: true },
+  })
+  const a = new Map(rs.map((r) => [r.key, r.value.trim()]))
+  return {
+    sabitTatilSayilir: a.get('izin_sabit_tatil_sayilir') === 'true',
+    mazeretDonem: a.get('izin_mazeret_donem') || 'TAKVIM_YILI',
+    belgeSaklamaYil: Number(a.get('izin_belge_saklama_yil')) || 15,
+  }
+}
+
+/** Saatlik türde dönem kullanımı (dk): bekleyen + onaylı talepler (haric: hesaplanan talebin kendisi). */
+export async function saatKullanimi(personnelId: string, turId: string, bas: string, bit: string, haricTalepId?: string) {
+  const ts = await prisma.izinTalep.findMany({
+    where: {
+      personnelId, turId, durum: { in: [...BEKLEYEN_DURUMLAR, 'ONAYLANDI'] }, baslangic: { gte: dbGun(bas), lte: dbGun(bit) },
+      ...(haricTalepId ? { id: { not: haricTalepId } } : {}),
+    },
+    select: { dakika: true },
+  })
+  return ts.reduce((t, x) => t + (x.dakika ?? 0), 0)
+}
 
 export async function turGetir(turId: string): Promise<TurKurali & { id: string }> {
   const t = await prisma.izinTuru.findUnique({ where: { id: turId }, select: TUR_SEC })
@@ -74,11 +101,20 @@ export async function yillikDurum(personnelId: string, haricTalepId?: string) {
 }
 
 /** Kişinin [bas, bit] ile çakışan AKTİF (bekleyen/onaylı) talebi var mı */
-export async function cakisanTalep(personnelId: string, bas: string, bit: string, haricTalepId?: string) {
+export async function cakisanTalep(
+  personnelId: string, bas: string, bit: string, haricTalepId?: string,
+  o: { raporMu?: boolean; saat?: { bas: string; bit: string } } = {},
+) {
   return prisma.izinTalep.findFirst({
     where: {
       personnelId, durum: { in: [...BEKLEYEN_DURUMLAR, 'ONAYLANDI'] }, baslangic: { lte: dbGun(bit) }, bitis: { gte: dbGun(bas) },
       ...(haricTalepId ? { id: { not: haricTalepId } } : {}),
+      // Faz 4: RAPOR onaylı YILLIK izinle çakışabilir (İV onayında çakışan yıllık günleri iade edilir)
+      ...(o.raporMu ? { NOT: { tur: { kod: 'YILLIK' } } } : {}),
+      // Saatlik talep: aynı günün ÇAKIŞAN saatli talebi ya da günlük izin çakışır; ayrık saatler çakışmaz
+      ...(o.saat
+        ? { OR: [{ dakika: null }, { AND: [{ baslangicSaat: { lt: o.saat.bit } }, { bitisSaat: { gt: o.saat.bas } }] }] }
+        : {}),
     },
     select: { id: true, baslangic: true, bitis: true },
   })

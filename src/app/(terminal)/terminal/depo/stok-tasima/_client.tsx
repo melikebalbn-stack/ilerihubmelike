@@ -71,16 +71,13 @@ type KaynakSonuc =
 
 /**
  * Ortak kaynak çözücü — state'e DOKUNMAZ, yalnız fetch + sınıflama.
- * Sıra: barkod → raf (/raf/{kod}/stok) → parça (/parca/{stokKodu}/stok).
- *
- * Barkod dalı GELİŞ YOLUNDAN BAĞIMSIZ: Stok Taşıma'da iş emri kavramı yok → çıplak sayının
- * "barkod mu iş emri mi" belirsizliği burada YOK; barkod bulunamazsa zaten raf→parça'ya düşülür.
- * (Toplama ekranındaki 'elle→barkod denenmez' kuralı oraya özeldir, burayı bağlamaz.)
- * `kaynak` hâlâ parça dalında parseEtiket için kullanılır.
+ * Okutucu: barkod → raf (/raf/{kod}/stok) → parça (/parca/{stokKodu}/stok).
+ * Elle:    raf → parça — barkod ARANMAZ (tüm depo ekranlarında ortak kural).
+ * Saha hatası (28.09): elle "64" barkod 64 (50100591) olarak çözülüp raf 64'ün önüne geçiyordu.
  */
 async function cozKaynakCekirdek(giris: string, kaynak: EtiketKaynak): Promise<KaynakSonuc> {
-  // 1) Barkod — okutma/elle fark etmez
-  const bId = barkodIdAday(giris)
+  // 1) Barkod — YALNIZ okutucu girişinde
+  const bId = kaynak === 'okutma' ? barkodIdAday(giris) : null
   if (bId !== null) {
     const bRes = await fetch(`/api/depo/barkod/${bId}`)
     if (bRes.ok) {
@@ -216,8 +213,7 @@ export function StokTasimaClient() {
           showError(`Barkod geçerli ama taşınabilir stok yok: ${r.kod}`)
           return
         }
-        // Barkod da her iki yolda deneniyor → kaynak ayrımlı mesaj anlamsız: tek mesaj.
-        showError(`Barkod, raf ya da stok kodu bulunamadı: ${r.sorgu}`)
+        showError(`${kaynak === 'okutma' ? 'Barkod, raf' : 'Raf'} ya da stok kodu bulunamadı: ${r.sorgu}`)
       } catch {
         showError('Bağlantı hatası — tekrar deneyin')
       } finally {
@@ -333,7 +329,7 @@ export function StokTasimaClient() {
     secHizliKaynak(asFifo)
   }
 
-  // a) Okut çözümle — ortak çekirdek: barkod→raf→parça. Sonucu Hızlı state'ine işle.
+  // a) Okut çözümle — ortak çekirdek: okutucu barkod→raf→parça, elle raf→parça. Sonucu Hızlı state'ine işle.
   const cozHizliKaynak = async (kod: string, kaynak: EtiketKaynak) => {
     setHLoading(true)
     setHSonuc(null)
@@ -365,8 +361,7 @@ export function StokTasimaClient() {
       } else if (r.tip === 'barkod-stoksuz') {
         showError(`Barkod geçerli ama taşınabilir stok yok: ${r.kod}`)
       } else {
-        // Barkod da her iki yolda deneniyor → kaynak ayrımlı mesaj anlamsız: tek mesaj.
-        showError(`Barkod, raf ya da stok kodu bulunamadı: ${kod}`)
+        showError(`${kaynak === 'okutma' ? 'Barkod, raf' : 'Raf'} ya da stok kodu bulunamadı: ${kod}`)
       }
     } catch {
       showError('Bağlantı hatası — tekrar deneyin')

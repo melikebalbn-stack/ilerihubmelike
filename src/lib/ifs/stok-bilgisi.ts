@@ -207,8 +207,8 @@ export async function getStokBilgisi(filtre: StokBilgisiFiltre, sayfa = 0): Prom
 }
 
 /**
- * Tek okutma alanı çözümü: barkod (okutmada çıplak sayı/B: ve LOV'da varsa) → PartNo (tam) →
- * LocationNo → bulunamadı (cozum: null). Elle girişte barkod DENENMEZ (etiket-parse kuralı).
+ * Tek okutma alanı çözümü. Okutucu: barkod (çıplak sayı/B: ve LOV'da varsa) → PartNo (tam) → LocationNo.
+ * Elle: barkod DENENMEZ (etiket-parse kuralı); sabit lokasyon yoksa LocationNo → PartNo (tam). Bulunamadı → cozum: null.
  * Ek filtreler (ambar, lot…) her adıma eklenir. İlk sonuç veren adımın sayfası döner.
  */
 export async function okutVeGetir(
@@ -237,14 +237,21 @@ export async function okutVeGetir(
     }
   }
 
+  // Elle giriş ve sabit lokasyon yok: raf (LocationNo) önce, sonra stok kodu — tüm depo ekranlarında ortak kural
+  // (elle "64" raf 64'tür; barkod elle girişte zaten denenmez, parseEtiket).
+  if (kaynak === 'elle' && v && !dolu(ekFiltre.locationNo)) {
+    const lok = await getStokBilgisi({ ...ekFiltre, locationNo: v }, sayfa)
+    if (lok.toplam > 0) return { ...lok, cozum: { tip: 'lokasyon', deger: v } }
+  }
+
   // Barkod değil / LOV'da yok → parça no adayı: segmentli etikette P:, aksi halde ham değer.
   const parcaAday = dolu(p.stokKodu) || v
   if (parcaAday) {
     const parca = await getStokBilgisi({ ...ekFiltre, partNoEq: parcaAday }, sayfa)
     if (parca.toplam > 0) return { ...parca, cozum: { tip: 'parca', deger: parcaAday } }
   }
-  // Çıplak sayı barkod olarak çözülemediyse lokasyon da olabilir (ör. "76") → ham değerle dene.
-  if (v) {
+  // Çıplak sayı barkod olarak çözülemediyse lokasyon da olabilir (ör. "76") → ham değerle dene (elle yukarıda denendi).
+  if (v && !(kaynak === 'elle' && !dolu(ekFiltre.locationNo))) {
     const lok = await getStokBilgisi({ ...ekFiltre, locationNo: v }, sayfa)
     if (lok.toplam > 0) return { ...lok, cozum: { tip: 'lokasyon', deger: v } }
   }

@@ -2,13 +2,13 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { AlertTriangle, ArrowLeft, Check, Loader2, MapPin, RefreshCw, ScanLine, Trash2 } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Check, Loader2, MapPin, RefreshCw, ScanLine, Trash2, Undo2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useScanner } from '@/lib/depo/use-scanner'
 import type { EtiketKaynak } from '@/lib/depo/etiket-parse'
 import { TERMINAL_ACCENT } from '../../_shared'
 import type { RezervSatiri, Sevkiyat, SevkiyatOzet } from '@/lib/ifs/sevkiyat'
-import type { OkutmaAdayi, OkutmaKaydi } from '@/lib/depo/sevkiyat-okutma'
+import type { GeriAlinabilir, OkutmaAdayi, OkutmaKaydi } from '@/lib/depo/sevkiyat-okutma'
 
 type Gorunum = 'LISTE' | 'DETAY' | 'OZET'
 // Okutma ALAN BAZLI: listede sevkiyat no, detayda malzeme barkodu.
@@ -31,6 +31,9 @@ export function SevkiyatClient() {
   const [barkodId, setBarkodId] = useState<number | null>(null)
   const [miktar, setMiktar] = useState('')
   const [onayAcik, setOnayAcik] = useState(false)
+  // Toplamayı geri al: sevk lokasyonundaki toplanmış satırlar + dönüş hedefleri; açık onay penceresi.
+  const [geriAlinabilir, setGeriAlinabilir] = useState<GeriAlinabilir[]>([])
+  const [geriAl, setGeriAl] = useState<{ rezerv: RezervSatiri; lokasyon: string; miktar: number; birim: string } | null>(null)
   const [ozet, setOzet] = useState<{ id: number; yontem: string; ok: number; hata: number; toplanan: number; istenen: number } | null>(null)
 
   const [loading, setLoading] = useState(false)
@@ -94,6 +97,7 @@ export function SevkiyatClient() {
     if (!d) return false
     setSevkiyat(d.sevkiyat as Sevkiyat)
     setOkutulan((d.okutmalar ?? []) as OkutmaKaydi[])
+    setGeriAlinabilir((d.geriAlinabilir ?? []) as GeriAlinabilir[])
     return true
   }, [api])
 
@@ -168,7 +172,19 @@ export function SevkiyatClient() {
   const okutulanToplam = okutulan.reduce((t, o) => t + o.miktar, 0)
   const eksikVar = !!sevkiyat && sevkiyat.satirlar.some((s) => s.toplanan + okutulanParca(s.partNo) < s.istenen)
 
-  const alan: Alan = gorunum === 'LISTE' ? 'SEVKIYAT_NO' : gorunum === 'DETAY' && !onayAcik ? 'MALZEME' : null
+  const geriAlYap = async () => {
+    if (!sevkiyat || !geriAl) return
+    const lok = geriAl.lokasyon.trim()
+    if (!lok) return showError('Geri alınacak lokasyonu girin')
+    const g = geriAl
+    setGeriAl(null)
+    const d = await api(`/api/depo/sevkiyat/${sevkiyat.id}/geri-al`, json('POST', { keyref: g.rezerv.keyref, miktar: g.miktar, hedefLok: lok }))
+    if (!d) return
+    setInfo(`${g.rezerv.partNo} · ${fmt(g.miktar)} ${g.birim} ${lok}'a geri alındı`)
+    await detayYukle(sevkiyat.id)
+  }
+
+  const alan: Alan = gorunum === 'LISTE' ? 'SEVKIYAT_NO' : gorunum === 'DETAY' && !onayAcik && !geriAl ? 'MALZEME' : null
   const dispatch = async (v: string, kaynak: EtiketKaynak) => {
     const s = v.trim()
     if (!s || !alan) return
@@ -306,6 +322,21 @@ export function SevkiyatClient() {
                       <MapPin className="h-3.5 w-3.5 shrink-0" style={{ color: TERMINAL_ACCENT }} /> Git → {r.locationNo} <span className="font-normal text-muted-foreground">· lot {tire(r.lotBatchNo)} · rezerve {fmt(r.rezerve - r.toplanan)}</span>
                     </button>
                   ))}
+                  {/* Toplanmış (raporlanmış) satırlar — sevk lokasyonundan rezerv lokasyonuna geri al */}
+                  {geriAlinabilir.filter((g) => g.rezerv.partNo === s.partNo).flatMap((g) =>
+                    (g.hedefler.length ? g.hedefler : [{ lokasyon: '', miktar: g.rezerv.toplanan }]).map((h, j) => (
+                      <div key={`${g.rezerv.keyref}-${j}`} className="flex items-center gap-2 rounded-lg border border-emerald-300 bg-emerald-50/60 px-2 py-1.5 text-xs">
+                        <Check className="h-3.5 w-3.5 shrink-0 text-emerald-700" />
+                        <span className="min-w-0 flex-1">
+                          Toplandı <b>{fmt(h.miktar)} {s.birim}</b> · {g.rezerv.locationNo}{h.lokasyon ? ` ← ${h.lokasyon}` : ''} · lot {tire(g.rezerv.lotBatchNo)}
+                        </span>
+                        <button type="button" onClick={() => setGeriAl({ rezerv: g.rezerv, lokasyon: h.lokasyon, miktar: h.miktar, birim: s.birim })}
+                          className="flex shrink-0 items-center gap-1 rounded-lg border border-red-300 bg-background px-2 py-1 font-semibold text-red-700 active:bg-red-50">
+                          <Undo2 className="h-3.5 w-3.5" /> Geri Al
+                        </button>
+                      </div>
+                    )),
+                  )}
                 </div>
               )
             })}
@@ -348,6 +379,26 @@ export function SevkiyatClient() {
           <div className="text-2xl font-bold" style={{ color: ozet.hata ? undefined : TERMINAL_ACCENT }}>{ozet.hata ? 'Kısmen raporlandı' : 'Toplama raporlandı'}</div>
           <div className="text-sm">toplanan {fmt(ozet.toplanan)} / {fmt(ozet.istenen)}{ozet.hata ? ` · ${ozet.hata} satır hatalı` : ''}</div>
           <button type="button" onClick={() => { setOzet(null); setSevkiyat(null); setGorunum('LISTE') }} className="h-11 w-full rounded-xl text-sm font-semibold text-white" style={{ background: TERMINAL_ACCENT }}>Sevkiyatlara dön</button>
+        </div>
+      )}
+
+      {geriAl && sevkiyat && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 sm:items-center" onClick={() => setGeriAl(null)}>
+          <div className="w-full max-w-md rounded-2xl bg-background p-4 shadow-lg" onClick={(e) => e.stopPropagation()}>
+            <div className="text-base font-semibold">
+              {fmt(geriAl.miktar)} {geriAl.birim} sevk lokasyonundan ({geriAl.rezerv.locationNo}) {geriAl.lokasyon || '…'}&apos;a geri alınacak
+            </div>
+            <div className="mt-1 text-sm text-muted-foreground">{geriAl.rezerv.partNo} · lot {tire(geriAl.rezerv.lotBatchNo)} · rezervi de düşer. Sevkiyat iptal edilmez.</div>
+            {/* Terminalden okutulmamış (IFS'te toplanmış) satır: dönüş lokasyonu Hub'da yok → elle girilir */}
+            {!geriAlinabilir.some((g) => g.rezerv.keyref === geriAl.rezerv.keyref && g.hedefler.length) && (
+              <input autoFocus value={geriAl.lokasyon} onChange={(e) => setGeriAl({ ...geriAl, lokasyon: e.target.value })} placeholder="Geri alınacak lokasyon"
+                className="mt-3 h-11 w-full rounded-xl border bg-background px-3 text-base outline-none focus:ring-1 focus:ring-ring" />
+            )}
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <button type="button" onClick={() => setGeriAl(null)} className="h-11 rounded-xl border text-sm font-semibold">Vazgeç</button>
+              <button type="button" onClick={() => void geriAlYap()} disabled={!geriAl.lokasyon.trim()} className="h-11 rounded-xl bg-red-600 text-sm font-semibold text-white disabled:opacity-40">GERİ AL</button>
+            </div>
+          </div>
         </div>
       )}
 

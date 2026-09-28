@@ -4,6 +4,7 @@ import { cozBarkodId } from '@/lib/ifs/barkod'
 import { parseEtiket, type EtiketKaynak } from '@/lib/depo/etiket-parse'
 import type { RezervSatiri, Sevkiyat } from '@/lib/ifs/sevkiyat'
 
+
 /**
  * Sevkiyat okutma listesi (Hub tarafı). Okutmalar IFS'e hemen yazılmaz; TOPLAMAYI BİTİR'de aynı rezerv
  * satırının okutmaları toplanıp tek PickSelected satır anahtarına çevrilir, sonra raporlandi=true olur.
@@ -115,4 +116,71 @@ export async function okutmaSil(shipmentId: number, id: string): Promise<OkutmaK
 export async function raporlandiIsaretle(ids: string[]): Promise<void> {
   if (!ids.length) return
   await prisma.sevkiyatOkutma.updateMany({ where: { id: { in: ids }, raporlandi: false }, data: { raporlandi: true, raporlandiAt: new Date() } })
+}
+
+// ── Toplamayı geri al (Hub tarafı) ───────────────────────────────────────────
+
+const lotEsit = (okutmaLot: string | null, rezervLot: string) => (okutmaLot ?? '*') === (rezervLot || '*')
+
+export interface GeriAlmaHedefi {
+  /** Rezerv lokasyonu (okutma anı) — geri almada dönüş yeri. */
+  lokasyon: string
+  miktar: number
+}
+
+export interface GeriAlinabilir {
+  /** Sevk lokasyonundaki toplanmış rezerv satırı. */
+  rezerv: RezervSatiri
+  /** Raporlanmış okutmalardan çıkan dönüş yerleri (lokasyon başına miktar, toplananla sınırlı). Boşsa IFS'te toplanmış. */
+  hedefler: GeriAlmaHedefi[]
+}
+
+/** Sevk lokasyonunda toplanmış satırlar + her biri için dönüş hedefleri (raporlanmış okutmalar: parça + lot eşleşmesi). */
+export async function geriAlinabilirler(s: Sevkiyat): Promise<GeriAlinabilir[]> {
+  const toplanmis = s.rezervler.filter((r) => r.locationNo === s.sevkLok && r.toplanan > 0)
+  if (!toplanmis.length) return []
+  const raporlu = (await okutmalar(s.id, true)).filter((o) => o.raporlandi)
+  return toplanmis.map((r) => {
+    const lok = new Map<string, number>()
+    for (const o of raporlu) {
+      if (o.partNo !== r.partNo || !lotEsit(o.lotBatchNo, r.lotBatchNo)) continue
+      lok.set(o.lokasyon, (lok.get(o.lokasyon) ?? 0) + o.miktar)
+    }
+    let kalan = r.toplanan
+    const hedefler: GeriAlmaHedefi[] = []
+    for (const [lokasyon, miktar] of lok) {
+      const m = Math.min(miktar, kalan)
+      if (m > 0) { hedefler.push({ lokasyon, miktar: m }); kalan -= m }
+    }
+    return { rezerv: r, hedefler }
+  })
+}
+
+/**
+ * Geri alma IFS'te başarılı olduktan sonra: o parça + lot + lokasyonun raporlanmış okutmalarından `miktar` düşülür
+ * (en yeni önce; sıfırlanan kayıt silinir) → Hub listesi sevk lokasyonundaki gerçek toplamayla uyumlu kalır.
+ * Dönen liste denetim kaydı içindir.
+ */
+export async function geriAlindiDus(
+  shipmentId: number, partNo: string, lotBatchNo: string, lokasyon: string, miktar: number,
+): Promise<{ id: string; onceki: number; sonraki: number }[]> {
+  return prisma.$transaction(async (tx) => {
+    const kayitlar = await tx.sevkiyatOkutma.findMany({
+      where: { shipmentId, raporlandi: true, partNo, lokasyon, lotBatchNo: lotBatchNo && lotBatchNo !== '*' ? lotBatchNo : null },
+      orderBy: { createdAt: 'desc' },
+    })
+    let kalan = miktar
+    const degisen: { id: string; onceki: number; sonraki: number }[] = []
+    for (const k of kayitlar) {
+      if (!(kalan > 0)) break
+      const onceki = Number(k.miktar)
+      const dus = Math.min(onceki, kalan)
+      const sonraki = onceki - dus
+      if (sonraki > 0) await tx.sevkiyatOkutma.update({ where: { id: k.id }, data: { miktar: sonraki } })
+      else await tx.sevkiyatOkutma.delete({ where: { id: k.id } })
+      degisen.push({ id: k.id, onceki, sonraki })
+      kalan -= dus
+    }
+    return degisen
+  })
 }

@@ -29,7 +29,11 @@ Sayılar: 64 `route.ts`, 11 `src/lib/servis-yonetimi/` dosyası, 2 ekran.
 (`git merge-base --is-ancestor` → hayır). Melih içeriği yeniden yazarak
 aldı (6 yeni commit: `3dfc3a60`, `7b02e751`, `45e28fe7`, `339e9684`,
 `477250b9`, `ee67d6f0`). Yani "dal merge oldu" demek yanlış; doğrusu
-**dalın içeriği main'e taşındı**. Dalların ref'leri duruyor, dokunulmuyor.
+**dalın içeriği main'e taşındı**.
+
+İki dal 2026-09-28'de SİLİNDİ (Melih onayı): silmeden önce içerik ölçümü
+güncel main'e karşı tekrarlandı — 16/16 ve 10/10 blob birebir aynı, yerel
+ve origin uçları ayrı ayrı doğrulandı. Yerel ve origin'den kaldırıldı.
 
 **Main'de OLMAYAN — 76 dosya, dal başına:**
 

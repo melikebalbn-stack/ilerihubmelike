@@ -18,8 +18,8 @@ yazıldı (`dev/elif/servis-tanim-paketi`) — seed + 9 güzergâh/133 durak +
 
 1. ✅ **KAPANDI — kapasite motoru main'de.** `faz1b-alternatif-servis`in
    16 dosyasının 16'sı main'de birebir aynı (ölçüldü). Aynı turda
-   `servis-yonetimi-export`in 10 dosyası da girdi. Dalların ref'leri
-   duruyor, dokunulmuyor.
+   `servis-yonetimi-export`in 10 dosyası da girdi. İki dal, içerik ölçümü
+   güncel main'e karşı tekrarlandıktan sonra SİLİNDİ (Melih onayı).
 
 2. **Prod dry-run + Elif'in Excel listesiyle karşılaştırma.** Dry-run
    bugün koşulabilir: servis tabloları boş olsa da dry-run onlara
@@ -63,18 +63,54 @@ yazıldı (`dev/elif/servis-tanim-paketi`) — seed + 9 güzergâh/133 durak +
 
 ## Test durumu
 
-Tam takım **142 dosya / 1560 test, 0 başarısız** (bu dalda ölçüldü, taban
-güncel main).
+Tam takım **144 dosya / 1578 test, 0 başarısız** — 2026-09-28, güncel main
+tabanında, taze Prisma client ile ölçüldü.
 
-🔴 **DÜZELTME — Ders 111.** Bu bölüm 2026-09-27'de "17 test / 21 dosya
-kırmızı, `origin/main`'in kendisinde de aynı şekilde düşüyor" diyordu.
-**O ölçüm geçersiz.** Sebep: worktree'ler `src/generated`'i paylaşılan
-dizine symlink'liyordu ve o Prisma client bayattı (2026-06-20). Bayat
-client hem daldaki hem base'deki koşuyu aynı şekilde bozuyor, bu yüzden
-"küme aynı, demek ki mevcut sorun" çıkarımı dayanaksızdı.
-Kural: **her worktree kendi client'ını üretir**; paylaşılacaksa yalnız
-`node_modules`. Paylaşılan dizine `prisma generate` koşulmaz (dev sunucusu
-o client'ı yüklü tutuyor).
+Kırmızı test **yok**. Bu belgede daha önce bunun tersini söyleyen bir ifade
+vardı; kaldırıldı.
+
+### 🔴 Ders 111 — worktree'ler kendi Prisma client'ını üretir
+
+Worktree'lerde `src/generated` paylaşılan dizine symlink'lenmişti ve o
+client bayattı (2026-06-20). Bayat client, şemanın yeni kısmına dokunan
+testleri düşürüyordu. Kritik olan: **aynı bozulmayı hem dalda hem base'de
+üretiyor**, dolayısıyla "iki tarafta da düşüyor, demek ki mevcut sorun"
+biçimindeki her çıkarım dayanaksız.
+
+Kural:
+- Her worktree `npx prisma generate` ile **kendi** client'ını üretir.
+- Paylaşılacaksa yalnız `node_modules`.
+- Paylaşılan dizine `prisma generate` **koşulmaz** — dev sunucusu o
+  client'ı yüklü tutar. Zorunluysa önce `pm2 stop`.
+- Başarısız bir testi "zaten böyleydi" diye geçmeden önce taze client'la
+  yeniden ölç.
+
+## Rebase sırası — 2026-09-28, 3/8 tamam, 4.'de durdu
+
+Melih'in sırası. Her dal: ayrı worktree · kendi Prisma client'ı · rebase ·
+blob hash ile içerik kaybı kontrolü · kendi testleri + tam takım iki koşu ·
+`HEAD..origin/main` boş kapısı · `--force-with-lease`, yalnız origin.
+
+| # | dal | yeni SHA | çakışma |
+|---|---|---|---|
+| 1 | `servis-sikayet-uygulama` | `8caeaa08` | yok |
+| 2 | `servis-yonetimi-veri-kalite-merkezi` | `ded5d1f3` | yok |
+| 3 | `servis-yonetimi-bu-ay-ne-degisti` | `dd371342` | yok |
+| 4 | `servis-yonetimi-acil-durum-listesi` | — | 🔴 `src/lib/audit-log.ts` |
+| 5 | `servis-yonetimi-faz1b-harita` | — | sıra gelmedi |
+| 6 | `feat/servis-goc-script` | — | sıra gelmedi |
+| 7 | `dev-system-foundation` | — | sıra gelmedi |
+| 8 | `servis-tanim-paketi` | — | sıra gelmedi |
+
+🔴 **4. dal çakışması, çözülmedi.** `audit-log.ts` içindeki `targetType`
+union'ı: main'e aynı noktaya `CALIBRATION_*`, `PDKS_*`, `IZIN_*` üyeleri
+girmiş, dal ise `'SERVIS'` ekliyor. Worktree `/home/elif/wt-acil` rebase
+yarıda duruyor (`git rebase --abort` ile geri alınır).
+
+🔴 **Beklenen çakışma çıkmadı, beklenmeyen çıktı.** `servis-yonetimi/page.tsx`
+hiç çakışmadı. Buna karşılık ilk üç dalın üçü de `Sidebar.tsx`'e satır
+ekliyor ve üçü de main'e karşı temiz geçti — ama **birbirlerine karşı
+geçmezler**: main'e sırayla girerken aynı menü bloğunda çakışacaklar.
 
 ## Sırada
 

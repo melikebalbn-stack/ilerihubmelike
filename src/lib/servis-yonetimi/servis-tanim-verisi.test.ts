@@ -3,10 +3,21 @@ import { durakKodu } from './servis-durak-kodu'
 import {
   ACIK_MADDELER,
   BELIRSIZ_DURAKLAR,
+  DURAK_ESLEME,
+  ESLEME_ACIK,
   GUZERGAHLAR,
+  OLASI_YINELENEN_DURAKLAR,
   TOSB,
   TUM_GUZERGAHLAR,
 } from './servis-tanim-verisi'
+
+const TR: Record<string, string> = {
+  ç: 'C', ğ: 'G', ş: 'S', ö: 'O', ü: 'U', ı: 'I', 'İ': 'I',
+  'Ç': 'C', 'Ğ': 'G', 'Ş': 'S', 'Ö': 'O', 'Ü': 'U',
+}
+/** goc-siniflandirma.ts'teki normalizeTR ile aynı kural. */
+const norm = (s: string) =>
+  s.split('').map((c) => TR[c] ?? c).join('').toUpperCase().replace(/[^A-Z0-9]/g, '')
 
 describe('servis tanım verisi', () => {
   it('güzergâh kodları benzersiz', () => {
@@ -58,9 +69,10 @@ describe('servis tanım verisi', () => {
     expect(new Set(kodlar).size).toBe(kodlar.length)
   })
 
-  it('yerleşmiş veri: 9 güzergâh, 106 durak', () => {
+  // 106 yerleşmiş (dev DB) + 27 İdari İşler eşleme tablosundan.
+  it('9 güzergâh, 133 durak', () => {
     expect(GUZERGAHLAR).toHaveLength(9)
-    expect(GUZERGAHLAR.reduce((t, g) => t + g.duraklar.length, 0)).toBe(106)
+    expect(GUZERGAHLAR.reduce((t, g) => t + g.duraklar.length, 0)).toBe(133)
   })
 
   // TOSB güzergâhı tanımlı ama durakları İdari İşler'den gelmedi.
@@ -76,6 +88,78 @@ describe('servis tanım verisi', () => {
     expect(new Set(ACIK_MADDELER.map((m) => m.no)).size).toBe(6)
     for (const m of ACIK_MADDELER) {
       expect(TUM_GUZERGAHLAR.map((g) => g.kod), `madde ${m.no}`).toContain(m.guzergah)
+    }
+  })
+})
+
+describe('durak eşleme tablosu', () => {
+  it('51 net satır, 14 açık satır, 65 toplam', () => {
+    expect(DURAK_ESLEME).toHaveLength(51)
+    expect(ESLEME_ACIK).toHaveLength(14)
+    expect(DURAK_ESLEME.length + ESLEME_ACIK.length).toBe(65)
+  })
+
+  it('satır numaraları 1..65, çakışmasız', () => {
+    const hepsi = [...DURAK_ESLEME.map((e) => e.satir), ...ESLEME_ACIK.map((e) => e.satir)]
+    expect(hepsi.sort((a, b) => a - b)).toEqual(Array.from({ length: 65 }, (_, i) => i + 1))
+  })
+
+  it('kişi sayıları: net 75, açık 18', () => {
+    expect(DURAK_ESLEME.reduce((t, e) => t + e.kisi, 0)).toBe(75)
+    expect(ESLEME_ACIK.reduce((t, e) => t + e.kisi, 0)).toBe(18)
+  })
+
+  // 🔴 Asıl kural: her hedef, kendi güzergâhında TAM OLARAK BİR durağa
+  // çözülmeli. Sıfır çözerse atama düşer, birden fazla çözerse hangisine
+  // gideceği belirsiz kalır.
+  it('her hedef kendi güzergâhında tam olarak bir durağa çözülüyor', () => {
+    for (const e of DURAK_ESLEME) {
+      const g = TUM_GUZERGAHLAR.find((x) => x.kod === e.guzergah)
+      expect(g, `satır ${e.satir}: güzergâh ${e.guzergah}`).toBeDefined()
+      const eslesen = g!.duraklar.filter((d) => norm(d.ad) === norm(e.hedef))
+      expect(eslesen.length, `satır ${e.satir}: "${e.hedef}"`).toBe(1)
+    }
+  })
+
+  // Ham metin eşleştirme anahtarı: aynı normalize metin iki farklı hedefe
+  // gidemez, yoksa göç script'i hangisini seçeceğini bilemez.
+  it('ham metin anahtarı belirsiz değil', () => {
+    const anahtar = new Map<string, string>()
+    for (const e of DURAK_ESLEME) {
+      const k = norm(e.hamMetin)
+      const onceki = anahtar.get(k)
+      if (onceki !== undefined) {
+        expect(onceki, `satır ${e.satir}: "${e.hamMetin}" iki hedefe gidiyor`).toBe(
+          e.guzergah + '§' + norm(e.hedef),
+        )
+      }
+      anahtar.set(k, e.guzergah + '§' + norm(e.hedef))
+    }
+  })
+
+  it('açık satırların ham metni net tabloda geçmiyor', () => {
+    const net = new Set(DURAK_ESLEME.map((e) => norm(e.hamMetin)))
+    for (const e of ESLEME_ACIK) {
+      expect(net.has(norm(e.hamMetin)), `satır ${e.satir}: "${e.hamMetin}"`).toBe(false)
+    }
+  })
+
+  it('güzergâh kodları tanımlı güzergâhlara ait', () => {
+    const kodlar = new Set(TUM_GUZERGAHLAR.map((g) => g.kod))
+    for (const e of [...DURAK_ESLEME, ...ESLEME_ACIK]) {
+      expect(kodlar.has(e.guzergah), `satır ${e.satir}`).toBe(true)
+    }
+  })
+
+  // Bu liste karar bekliyor; kendiliğinden birleştirme YAPILMADI.
+  it('olası yinelenen duraklar kayıtlı ve hepsi gerçekten veride var', () => {
+    expect(OLASI_YINELENEN_DURAKLAR).toHaveLength(13)
+    for (const y of OLASI_YINELENEN_DURAKLAR) {
+      const g = TUM_GUZERGAHLAR.find((x) => x.kod === y.guzergah)!
+      expect(g.duraklar.some((d) => norm(d.ad) === norm(y.yeniAd)), y.yeniAd).toBe(true)
+      for (const b of y.benzerMevcut) {
+        expect(g.duraklar.find((d) => d.sira === b.sira)?.ad, `${y.yeniAd} ~ ${b.ad}`).toBe(b.ad)
+      }
     }
   })
 })

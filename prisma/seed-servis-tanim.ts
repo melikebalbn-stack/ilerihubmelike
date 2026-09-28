@@ -24,10 +24,13 @@
  *
  * 🔴 --apply OLMADAN HİÇBİR ŞEY YAZMAZ (göç script'iyle aynı desen).
  *
- * KAYNAK: güzergâh/durak verisi Elif'in aktif Excel listesinden girilmiş
- * sandbox tanım verisidir (9 güzergâh, 106 durak). Doğrulandı: araç toplam
- * kapasitesi 183 = Elif'in rakamı; 106 durak kodunun 106'sı kanonik şemaya
- * uyuyor.
+ * KAYNAK: veri iki katmanlı (bkz. servis-tanim-verisi.ts):
+ *   1. dev DB'den okunan yerleşmiş tanım verisi — 9 güzergâh, 106 durak
+ *   2. İdari İşler eşleme tablosundan gelen 27 yeni durak → toplam 133
+ * 🔴 O 27 durağın SIRASI GERÇEK DEĞİL: güzergâhtaki fiziksel sırası
+ * bilinmediği için mevcut max'tan devam ettirildi. Atama ve kapasite
+ * sıradan bağımsız olduğu için FAZ 1+2 çekirdeği etkilenmiyor; yalnız
+ * ekrandaki görünüm sırası yanlış. TODO(elif).
  *
  * 🔴 AÇIK 6 MADDE — İdari İşler'e soruldu, cevap BEKLENİYOR.
  * Aşağıda `TODO(idari-isler)` ile işaretli. Hiçbirine varsayılan

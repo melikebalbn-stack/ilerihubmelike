@@ -1,6 +1,11 @@
 /**
  * SERVİS TANIM VERİSİ — güzergâh + durak listesi (tek kaynak)
  *
+ * VERİ KAYNAĞI İKİ KATMANLI:
+ *   1. dev DB'den okunan yerleşmiş tanım verisi (9 güzergâh, 106 durak)
+ *   2. İdari İşler eşleme tablosundan gelen 27 YENİ durak → toplam 133
+ *      Bu 27'sinin SIRASI GERÇEK DEĞİL (bkz. ilgili güzergâhın yorumu).
+ *
  * Buradan okuyanlar:
  *   - prisma/seed-servis-tanim.ts  (tanım paketini DB'ye yazar)
  *   - göç script'i (durak eşleştirmesi)
@@ -38,6 +43,13 @@ export const GUZERGAHLAR: GuzergahTanimi[] = [
       { sira: 12, ad: 'M. Migros' },
       { sira: 13, ad: 'Yapı Kredi / Mutlukent' },
       { sira: 14, ad: 'Shell Benzinlik' },
+      // 🔴 İdari İşler eşleme tablosundan gelen YENİ duraklar (4 adet).
+      //    SIRA GERÇEK DEĞİL: güzergâhtaki fiziksel sırası bilinmiyor,
+      //    mevcut max'tan (14) devam ettirildi. TODO(elif): gerçek sıra.
+      { sira: 15, ad: 'MUTLUKENT' },
+      { sira: 16, ad: 'ANADOLU LİSESİ' },
+      { sira: 17, ad: 'ARAP ÇEŞME SEHLL PETROL' },
+      { sira: 18, ad: 'İLBEYOĞLU' },
     ],
   },
   {
@@ -70,6 +82,10 @@ export const GUZERGAHLAR: GuzergahTanimi[] = [
       { sira: 12, ad: 'Erişler' },
       { sira: 13, ad: 'Çiçekçiler' },
       { sira: 14, ad: 'Mandıra' },
+      // 🔴 İdari İşler eşleme tablosundan gelen YENİ duraklar (1 adet).
+      //    SIRA GERÇEK DEĞİL: güzergâhtaki fiziksel sırası bilinmiyor,
+      //    mevcut max'tan (14) devam ettirildi. TODO(elif): gerçek sıra.
+      { sira: 15, ad: 'YAVUZ SELİM DURAĞI' },
     ],
   },
   {
@@ -90,6 +106,14 @@ export const GUZERGAHLAR: GuzergahTanimi[] = [
       { sira: 12, ad: 'Zirve Market' },
       { sira: 13, ad: 'Tahsin Tarhan Ort.Ok' },
       { sira: 14, ad: 'Mahsuni Şerif Parkı' },
+      // 🔴 İdari İşler eşleme tablosundan gelen YENİ duraklar (5 adet).
+      //    SIRA GERÇEK DEĞİL: güzergâhtaki fiziksel sırası bilinmiyor,
+      //    mevcut max'tan (14) devam ettirildi. TODO(elif): gerçek sıra.
+      { sira: 15, ad: 'YAVUZ SELİM DURAĞI' },
+      { sira: 16, ad: '23 NİSAN CAD. HAKMAR' },
+      { sira: 17, ad: 'SARI CAMİİ' },
+      { sira: 18, ad: 'ULAŞTEPE ZİRVE MARKET' },
+      { sira: 19, ad: 'YILDIZ MARKET' },
     ],
   },
   {
@@ -110,6 +134,13 @@ export const GUZERGAHLAR: GuzergahTanimi[] = [
       { sira: 12, ad: 'Mezbahane Ediş Yapı' },
       { sira: 13, ad: 'M. Taşlı' },
       { sira: 14, ad: 'Unteks' },
+      // 🔴 İdari İşler eşleme tablosundan gelen YENİ duraklar (4 adet).
+      //    SIRA GERÇEK DEĞİL: güzergâhtaki fiziksel sırası bilinmiyor,
+      //    mevcut max'tan (14) devam ettirildi. TODO(elif): gerçek sıra.
+      { sira: 15, ad: 'İTFAİYE' },
+      { sira: 16, ad: 'DARICA EMNİYET MÜDÜRLÜĞÜ' },
+      { sira: 17, ad: 'SULTAN PASTANESİ ÜST YOL' },
+      { sira: 18, ad: 'UNTEX' },
     ],
   },
   {
@@ -142,6 +173,10 @@ export const GUZERGAHLAR: GuzergahTanimi[] = [
       { sira: 8, ad: 'İstikbal Önü' },
       { sira: 9, ad: 'Garanti Bankası' },
       { sira: 10, ad: 'Tekke Şok' },
+      // 🔴 İdari İşler eşleme tablosundan gelen YENİ duraklar (1 adet).
+      //    SIRA GERÇEK DEĞİL: güzergâhtaki fiziksel sırası bilinmiyor,
+      //    mevcut max'tan (10) devam ettirildi. TODO(elif): gerçek sıra.
+      { sira: 11, ad: 'ANADOLU HİSARI' },
     ],
   },
   {
@@ -160,6 +195,19 @@ export const GUZERGAHLAR: GuzergahTanimi[] = [
       { sira: 10, ad: 'Tel Boyu' },
       { sira: 11, ad: 'Turgut Özal Cd.' },
       { sira: 12, ad: 'Tel Boyu Şifa' },
+      // 🔴 İdari İşler eşleme tablosundan gelen YENİ duraklar (10 adet).
+      //    SIRA GERÇEK DEĞİL: güzergâhtaki fiziksel sırası bilinmiyor,
+      //    mevcut max'tan (12) devam ettirildi. TODO(elif): gerçek sıra.
+      { sira: 13, ad: 'İÇMELER KÖPRÜSÜ' },
+      { sira: 14, ad: 'KARTAL BETON YOL' },
+      { sira: 15, ad: 'ŞİFA TEL BOYU' },
+      { sira: 16, ad: 'AYDINTEPE METRO' },
+      { sira: 17, ad: 'ADNAN KAHVECİ' },
+      { sira: 18, ad: 'ESENYALI' },
+      { sira: 19, ad: 'ASSAN ÜST GEÇİDİ' },
+      { sira: 20, ad: 'AYTEMİZ PETROL' },
+      { sira: 21, ad: 'EROL GÜNGÖR İÖÖ' },
+      { sira: 22, ad: 'TOPSELVİ' },
     ],
   },
   {
@@ -178,6 +226,11 @@ export const GUZERGAHLAR: GuzergahTanimi[] = [
       { sira: 10, ad: 'Mavi Evler' },
       { sira: 11, ad: 'Plaza Esenkent' },
       { sira: 12, ad: 'Fsm Köprüsü' },
+      // 🔴 İdari İşler eşleme tablosundan gelen YENİ duraklar (2 adet).
+      //    SIRA GERÇEK DEĞİL: güzergâhtaki fiziksel sırası bilinmiyor,
+      //    mevcut max'tan (12) devam ettirildi. TODO(elif): gerçek sıra.
+      { sira: 13, ad: 'MAVİEVLER-KÜÇÜKYALI' },
+      { sira: 14, ad: 'ÇEKMEKÖY' },
     ],
   },
 ]
@@ -196,12 +249,269 @@ export const TOSB: GuzergahTanimi = { kod: 'TOSB', ad: 'TOSB Servisi', duraklar:
 export const TUM_GUZERGAHLAR: GuzergahTanimi[] = [...GUZERGAHLAR, TOSB]
 
 // ----------------------------------------------------------------------------
+// DURAK EŞLEME TABLOSU — İdari İşler teyidi
+// ----------------------------------------------------------------------------
+//
+// `hamMetin` = Personnel kaydındaki serbest metin. EŞLEŞTİRME ANAHTARIDIR,
+// asla değiştirilmez. `hedef` = o metnin bağlanacağı durağın adı.
+// Aynı hedefi taşıyan satırlar aynı durağa gider (51 satır → 44 ayrı hedef).
+//
+// Bu tablo şimdilik KODDA. Kalıcı yeri bir alias tablosudur (öneri verildi,
+// enum'a DURAK_ALIAS eklemek migration gerektiriyor — Melih).
+//
+// 🔴 10 satırda İdari İşler anahtar sütununu üzerine yazmıştı; buradaki
+// `hamMetin` ORİJİNAL değerdir, satır numarasıyla geri eşleştirildi.
+export type DurakEsleme = {
+  /** tablodaki satır numarası — geri izlenebilirlik için */
+  satir: number
+  guzergah: string
+  /** Personnel'deki ham metin — eşleştirme anahtarı, DEĞİŞTİRİLMEZ */
+  hamMetin: string
+  kisi: number
+  hedef: string
+}
+
+export const DURAK_ESLEME: DurakEsleme[] = [
+  // ARAPCESME
+  { satir: 1, guzergah: 'ARAPCESME', hamMetin: 'H. YOLU', kisi: 1, hedef: 'Hal Yolu' },
+  { satir: 2, guzergah: 'ARAPCESME', hamMetin: 'CEZAEVİ KAPISI', kisi: 3, hedef: 'Cezaevi' },
+  { satir: 3, guzergah: 'ARAPCESME', hamMetin: 'MUTLUKENT', kisi: 1, hedef: 'MUTLUKENT' },
+  { satir: 4, guzergah: 'ARAPCESME', hamMetin: 'YENİKENT MUTLUKENT', kisi: 1, hedef: 'MUTLUKENT' },
+  { satir: 5, guzergah: 'ARAPCESME', hamMetin: 'ANADOLU LİSESİ', kisi: 1, hedef: 'ANADOLU LİSESİ' },
+  { satir: 7, guzergah: 'ARAPCESME', hamMetin: 'ARAP ÇEŞME SEHLL PETROL', kisi: 1, hedef: 'ARAP ÇEŞME SEHLL PETROL' },
+  { satir: 8, guzergah: 'ARAPCESME', hamMetin: 'İLBEYOĞLU', kisi: 1, hedef: 'İLBEYOĞLU' },
+  // BEYLIKBAGI_GUZELTEPE
+  { satir: 11, guzergah: 'BEYLIKBAGI_GUZELTEPE', hamMetin: 'FENİŞ IŞIK', kisi: 1, hedef: 'Feniş Işıklar' },
+  { satir: 12, guzergah: 'BEYLIKBAGI_GUZELTEPE', hamMetin: 'ADEM YAVUZ TRAFO', kisi: 4, hedef: 'Trafo' },
+  { satir: 13, guzergah: 'BEYLIKBAGI_GUZELTEPE', hamMetin: 'ÇİÇEKÇİLER Y.SULTAN SELİM DURAĞI', kisi: 1, hedef: 'Çiçekçiler' },
+  { satir: 16, guzergah: 'BEYLIKBAGI_GUZELTEPE', hamMetin: 'YAVUZ SULTAN SELİM DURAĞI', kisi: 1, hedef: 'YAVUZ SELİM DURAĞI' },
+  // BEYLIKBAGI_ULASTEPE
+  { satir: 17, guzergah: 'BEYLIKBAGI_ULASTEPE', hamMetin: 'YAVUZ SELİM DURAĞI', kisi: 2, hedef: 'YAVUZ SELİM DURAĞI' },
+  { satir: 18, guzergah: 'BEYLIKBAGI_ULASTEPE', hamMetin: '23 NİSAN CAD. HAKMAR', kisi: 1, hedef: '23 NİSAN CAD. HAKMAR' },
+  { satir: 19, guzergah: 'BEYLIKBAGI_ULASTEPE', hamMetin: 'SARI CAMİİ', kisi: 1, hedef: 'SARI CAMİİ' },
+  { satir: 20, guzergah: 'BEYLIKBAGI_ULASTEPE', hamMetin: 'BEYLİKBAĞI HAKMAR', kisi: 1, hedef: '23 NİSAN CAD. HAKMAR' },
+  { satir: 21, guzergah: 'BEYLIKBAGI_ULASTEPE', hamMetin: 'ULAŞTEPE ZİRVE MARKET', kisi: 1, hedef: 'ULAŞTEPE ZİRVE MARKET' },
+  { satir: 22, guzergah: 'BEYLIKBAGI_ULASTEPE', hamMetin: 'YILDIZ MARKET', kisi: 1, hedef: 'YILDIZ MARKET' },
+  // DARICA
+  { satir: 23, guzergah: 'DARICA', hamMetin: 'CUMHURİYET MEYDANI', kisi: 3, hedef: 'Cumhuriyet Meydan' },
+  { satir: 24, guzergah: 'DARICA', hamMetin: '60. YIL İÖÖ', kisi: 2, hedef: '60. yıl orta okulu' },
+  { satir: 25, guzergah: 'DARICA', hamMetin: 'GARANTİ', kisi: 1, hedef: 'Garanti Bank.' },
+  { satir: 26, guzergah: 'DARICA', hamMetin: 'TUZLA CAD', kisi: 1, hedef: 'Tuzla Cad. Remax Önü' },
+  { satir: 30, guzergah: 'DARICA', hamMetin: 'İTFAİYE', kisi: 2, hedef: 'İTFAİYE' },
+  { satir: 32, guzergah: 'DARICA', hamMetin: 'BAYRAMOĞLU KARAKOL', kisi: 1, hedef: 'DARICA EMNİYET MÜDÜRLÜĞÜ' },
+  { satir: 35, guzergah: 'DARICA', hamMetin: 'SULTAN PASTANESİ ÜST YOL', kisi: 1, hedef: 'SULTAN PASTANESİ ÜST YOL' },
+  { satir: 36, guzergah: 'DARICA', hamMetin: 'UNTEX', kisi: 1, hedef: 'UNTEX' },
+  // GEBZE_DEVELI
+  { satir: 37, guzergah: 'GEBZE_DEVELI', hamMetin: 'K.ÇEŞME BİM KARŞISI', kisi: 2, hedef: 'Köşklü Çeşme Bim Karşısı' },
+  { satir: 39, guzergah: 'GEBZE_DEVELI', hamMetin: 'EŞREF BİTLİS PARKI (A101)', kisi: 1, hedef: 'Eşref Bitlis Parkı (A101 önü)' },
+  { satir: 40, guzergah: 'GEBZE_DEVELI', hamMetin: 'SİSTEM ELEKTRİK', kisi: 1, hedef: 'Sistem Elektrik (Develi)' },
+  { satir: 41, guzergah: 'GEBZE_DEVELI', hamMetin: 'KÖŞKLÜÇEŞME', kisi: 5, hedef: 'Köşklü Çeşme Bim Karşısı' },
+  { satir: 44, guzergah: 'GEBZE_DEVELI', hamMetin: 'FEVZİ ÇAKMAK CAD.', kisi: 1, hedef: 'Osman Yılmaz (Fevzi Çakmak Cad.)' },
+  { satir: 45, guzergah: 'GEBZE_DEVELI', hamMetin: 'EŞREF BİTLİS BİM ÖNÜ', kisi: 1, hedef: 'Eşref Bitlis Parkı (A101 önü)' },
+  // KAVACIK_BEYKOZ
+  { satir: 46, guzergah: 'KAVACIK_BEYKOZ', hamMetin: 'ANADOLU HİSARI', kisi: 1, hedef: 'ANADOLU HİSARI' },
+  // KAYNARCA_KARTAL
+  { satir: 47, guzergah: 'KAYNARCA_KARTAL', hamMetin: 'İÇMELER KÖPRÜSÜ', kisi: 2, hedef: 'İÇMELER KÖPRÜSÜ' },
+  { satir: 48, guzergah: 'KAYNARCA_KARTAL', hamMetin: 'KARTAL BETON YOL', kisi: 1, hedef: 'KARTAL BETON YOL' },
+  { satir: 49, guzergah: 'KAYNARCA_KARTAL', hamMetin: 'ŞİFA TEL BOYU', kisi: 4, hedef: 'ŞİFA TEL BOYU' },
+  { satir: 50, guzergah: 'KAYNARCA_KARTAL', hamMetin: 'TEPE BAŞI', kisi: 2, hedef: 'Tepebaşı Cami' },
+  { satir: 51, guzergah: 'KAYNARCA_KARTAL', hamMetin: 'AYDINTEPE METRO', kisi: 1, hedef: 'AYDINTEPE METRO' },
+  { satir: 52, guzergah: 'KAYNARCA_KARTAL', hamMetin: 'ADNAN KAHVECİ', kisi: 2, hedef: 'ADNAN KAHVECİ' },
+  { satir: 53, guzergah: 'KAYNARCA_KARTAL', hamMetin: 'ADNAN KAHVECİ KÖPRÜSÜ', kisi: 1, hedef: 'ADNAN KAHVECİ' },
+  { satir: 54, guzergah: 'KAYNARCA_KARTAL', hamMetin: 'ESENYALI', kisi: 2, hedef: 'ESENYALI' },
+  { satir: 55, guzergah: 'KAYNARCA_KARTAL', hamMetin: 'ASSAN ÜST GEÇİDİ', kisi: 1, hedef: 'ASSAN ÜST GEÇİDİ' },
+  { satir: 56, guzergah: 'KAYNARCA_KARTAL', hamMetin: 'AYTEMİZ PETROL', kisi: 1, hedef: 'AYTEMİZ PETROL' },
+  { satir: 57, guzergah: 'KAYNARCA_KARTAL', hamMetin: 'EROL GÜNGÖR İÖÖ', kisi: 1, hedef: 'EROL GÜNGÖR İÖÖ' },
+  { satir: 58, guzergah: 'KAYNARCA_KARTAL', hamMetin: 'TOPSELVİ', kisi: 1, hedef: 'TOPSELVİ' },
+  // USKUDAR
+  { satir: 59, guzergah: 'USKUDAR', hamMetin: 'KOZYATAĞI', kisi: 1, hedef: 'Kozyatağı Metro' },
+  { satir: 60, guzergah: 'USKUDAR', hamMetin: 'ZEYNEP KAMİL', kisi: 1, hedef: 'Zeynep Kamil Kavşak' },
+  { satir: 61, guzergah: 'USKUDAR', hamMetin: 'MAVİEVLER-KÜÇÜKYALI', kisi: 3, hedef: 'MAVİEVLER-KÜÇÜKYALI' },
+  { satir: 62, guzergah: 'USKUDAR', hamMetin: 'RİTİM - ESENKENT', kisi: 1, hedef: 'Esenkent Metro' },
+  { satir: 63, guzergah: 'USKUDAR', hamMetin: 'RİTİM ESENKENT', kisi: 1, hedef: 'Esenkent Metro' },
+  { satir: 64, guzergah: 'USKUDAR', hamMetin: 'ZEYNEP KAMİL / ECZANE ÖNÜ', kisi: 1, hedef: 'Zeynep Kamil Kavşak' },
+  { satir: 65, guzergah: 'USKUDAR', hamMetin: 'ÇEKMEKÖY', kisi: 1, hedef: 'ÇEKMEKÖY' },
+]
+
+// ----------------------------------------------------------------------------
+// 🔴 EŞLEMESİ AÇIK SATIRLAR — hedef VERİLMEDİ, uydurulmadı
+// ----------------------------------------------------------------------------
+//
+// 14 satır, 18 kişi. Bu metinler bir durağa BAĞLANMAZ; göç
+// script'i bunları eşleşmeyen listesinde bırakır. Cevap gelince
+// DURAK_ESLEME'ye taşınır ve buradan silinir.
+export const ESLEME_ACIK = [
+  // ARAPCESME
+  // TODO(idari-isler) satır 6
+  { satir: 6, guzergah: 'ARAPCESME', hamMetin: 'GÜNSAŞ FIRIN', kisi: 1 },
+  // AYDOS_KURTKOY
+  // TODO(idari-isler) satır 9
+  { satir: 9, guzergah: 'AYDOS_KURTKOY', hamMetin: 'ŞEKERPINAR TOKİ', kisi: 4 },
+  // TODO(idari-isler) satır 10
+  { satir: 10, guzergah: 'AYDOS_KURTKOY', hamMetin: 'ŞEKERPINAR KÖY İÇİ', kisi: 1 },
+  // BEYLIKBAGI_GUZELTEPE
+  // TODO(idari-isler) satır 14
+  { satir: 14, guzergah: 'BEYLIKBAGI_GUZELTEPE', hamMetin: 'GÜL PASTANESİ', kisi: 2 },
+  // TODO(idari-isler) satır 15
+  { satir: 15, guzergah: 'BEYLIKBAGI_GUZELTEPE', hamMetin: 'KARAKOL', kisi: 1 },
+  // DARICA
+  // TODO(idari-isler) satır 27
+  { satir: 27, guzergah: 'DARICA', hamMetin: 'DARICA ERİŞ DURAĞI', kisi: 1 },
+  // TODO(idari-isler) satır 28
+  { satir: 28, guzergah: 'DARICA', hamMetin: 'MEZBAHANE DURAĞI', kisi: 1 },
+  // TODO(idari-isler) satır 29
+  { satir: 29, guzergah: 'DARICA', hamMetin: 'TAKSİ DURAĞI', kisi: 1 },
+  // TODO(idari-isler) satır 31
+  { satir: 31, guzergah: 'DARICA', hamMetin: 'BAĞLARBAŞI PETROL OFİSİ DARICA', kisi: 1 },
+  // TODO(idari-isler) satır 33
+  { satir: 33, guzergah: 'DARICA', hamMetin: 'MARAŞ DONDURMA', kisi: 1 },
+  // TODO(idari-isler) satır 34
+  { satir: 34, guzergah: 'DARICA', hamMetin: 'MEZBAHANE EDİŞ YAPI', kisi: 1 },
+  // GEBZE_DEVELI
+  // TODO(idari-isler) satır 38
+  { satir: 38, guzergah: 'GEBZE_DEVELI', hamMetin: 'AKSE SAP DURAK PASTA', kisi: 1 },
+  // TODO(idari-isler) satır 42
+  { satir: 42, guzergah: 'GEBZE_DEVELI', hamMetin: 'AKSE SAPAĞI', kisi: 1 },
+  // TODO(idari-isler) satır 43
+  { satir: 43, guzergah: 'GEBZE_DEVELI', hamMetin: 'DURAK PASTANESİ', kisi: 1 },
+] as const
+
+// ----------------------------------------------------------------------------
+// 🔴 OLASI YİNELENEN DURAKLAR — karar bekliyor, kendiliğinden BİRLEŞTİRİLMEDİ
+// ----------------------------------------------------------------------------
+//
+// İdari İşler'in verdiği hedef adlarından 13 tanesi, aynı güzergâhta zaten
+// duran bir durağın adına benziyor. Talimat "hedefi sistemde olmayan satır
+// yeni duraktır" dediği için TALİMATA UYULDU: hepsi yeni durak olarak
+// eklendi. Ama bir kısmı neredeyse kesin AYNI YER — örn. 'SARI CAMİİ' ile
+// 'Sarı Cami', 'UNTEX' ile 'Unteks'.
+//
+// Bunları kendiliğinden birleştirmedim: birleştirmek İdari İşler'in yazdığı
+// hedefi geçersiz kılmak olurdu. Ayırmak da yanlış olabilir — o yüzden
+// listede duruyorlar.
+//
+// TODO(elif): her satır için karar — AYNI YER mi (yeni durak silinir, ham
+// metin mevcut durağa bağlanır) yoksa AYRI YER mi (liste küçülür).
+export const OLASI_YINELENEN_DURAKLAR = [
+  {
+    guzergah: 'ARAPCESME',
+    yeniAd: 'MUTLUKENT',
+    benzerMevcut: [
+      { sira: 13, ad: 'Yapı Kredi / Mutlukent', neden: 'ortak kelime "MUTLUKENT"' },
+    ],
+  },
+  {
+    guzergah: 'ARAPCESME',
+    yeniAd: 'ANADOLU LİSESİ',
+    benzerMevcut: [
+      { sira: 4, ad: 'Meslek Lisesi', neden: 'jeton %50' },
+    ],
+  },
+  {
+    guzergah: 'BEYLIKBAGI_ULASTEPE',
+    yeniAd: 'YAVUZ SELİM DURAĞI',
+    benzerMevcut: [
+      { sira: 5, ad: 'Yavuz Selim', neden: 'jeton %67' },
+    ],
+  },
+  {
+    guzergah: 'BEYLIKBAGI_ULASTEPE',
+    yeniAd: '23 NİSAN CAD. HAKMAR',
+    benzerMevcut: [
+      { sira: 3, ad: '23 Nisan Cd. Hakmar', neden: 'jeton %75' },
+    ],
+  },
+  {
+    guzergah: 'BEYLIKBAGI_ULASTEPE',
+    yeniAd: 'SARI CAMİİ',
+    benzerMevcut: [
+      { sira: 1, ad: 'Sarı Cami', neden: 'jeton %100' },
+    ],
+  },
+  {
+    guzergah: 'BEYLIKBAGI_ULASTEPE',
+    yeniAd: 'ULAŞTEPE ZİRVE MARKET',
+    benzerMevcut: [
+      { sira: 12, ad: 'Zirve Market', neden: 'jeton %67' },
+      { sira: 2, ad: 'Bebek Market', neden: 'ortak kelime "MARKET"' },
+      { sira: 4, ad: 'Ulaştepe', neden: 'ortak kelime "ULASTEPE"' },
+      { sira: 11, ad: 'Ocak Market', neden: 'ortak kelime "MARKET"' },
+    ],
+  },
+  {
+    guzergah: 'BEYLIKBAGI_ULASTEPE',
+    yeniAd: 'YILDIZ MARKET',
+    benzerMevcut: [
+      { sira: 2, ad: 'Bebek Market', neden: 'jeton %50' },
+      { sira: 7, ad: 'Yıldız Bakkal', neden: 'jeton %50' },
+      { sira: 11, ad: 'Ocak Market', neden: 'jeton %50' },
+      { sira: 12, ad: 'Zirve Market', neden: 'jeton %50' },
+    ],
+  },
+  {
+    guzergah: 'DARICA',
+    yeniAd: 'UNTEX',
+    benzerMevcut: [
+      { sira: 14, ad: 'Unteks', neden: 'yazım farkı 2 harf' },
+    ],
+  },
+  {
+    guzergah: 'KAYNARCA_KARTAL',
+    yeniAd: 'İÇMELER KÖPRÜSÜ',
+    benzerMevcut: [
+      { sira: 7, ad: 'İçmeler Köp.', neden: 'jeton %100' },
+      { sira: 6, ad: 'Aydıntepe Köp.', neden: 'jeton %50' },
+      { sira: 8, ad: 'İçmeler Durağı', neden: 'jeton %50' },
+    ],
+  },
+  {
+    guzergah: 'KAYNARCA_KARTAL',
+    yeniAd: 'KARTAL BETON YOL',
+    benzerMevcut: [
+      { sira: 1, ad: 'Beton Yol', neden: 'jeton %67' },
+    ],
+  },
+  {
+    guzergah: 'KAYNARCA_KARTAL',
+    yeniAd: 'ŞİFA TEL BOYU',
+    benzerMevcut: [
+      { sira: 12, ad: 'Tel Boyu Şifa', neden: 'jeton %100' },
+      { sira: 10, ad: 'Tel Boyu', neden: 'jeton %67' },
+    ],
+  },
+  {
+    guzergah: 'KAYNARCA_KARTAL',
+    yeniAd: 'AYDINTEPE METRO',
+    benzerMevcut: [
+      { sira: 6, ad: 'Aydıntepe Köp.', neden: 'jeton %50' },
+    ],
+  },
+  {
+    guzergah: 'USKUDAR',
+    yeniAd: 'MAVİEVLER-KÜÇÜKYALI',
+    benzerMevcut: [
+      { sira: 10, ad: 'Mavi Evler', neden: 'jeton %50' },
+    ],
+  },
+] as const
+
+
+// ----------------------------------------------------------------------------
 // 🔴 AÇIK MADDELER — İdari İşler'e soruldu, cevap BEKLENİYOR
 // ----------------------------------------------------------------------------
 //
 // Bu maddeler paketin ŞEKLİNİ değiştirmiyor, yalnız birkaç satırını.
 // Hiçbirine varsayılan UYDURULMADI. Cevap gelince ilgili güzergâhın
 // `duraklar` dizisine eklenir/düzeltilir ve buradan silinir.
+//
+// 🔴 İKİ LİSTE VAR, KARIŞTIRMA:
+//   - ACIK_MADDELER (burası) = SORU düzeyi, 6 soru. Her birinin NE olduğunu
+//     (çelişki mi, anlaşılmadı mı, ad teyidi mi) söyler.
+//   - ESLEME_ACIK = SATIR düzeyi, 14 ham metin / 18 kişi. Göç script'inin
+//     fiilen eşleştiremeyeceği satırlar bunlardır.
+// Satır sayısı soru sayısından fazla: bir soru birden çok ham metni
+// kapsıyor, ayrıca eşleme tablosunda 6 soruda adı geçmeyen satırlar da var
+// (TAKSİ DURAĞI, BAĞLARBAŞI PETROL OFİSİ DARICA, MARAŞ DONDURMA).
 //
 // Dışa açık, çünkü test bu listenin boşalmadığını (ve boşaldığında
 // hatırlatıldığını) kontrol edebilsin.

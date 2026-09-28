@@ -88,8 +88,9 @@ export function MalzemeTalebiClient() {
 
   const salt = talep?.durum === 'Closed'
 
+  // lokasyonuKoru: lokasyon ve oradaki stok satırı listesi kalır, yalnız seçim sıfırlanır.
   const satirSifirla = useCallback((lokasyonuKoru: boolean) => {
-    setAdaylar(null)
+    if (!lokasyonuKoru) setAdaylar(null)
     setSecili(null)
     setMiktar('')
     if (!lokasyonuKoru) setLokasyon('')
@@ -138,15 +139,25 @@ export function MalzemeTalebiClient() {
     }
   }
 
-  const lokasyonOkut = async (v: string) => {
+  // Lokasyon okutulunca oradaki kullanılabilir stok satırları kart olarak listelenir (barkod ZORUNLU değil);
+  // tek satırsa otomatik seçilir. `otomatik` false → yalnız liste yenilenir (EKLE sonrası).
+  const lokasyonOkut = async (v: string, otomatik = true) => {
     setLoading(true)
     try {
       const res = await fetch(`/api/depo/malzeme-talebi/stok?lokasyon=${encodeURIComponent(v)}`)
       const data = await res.json().catch(() => null)
       if (!res.ok || !data?.ok) return showError(data?.error ?? 'Lokasyon okunamadı')
       if (!data.toplam) return showError(`Lokasyonda stok yok: ${v}`)
+      const satirlar = (data.satirlar ?? []) as StokBilgisiSatir[]
       setLokasyon(v)
+      setAdaylar(satirlar)
+      setSecili(null)
       setAdim('BARKOD')
+      if (!satirlar.length) return showError(`${v} lokasyonunda kullanılabilir stok yok (rezerveli)`)
+      if (otomatik && satirlar.length === 1) {
+        setSecili(satirlar[0])
+        setAdim('MIKTAR')
+      }
     } catch {
       showError('Bağlantı hatası — tekrar deneyin')
     } finally {
@@ -163,9 +174,9 @@ export function MalzemeTalebiClient() {
       if (!res.ok || !data?.ok) return showError(data?.error ?? 'Stok okunamadı')
       const satirlar = (data.satirlar ?? []) as StokBilgisiSatir[]
       if (!satirlar.length) return showError(`${lokasyon} lokasyonunda bulunamadı: ${v}`)
+      // Barkod isteğe bağlı: okutulan parça/lot doğrulanır, tek eşleşme seçilir.
       if (satirlar.length === 1) {
         setSecili(satirlar[0])
-        setAdaylar(null)
         setAdim('MIKTAR')
       } else {
         setAdaylar(satirlar)
@@ -195,6 +206,7 @@ export function MalzemeTalebiClient() {
       setInfo(`${secili.partNo} · ${fmt(m)} ${secili.birim} rezerve edildi`)
       satirSifirla(true)
       await talepYukle(talep.orderNo, false)
+      await lokasyonOkut(lokasyon, false)
     } catch {
       showError('Bağlantı hatası — tekrar deneyin')
     } finally {
@@ -263,7 +275,7 @@ export function MalzemeTalebiClient() {
       ? { baslik: 'Talep no okut', alt: 'mevcut talebi açar' }
       : adim === 'LOKASYON'
         ? { baslik: 'Kaynak lokasyonu okut', alt: 'malzemenin alınacağı raf' }
-        : { baslik: 'Barkod okut', alt: `lokasyon ${lokasyon}` }
+        : { baslik: 'Barkod okut (isteğe bağlı)', alt: `lokasyon ${lokasyon} · ya da aşağıdan stok satırını seç` }
 
   return (
     <div className="flex flex-1 flex-col gap-3 py-2">
@@ -391,13 +403,14 @@ export function MalzemeTalebiClient() {
             <div className="rounded-xl border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">Talep kapalı — salt okunur</div>
           )}
 
-          {/* Birden çok stok satırı → seçtir */}
-          {!salt && adaylar && (
+          {/* Lokasyondaki stok satırları → dokunarak seç (barkodsuz yol) */}
+          {!salt && adaylar && adim !== 'MIKTAR' && adaylar.length > 0 && (
             <div className="flex flex-col gap-2">
-              <div className="text-sm font-semibold" style={{ color: TERMINAL_ACCENT }}>Hangi stok satırı?</div>
+              <div className="text-sm font-semibold" style={{ color: TERMINAL_ACCENT }}>{lokasyon} · stok satırını seç</div>
               {adaylar.map((a, i) => (
-                <button key={i} type="button" onClick={() => { setSecili(a); setAdaylar(null); setAdim('MIKTAR') }} className="rounded-2xl border bg-card p-3 text-left active:opacity-70" style={{ borderColor: TERMINAL_ACCENT }}>
+                <button key={i} type="button" onClick={() => { setSecili(a); setAdim('MIKTAR') }} className="rounded-2xl border bg-card p-3 text-left active:opacity-70" style={{ borderColor: TERMINAL_ACCENT }}>
                   <div className="font-semibold">{a.partNo} <span className="text-xs font-normal text-muted-foreground">lot {tire(a.lot)}{a.tasimaBirimi ? ` · TB ${a.tasimaBirimi}` : ''}</span></div>
+                  {a.partAdi && <div className="truncate text-xs text-muted-foreground">{a.partAdi}</div>}
                   <div className="text-xs text-muted-foreground">kullanılabilir {fmt(a.kullanilabilir)} {a.birim}</div>
                 </button>
               ))}

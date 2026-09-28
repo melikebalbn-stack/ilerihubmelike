@@ -91,6 +91,7 @@ export function TopluTasimaClient() {
     setAdaylar(null); setSecili(null); setMiktar('')
     if (!lokasyonuKoru) setLokasyon('')
   }, [])
+  const secimSifirla = () => { setSecili(null); setMiktar('') }
 
   const fisAc = useCallback(async (no: number, sekmeyeGec = true) => {
     const d = await api(`/api/depo/toplu-tasima/${no}`)
@@ -108,12 +109,18 @@ export function TopluTasimaClient() {
     await fisAc(Number(d.no))
   }
 
-  const lokasyonOkut = async (v: string) => {
+  // Lokasyon okutulunca oradaki kullanılabilir stok satırları kart olarak listelenir (barkod ZORUNLU değil);
+  // tek satırsa otomatik seçilir. `otomatik` false → yalnız liste yenilenir (EKLE sonrası).
+  const lokasyonOkut = async (v: string, otomatik = true) => {
     if (fis && v === fis.varisLok) return showError(`Hedef lokasyon ${v} — kaynak farklı olmalı`)
     const d = await api(`/api/depo/toplu-tasima/stok?lokasyon=${encodeURIComponent(v)}`)
     if (!d) return
     if (!Number(d.toplam)) return showError(`Lokasyonda stok yok: ${v}`)
+    const s = (d.satirlar ?? []) as StokBilgisiSatir[]
     setLokasyon(v)
+    setAdaylar(s)
+    if (!s.length) return showError(`${v} lokasyonunda kullanılabilir stok yok (rezerveli)`)
+    if (otomatik && s.length === 1) setSecili(s[0])
   }
   const malzemeOkut = async (v: string, kaynak: EtiketKaynak) => {
     const p = new URLSearchParams({ lokasyon, okut: v, kaynak })
@@ -121,7 +128,9 @@ export function TopluTasimaClient() {
     if (!d) return
     const s = (d.satirlar ?? []) as StokBilgisiSatir[]
     if (!s.length) return showError(`${lokasyon} lokasyonunda kullanılabilir bulunamadı: ${v}`)
-    if (s.length === 1) { setSecili(s[0]); setAdaylar(null) } else { setAdaylar(s); setSecili(null) }
+    // Barkod isteğe bağlı: okutulan parça/lot listelenen satırlardan birine uymalı.
+    if (s.length === 1) setSecili(s[0])
+    else { setAdaylar(s); setSecili(null) }
   }
 
   const ekle = async () => {
@@ -132,8 +141,9 @@ export function TopluTasimaClient() {
     const d = await api(`/api/depo/toplu-tasima/${fis.no}/satir`, json('POST', { stok: kimlik(secili), miktar: m }))
     if (!d) return
     setInfo(`${secili.partNo} · ${fmt(m)} ${secili.birim} eklendi`)
-    satirSifirla(true)
+    secimSifirla()
     await fisAc(fis.no, false)
+    await lokasyonOkut(lokasyon, false)
   }
 
   const sil = async (s: FisSatir) => {
@@ -184,7 +194,7 @@ export function TopluTasimaClient() {
     FIS_NO: { baslik: 'Fiş no okut', alt: 'mevcut fişi açar' },
     HEDEF_LOK: { baslik: 'Hedef lokasyonu okut', alt: 'yeni fiş bu lokasyona taşır' },
     LOKASYON: { baslik: 'Kaynak lokasyonu okut', alt: `hedef ${fis?.varisLok ?? ''}` },
-    MALZEME: { baslik: 'Malzeme barkodu okut', alt: `lokasyon ${lokasyon}` },
+    MALZEME: { baslik: 'Barkod okut (isteğe bağlı)', alt: `lokasyon ${lokasyon} · ya da aşağıdan stok satırını seç` },
   }
 
   return (
@@ -292,12 +302,13 @@ export function TopluTasimaClient() {
             </div>
           )}
 
-          {acik && adaylar && (
+          {acik && adaylar && !secili && adaylar.length > 0 && (
             <div className="flex flex-col gap-2">
-              <div className="text-sm font-semibold" style={{ color: TERMINAL_ACCENT }}>Hangi stok satırı?</div>
+              <div className="text-sm font-semibold" style={{ color: TERMINAL_ACCENT }}>{lokasyon} · stok satırını seç</div>
               {adaylar.map((a, i) => (
-                <button key={i} type="button" onClick={() => { setSecili(a); setAdaylar(null) }} className="rounded-2xl border bg-card p-3 text-left" style={{ borderColor: TERMINAL_ACCENT }}>
+                <button key={i} type="button" onClick={() => { setSecili(a); setMiktar('') }} className="rounded-2xl border bg-card p-3 text-left" style={{ borderColor: TERMINAL_ACCENT }}>
                   <div className="font-semibold">{a.partNo} <span className="text-xs font-normal text-muted-foreground">lot {tire(a.lot)}{a.tasimaBirimi ? ` · palet ${a.tasimaBirimi}` : ''}</span></div>
+                  {a.partAdi && <div className="truncate text-xs text-muted-foreground">{a.partAdi}</div>}
                   <div className="text-xs text-muted-foreground">kullanılabilir {fmt(a.kullanilabilir)} {a.birim}</div>
                 </button>
               ))}
@@ -320,7 +331,7 @@ export function TopluTasimaClient() {
                   placeholder={`Miktar (en fazla ${fmt(secili.kullanilabilir)})`} className="h-11 min-w-0 flex-1 rounded-xl border bg-background px-3 text-base outline-none" />
                 <button type="button" onClick={() => void ekle()} className="h-11 rounded-xl px-5 text-sm font-semibold text-white" style={{ background: TERMINAL_ACCENT }}>EKLE</button>
               </div>
-              <button type="button" onClick={() => satirSifirla(true)} className="self-center text-xs text-muted-foreground underline">vazgeç</button>
+              <button type="button" onClick={secimSifirla} className="self-center text-xs text-muted-foreground underline">vazgeç</button>
             </div>
           )}
 

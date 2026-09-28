@@ -8,7 +8,7 @@ import { useScanner } from '@/lib/depo/use-scanner'
 import type { EtiketKaynak } from '@/lib/depo/etiket-parse'
 import { TERMINAL_ACCENT } from '../../_shared'
 import type { SeciliStok, Talep, TalepMalzeme, TalepOzet, TalepStokSatiri } from '@/lib/ifs/transfer-talebi'
-import type { StokBilgisiSatir } from '@/lib/ifs/stok-bilgisi'
+import type { StokBilgisiSatir, StokYeri } from '@/lib/ifs/stok-bilgisi'
 
 type Gorunum = 'LISTE' | 'DETAY' | 'OZET'
 type Sekme = 'ISTENEN' | 'EKLENEN'
@@ -17,6 +17,9 @@ type Alan = 'TALEP_NO' | 'LOKASYON' | 'MALZEME' | null
 
 const fmt = (n: number) => n.toLocaleString('tr-TR', { maximumFractionDigits: 3 })
 const tire = (v: string) => (!v || v === '*' ? '—' : v)
+const ayniStok = (a: StokBilgisiSatir, b: StokBilgisiSatir) =>
+  a.partNo === b.partNo && a.lokasyonNo === b.lokasyonNo && a.lot === b.lot && a.seri === b.seri && a.muhSeviye === b.muhSeviye &&
+  a.waivDevRejNo === b.waivDevRejNo && a.konfigurasyon === b.konfigurasyon && a.aktiviteSira === b.aktiviteSira && a.tasimaBirimi === b.tasimaBirimi
 const kimlik = (s: StokBilgisiSatir): TalepStokSatiri => ({
   partNo: s.partNo, locationNo: s.lokasyonNo, lotBatchNo: s.lot || '*', serialNo: s.seri || '*', engChgLevel: s.muhSeviye || '*',
   waivDevRejNo: s.waivDevRejNo || '*', configurationId: s.konfigurasyon || '*', activitySeq: s.aktiviteSira, handlingUnitId: s.tasimaBirimi,
@@ -28,6 +31,8 @@ export function TransferTalebiClient() {
   const [sekme, setSekme] = useState<Sekme>('ISTENEN')
   const [liste, setListe] = useState<TalepOzet[] | null>(null)
   const [talep, setTalep] = useState<Talep | null>(null)
+  // Kalanı olan malzemelerin kaynak ambardaki stok yerleri (partNo → en fazla 3 lokasyon).
+  const [yerler, setYerler] = useState<Record<string, StokYeri[]>>({})
   const [satir, setSatir] = useState<TalepMalzeme | null>(null)
   const [lokasyon, setLokasyon] = useState('')
   const [adaylar, setAdaylar] = useState<StokBilgisiSatir[] | null>(null)
@@ -93,17 +98,29 @@ export function TransferTalebiClient() {
     const d = await api(`/api/depo/transfer-talebi/${no}`)
     if (!d) return
     setTalep(d.talep as Talep)
+    setYerler((d.yerler ?? {}) as Record<string, StokYeri[]>)
     if (gorunumeGec) { satirKapat(); setSekme('ISTENEN'); setGorunum('DETAY') }
   }, [api, satirKapat])
 
-  const lokasyonOkut = async (v: string) => {
-    if (!satir || !talep) return
+  const stokSec = (m: TalepMalzeme, x: StokBilgisiSatir) => { setSecili(x); setMiktar(String(Math.min(m.kalan, x.kullanilabilir))) }
+
+  // Lokasyon okutulunca (ya da stok yerine dokununca) o lokasyondaki bu malzemenin kullanılabilir stok satırları
+  // kart olarak listelenir; tek satırsa otomatik seçilir. Barkod okutmak ZORUNLU değil.
+  const lokasyonSec = async (m: TalepMalzeme, v: string) => {
+    if (!talep) return
     if (v === talep.hedefLok) return showError(`Hedef lokasyon ${v} — kaynak farklı olmalı`)
-    const d = await api(`/api/depo/transfer-talebi/stok?lokasyon=${encodeURIComponent(v)}&partNo=${encodeURIComponent(satir.partNo)}`)
+    const d = await api(`/api/depo/transfer-talebi/stok?lokasyon=${encodeURIComponent(v)}&partNo=${encodeURIComponent(m.partNo)}`)
     if (!d) return
-    if (!Number(d.toplam)) return showError(`${v} lokasyonunda ${satir.partNo} yok`)
+    const s = (d.satirlar ?? []) as StokBilgisiSatir[]
+    if (!Number(d.toplam)) return showError(`${v} lokasyonunda ${m.partNo} yok`)
+    if (!s.length) return showError(`${v} lokasyonunda ${m.partNo} için kullanılabilir miktar yok (rezerveli)`)
     setLokasyon(v)
+    setAdaylar(s)
+    setSecili(null)
+    setMiktar(String(m.kalan))
+    if (s.length === 1) stokSec(m, s[0])
   }
+  // Barkod (isteğe bağlı): parça/lot doğrulaması — okutulan, listelenen satırlardan birine uymalı.
   const malzemeOkut = async (v: string, kaynak: EtiketKaynak) => {
     if (!satir) return
     const p = new URLSearchParams({ lokasyon, okut: v, kaynak, partNo: satir.partNo })
@@ -111,8 +128,7 @@ export function TransferTalebiClient() {
     if (!d) return
     const s = (d.satirlar ?? []) as StokBilgisiSatir[]
     if (!s.length) return showError(d.baskaParca ? `Okutulan malzeme ${satir.partNo} değil` : `${lokasyon} lokasyonunda kullanılabilir bulunamadı: ${v}`)
-    const sec = (x: StokBilgisiSatir) => { setSecili(x); setAdaylar(null); setMiktar(String(Math.min(satir.kalan, x.kullanilabilir))) }
-    if (s.length === 1) sec(s[0])
+    if (s.length === 1) { stokSec(satir, s[0]); setInfo(`Barkod doğrulandı: ${s[0].partNo}${s[0].lot && s[0].lot !== '*' ? ` lot ${s[0].lot}` : ''}`) }
     else { setAdaylar(s); setSecili(null) }
   }
 
@@ -162,7 +178,7 @@ export function TransferTalebiClient() {
       if (!/^\d+$/.test(s)) return showError(`Geçersiz talep no: ${s}`)
       return void talepAc(Number(s))
     }
-    if (alan === 'LOKASYON') return void lokasyonOkut(s)
+    if (alan === 'LOKASYON') return satir ? void lokasyonSec(satir, s) : undefined
     return void malzemeOkut(s, kaynak)
   }
   const { inputProps } = useScanner(!!alan && !manualOpen && !loading, (v) => void dispatch(v, 'okutma'))
@@ -174,8 +190,8 @@ export function TransferTalebiClient() {
   }
   const serit: Record<Exclude<Alan, null>, { baslik: string; alt: string }> = {
     TALEP_NO: { baslik: 'Talep no okut', alt: 'ya da listeden seçin' },
-    LOKASYON: { baslik: 'Kaynak lokasyonu okut', alt: `${satir?.partNo ?? ''} alınacak raf` },
-    MALZEME: { baslik: 'Malzeme barkodu okut', alt: `${satir?.partNo ?? ''} · lokasyon ${lokasyon}` },
+    LOKASYON: { baslik: 'Kaynak lokasyonu okut', alt: `${satir?.partNo ?? ''} alınacak raf · ya da aşağıdaki stok yerine dokun` },
+    MALZEME: { baslik: 'Barkod okut (isteğe bağlı)', alt: `${satir?.partNo ?? ''} · lokasyon ${lokasyon} · ya da stok satırını seç` },
   }
 
   return (
@@ -267,42 +283,71 @@ export function TransferTalebiClient() {
             <div className="flex flex-col gap-2">
               {talep.malzemeler.map((m, i) => {
                 const aktif = satir?.partNo === m.partNo && satir.configurationId === m.configurationId && satir.activitySeq === m.activitySeq
+                const acik = islenebilir && m.kalan > 0
+                const yer = acik ? yerler[m.partNo] ?? [] : []
                 return (
-                  <button key={i} type="button" disabled={!islenebilir || m.kalan === 0} onClick={() => { satirKapat(); setSatir(m) }}
-                    className={cn('flex flex-col gap-1 rounded-2xl border bg-card p-3 text-left disabled:opacity-60', aktif && 'ring-2')} style={aktif ? { borderColor: TERMINAL_ACCENT } : undefined}>
-                    <div className="flex items-center justify-between">
-                      <span className="font-semibold">{m.partNo}</span>
-                      {m.kalan === 0 ? <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-800">TAMAM</span> : null}
-                    </div>
-                    {m.partAdi && <div className="truncate text-xs text-muted-foreground">{m.partAdi}</div>}
-                    <div className="grid grid-cols-3 gap-1 text-center text-xs">
-                      <div><div className="text-muted-foreground">İstenen</div><b>{fmt(m.istenen)} {m.birim}</b></div>
-                      <div><div className="text-muted-foreground">Bağlanan</div><b>{fmt(m.baglanan)}</b></div>
-                      <div><div className="text-muted-foreground">Kalan</div><b style={{ color: m.kalan ? TERMINAL_ACCENT : undefined }}>{fmt(m.kalan)}</b></div>
-                    </div>
-                  </button>
+                  <div key={i} className={cn('flex flex-col gap-2 rounded-2xl border bg-card p-3', !acik && 'opacity-60', aktif && 'ring-2')} style={aktif ? { borderColor: TERMINAL_ACCENT } : undefined}>
+                    <button type="button" disabled={!acik} onClick={() => { satirKapat(); setSatir(m); setMiktar(String(m.kalan)) }} className="flex flex-col gap-1 text-left">
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold">{m.partNo}</span>
+                        {m.kalan === 0 ? <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-800">TAMAM</span> : null}
+                      </div>
+                      {m.partAdi && <div className="truncate text-xs text-muted-foreground">{m.partAdi}</div>}
+                      <div className="grid w-full grid-cols-3 gap-1 text-center text-xs">
+                        <div><div className="text-muted-foreground">İstenen</div><b>{fmt(m.istenen)} {m.birim}</b></div>
+                        <div><div className="text-muted-foreground">Bağlanan</div><b>{fmt(m.baglanan)}</b></div>
+                        <div><div className="text-muted-foreground">Kalan</div><b style={{ color: m.kalan ? TERMINAL_ACCENT : undefined }}>{fmt(m.kalan)}</b></div>
+                      </div>
+                    </button>
+                    {acik && (yer.length ? (
+                      <div className="flex flex-col gap-1">
+                        {yer.map((y) => (
+                          <button key={y.lokasyonNo} type="button" onClick={() => { if (!aktif) { satirKapat(); setSatir(m) } void lokasyonSec(m, y.lokasyonNo) }}
+                            className={cn('flex items-center gap-1.5 rounded-lg border px-2 py-1.5 text-left text-xs active:bg-muted/70', aktif && lokasyon === y.lokasyonNo && 'font-semibold')}
+                            style={aktif && lokasyon === y.lokasyonNo ? { borderColor: TERMINAL_ACCENT } : undefined}>
+                            <MapPin className="h-3.5 w-3.5 shrink-0" style={{ color: TERMINAL_ACCENT }} />
+                            <span className="min-w-0 flex-1 truncate">Stokta: <b>{y.lokasyonNo}</b>{y.lokasyonAdi ? ` ${y.lokasyonAdi}` : ''}</span>
+                            <b className="shrink-0">{fmt(y.kullanilabilir)} {y.birim}</b>
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-xs text-muted-foreground">{talep.kaynakAmbar ? `${talep.kaynakAmbar} ambarında` : 'Stokta'} kullanılabilir yok</div>
+                    ))}
+                  </div>
                 )
               })}
 
               {satir && adaylar && (
                 <div className="flex flex-col gap-2">
-                  <div className="text-sm font-semibold" style={{ color: TERMINAL_ACCENT }}>Hangi stok satırı?</div>
-                  {adaylar.map((a, i) => (
-                    <button key={i} type="button" onClick={() => { setSecili(a); setAdaylar(null); setMiktar(String(Math.min(satir.kalan, a.kullanilabilir))) }} className="rounded-2xl border bg-card p-3 text-left" style={{ borderColor: TERMINAL_ACCENT }}>
-                      <div className="font-semibold">{a.partNo} <span className="text-xs font-normal text-muted-foreground">lot {tire(a.lot)}{a.tasimaBirimi ? ` · palet ${a.tasimaBirimi}` : ''}</span></div>
-                      <div className="text-xs text-muted-foreground">kullanılabilir {fmt(a.kullanilabilir)} {a.birim}</div>
-                    </button>
-                  ))}
+                  <div className="text-sm font-semibold" style={{ color: TERMINAL_ACCENT }}>{lokasyon} · stok satırını seç</div>
+                  {adaylar.map((a, i) => {
+                    const sec = !!secili && ayniStok(secili, a)
+                    return (
+                      <button key={i} type="button" onClick={() => stokSec(satir, a)} className={cn('rounded-2xl border bg-card p-3 text-left', sec && 'ring-2')} style={{ borderColor: TERMINAL_ACCENT }}>
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-semibold">lot {tire(a.lot)}{a.tasimaBirimi ? <span className="text-xs font-normal text-muted-foreground"> · palet {a.tasimaBirimi}</span> : null}</span>
+                          {sec && <Check className="h-4 w-4 shrink-0" style={{ color: TERMINAL_ACCENT }} />}
+                        </div>
+                        <div className="text-xs text-muted-foreground">kullanılabilir {fmt(a.kullanilabilir)} {a.birim}</div>
+                      </button>
+                    )
+                  })}
                 </div>
               )}
 
-              {satir && secili && (
+              {/* Miktar her zaman görünür; varsayılan = min(kalan, kullanılabilir). EKLE stok satırı seçilince açılır. */}
+              {satir && (
                 <div className="flex flex-col gap-2 rounded-2xl border p-3" style={{ borderColor: TERMINAL_ACCENT }}>
-                  <div className="text-xs text-muted-foreground">{secili.lokasyonNo} · lot {tire(secili.lot)} · kullanılabilir {fmt(secili.kullanilabilir)} {secili.birim} · kalan {fmt(satir.kalan)}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {secili
+                      ? `${secili.lokasyonNo} · lot ${tire(secili.lot)} · kullanılabilir ${fmt(secili.kullanilabilir)} ${secili.birim} · kalan ${fmt(satir.kalan)}`
+                      : `${satir.partNo} · kalan ${fmt(satir.kalan)} ${satir.birim} — ${lokasyon ? 'stok satırını seç' : 'lokasyon okut ya da stok yerine dokun'}`}
+                  </div>
                   <div className="flex gap-2">
                     <input value={miktar} onChange={(e) => setMiktar(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && void ekle()} inputMode="decimal"
-                      className="h-11 min-w-0 flex-1 rounded-xl border bg-background px-3 text-base outline-none" />
-                    <button type="button" onClick={() => void ekle()} className="h-11 rounded-xl px-5 text-sm font-semibold text-white" style={{ background: TERMINAL_ACCENT }}>EKLE</button>
+                      aria-label="Miktar" className="h-11 min-w-0 flex-1 rounded-xl border bg-background px-3 text-base outline-none" />
+                    <button type="button" onClick={() => void ekle()} disabled={!secili} className="h-11 rounded-xl px-5 text-sm font-semibold text-white disabled:opacity-40" style={{ background: TERMINAL_ACCENT }}>EKLE</button>
                   </div>
                 </div>
               )}

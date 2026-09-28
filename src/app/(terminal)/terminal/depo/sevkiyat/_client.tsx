@@ -153,6 +153,14 @@ export function SevkiyatClient() {
     setGorunum('OZET')
   }
 
+  // Barkodsuz yol: rezerv satırına ("Git → lok") dokununca doğrudan seçilir; kalan = rezerve − toplanan − Hub'da bekleyen.
+  // Sunucu (okut) kalanı yeniden doğrular.
+  const rezervSec = (r: RezervSatiri) => {
+    const kalan = r.rezerve - r.toplanan - okutulan.filter((o) => o.satirAnahtari === r.keyref).reduce((t, o) => t + o.miktar, 0)
+    if (!(kalan > 0)) return showError(`${r.partNo} · ${r.locationNo}: okutulacak kalan yok`)
+    setBarkodId(null); setAdaylar(null); setSecili({ rezerv: r, kalan }); setMiktar(String(kalan))
+  }
+
   // Satır başına okutulan (Hub, raporlanmamış) — rezerv satırı parça eşleşmesiyle.
   const okutulanParca = (partNo: string) => okutulan.filter((o) => o.partNo === partNo).reduce((t, o) => t + o.miktar, 0)
   const acikRezervler = (partNo: string): RezervSatiri[] =>
@@ -202,7 +210,7 @@ export function SevkiyatClient() {
             <ScanLine className="h-6 w-6 shrink-0" style={{ color: TERMINAL_ACCENT }} />
             <div className="min-w-0 flex-1 leading-tight">
               <div className="text-sm font-semibold" style={{ color: TERMINAL_ACCENT }}>{alan === 'SEVKIYAT_NO' ? 'Sevkiyat no okut' : 'Malzeme barkodu okut'}</div>
-              <div className="truncate text-xs text-muted-foreground">{alan === 'SEVKIYAT_NO' ? 'ya da listeden seçin' : 'parça ve lot rezervle eşleşmeli'}</div>
+              <div className="truncate text-xs text-muted-foreground">{alan === 'SEVKIYAT_NO' ? 'ya da listeden seçin' : 'parça ve lot rezervle eşleşmeli · barkod yoksa "Git →" satırına dokun'}</div>
             </div>
           </div>
           {manualOpen ? (
@@ -294,7 +302,9 @@ export function SevkiyatClient() {
                     <div><div className="text-muted-foreground">Toplanan</div><b>{fmt(s.toplanan)}</b></div>
                   </div>
                   {rez.map((r, i) => (
-                    <div key={i} className="flex items-center gap-1 text-xs font-semibold"><MapPin className="h-3.5 w-3.5" /> Git → {r.locationNo} <span className="font-normal text-muted-foreground">· lot {tire(r.lotBatchNo)} · rezerve {fmt(r.rezerve - r.toplanan)}</span></div>
+                    <button key={i} type="button" onClick={() => rezervSec(r)} className="flex items-center gap-1 rounded-lg border px-2 py-1.5 text-left text-xs font-semibold active:bg-muted/70">
+                      <MapPin className="h-3.5 w-3.5 shrink-0" style={{ color: TERMINAL_ACCENT }} /> Git → {r.locationNo} <span className="font-normal text-muted-foreground">· lot {tire(r.lotBatchNo)} · rezerve {fmt(r.rezerve - r.toplanan)}</span>
+                    </button>
                   ))}
                 </div>
               )

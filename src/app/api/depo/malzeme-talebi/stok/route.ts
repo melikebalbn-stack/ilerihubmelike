@@ -18,8 +18,9 @@ export async function GET(request: Request) {
   if (!lokasyon) return NextResponse.json({ ok: false, error: 'Lokasyon gerekli' }, { status: 400 })
   try {
     if (!okut) {
+      // Lokasyon doğrulama + barkodsuz seçim listesi (kullanılabilir > 0 satırlar).
       const r = await getStokBilgisi({ locationNo: lokasyon })
-      return NextResponse.json({ ok: true, lokasyon, toplam: r.toplam, satirlar: [] })
+      return NextResponse.json({ ok: true, lokasyon, toplam: r.toplam, satirlar: r.satirlar.filter((s) => s.kullanilabilir > 0) })
     }
     const kaynak = sp.get('kaynak') === 'elle' ? 'elle' : 'okutma'
     const r = await okutVeGetir(okut, kaynak, { locationNo: lokasyon })

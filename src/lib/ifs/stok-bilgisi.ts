@@ -271,3 +271,25 @@ export async function getDegerListeleri(): Promise<DegerListeleri> {
     : []
   return { ambarlar, projeler }
 }
+
+// ── Terminal stok seçimi yardımcıları (barkodsuz akış) ──────────────────────
+
+export interface StokYeri {
+  lokasyonNo: string
+  lokasyonAdi: string
+  kullanilabilir: number
+  birim: string
+}
+
+/** Parçanın kullanılabilir stoğu olan lokasyonlar (ambar verilirse yalnız orada), çoktan aza, en fazla `adet`. */
+export async function stokYerleri(partNo: string, warehouse?: string, adet = 3): Promise<StokYeri[]> {
+  const r = await getStokBilgisi({ partNoEq: partNo, ...(dolu(warehouse) ? { warehouse: dolu(warehouse) } : {}) })
+  const lok = new Map<string, StokYeri>()
+  for (const s of r.satirlar) {
+    if (!(s.kullanilabilir > 0)) continue
+    const y = lok.get(s.lokasyonNo)
+    if (y) y.kullanilabilir += s.kullanilabilir
+    else lok.set(s.lokasyonNo, { lokasyonNo: s.lokasyonNo, lokasyonAdi: s.lokasyonAdi, kullanilabilir: s.kullanilabilir, birim: s.birim })
+  }
+  return [...lok.values()].sort((a, b) => b.kullanilabilir - a.kullanilabilir).slice(0, adet)
+}

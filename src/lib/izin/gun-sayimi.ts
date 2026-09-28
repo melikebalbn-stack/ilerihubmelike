@@ -20,6 +20,14 @@ export class IzinGirdiHatasi extends Error {
   }
 }
 
+/** Ekrana/uca erişim yetkisi yok (API 403). */
+export class IzinYetkiHatasi extends Error {
+  constructor(mesaj: string) {
+    super(mesaj)
+    this.name = 'IzinYetkiHatasi'
+  }
+}
+
 export interface IzinGunu {
   tarih: string // YYYY-MM-DD
   pay: number // 0 | 0.5 | 1

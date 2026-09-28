@@ -10,12 +10,15 @@ export const dynamic = 'force-dynamic'
 
 // İzin Faz 3 — İzinlerim (herkes, yalnız kendi; responsive — telefonda tek sütun). "Adına" talep: İV herkes,
 // yönetici kendi ekibi. izin_talep_acik kapalıyken yalnız İV (deneme) girer.
-export default async function IzinlerimPage() {
+export default async function IzinlerimPage({ searchParams }: { searchParams: Promise<{ baslangic?: string }> }) {
   const r = await requireUser()
   if (r.error) redirect('/login')
   const ctx = await baglam(r.user.id)
   const acik = await talepAcikMi()
   if (!acik && !ctx.ivMi) return <Kapali />
+  // Geçişlerim › "İzin talebi aç ↗" → ?baslangic=YYYY-MM-DD: form tarihi ön doldurulur
+  const { baslangic } = await searchParams
+  const ilkBaslangic = baslangic && /^\d{4}-\d{2}-\d{2}$/.test(baslangic) ? baslangic : undefined
   let adinaAcabilir = ctx.ivMi
   if (!adinaAcabilir && ctx.personnelId) {
     const fk = await prisma.personnel.count({ where: { aktif: true, OR: [{ sorumlu1Id: ctx.personnelId }, { sorumlu2Id: ctx.personnelId }, { sorumlu3Id: ctx.personnelId }] } })
@@ -28,7 +31,7 @@ export default async function IzinlerimPage() {
         <h1 className="mt-1 flex items-center gap-2 text-2xl font-bold text-[#1B4F72]"><CalendarDays className="h-6 w-6" />İzinlerim</h1>
         {!acik && <p className="mt-1 text-sm text-amber-700">İzin talebi henüz herkese açık değil — İV deneme görünümü.</p>}
       </div>
-      <IzinlerimClient adinaAcabilir={adinaAcabilir} />
+      <IzinlerimClient adinaAcabilir={adinaAcabilir} ilkBaslangic={ilkBaslangic} />
     </div>
   )
 }

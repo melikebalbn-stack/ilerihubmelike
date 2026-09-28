@@ -35,6 +35,11 @@ const ETIKET: Record<string, { t: string; c: string }> = {
 export function GecislerimClient() {
   const [v, setV] = useState<Veri | null>(null)
   const [hata, setHata] = useState<string | null>(null)
+  // "İzin talebi aç" — yalnız izin talebi açıkken (SUNUCU bayrağı izin_talep_acik; menü ile aynı uç)
+  const [izinAcik, setIzinAcik] = useState(false)
+  useEffect(() => {
+    fetch('/api/izin/menu-bayrak').then(async (r) => { if (r.ok) setIzinAcik(!!(await r.json()).talep) }).catch(() => {})
+  }, [])
   useEffect(() => {
     void (async () => {
       const r = await fetch('/api/pdks/gecislerim', { cache: 'no-store' })
@@ -93,6 +98,11 @@ export function GecislerimClient() {
               {eksik(g.durum) && (
                 <Link href="/forms/toplu-kart-okutamama" className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg border border-[#1B4F72] py-2 text-sm font-medium text-[#1B4F72] active:bg-blue-50">
                   <FileText className="h-4 w-4" /> Kart okutamama formu doldur
+                </Link>
+              )}
+              {g.durum === 'GELMEDI' && izinAcik && (
+                <Link href={`/izin/talebim?baslangic=${g.gun}`} className="mt-2 flex w-full items-center justify-center gap-1 rounded-lg border border-slate-300 py-2 text-sm font-medium text-slate-700 active:bg-slate-50">
+                  İzin talebi aç <ArrowUpRight className="h-4 w-4" />
                 </Link>
               )}
             </li>

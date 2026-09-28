@@ -7,6 +7,7 @@ import { selfEntryOnaydanMuafMi } from '@/lib/onay/muafiyet'
 import { iptalIadeHareketi } from './bakiye'
 import { kisiBakiyeOzeti } from './bakiye-ozet'
 import { ekipIzinGunu } from './gorunum'
+import { takvimGorurMu } from './takvim-servis'
 import { GUN, IzinGirdiHatasi, gunEkle, izinGunleri, type IzinYarim } from './gun-sayimi'
 import * as mail from './mail'
 import {
@@ -314,7 +315,7 @@ export async function adinaAdaylari(ctx: Baglam, q: string) {
  * ad eşleşmesi (getManagedPersonnelIds), onaycısı olduğu bir talep ya da izin.admin. izin_talep_acik kapalıyken ikisi de gizli.
  */
 export async function menuBayragi(userId: string) {
-  if (!(await talepAcikMi())) return { talep: false, onay: false, bekleyen: 0 }
+  if (!(await talepAcikMi())) return { talep: false, onay: false, takvim: false, bekleyen: 0 }
   const ctx = await baglam(userId)
   const benim = { OR: [{ onayci1Id: userId }, { onayci2Id: userId }, { onayci3Id: userId }] }
   const kendisiHaric = ctx.personnelId ? { personnelId: { not: ctx.personnelId } } : {}
@@ -328,5 +329,5 @@ export async function menuBayragi(userId: string) {
     const fk = await prisma.personnel.count({ where: { aktif: true, OR: [{ sorumlu1Id: ctx.personnelId }, { sorumlu2Id: ctx.personnelId }, { sorumlu3Id: ctx.personnelId }] } })
     onay = fk > 0 || (await getManagedPersonnelIds(ctx.personnelId)).length > 0
   }
-  return { talep: !!ctx.personnelId, onay, bekleyen: yBekleyen + ivBekleyen }
+  return { talep: !!ctx.personnelId, onay, takvim: await takvimGorurMu(ctx), bekleyen: yBekleyen + ivBekleyen }
 }

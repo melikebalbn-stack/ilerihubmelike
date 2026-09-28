@@ -61,7 +61,7 @@ async function istek<T = Record<string, unknown>>(url: string, init?: RequestIni
   }
 }
 
-export function IzinlerimClient({ adinaAcabilir }: { adinaAcabilir: boolean }) {
+export function IzinlerimClient({ adinaAcabilir, ilkBaslangic }: { adinaAcabilir: boolean; ilkBaslangic?: string }) {
   const [kisi, setKisi] = useState<Aday | null>(null) // null = kendim
   const [veri, setVeri] = useState<Veri | null>(null)
   const [hata, setHata] = useState<string | null>(null)
@@ -97,7 +97,7 @@ export function IzinlerimClient({ adinaAcabilir }: { adinaAcabilir: boolean }) {
           )}
           <Kartlar k={veri.kartlar} gecis={veri.gecisTarihi} />
           <div className="grid gap-4 lg:grid-cols-[minmax(0,620px)_minmax(0,1fr)]">
-            <TalepFormu key={veri.personel.id} turler={veri.turler} personnelId={kisi?.id ?? null} bitti={yukle} />
+            <TalepFormu key={veri.personel.id} turler={veri.turler} personnelId={kisi?.id ?? null} bitti={yukle} ilkBaslangic={veri.personel.kendi ? ilkBaslangic : undefined} />
             {(veri.personel.kendi || veri.talepler.length > 0) && <Taleplerim talepler={veri.talepler} degisti={yukle} />}
           </div>
         </>
@@ -199,10 +199,10 @@ function Parcali({ ad, secenekler, deger, sec, kapali }: { ad: string; secenekle
   )
 }
 
-function TalepFormu({ turler, personnelId, bitti }: { turler: Tur[]; personnelId: string | null; bitti: () => void }) {
+function TalepFormu({ turler, personnelId, bitti, ilkBaslangic }: { turler: Tur[]; personnelId: string | null; bitti: () => void; ilkBaslangic?: string }) {
   const [turId, setTurId] = useState('')
-  const [bas, setBas] = useState('')
-  const [bit, setBit] = useState('')
+  const [bas, setBas] = useState(ilkBaslangic ?? '')
+  const [bit, setBit] = useState(ilkBaslangic ?? '')
   const [ilk, setIlk] = useState('TAM')
   const [son, setSon] = useState('TAM')
   const [aciklama, setAciklama] = useState('')

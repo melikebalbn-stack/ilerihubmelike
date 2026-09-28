@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/auth/require-permission'
+import { hasPermission } from '@/lib/auth/has-permission'
 import { pdksHata } from '@/lib/pdks/cihaz-yonetim'
 import { prisma } from '@/lib/prisma'
 import { logAuditEvent } from '@/lib/audit-log'
@@ -27,8 +28,10 @@ export async function GET(req: NextRequest) {
       ad = `pdks-puantaj-${gun}.xlsx`
     } else throw new PdksGirdiHatasi('gun=YYYY-MM-DD ya da ay=YYYY-MM gerekli')
     const departmentId = p.get('departmentId')
-    const { buffer, satir } = await puantajExcel(prisma, bas, bit, departmentId)
-    await logAuditEvent({ action: 'PDKS_PUANTAJ_EXPORT', actorId: userId, targetType: 'PDKS_PUANTAJ', targetId: `${bas}..${bit}`, details: { bas, bit, departmentId, satir } })
+    // Yıllık/mazeret ayrımı yalnız İV (izin.admin); diğer pdks.view indirenlere tek "İzinli" toplamı.
+    const izinDetay = await hasPermission('izin.admin')
+    const { buffer, satir } = await puantajExcel(prisma, bas, bit, departmentId, { izinDetay })
+    await logAuditEvent({ action: 'PDKS_PUANTAJ_EXPORT', actorId: userId, targetType: 'PDKS_PUANTAJ', targetId: `${bas}..${bit}`, details: { bas, bit, departmentId, satir, izinDetay } })
     return new NextResponse(new Uint8Array(buffer), {
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',

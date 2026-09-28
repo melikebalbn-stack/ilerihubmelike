@@ -9,6 +9,6 @@ export const dynamic = 'force-dynamic'
 // izin_talep_acik != 'true' iken ikisi de gizli (İV dahil — İV sayfalara doğrudan adresle girer).
 export async function GET() {
   const r = await requireUser()
-  if (r.error) return NextResponse.json({ talep: false, onay: false, bekleyen: 0 }, { status: 401 })
+  if (r.error) return NextResponse.json({ talep: false, onay: false, takvim: false, bekleyen: 0 }, { status: 401 })
   return NextResponse.json(await menuBayragi(r.user.id))
 }

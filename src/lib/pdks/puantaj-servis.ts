@@ -330,11 +330,25 @@ const saatStr = (d: Date | null) => (d ? new Date(d.getTime() + 3 * 3600_000).to
 /**
  * Puantaj Excel'i (xlsx Buffer). Günlük (bas=bit) ya da aylık. KVKK: DOSYAYA YAZILMAZ — yanıt olarak
  * indirilir; çağıran route denetim kaydı yazar.
+ *
+ * İzin sütunları (Özet, kişi başı; yarım gün 0,5): ücretsiz izin HER ZAMAN ayrı sütun. Yıllık / mazeret
+ * ayrımı YALNIZ izinDetay=true (izin.admin indiriyor) iken; değilse ücretli izinler tek "İzinli gün" toplamı.
+ * Günlük sayfada durum yalnız "İzinli" — tür yazılmaz.
  */
-export async function puantajExcel(db: Db, bas: string, bit: string, departmentId?: string | null): Promise<{ buffer: Buffer; satir: number }> {
+export function izinSutunu(tur: { kod: string; ucretli: boolean } | null | undefined, izinDetay: boolean): string {
+  if (tur && !tur.ucretli) return 'Ücretsiz izin gün'
+  if (!izinDetay) return 'İzinli gün'
+  return tur?.kod === 'YILLIK' ? 'Yıllık izin gün' : 'Mazeret izni gün'
+}
+
+export async function puantajExcel(
+  db: Db, bas: string, bit: string, departmentId?: string | null, o: { izinDetay?: boolean } = {},
+): Promise<{ buffer: Buffer; satir: number }> {
+  const izinDetay = o.izinDetay === true
+  const izinSutunlari = izinDetay ? ['Yıllık izin gün', 'Mazeret izni gün', 'Ücretsiz izin gün'] : ['İzinli gün', 'Ücretsiz izin gün']
   const rs = await db.pdksPuantajGun.findMany({
     where: { gun: { gte: dbGun(bas), lte: dbGun(bit) }, ...(departmentId ? { personnel: { departmentId } } : {}) },
-    select: { ...PUANTAJ_SEC, beklenenBaslangic: true, beklenenBitis: true },
+    select: { ...PUANTAJ_SEC, beklenenBaslangic: true, beklenenBitis: true, izinTalep: { select: { tur: { select: { kod: true, ucretli: true } } } } },
     orderBy: [{ personnel: { adSoyad: 'asc' } }, { gun: 'asc' }],
   })
   const detay = rs.map((s) => ({
@@ -355,17 +369,23 @@ export async function puantajExcel(db: Db, bas: string, bit: string, departmentI
     Kilitli: s.kilitli ? 'evet' : '',
     Uyarılar: s.uyarilar.join(', '),
   }))
-  const kisi = new Map<string, { Sicil: string; 'Ad Soyad': string; Departman: string; 'Çalışma (dk)': number; 'Mesai formu (dk)': number; 'Geç (dk)': number; 'Geç gün': number; 'Eksik okutma gün': number; 'Gelmedi gün': number; 'İzinli gün': number; 'Formla tamamlanan': number }>()
+  const kisi = new Map<string, Record<string, string | number>>()
   for (const s of rs) {
-    const k = kisi.get(s.personnelId) ?? { Sicil: s.personnel.sicilNo ?? '', 'Ad Soyad': s.personnel.adSoyad, Departman: s.personnel.department?.name ?? s.personnel.bolum, 'Çalışma (dk)': 0, 'Mesai formu (dk)': 0, 'Geç (dk)': 0, 'Geç gün': 0, 'Eksik okutma gün': 0, 'Gelmedi gün': 0, 'İzinli gün': 0, 'Formla tamamlanan': 0 }
-    k['Çalışma (dk)'] += s.calismaDakika ?? 0
-    k['Mesai formu (dk)'] += s.onayliMesaiDakika ?? 0
-    k['Geç (dk)'] += s.gecDakika
-    if (s.gecDakika > 0) k['Geç gün']++
-    if (s.durum === 'EKSIK_GIRIS' || s.durum === 'EKSIK_CIKIS') k['Eksik okutma gün']++
-    if (s.durum === 'GELMEDI') k['Gelmedi gün']++
-    k['İzinli gün'] += s.durum === 'IZINLI' ? Number(s.izinPay ?? 1) : s.izinPay ? Number(s.izinPay) : 0
-    if (s.durum === 'TAM_FORMLA') k['Formla tamamlanan']++
+    const k = kisi.get(s.personnelId) ?? {
+      Sicil: s.personnel.sicilNo ?? '', 'Ad Soyad': s.personnel.adSoyad, Departman: s.personnel.department?.name ?? s.personnel.bolum,
+      'Çalışma (dk)': 0, 'Mesai formu (dk)': 0, 'Geç (dk)': 0, 'Geç gün': 0, 'Eksik okutma gün': 0, 'Gelmedi gün': 0,
+      ...Object.fromEntries(izinSutunlari.map((c) => [c, 0])), 'Formla tamamlanan': 0,
+    }
+    const ekle = (c: string, n: number) => { k[c] = Math.round(((k[c] as number) + n) * 2) / 2 }
+    ekle('Çalışma (dk)', s.calismaDakika ?? 0)
+    ekle('Mesai formu (dk)', s.onayliMesaiDakika ?? 0)
+    ekle('Geç (dk)', s.gecDakika)
+    if (s.gecDakika > 0) ekle('Geç gün', 1)
+    if (s.durum === 'EKSIK_GIRIS' || s.durum === 'EKSIK_CIKIS') ekle('Eksik okutma gün', 1)
+    if (s.durum === 'GELMEDI') ekle('Gelmedi gün', 1)
+    const pay = s.durum === 'IZINLI' ? Number(s.izinPay ?? 1) : s.izinPay ? Number(s.izinPay) : 0
+    if (pay > 0) ekle(izinSutunu(s.izinTalep?.tur, izinDetay), pay)
+    if (s.durum === 'TAM_FORMLA') ekle('Formla tamamlanan', 1)
     kisi.set(s.personnelId, k)
   }
   const wb = XLSX.utils.book_new()

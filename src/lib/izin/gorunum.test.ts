@@ -51,10 +51,10 @@ describe('izin API rota taraması', () => {
   // İV DIŞI rotaların (çalışan / yönetici — requireUser + izinErisim) import edebileceği izin modülleri. Bu
   // servislerin yönetici/ekip çıktısı gorunum.ts'den geçer (aşağıdaki servis taraması + talep-akis.test.ts
   // çalışma zamanı sızıntı testleri). Yeni bir modül eklemek = bu listeye bilinçli ekleme + sızıntı testi.
-  const GUVENLI = ['gorunum', 'talep-servis', 'onay-servis', 'erisim', 'talep-ortak', 'yonetim']
+  const GUVENLI = ['gorunum', 'talep-servis', 'onay-servis', 'takvim-servis', 'erisim', 'talep-ortak', 'yonetim']
 
   it('her rota ya yalnız İV izniyle korunur ya da yalnız güvenli servisleri kullanır ve tür SEÇMEZ', () => {
-    expect(rotalar.length).toBeGreaterThanOrEqual(15) // Faz 2 (8) + Faz 3 (10) — kapsam boşa geçmesin
+    expect(rotalar.length).toBeGreaterThanOrEqual(18) // Faz 2 (7) + Faz 3 (10) + Faz 5 (takvim) — kapsam boşa geçmesin
     const ihlal: string[] = []
     let ivDisi = 0
     for (const f of rotalar) {
@@ -68,7 +68,7 @@ describe('izin API rota taraması', () => {
       if (/prisma\./.test(s)) ihlal.push(`${ad}: İV dışı rota doğrudan prisma sorgusu yapıyor (servis üzerinden olmalı)`)
       if (/\btur(Id|Ad)?\s*:/.test(s) || /include:\s*{[^}]*\btur\b/.test(s)) ihlal.push(`${ad}: İV dışı rota tür seçiyor`)
     }
-    expect(ivDisi).toBeGreaterThanOrEqual(8) // talebim, takvim, önizleme, talepler, geri-cek, adına, onay, onay/:id, menu-bayrak
+    expect(ivDisi).toBeGreaterThanOrEqual(10) // talebim, takvim, önizleme, talepler, geri-cek, adına, onay, onay/:id, menu-bayrak, izin/takvim
     expect(ihlal).toEqual([])
   })
 
@@ -82,6 +82,9 @@ describe('izin API rota taraması', () => {
     const talep = oku('talep-servis')
     expect(talep).toMatch(/ekipIzinGunu\(/) // takvim noktası
     expect(talep).toMatch(/listeGorur = hedef === ctx\.personnelId \|\| ctx\.ivMi/) // adına açan yönetici liste görmez
+    const takvim = oku('takvim-servis')
+    expect(takvim).toMatch(/ekipIzinGunu\(/) // Ekip Takvimi hücreleri
+    expect(takvim).not.toMatch(/tur:\s*\{|turId:\s*true|aciklama:\s*true/) // talep sorgularında tür/açıklama seçilmez
   })
 
   it('İV guard deseni yalnız izin.admin / izin.bakiye.admin kabul eder', () => {

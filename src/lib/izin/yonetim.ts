@@ -7,7 +7,7 @@ import { bugunStr } from '@/lib/pdks/puantaj-servis'
 import type { DefterSatiri, IzinHareketTuru } from './bakiye'
 import { GECIS_TARIHI_AYARI, YILLIK_KOD } from './acilis-import'
 import { kisiBakiyeOzeti, yakindaMi, type KisiBakiyeOzeti } from './bakiye-ozet'
-import { IzinGirdiHatasi } from './gun-sayimi'
+import { IzinGirdiHatasi, IzinYetkiHatasi } from './gun-sayimi'
 
 /**
  * İzin Faz 2 — Türler ve Bakiye Yönetimi (İV). Okuma izin.admin; defter düzeltmesi izin.bakiye.admin.
@@ -15,6 +15,7 @@ import { IzinGirdiHatasi } from './gun-sayimi'
  */
 
 export function izinHata(e: unknown, varsayilan = 'İşlem başarısız') {
+  if (e instanceof IzinYetkiHatasi) return NextResponse.json({ ok: false, error: e.message }, { status: 403 })
   if (e instanceof IzinGirdiHatasi) return NextResponse.json({ ok: false, error: e.message }, { status: 400 })
   if (e instanceof SyntaxError) return NextResponse.json({ ok: false, error: 'Geçersiz istek gövdesi' }, { status: 400 })
   const kod = (e as { code?: string })?.code

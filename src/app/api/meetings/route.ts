@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
 import { toplantiKullaniciIdCoz } from '@/lib/meetings/kullanici-coz'
 import { toplantiHataYaniti, enumDogrula, TOPLANTI_TURLERI } from '@/lib/meetings/hata'
+import { toplantiDavetiGonder } from '@/lib/meetings/toplanti-bildirim'
 
 // Toplantı numarası oluştur
 async function generateMeetingNumber(): Promise<string> {
@@ -312,7 +313,18 @@ export async function POST(request: NextRequest) {
       }
     })
 
-    return NextResponse.json(meetingWithRelations, { status: 201 })
+    // ── Davet bildirimi ── COMMIT SONRASI, BLOKE ETMEZ.
+    // Patlarsa toplantı kaydı geçerli kalır; sonuç yanıtta döner ki UI
+    // "kimseye ulaşmadı" durumunu gösterebilsin.
+    let bildirim
+    try {
+      bildirim = await toplantiDavetiGonder(meeting.id)
+    } catch (e) {
+      console.error('[meetings/POST] davet bildirimi:', e)
+      bildirim = { bildirilen: 0, atlanan: 0, mailUlasmayan: [], hata: true }
+    }
+
+    return NextResponse.json({ ...meetingWithRelations, bildirim }, { status: 201 })
   } catch (error) {
     return toplantiHataYaniti('meetings/POST', error)
   }

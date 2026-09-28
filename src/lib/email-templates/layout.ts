@@ -33,7 +33,10 @@ export type EmailModule =
   | "Mesai"
   | "İnsan Varlıkları"
   | "Kalibrasyon"
-  | "Kalite";
+  | "Kalite"
+  // 28.09.2026 — toplantı bildirim katmanı (davet/karar/tutanak/gecikme).
+  // Mevcut etiketlerin hiçbiri toplantıyı karşılamıyordu.
+  | "Toplantı";
 
 /** Şablonların kendi bloklarını (bar, KPI kutusu…) aynı paletle çizmesi için. */
 export const TOKENS = {

@@ -5,6 +5,7 @@ import { toplantiKullaniciIdCoz } from '@/lib/meetings/kullanici-coz'
 import {
   toplantiHataYaniti, enumDogrula, TOPLANTI_TURLERI, TOPLANTI_DURUMLARI,
 } from '@/lib/meetings/hata'
+import { toplantiOzetiGonder } from '@/lib/meetings/toplanti-bildirim'
 
 // Yetki kontrolü
 const MANAGEMENT_ROLES = [
@@ -241,7 +242,19 @@ export async function PUT(
       }
     })
 
-    return NextResponse.json(updatedMeeting)
+    // ── Tutanak/özet bildirimi ──
+    // YALNIZ GEÇİŞTE: durum COMPLETED'a YENİ geçtiyse. Zaten COMPLETED olan bir
+    // toplantıda her PUT'ta (not düzenleme, tutanak onayı) tekrar mail atmamak
+    // için önceki durumla karşılaştırılır. COMMIT SONRASI, BLOKE ETMEZ.
+    let bildirim = null
+    if (meeting.status !== 'COMPLETED' && updateData.status === 'COMPLETED') {
+      bildirim = await toplantiOzetiGonder(id).catch((e) => {
+        console.error('[meetings/[id]/PUT] özet bildirimi:', e)
+        return null
+      })
+    }
+
+    return NextResponse.json({ ...updatedMeeting, ...(bildirim ? { bildirim } : {}) })
   } catch (error) {
     return toplantiHataYaniti('meetings/[id]/PUT', error)
   }

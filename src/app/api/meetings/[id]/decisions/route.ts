@@ -5,6 +5,7 @@ import { toplantiKullaniciIdCoz } from '@/lib/meetings/kullanici-coz'
 import {
   toplantiHataYaniti, enumDogrula, KARAR_ONCELIKLERI, KARAR_DURUMLARI,
 } from '@/lib/meetings/hata'
+import { kararBildirimiGonder } from '@/lib/meetings/toplanti-bildirim'
 
 // Karar numarası oluştur
 async function generateDecisionNumber(meetingId: string): Promise<string> {
@@ -87,7 +88,13 @@ export async function POST(
       }
     })
 
-    return NextResponse.json(decision, { status: 201 })
+    // Bildirim COMMIT SONRASI ve BLOKE ETMEZ — sorumlu yoksa zaten sessiz.
+    const bildirim = await kararBildirimiGonder(decision.id).catch((e) => {
+      console.error('[decisions/POST] bildirim:', e)
+      return null
+    })
+
+    return NextResponse.json({ ...decision, bildirim }, { status: 201 })
   } catch (error) {
     return toplantiHataYaniti('decisions/POST', error)
   }
@@ -160,7 +167,14 @@ export async function PUT(
       }
     })
 
-    return NextResponse.json(decision)
+    // Güncellemede de sorumluya haber ver — sorumlu DEĞİŞMİŞ olabilir, yeni
+    // kişinin kendisine iş düştüğünden haberi olmalı.
+    const bildirim = await kararBildirimiGonder(decision.id, { guncelleme: true }).catch((e) => {
+      console.error('[decisions/PUT] bildirim:', e)
+      return null
+    })
+
+    return NextResponse.json({ ...decision, bildirim })
   } catch (error) {
     return toplantiHataYaniti('decisions/PUT', error)
   }

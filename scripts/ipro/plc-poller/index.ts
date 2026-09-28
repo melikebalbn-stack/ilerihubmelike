@@ -47,8 +47,17 @@ const BAYATLIK_MS = Number(process.env.IPRO_POLLER_BAYATLIK_MS ?? 20_000)
  * YAZIM BLOKLAMAZ: hata yutulur+loglanır, polling ASLA durmaz.
  */
 const FAZ2_DELTA = process.env.IPRO_FAZ2_DELTA === 'true'
-/** Savunma: tipik delta 1-2. Bundan büyük delta yazılmaz (×256 vb. bozuk okuma emniyeti). */
+/** Savunma: tipik delta 1-2. Bundan büyük delta yazılmaz (×256 vb. bozuk okuma emniyeti).
+ *  Gap kurtarmada (restart/reconnect) da üst sınır: cur−referans bunu aşarsa delta atılır. */
 const DELTA_MAKUL_UST = 10_000
+/**
+ * Pin başına son mutlak değer kalıcılığı (IproPlcSayacDurum). Poller başlangıçta buradan
+ * seed eder → restart/reconnect boşluğundaki üretim KAYBOLMAZ. Yeni tabloya yazar (üretim
+ * tablolarına DOKUNMAZ). false → kalıcılık kapalı (eski salt-okuma davranışı). Throttle: her
+ * PERSIST_INTERVAL_MS'te bir güvenilir pin değerleri upsert edilir (BLOKLAMAZ, hata yutulur).
+ */
+const PERSIST = process.env.IPRO_POLLER_PERSIST !== 'false'
+const PERSIST_INTERVAL_MS = Number(process.env.IPRO_POLLER_PERSIST_MS ?? 30_000)
 // NOT: kaçış kapısının SÜRE eşiği YOKTUR (env yok). Sıfır ancak sıfırdan gelen
 // gerçek artış kanıtıyla benimsenir — bkz. hesap.ts kacisKapisiKarari.
 /**
@@ -73,10 +82,13 @@ const prisma = new PrismaClient({ adapter: new PrismaPg(pool) })
 // ── bellek durumu ──
 interface PinState {
   kod: number
+  id: string // IproPlcPin.id — kalıcılık (IproPlcSayacDurum.pinId) anahtarı
   sayacAdresi: number
   durusAdresi: number
   tezgahKod: string | null
   prevSayac?: number
+  /** Kalıcı son mutlak değer (seed). prev henüz yokken gap kurtarma referansı. */
+  sonDeger?: number
   curSayac: number
   lastDelta: number
   durusBit: boolean
@@ -152,6 +164,7 @@ async function loadPins() {
     const plc = group[0].plc
     const pinStates: PinState[] = group.map((p) => ({
       kod: p.kod,
+      id: p.id,
       sayacAdresi: p.sayacAdresi,
       durusAdresi: p.durusAdresi,
       tezgahKod: p.tezgah?.kod ?? null,
@@ -195,6 +208,21 @@ async function loadPins() {
       }
     }
   }
+  // SEED — pin başına kalıcı son mutlak değer (IproPlcSayacDurum). prevSayac'a YAZILMAZ (undefined
+  // kalır → ilk okuma 'ilk'/gap dalına düşer); yalnız sonDeger'e konur, gap kurtarma referansı olur.
+  if (PERSIST) {
+    try {
+      const ids = plcGroups.flatMap((g) => g.pins.map((p) => p.id))
+      const durumlar = await prisma.iproPlcSayacDurum.findMany({ where: { pinId: { in: ids } }, select: { pinId: true, sonDeger: true } })
+      const m = new Map(durumlar.map((d) => [d.pinId, Number(d.sonDeger)]))
+      let seedli = 0
+      for (const g of plcGroups) for (const p of g.pins) { const v = m.get(p.id); if (v !== undefined) { p.sonDeger = v; seedli++ } }
+      log(`🌱 kalıcı değerden ${seedli}/${ids.length} pin seed edildi (restart boşluğu kurtarılacak)`)
+    } catch (e) {
+      log(`⚠️ kalıcı seed okunamadı (baseline'dan devam): ${e instanceof Error ? e.message : e}`)
+    }
+  }
+
   log(`${pins.length} aktif pin · ${plcGroups.length} PLC · ${tezgahState.size} tezgah yüklendi`)
 }
 
@@ -295,9 +323,13 @@ async function pollPlc(g: PlcGroup) {
       blokGecersiz,
       kacisKapisi: kk.kacisKapisi,
       kacisEsigi: pin.kacisEsigi,
+      sonDeger: pin.sonDeger,
+      deltaMakulUst: DELTA_MAKUL_UST,
     })
     if (baselineTazele && olay === 'sifir-suphesi') suphelSifirGoruldu = true
-    if (olay === 'reset-kabul') log(`ℹ️ ${g.conn.kod} pin ${pin.kod} gerçek RESET (${prev} → ${cur}), delta=${delta}`)
+    if (olay === 'reset-kabul') log(`ℹ️ ${g.conn.kod} pin ${pin.kod} gerçek RESET (${prev ?? pin.sonDeger} → ${cur}), delta=${delta}`)
+    else if (olay === 'gap-kurtarma') log(`↺ ${g.conn.kod} pin ${pin.kod} GAP KURTARMA (ref ${prev ?? pin.sonDeger} → ${cur}) delta=${delta} — restart/reconnect boşluğu geri kazanıldı`)
+    else if (olay === 'gap-buyuk-atlandi') log(`⚠️ ${g.conn.kod} pin ${pin.kod} GAP DELTA MAKUL DIŞI (${prev ?? pin.sonDeger} → ${cur}) > ${DELTA_MAKUL_UST} — atıldı, baseline ${cur} kuruldu`)
     else if (olay === 'sifir-suphesi') log(`⚠️ ${g.conn.kod} pin ${pin.kod} SIFIR ŞÜPHESİ (${prev} → 0) — prevSayac korundu`)
     else if (olay === 'kacis-geri-donus') {
       // Sıfırlar bozukmuş: sayaç kaçış öncesi değerine döndü. Üretim DEĞİL.
@@ -393,6 +425,32 @@ async function faz2DeltaYaz(hareketli: TezgahState[]) {
   }
 }
 
+/**
+ * KALICI DURUM — pin başına son GÜVENİLİR mutlak değeri (prevSayac) IproPlcSayacDurum'a upsert eder.
+ * Restart/reconnect sonrası seed kaynağı budur → boşluktaki üretim kaybolmaz. Yalnız prevSayac'ı
+ * OLAN (güvenilir baseline kurulmuş) pinler yazılır. BLOKLAMAZ: kendi try/catch'i var, await EDİLMEZ.
+ */
+let sonPersistAt = 0
+async function persistDurum() {
+  const simdi = new Date()
+  const rows: { pinId: string; sonDeger: bigint; sonOkumaAt: Date }[] = []
+  for (const g of plcGroups) for (const p of g.pins) {
+    if (p.prevSayac !== undefined) rows.push({ pinId: p.id, sonDeger: BigInt(p.prevSayac), sonOkumaAt: simdi })
+  }
+  if (!rows.length) return
+  try {
+    await prisma.$transaction(
+      rows.map((r) => prisma.iproPlcSayacDurum.upsert({
+        where: { pinId: r.pinId },
+        create: r,
+        update: { sonDeger: r.sonDeger, sonOkumaAt: r.sonOkumaAt },
+      })),
+    )
+  } catch (e) {
+    log(`⚠️ kalıcı değer yazımı başarısız (polling sürüyor): ${e instanceof Error ? e.message : e}`)
+  }
+}
+
 async function tick() {
   for (const g of plcGroups) for (const p of g.pins) p.lastDelta = 0 // okunmayan PLC deltayı tekrar saymasın
   await Promise.allSettled(plcGroups.map((g) => pollPlc(g))) // izole: biri düşse diğerleri devam
@@ -402,6 +460,11 @@ async function tick() {
   if (moved.length) dbg(`Δ>0: ${moved.map((t) => `${t.tezgahKod}+${t.sonDelta}`).join(', ')}`)
   // FAZ 2 (flag açıkken) — BLOKLAMADAN yaz (await YOK): yazım turu geciktirmez/durdurmaz.
   if (FAZ2_DELTA && moved.length) void faz2DeltaYaz(moved)
+  // KALICI DURUM — throttle'lı, BLOKLAMADAN (await YOK): restart/reconnect için pin baseline'ı kalıcı.
+  if (PERSIST && Date.now() - sonPersistAt >= PERSIST_INTERVAL_MS) {
+    sonPersistAt = Date.now()
+    void persistDurum()
+  }
 }
 
 function loop() {
@@ -504,6 +567,7 @@ async function main() {
   log(`IPRO PLC Poller başlıyor (interval=${POLL_INTERVAL_MS}ms, port=${HTTP_PORT})`)
   log(`⚙️ bayatlık=${BAYATLIK_MS}ms · kaçış kapısı: KANIT tabanlı (süre eşiği YOK)`)
   log(`⚙️ FAZ2 delta yazımı: ${FAZ2_DELTA ? 'AÇIK (IproSayacOkuma append)' : 'KAPALI (salt okuma)'}`)
+  log(`⚙️ kalıcı durum (restart/reconnect kayıpsız): ${PERSIST ? `AÇIK (IproPlcSayacDurum, her ${PERSIST_INTERVAL_MS}ms)` : 'KAPALI'} · gap üst sınır=${DELTA_MAKUL_UST}`)
   await loadPins()
   server.listen(HTTP_PORT, () => log(`HTTP dinliyor :${HTTP_PORT} → /health, /status, /pins`))
   loop()

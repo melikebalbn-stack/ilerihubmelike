@@ -24,6 +24,7 @@ describe('sayacIsle — hayalet üretim savunması', () => {
   // Yardımcı: bir pin'in tur dizisini işleyip toplam birikimi ve olayları döndürür.
   function akis(
     okumalar: Array<{ cur: number; baselineTazele?: boolean; blokGecersiz?: boolean }>,
+    opts: { sonDeger?: number; deltaMakulUst?: number } = {},
   ) {
     let prev: number | undefined
     let birikim = 0
@@ -35,6 +36,8 @@ describe('sayacIsle — hayalet üretim savunması', () => {
         cur: o.cur,
         baselineTazele: o.baselineTazele ?? false,
         blokGecersiz: o.blokGecersiz ?? false,
+        sonDeger: opts.sonDeger,
+        deltaMakulUst: opts.deltaMakulUst,
       })
       prev = r.yeniPrev
       birikim += r.delta
@@ -104,9 +107,9 @@ describe('sayacIsle — hayalet üretim savunması', () => {
       { cur: 0, baselineTazele: true, blokGecersiz: true },      // hâlâ 0, hâlâ geçersiz
       { cur: 1146, baselineTazele: true },                       // toparlandı → baseline tazele
     ])
-    expect(birikim).toBe(0) // HAYALET YOK
-    expect(olaylar).toEqual(['ilk', 'blok-gecersiz', 'blok-gecersiz', 'baseline-tazelendi'])
-    expect(prev).toBe(1146) // baseline gerçek değere tazelendi
+    expect(birikim).toBe(0) // HAYALET YOK (1146→1146 farkı 0)
+    expect(olaylar).toEqual(['ilk', 'blok-gecersiz', 'blok-gecersiz', 'normal'])
+    expect(prev).toBe(1146) // referans=prev(1146), cur=1146 → delta 0, baseline korundu
   })
 
   it('KATMAN 2 ATEŞLENEMEZKEN baseline turunda bozuk 0 BENİMSENMEZ', () => {
@@ -118,27 +121,77 @@ describe('sayacIsle — hayalet üretim savunması', () => {
       { cur: 0, baselineTazele: true },       // reconnect + bozuk 0, blok ATEŞLENMEDİ
       { cur: 1146, baselineTazele: true },    // bayrak devretti, gerçek değer geldi
     ])
-    expect(birikim).toBe(0) // HAYALET YOK
-    expect(olaylar).toEqual(['ilk', 'sifir-suphesi', 'baseline-tazelendi'])
+    expect(birikim).toBe(0) // HAYALET YOK (bozuk 0 benimsenmedi, sonraki 1146→1146 farkı 0)
+    expect(olaylar).toEqual(['ilk', 'sifir-suphesi', 'normal'])
     expect(prev).toBe(1146)
   })
 
-  it('baseline turunda GERÇEK sıfır (prev de 0) sorunsuz benimsenir', () => {
-    // Hiç üretmemiş makine: prev=0, cur=0 → şüphe yok, baseline tazelenir.
+  it('baseline turunda cur=0 ASLA benimsenmez (prev korunur)', () => {
+    // Hiç üretmemiş makine: prev=0, cur=0 → 0 baseline değildir, prev(0) korunur.
     const { olaylar, prev } = akis([{ cur: 0 }, { cur: 0, baselineTazele: true }])
-    expect(olaylar).toEqual(['ilk', 'baseline-tazelendi'])
+    expect(olaylar).toEqual(['ilk', 'sifir-suphesi'])
     expect(prev).toBe(0)
   })
 
-  it('RECONNECT sonrası ilk okuma DELTA ÜRETMEZ, yalnız baseline tazeler', () => {
-    // Kopma penceresinde makine üretmiş olabilir; o üretim bilinçli olarak sayılmaz
-    // (hayalet üretmektense eksik saymak yeğdir).
-    const { birikim, olaylar, prev } = akis([
+  it('RECONNECT boşluğu KAYIPSIZ kurtarılır (referans=prev): 1146→1200(reconnect)→1203', () => {
+    // Kopma penceresinde üretilen (1146→1200 = 54) ARTIK sayılır: delta = cur − prev.
+    const { birikim, olaylar, deltalar, prev } = akis([
       { cur: 1146 }, { cur: 1200, baselineTazele: true }, { cur: 1203 },
     ])
-    expect(olaylar).toEqual(['ilk', 'baseline-tazelendi', 'normal'])
-    expect(birikim).toBe(3) // 1146→1200 arası sayılmadı; 1200→1203 sayıldı
+    expect(olaylar).toEqual(['ilk', 'gap-kurtarma', 'normal'])
+    expect(deltalar).toEqual([0, 54, 3])
+    expect(birikim).toBe(57) // kopma boşluğu (54) + sonrası (3) — kayıp YOK
     expect(prev).toBe(1203)
+  })
+})
+
+describe('sayacIsle — kalıcı değerden (sonDeger) restart kurtarma', () => {
+  const MAKUL = 10_000
+
+  it('SOĞUK AÇILIŞ: kalıcı değer yoksa baseline (birikmiş sayaç sayılmaz)', () => {
+    const r = sayacIsle({ prev: undefined, cur: 2053, baselineTazele: false, blokGecersiz: false, deltaMakulUst: MAKUL })
+    expect(r.olay).toBe('ilk')
+    expect(r.delta).toBe(0)
+    expect(r.yeniPrev).toBe(2053)
+  })
+
+  it('RESTART BOŞLUĞU KAYIPSIZ: prev yok + sonDeger=1146, cur=1203 → delta 57 (gap-kurtarma)', () => {
+    const r = sayacIsle({ prev: undefined, cur: 1203, baselineTazele: false, blokGecersiz: false, sonDeger: 1146, deltaMakulUst: MAKUL })
+    expect(r.olay).toBe('gap-kurtarma')
+    expect(r.delta).toBe(57)
+    expect(r.yeniPrev).toBe(1203)
+  })
+
+  it('RESTART sonrası RESET: sonDeger=1146, cur=3 (< sonDeger) → reset, delta=cur(3)', () => {
+    const r = sayacIsle({ prev: undefined, cur: 3, baselineTazele: false, blokGecersiz: false, sonDeger: 1146, deltaMakulUst: MAKUL })
+    expect(r.olay).toBe('reset-kabul')
+    expect(r.delta).toBe(3)
+    expect(r.yeniPrev).toBe(3)
+  })
+
+  it('×256 BOZUK OKUMA gap\'te REDDEDİLİR: sonDeger=637, cur=163072 (637×256), makul=10000 → atıldı, delta 0', () => {
+    const r = sayacIsle({ prev: undefined, cur: 163072, baselineTazele: false, blokGecersiz: false, sonDeger: 637, deltaMakulUst: MAKUL })
+    expect(r.olay).toBe('gap-buyuk-atlandi')
+    expect(r.delta).toBe(0)
+    expect(r.yeniPrev).toBe(163072) // baseline cur'a kurulur; sonraki gerçek 640 → reset delta≈640 (küçük)
+  })
+
+  it('RECONNECT ×256 gap\'te REDDEDİLİR: prev=637, cur=163072, baselineTazele → gap-buyuk-atlandi', () => {
+    const r = sayacIsle({ prev: 637, cur: 163072, baselineTazele: true, blokGecersiz: false, deltaMakulUst: MAKUL })
+    expect(r.olay).toBe('gap-buyuk-atlandi')
+    expect(r.delta).toBe(0)
+  })
+
+  it('SÜREÇ YENİDEN BAŞLAMASI kalıcı değerden kayıpsız devam eder', () => {
+    // 1. süreç: 100→103→105 üret, son güvenilir prev=105 kalıcıya yazılır.
+    let prev: number | undefined
+    for (const cur of [100, 103, 105]) prev = sayacIsle({ prev, cur, baselineTazele: false, blokGecersiz: false }).yeniPrev
+    const kalici = prev! // = 105 (persistDurum bunu yazar)
+    expect(kalici).toBe(105)
+    // 2. süreç (restart): prev sıfırlanır, sonDeger=kalıcı; PLC bu arada 108'e çıkmış.
+    const r = sayacIsle({ prev: undefined, cur: 108, baselineTazele: false, blokGecersiz: false, sonDeger: kalici, deltaMakulUst: MAKUL })
+    expect(r.olay).toBe('gap-kurtarma')
+    expect(r.delta).toBe(3) // 105→108 restart boşluğu — KAYIP YOK
   })
 })
 

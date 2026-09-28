@@ -11943,6 +11943,19 @@ model IproSayacOkuma {
   @@map("ipro_sayac_okuma")
 }
 
+// Pin başına SON MUTLAK sayaç değeri — poller restart/reconnect sonrası KAYIPSIZ delta için.
+// ipro_sayac_okuma tezgah bazlı (çok-pinli tezgahta pinler toplanır) → pin başına kalıcılık BURADA.
+// Yalnız poller yazar (throttled upsert); poller başlangıçta prevSayac'ı buradan seed eder.
+// is-basla/is-bitir/OEE DOKUNMAZ. pinId = IproPlcPin.id (1:1, @id → tekil).
+model IproPlcSayacDurum {
+  pinId      String   @id // = IproPlcPin.id
+  sonDeger   BigInt // son GÜVENİLİR ham mutlak sayaç (yeniPrev)
+  sonOkumaAt DateTime // bu değerin okunduğu an
+  updatedAt  DateTime @updatedAt
+
+  @@map("ipro_plc_sayac_durum")
+}
+
 // Vardiya tanımları — OEE kullanılabilirlik/planlı-zaman hesabının 1. halkası (Melike #5).
 // SADECE VERİ GİRİŞİ: hesap/rapor bu modelde YOK. is-basla/is-bitir/poller dokunmaz.
 // Saatler string "HH:mm" (TZ tuzağı yok — hesap ileride dakikaya çevirir).

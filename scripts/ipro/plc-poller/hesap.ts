@@ -59,9 +59,11 @@
 // Bedeli: gerçek restart sonrası sayaç eşiği aşarken bir turluk delta kaybı.
 
 export type SayacOlay =
-  | 'ilk' // baseline kuruldu (ilk okuma)
+  | 'ilk' // baseline kuruldu (ilk okuma, kalıcı değer yok)
   | 'normal' // cur >= prev, düz artış
-  | 'baseline-tazelendi' // katman 1: hata/reconnect sonrası ilk okuma
+  | 'baseline-tazelendi' // katman 1: hata/reconnect, referans yok → yalnız baseline (delta yok)
+  | 'gap-kurtarma' // restart/reconnect boşluğu: delta = cur − referans (kalıcı/prev), KAYIPSIZ
+  | 'gap-buyuk-atlandi' // gap deltası DELTA_MAKUL_UST üstü → atıldı (bozuk okuma/×256 emniyeti)
   | 'blok-gecersiz' // katman 2: PLC'de toplu sıfır → okuma geçersiz
   | 'sifir-suphesi' // katman 3: cur===0 & cur<prev → prev korunur
   | 'reset-kabul' // gerçek reset (0 < cur < prev)
@@ -83,6 +85,14 @@ export interface SayacGirdi {
   kacisKapisi?: boolean
   /** Sıçrama koruması: kaçış öncesi son güvenilir değer (yoksa undefined). */
   kacisEsigi?: number
+  /**
+   * Pin başına KALICI son mutlak değer (IproPlcSayacDurum) — poller başlangıcında seed.
+   * prev undefined iken (soğuk açılış) VEYA baseline tazelemede prev de yoksa REFERANS budur.
+   * Restart boşluğundaki üretim = cur − sonDeger (KAYIPSIZ). prev varken KULLANILMAZ.
+   */
+  sonDeger?: number
+  /** Gap kurtarmada makul üst sınır: delta bunu aşarsa atılır (bozuk okuma/×256). */
+  deltaMakulUst?: number
 }
 
 export interface SayacIsleSonuc {
@@ -98,7 +108,23 @@ export interface SayacIsleSonuc {
  * Sıra önemlidir: geçersiz okuma (katman 2) her şeyden önce elenir, sonra
  * baseline tazeleme (katman 1), sonra normal/şüphe/reset ayrımı (katman 3).
  */
+/**
+ * Bir REFERANS değere göre gap kararı (restart/reconnect boşluğunu KAYIPSIZ kurtarır).
+ *  - cur < ref  → gerçek reset: delta = cur (sıfırlamadan beri üretim)
+ *  - cur − ref > makul → bozuk okuma/×256 imzası: delta ATILIR (0), baseline cur'a kurulur
+ *  - aksi → delta = cur − ref (kurtarılan üretim; 0 ise düz 'normal')
+ * cur > 0 çağıranın güvencesi (sıfır burada işlenmez — bozuk-sıfır ayrı elenir).
+ */
+function gapKarar(cur: number, ref: number, makul: number): SayacIsleSonuc {
+  if (cur < ref) return { delta: cur, yeniPrev: cur, olay: 'reset-kabul' }
+  const d = cur - ref
+  if (d > makul) return { delta: 0, yeniPrev: cur, olay: 'gap-buyuk-atlandi' }
+  return { delta: d, yeniPrev: cur, olay: d > 0 ? 'gap-kurtarma' : 'normal' }
+}
+
 export function sayacIsle(g: SayacGirdi): SayacIsleSonuc {
+  const makul = g.deltaMakulUst ?? Infinity
+
   // KAÇIŞ KAPISI — yalnız HÂLÂ SIFIR okuyan pinler için: donmuş prev bırakılır,
   // baseline 0'a kurulur, delta ÜRETİLMEZ. Kanıt pini (cur > 0) buradan geçmez;
   // aşağıda 'reset-kabul' dalına düşüp gerçek deltasını üretir.
@@ -107,21 +133,23 @@ export function sayacIsle(g: SayacGirdi): SayacIsleSonuc {
   // KATMAN 2 — okuma geçersiz: hiçbir şey güncellenmez, prev KORUNUR.
   if (g.blokGecersiz) return { delta: 0, yeniPrev: g.prev, olay: 'blok-gecersiz' }
 
-  // KATMAN 1 — hata/reconnect sonrası: yalnız baseline tazelenir, delta ÜRETİLMEZ.
+  // KATMAN 1 — hata/reconnect sonrası. ARTIK KAYIPSIZ: referans (prev, yoksa kalıcı sonDeger)
+  // varsa gap kurtarılır; yoksa yalnız baseline kurulur (eski davranış).
   if (g.baselineTazele) {
-    // ANCAK bozuk bir sıfır baseline olarak BENİMSENMEZ. Katman 2 yalnız EN AZ İKİ
-    // dolu sayaç varken ateşlenir; tek dolu sayaçlı PLC/vardiya başında bozuk 0
-    // buraya kadar gelebilir. Benimsenirse prev=0 olur ve sonraki gerçek okumada
-    // delta = tüm sayaç kadar HAYALET üretilir (17:47 epizodunun varyantı).
-    // Sıfır reddedilir, bayrak çağıran tarafta tüketilmez → sonraki tura devreder.
-    if (g.cur === 0 && g.prev !== undefined && g.prev > 0) {
-      return { delta: 0, yeniPrev: g.prev, olay: 'sifir-suphesi' }
-    }
-    return { delta: 0, yeniPrev: g.cur, olay: 'baseline-tazelendi' }
+    // cur===0 ASLA baseline değil (bozuk okuma imzası): prev KORUNUR (undefined olabilir),
+    // bayrak çağıran tarafta tüketilmez → gerçek değer dönene dek hayalet üretilmez.
+    if (g.cur === 0) return { delta: 0, yeniPrev: g.prev, olay: 'sifir-suphesi' }
+    const ref = g.prev !== undefined ? g.prev : g.sonDeger
+    if (ref === undefined) return { delta: 0, yeniPrev: g.cur, olay: 'baseline-tazelendi' }
+    return gapKarar(g.cur, ref, makul)
   }
 
-  // İlk okuma: baseline kurulur (birikmiş sayaç üretim sayılmaz).
-  if (g.prev === undefined) return { delta: 0, yeniPrev: g.cur, olay: 'ilk' }
+  // İlk okuma (soğuk açılış). Kalıcı sonDeger varsa restart boşluğu KAYIPSIZ kurtarılır.
+  if (g.prev === undefined) {
+    // cur===0 veya kalıcı yok → birikmiş sayaç üretim sayılmaz, baseline kurulur.
+    if (g.cur === 0 || g.sonDeger === undefined) return { delta: 0, yeniPrev: g.cur, olay: 'ilk' }
+    return gapKarar(g.cur, g.sonDeger, makul)
+  }
 
   // SIÇRAMA KORUMASI — kaçış sonrası eski değere geri dönüş. 'normal' dalından
   // ÖNCE gelmeli: cur(1146) >= prev(0) olduğu için aksi hâlde hayalet üretirdi.

@@ -377,123 +377,266 @@ export const ESLEME_ACIK = [
 ] as const
 
 // ----------------------------------------------------------------------------
-// 🔴 OLASI YİNELENEN DURAKLAR — karar bekliyor, kendiliğinden BİRLEŞTİRİLMEDİ
+// 🔴 OLASI YİNELENEN ÇİFTLER — KARAR TABANI, birleştirme YAPILMADI
 // ----------------------------------------------------------------------------
 //
-// İdari İşler'in verdiği hedef adlarından 13 tanesi, aynı güzergâhta zaten
-// duran bir durağın adına benziyor. Talimat "hedefi sistemde olmayan satır
-// yeni duraktır" dediği için TALİMATA UYULDU: hepsi yeni durak olarak
-// eklendi. Ama bir kısmı neredeyse kesin AYNI YER — örn. 'SARI CAMİİ' ile
-// 'Sarı Cami', 'UNTEX' ile 'Unteks'.
+// 133 durak adının HEPSİ ikişerli karşılaştırıldı (yalnız yeni eklenenler
+// değil). Üç bağımsız yöntem, hepsi Türkçe normalize sonrası:
+//   1. Levenshtein  — yazım hatası      (Unteks / UNTEX)
+//   2. Jaccard, SIRA BAĞIMSIZ kelime kümesi — sıra değişimi
+//                                        (Tel Boyu Şifa / ŞİFA TEL BOYU)
+//   3. ön ek / kısaltma                  (Köp. / KÖPRÜSÜ, Cd. / CAD.)
+// Yöntem bilinen pozitiflerde (SARI CAMİİ/Sarı Cami, ŞİFA TEL BOYU/
+// Tel Boyu Şifa, UNTEX/Unteks) doğrulandı; negatif kontrol temiz.
+// Farklı güzergâhtaki aynı adlar KAPSAM DIŞI (ör. 'Garanti Bankası' iki
+// güzergâhta normaldir).
 //
-// Bunları kendiliğinden birleştirmedim: birleştirmek İdari İşler'in yazdığı
-// hedefi geçersiz kılmak olurdu. Ayırmak da yanlış olabilir — o yüzden
-// listede duruyorlar.
+// `grup` neden önemli:
+//   ESKI    — iki ad da referans verisinden. İdari İşler'in yazdığı bir
+//             şeyden GELMİYOR; referans verisinin kendi sorunu.
+//   KARISIK — biri referans verisinden, biri İdari İşler hedefinden.
+//   YENI    — ikisi de İdari İşler hedefinden. (Bugün hiç yok.)
 //
-// TODO(elif): her satır için karar — AYNI YER mi (yeni durak silinir, ham
-// metin mevcut durağa bağlanır) yoksa AYRI YER mi (liste küçülür).
-export const OLASI_YINELENEN_DURAKLAR = [
+// `kanaat` ÖLÇÜM DEĞİL, yorumdur. `skor` ölçümdür.
+//
+// TODO(elif): her çift için karar.
+//   'aynı yer'  → ikinci durak silinir, ham metinler ilkine bağlanır
+//   'farklı yer'→ satır bu listeden düşer
+// Karar gelene kadar hiçbir şey birleştirilmedi.
+export type YinelenenCift = {
+  grup: 'ESKI' | 'KARISIK' | 'YENI'
+  guzergah: string
+  a: { sira: number; ad: string }
+  b: { sira: number; ad: string }
+  tur: string
+  /** 0–1, ölçüm */
+  skor: number
+  /** true ise güçlü eşiğin altında kaldı, bilgi için listede */
+  esikAlti: boolean
+  kanaat: 'aynı yer' | 'muhtemelen aynı' | 'belirsiz' | 'farklı yer'
+  gerekce: string
+}
+
+export const OLASI_YINELENEN_CIFTLER: YinelenenCift[] = [
+  // ---- ESKI ----
   {
-    guzergah: 'ARAPCESME',
-    yeniAd: 'MUTLUKENT',
-    benzerMevcut: [
-      { sira: 13, ad: 'Yapı Kredi / Mutlukent', neden: 'ortak kelime "MUTLUKENT"' },
-    ],
-  },
-  {
-    guzergah: 'ARAPCESME',
-    yeniAd: 'ANADOLU LİSESİ',
-    benzerMevcut: [
-      { sira: 4, ad: 'Meslek Lisesi', neden: 'jeton %50' },
-    ],
-  },
-  {
-    guzergah: 'BEYLIKBAGI_ULASTEPE',
-    yeniAd: 'YAVUZ SELİM DURAĞI',
-    benzerMevcut: [
-      { sira: 5, ad: 'Yavuz Selim', neden: 'jeton %67' },
-    ],
-  },
-  {
-    guzergah: 'BEYLIKBAGI_ULASTEPE',
-    yeniAd: '23 NİSAN CAD. HAKMAR',
-    benzerMevcut: [
-      { sira: 3, ad: '23 Nisan Cd. Hakmar', neden: 'jeton %75' },
-    ],
-  },
-  {
-    guzergah: 'BEYLIKBAGI_ULASTEPE',
-    yeniAd: 'SARI CAMİİ',
-    benzerMevcut: [
-      { sira: 1, ad: 'Sarı Cami', neden: 'jeton %100' },
-    ],
-  },
-  {
-    guzergah: 'BEYLIKBAGI_ULASTEPE',
-    yeniAd: 'ULAŞTEPE ZİRVE MARKET',
-    benzerMevcut: [
-      { sira: 12, ad: 'Zirve Market', neden: 'jeton %67' },
-      { sira: 2, ad: 'Bebek Market', neden: 'ortak kelime "MARKET"' },
-      { sira: 4, ad: 'Ulaştepe', neden: 'ortak kelime "ULASTEPE"' },
-      { sira: 11, ad: 'Ocak Market', neden: 'ortak kelime "MARKET"' },
-    ],
-  },
-  {
-    guzergah: 'BEYLIKBAGI_ULASTEPE',
-    yeniAd: 'YILDIZ MARKET',
-    benzerMevcut: [
-      { sira: 2, ad: 'Bebek Market', neden: 'jeton %50' },
-      { sira: 7, ad: 'Yıldız Bakkal', neden: 'jeton %50' },
-      { sira: 11, ad: 'Ocak Market', neden: 'jeton %50' },
-      { sira: 12, ad: 'Zirve Market', neden: 'jeton %50' },
-    ],
-  },
-  {
+    grup: 'ESKI',
     guzergah: 'DARICA',
-    yeniAd: 'UNTEX',
-    benzerMevcut: [
-      { sira: 14, ad: 'Unteks', neden: 'yazım farkı 2 harf' },
-    ],
+    a: { sira: 3, ad: 'Mehmet Akif' },
+    b: { sira: 8, ad: 'Mehmet Akif' },
+    tur: 'yazım yakın + kelime kümesi',
+    skor: 1.0,
+    esikAlti: false,
+    kanaat: 'belirsiz',
+    gerekce:
+      'Aynı ad iki sırada. Gidiş/dönüş aynı nokta mı, iki ayrı yer mi veriden anlaşılmıyor.',
   },
   {
-    guzergah: 'KAYNARCA_KARTAL',
-    yeniAd: 'İÇMELER KÖPRÜSÜ',
-    benzerMevcut: [
-      { sira: 7, ad: 'İçmeler Köp.', neden: 'jeton %100' },
-      { sira: 6, ad: 'Aydıntepe Köp.', neden: 'jeton %50' },
-      { sira: 8, ad: 'İçmeler Durağı', neden: 'jeton %50' },
-    ],
-  },
-  {
-    guzergah: 'KAYNARCA_KARTAL',
-    yeniAd: 'KARTAL BETON YOL',
-    benzerMevcut: [
-      { sira: 1, ad: 'Beton Yol', neden: 'jeton %67' },
-    ],
-  },
-  {
-    guzergah: 'KAYNARCA_KARTAL',
-    yeniAd: 'ŞİFA TEL BOYU',
-    benzerMevcut: [
-      { sira: 12, ad: 'Tel Boyu Şifa', neden: 'jeton %100' },
-      { sira: 10, ad: 'Tel Boyu', neden: 'jeton %67' },
-    ],
-  },
-  {
-    guzergah: 'KAYNARCA_KARTAL',
-    yeniAd: 'AYDINTEPE METRO',
-    benzerMevcut: [
-      { sira: 6, ad: 'Aydıntepe Köp.', neden: 'jeton %50' },
-    ],
-  },
-  {
+    grup: 'ESKI',
     guzergah: 'USKUDAR',
-    yeniAd: 'MAVİEVLER-KÜÇÜKYALI',
-    benzerMevcut: [
-      { sira: 10, ad: 'Mavi Evler', neden: 'jeton %50' },
-    ],
+    a: { sira: 2, ad: 'Üsküdar' },
+    b: { sira: 4, ad: 'Üsküdar' },
+    tur: 'yazım yakın + kelime kümesi',
+    skor: 1.0,
+    esikAlti: false,
+    kanaat: 'belirsiz',
+    gerekce:
+      'Aynı ad iki sırada. Gidiş/dönüş aynı nokta mı, iki ayrı yer mi veriden anlaşılmıyor.',
   },
-] as const
+  {
+    grup: 'ESKI',
+    guzergah: 'KAYNARCA_KARTAL',
+    a: { sira: 10, ad: 'Tel Boyu' },
+    b: { sira: 12, ad: 'Tel Boyu Şifa' },
+    tur: 'kelime kümesi',
+    skor: 0.67,
+    esikAlti: false,
+    kanaat: 'belirsiz',
+    gerekce:
+      '\'Şifa\' ayrı bir noktayı mı niteliyor, yoksa aynı durağın uzun adı mı. ŞİFA TEL BOYU (15) ile birlikte çözülmeli.',
+  },
+  {
+    grup: 'ESKI',
+    guzergah: 'BEYLIKBAGI_ULASTEPE',
+    a: { sira: 8, ad: 'Aşık Mahsuni Parkı' },
+    b: { sira: 14, ad: 'Mahsuni Şerif Parkı' },
+    tur: 'kelime kümesi',
+    skor: 0.5,
+    esikAlti: false,
+    kanaat: 'farklı yer',
+    gerekce:
+      'Aynı kişinin adını taşıyan iki ayrı park. Adlar birbirinin yazım varyantı değil.',
+  },
+  {
+    grup: 'ESKI',
+    guzergah: 'DARICA',
+    a: { sira: 6, ad: 'Eriş' },
+    b: { sira: 7, ad: 'Eriş Durağı' },
+    tur: 'kelime kümesi',
+    skor: 0.5,
+    esikAlti: false,
+    kanaat: 'belirsiz',
+    gerekce:
+      'Ardışık sıra. Açık maddelerdeki ERİŞ kümesiyle aynı konu, İdari İşler cevabı bekliyor.',
+  },
+  {
+    grup: 'ESKI',
+    guzergah: 'GEBZE_DEVELI',
+    a: { sira: 7, ad: 'Eşref Bitlis Parkı (A101 önü)' },
+    b: { sira: 10, ad: 'Eşref Bitlis Bim Önü' },
+    tur: 'kelime kümesi',
+    skor: 0.5,
+    esikAlti: false,
+    kanaat: 'farklı yer',
+    gerekce:
+      'Ortak kısım park adı; ayırt edici kısım farklı (A101 / BİM).',
+  },
+  {
+    grup: 'ESKI',
+    guzergah: 'KAYNARCA_KARTAL',
+    a: { sira: 3, ad: 'Çamçeşme Park' },
+    b: { sira: 4, ad: 'Çamçeşme' },
+    tur: 'kelime kümesi',
+    skor: 0.5,
+    esikAlti: false,
+    kanaat: 'farklı yer',
+    gerekce:
+      'Ardışık sıra. Park, semtten ayrı bir duruş noktası olabilir.',
+  },
+  // ---- KARISIK ----
+  {
+    grup: 'KARISIK',
+    guzergah: 'KAYNARCA_KARTAL',
+    a: { sira: 12, ad: 'Tel Boyu Şifa' },
+    b: { sira: 15, ad: 'ŞİFA TEL BOYU' },
+    tur: 'kelime sırası farklı',
+    skor: 1.0,
+    esikAlti: false,
+    kanaat: 'aynı yer',
+    gerekce:
+      'Aynı üç kelime, yalnız sıra farklı.',
+  },
+  {
+    grup: 'KARISIK',
+    guzergah: 'BEYLIKBAGI_ULASTEPE',
+    a: { sira: 3, ad: '23 Nisan Cd. Hakmar' },
+    b: { sira: 16, ad: '23 NİSAN CAD. HAKMAR' },
+    tur: 'yazım yakın + kelime kümesi',
+    skor: 0.94,
+    esikAlti: false,
+    kanaat: 'aynı yer',
+    gerekce:
+      '\'Cd.\' ve \'CAD.\' aynı kısaltma; geri kalan birebir aynı.',
+  },
+  {
+    grup: 'KARISIK',
+    guzergah: 'BEYLIKBAGI_ULASTEPE',
+    a: { sira: 1, ad: 'Sarı Cami' },
+    b: { sira: 17, ad: 'SARI CAMİİ' },
+    tur: 'kısaltma + yazım yakın',
+    skor: 0.9,
+    esikAlti: false,
+    kanaat: 'aynı yer',
+    gerekce:
+      'Tek fark \'cami/camii\' imlası.',
+  },
+  {
+    grup: 'KARISIK',
+    guzergah: 'KAYNARCA_KARTAL',
+    a: { sira: 7, ad: 'İçmeler Köp.' },
+    b: { sira: 13, ad: 'İÇMELER KÖPRÜSÜ' },
+    tur: 'kısaltma',
+    skor: 0.9,
+    esikAlti: false,
+    kanaat: 'muhtemelen aynı',
+    gerekce:
+      'Kısaltmanın açılmış hâli. Ancak aynı güzergâhta \'İçmeler Durağı\' (8) da var; köprü ile durak ayrı noktalar olabilir.',
+  },
+  {
+    grup: 'KARISIK',
+    guzergah: 'DARICA',
+    a: { sira: 14, ad: 'Unteks' },
+    b: { sira: 18, ad: 'UNTEX' },
+    tur: 'yazım yakın',
+    skor: 0.67,
+    esikAlti: false,
+    kanaat: 'aynı yer',
+    gerekce:
+      'Firma adı, biri yanlış yazılmış (2 harf).',
+  },
+  {
+    grup: 'KARISIK',
+    guzergah: 'BEYLIKBAGI_ULASTEPE',
+    a: { sira: 5, ad: 'Yavuz Selim' },
+    b: { sira: 15, ad: 'YAVUZ SELİM DURAĞI' },
+    tur: 'kelime kümesi',
+    skor: 0.67,
+    esikAlti: false,
+    kanaat: 'muhtemelen aynı',
+    gerekce:
+      '\'Durağı\' ayırt edici bilgi taşımıyor.',
+  },
+  {
+    grup: 'KARISIK',
+    guzergah: 'BEYLIKBAGI_ULASTEPE',
+    a: { sira: 12, ad: 'Zirve Market' },
+    b: { sira: 18, ad: 'ULAŞTEPE ZİRVE MARKET' },
+    tur: 'kelime kümesi',
+    skor: 0.67,
+    esikAlti: false,
+    kanaat: 'muhtemelen aynı',
+    gerekce:
+      '\'Ulaştepe\' güzergâhın kendi adı, ayırt edici değil. Ancak aynı güzergâhta \'Ulaştepe\' (4) adlı ayrı bir durak var.',
+  },
+  {
+    grup: 'KARISIK',
+    guzergah: 'KAYNARCA_KARTAL',
+    a: { sira: 1, ad: 'Beton Yol' },
+    b: { sira: 14, ad: 'KARTAL BETON YOL' },
+    tur: 'kelime kümesi',
+    skor: 0.67,
+    esikAlti: false,
+    kanaat: 'belirsiz',
+    gerekce:
+      '\'Kartal\' ilçe öneki mi, yoksa ayrı bir noktayı mı gösteriyor.',
+  },
+  {
+    grup: 'KARISIK',
+    guzergah: 'KAYNARCA_KARTAL',
+    a: { sira: 10, ad: 'Tel Boyu' },
+    b: { sira: 15, ad: 'ŞİFA TEL BOYU' },
+    tur: 'kelime kümesi',
+    skor: 0.67,
+    esikAlti: false,
+    kanaat: 'belirsiz',
+    gerekce:
+      'Üçüncü çiftin aynısı. Üç ad (Tel Boyu, Tel Boyu Şifa, ŞİFA TEL BOYU) birlikte çözülmeli.',
+  },
+  {
+    grup: 'KARISIK',
+    guzergah: 'ARAPCESME',
+    a: { sira: 13, ad: 'Yapı Kredi / Mutlukent' },
+    b: { sira: 15, ad: 'MUTLUKENT' },
+    tur: 'ZAYIF ortak kelime',
+    skor: 0.33,
+    esikAlti: true,
+    kanaat: 'muhtemelen aynı',
+    gerekce:
+      '\'Mutlukent\' tam olarak geçiyor; \'Yapı Kredi\' aynı noktanın ikinci tarifi olabilir. Kelime kümesi eşiğinin ALTINDA.',
+  },
+  {
+    grup: 'KARISIK',
+    guzergah: 'USKUDAR',
+    a: { sira: 10, ad: 'Mavi Evler' },
+    b: { sira: 13, ad: 'MAVİEVLER-KÜÇÜKYALI' },
+    tur: 'ZAYIF dizge içerme',
+    skor: 0.4,
+    esikAlti: true,
+    kanaat: 'muhtemelen aynı',
+    gerekce:
+      'Normalize edilince biri diğerinin ön eki; \'-Küçükyalı\' semt eki. Kelime kümesi eşiğinin ALTINDA.',
+  },
+]
 
 
 // ----------------------------------------------------------------------------

@@ -6,7 +6,7 @@ import {
   DURAK_ESLEME,
   ESLEME_ACIK,
   GUZERGAHLAR,
-  OLASI_YINELENEN_DURAKLAR,
+  OLASI_YINELENEN_CIFTLER,
   TOSB,
   TUM_GUZERGAHLAR,
 } from './servis-tanim-verisi'
@@ -151,15 +151,70 @@ describe('durak eşleme tablosu', () => {
     }
   })
 
-  // Bu liste karar bekliyor; kendiliğinden birleştirme YAPILMADI.
-  it('olası yinelenen duraklar kayıtlı ve hepsi gerçekten veride var', () => {
-    expect(OLASI_YINELENEN_DURAKLAR).toHaveLength(13)
-    for (const y of OLASI_YINELENEN_DURAKLAR) {
-      const g = TUM_GUZERGAHLAR.find((x) => x.kod === y.guzergah)!
-      expect(g.duraklar.some((d) => norm(d.ad) === norm(y.yeniAd)), y.yeniAd).toBe(true)
-      for (const b of y.benzerMevcut) {
-        expect(g.duraklar.find((d) => d.sira === b.sira)?.ad, `${y.yeniAd} ~ ${b.ad}`).toBe(b.ad)
+})
+
+describe('olası yinelenen çiftler', () => {
+  it('18 çift kayıtlı: 16 güçlü + 2 eşik altı', () => {
+    expect(OLASI_YINELENEN_CIFTLER).toHaveLength(18)
+    expect(OLASI_YINELENEN_CIFTLER.filter((c) => c.esikAlti)).toHaveLength(2)
+  })
+
+  // 🔴 BAYATLAMA KORUMASI — istenen asıl test.
+  // Bir durağın adı ya da sırası değişirse bu sabit sessizce yanlışlaşır:
+  // karar tabanı artık var olmayan bir adı gösterir. Test o anda düşer.
+  it('her çiftin iki ucu da durak listesinde GERÇEKTEN var', () => {
+    for (const c of OLASI_YINELENEN_CIFTLER) {
+      const g = TUM_GUZERGAHLAR.find((x) => x.kod === c.guzergah)
+      expect(g, `${c.guzergah} güzergâhı yok`).toBeDefined()
+      for (const uc of [c.a, c.b]) {
+        const d = g!.duraklar.find((x) => x.sira === uc.sira)
+        expect(d, `${c.guzergah} sıra ${uc.sira} yok`).toBeDefined()
+        expect(d!.ad, `${c.guzergah} sıra ${uc.sira}`).toBe(uc.ad)
       }
     }
+  })
+
+  it('bir çift kendisiyle eşleşmiyor ve aynı çift iki kez yok', () => {
+    const gorulen = new Set<string>()
+    for (const c of OLASI_YINELENEN_CIFTLER) {
+      expect(c.a.sira, `${c.guzergah}`).not.toBe(c.b.sira)
+      const k = `${c.guzergah}§${Math.min(c.a.sira, c.b.sira)}§${Math.max(c.a.sira, c.b.sira)}`
+      expect(gorulen.has(k), `tekrar eden çift: ${k}`).toBe(false)
+      gorulen.add(k)
+    }
+  })
+
+  // BELIRSIZ_DURAKLAR bu listenin alt kümesi: ikisi de aynı iki çifti
+  // gösteriyor. İki liste birbirinden kayarsa yakalansın.
+  it('BELIRSIZ_DURAKLAR bu listenin içinde', () => {
+    for (const b of BELIRSIZ_DURAKLAR) {
+      const [s1, s2] = b.siralar
+      const bulundu = OLASI_YINELENEN_CIFTLER.some(
+        (c) =>
+          c.guzergah === b.guzergah &&
+          Math.min(c.a.sira, c.b.sira) === Math.min(s1, s2) &&
+          Math.max(c.a.sira, c.b.sira) === Math.max(s1, s2),
+      )
+      expect(bulundu, `${b.guzergah}/${b.ad}`).toBe(true)
+    }
+  })
+
+  it('her çiftin kanaati dört değerden biri ve gerekçesi dolu', () => {
+    const izin = ['aynı yer', 'muhtemelen aynı', 'belirsiz', 'farklı yer']
+    for (const c of OLASI_YINELENEN_CIFTLER) {
+      expect(izin, `${c.a.ad}/${c.b.ad}`).toContain(c.kanaat)
+      expect(c.gerekce.length, `${c.a.ad}/${c.b.ad}`).toBeGreaterThan(20)
+      expect(c.skor).toBeGreaterThan(0)
+      expect(c.skor).toBeLessThanOrEqual(1)
+    }
+  })
+
+  // Grup ayrımı karar için önemli: ESKI çiftler İdari İşler'in yazdığı bir
+  // şeyden gelmiyor, referans verisinin kendi sorunu.
+  it('grup dağılımı: 7 ESKI, 11 KARISIK, 0 YENI', () => {
+    const say = (g: string) => OLASI_YINELENEN_CIFTLER.filter((c) => c.grup === g).length
+    expect(say('ESKI')).toBe(7)
+    expect(say('KARISIK')).toBe(11)
+    expect(say('YENI')).toBe(0)
   })
 })

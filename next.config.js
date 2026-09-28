@@ -32,6 +32,14 @@ const nextConfig = {
   reactStrictMode: true,
   // X-Powered-By header'ını kaldır (bilgi sızdırma önleme)
   poweredByHeader: false,
+  // ESLint build DIŞINDA (2026-09-28 ölçümü): `next build` içindeki lint adımı
+  // (verify-and-lint) 623 sn sürüyordu — 1070 sn'lik build'in tek en büyük kalemi.
+  // Lint artık ayrı koşar (`npm run lint` / CI / pre-push); TİP KONTROLÜ build'de
+  // KALIR (typescript.ignoreBuildErrors bilinçli olarak AÇILMADI — tip hatası
+  // deploy'u durdurmaya devam etsin).
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
   experimental: {
     serverActions: {
       allowedOrigins: ['172.16.16.33:3000', 'localhost:3000', 'hub.ilerigroup.com'],

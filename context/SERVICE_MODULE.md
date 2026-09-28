@@ -4,30 +4,57 @@ Personel servis (shuttle) operasyonunun yönetimi: güzergâh/durak/araç/şofö
 tanımları, personelin servise ve durağa atanması, kapasite takibi, operasyonel
 listeler ve şikâyet yönetimi.
 
-## 🔴 Modülün çalışan kısmı main'de DEĞİL
+## Modülün çalışan kısmının bir bölümü hâlâ main'de değil
 
-Bu, modülde çalışmaya başlamadan önce bilinmesi gereken **ölçülmüş** gerçek.
-Main'de yalnız temel var; işleyen yüzeylerin çoğu **tek tek dallarda** duruyor
-ve her dosya **yalnız bir dalda** yaşıyor (başka kopyası yok).
+**Ölçülmüş gerçek, 2026-09-28.** Bu bölüm 2026-09-27'de "82 dosya 7 dalda"
+diyordu; o ifade **artık yanlış**, iki dal main'e girdi.
 
 **Main'de olan:** FAZ 1A CRUD (firma/yerleşke/güzergâh/durak/araç/şoför/sefer
-dilimi + personel atama/durum), shared surfaces, revizyon ve şikâyet şemaları,
-permission sözlüğü. 58 API ucu.
+dilimi + personel atama/durum), shared surfaces, revizyon ve şikâyet
+şemaları, permission sözlüğü, **kapasite motoru + alternatif servis önerisi
++ transfer** (yeni), **dışa aktarım** (güzergâh listesi/detay Excel+PDF,
+personel atama listesi Excel — yeni).
+Sayılar: 64 `route.ts`, 11 `src/lib/servis-yonetimi/` dosyası, 2 ekran.
 
-**Main'de OLMAYAN — 82 dosya, dal başına:**
+**Main'e YENİ giren iki dalın içeriği (ölçüm):** her iki dalın
+üç-nokta diff'indeki dosyaların **tamamı** main'de birebir aynı
+(`git rev-parse` hash karşılaştırması):
+
+| Dal | Dosya | main'de birebir aynı |
+|---|---:|---:|
+| `servis-yonetimi-faz1b-alternatif-servis` | 16 | **16 / 16** |
+| `servis-yonetimi-export` | 10 | **10 / 10** |
+
+🔴 Dikkat: bu iki dalın **uçları main'in atası DEĞİL**
+(`git merge-base --is-ancestor` → hayır). Melih içeriği yeniden yazarak
+aldı (6 yeni commit: `3dfc3a60`, `7b02e751`, `45e28fe7`, `339e9684`,
+`477250b9`, `ee67d6f0`). Yani "dal merge oldu" demek yanlış; doğrusu
+**dalın içeriği main'e taşındı**. Dalların ref'leri duruyor, dokunulmuyor.
+
+**Main'de OLMAYAN — 76 dosya, dal başına:**
 
 | Dal | Yalnız orada olan | Ne kaybedilir |
 |---|---:|---|
-| `servis-yonetimi-faz1b-alternatif-servis` | 12 | **kapasite motoru** (doluluk oranı, boş koltuk, kapasite aşımı uyarısı) + alternatif servis önerisi + transfer — 🔴 **İLK MERGE bu dal** |
 | `servis-sikayet-uygulama` | 28 | şikâyet modülünün tamamı: 2 ekran, 7 uç, 6 lib, PDF üretici |
-| `servis-yonetimi-export` | 10 | güzergâh detay/liste + personel atama Excel'i, güzergâh detay PDF'i |
+| `servis-yonetimi-acil-durum-listesi` | 26 | acil durum listesi **+ operasyonel servis listesi** (ekran, uç, Excel, PDF, KVKK erişim izi) |
 | `servis-yonetimi-veri-kalite-merkezi` | 11 | Veri Kalite Merkezi ekranı + 13 kontrol + Excel |
-| `servis-yonetimi-acil-durum-listesi` | 10 | acil durum listesi ekranı + PDF + KVKK erişim izi |
 | `servis-yonetimi-bu-ay-ne-degisti` | 6 | değişiklik özeti ekranı |
 | `servis-yonetimi-faz1b-harita` | 5 | durak haritası (leaflet) |
 
-🔴 Bu dallara **commit eklenmez**; özellikle `faz1b-alternatif-servis` ilk
-merge adayıdır. Bir şey gerekiyorsa taze dal açılır ve Melih'e söylenir.
+🔴 `acil-durum-listesi` satırı 10'dan 26'ya çıktı. Sebep dal büyümesi değil:
+`operasyonel-liste` dalı silinince içeriği bu dalda kaldı, ayrıca önceki
+sayım test dosyalarını dışarıda bırakmıştı. (12'si `.test` dosyası.)
+
+**Ayrıca main'de olmayan, özellik dalı olmayanlar:**
+
+| Dal | Yeni dosya | İçerik |
+|---|---:|---|
+| `dev/elif/servis-tanim-paketi` | 4 | tanım seed'i + güzergâh/durak verisi + İdari İşler eşleme tablosu + kanonik durak kodu |
+| `feat/servis-goc-script` | 3 | göç script'i + sınıflandırma katmanı + testi |
+| `feat/servis-yonetimi-faz1-a-tasarim` | 3 | FAZ 1A tasarım artefaktları (migration SQL, prisma modeli, constraint testi) |
+
+🔴 Bu dallara **commit eklenmez**. Bir şey gerekiyorsa taze dal açılır ve
+Melih'e söylenir.
 
 ## Veri modeli (main)
 
@@ -68,7 +95,11 @@ Girdi **Excel değil, veritabanıdır**: `Personnel.serviceRoute/serviceStop`.
 
 🔴 Bilinen iki engel (ölçülmüş, `CURRENT_STATE.md`'de takip ediliyor):
 1. Script tanım verisi **yaratmaz**, yalnız `kod` ile arar. Prod'da
-   yerleşke/güzergâh/durak **0**.
-2. `durakKoduOner()` `RRR-DDDDDDDD` biçiminde kod üretir; dev'deki 106 durak
-   `ROTA_KODU-NN` biçimindedir — **106/106 uyuşmuyor**. `--apply` bu hâliyle
-   her durağı bulamaz.
+   yerleşke/güzergâh/durak **0**. → Karşılığı yazıldı:
+   `prisma/seed-servis-tanim.ts` (`dev/elif/servis-tanim-paketi`),
+   bootstrap-only + idempotent, `--apply` olmadan yazmaz.
+2. Durak kodu biçimi. Kanonik biçim `<güzergâh kodu>-<sıra, 2 hane>` olarak
+   sabitlendi: `src/lib/servis-yonetimi/servis-durak-kodu.ts`.
+   🔴 Aynı fonksiyonun bir kopyası göç dalındaki `goc-siniflandirma.ts`
+   içinde duruyor; iki dal birleşince o kopya silinip buradan import
+   edilmeli (birleştirme notu dosyanın kendisinde).

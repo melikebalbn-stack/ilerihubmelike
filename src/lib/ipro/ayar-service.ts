@@ -46,7 +46,7 @@ export function molaCakismaVar(yeni: MolaSlot, mevcutlar: MolaSlot[]): boolean {
 const GUN_KISA = ['Pt', 'Sa', 'Ça', 'Pe', 'Cu', 'Ct', 'Pz'] // bit 1..64
 
 export async function ayarVerisi() {
-  const [genel, istisnaMap, tezgahlar, molalar, vardiyalar, tatiller, gecmis] = await Promise.all([
+  const [genel, istisnaMap, tezgahlar, molalar, vardiyalar, tatiller, gecmis, carpanlar] = await Promise.all([
     esikAyarGetir(),
     tezgahEsikMap(),
     prisma.iproTezgah.findMany({ where: { aktif: true }, select: { id: true, kod: true, masGrupAdi: true } }),
@@ -54,6 +54,7 @@ export async function ayarVerisi() {
     prisma.iproVardiya.findMany({ orderBy: { sira: 'asc' }, select: { id: true, kod: true, ad: true, baslangicSaat: true, bitisSaat: true, ertesiGuneTasar: true, aktif: true } }),
     prisma.iproTatil.findMany({ orderBy: { tarih: 'desc' }, select: { id: true, tarih: true, tip: true, aciklama: true } }),
     prisma.iproAyarGecmis.findMany({ orderBy: { zaman: 'desc' }, take: 100, select: { zaman: true, kullaniciId: true, alan: true, kayitRef: true, eski: true, yeni: true } }),
+    prisma.iproSayacCarpani.findMany({ orderBy: [{ dogrulanacak: 'desc' }, { parcaNo: 'asc' }, { operasyonNo: 'asc' }, { tezgahKod: 'asc' }], select: { id: true, parcaNo: true, operasyonNo: true, tezgahKod: true, carpan: true, kaynak: true, baskinPay: true, isSayisi: true, dogrulanacak: true, updatedAt: true } }),
   ])
   const kodById = new Map(tezgahlar.map((t) => [t.id, t.kod]))
 
@@ -93,6 +94,11 @@ export async function ayarVerisi() {
     sebepler: planliSebepler.map((sb) => ({ id: sb.id, ad: `${sb.kod} ${sb.ad}` })),
     bolumler,
     tumTezgahlar: tezgahlar.map((t) => ({ id: t.id, kod: t.kod })).sort((a, b) => a.kod.localeCompare(b.kod, 'tr')),
+    carpanlar: carpanlar.map((c) => ({
+      id: c.id, parcaNo: c.parcaNo, operasyonNo: c.operasyonNo, tezgahKod: c.tezgahKod, carpan: c.carpan,
+      kaynak: c.kaynak, baskinPay: c.baskinPay != null ? Number(c.baskinPay) : null, isSayisi: c.isSayisi,
+      dogrulanacak: c.dogrulanacak, updatedAt: c.updatedAt.toISOString(),
+    })),
   }
 }
 
@@ -193,6 +199,44 @@ export async function tatilSil(kullaniciId: string | null, id: string) {
   if (!eski) return
   await prisma.iproTatil.delete({ where: { id } })
   await ayarGecmisYaz(kullaniciId, 'tatil', eski.tarih.toISOString().slice(0, 10), `${eski.tip}`, null)
+}
+
+/**
+ * Sayaç çarpanı ekle/düzenle — kaynak MANUEL olur (tohum bir daha DOKUNMAZ), dogrulanacak sıfırlanır.
+ * Aynı (parça,op,tezgah) varsa günceller (MAS satırını MANUEL'e çevirir). carpan pozitif tam sayı.
+ */
+export async function carpanKaydet(
+  kullaniciId: string | null,
+  girdi: { id?: string; parcaNo: string; operasyonNo: string; tezgahKod?: string | null; carpan: number },
+) {
+  const carpan = Math.trunc(Number(girdi.carpan))
+  if (!(carpan > 0)) throw new Error('Çarpan pozitif tam sayı olmalı')
+  const ref = (id: string, eski: string | null, yeni: string | null) => ayarGecmisYaz(kullaniciId, 'sayac_carpani', id, eski, yeni)
+  if (girdi.id) {
+    const eski = await prisma.iproSayacCarpani.findUnique({ where: { id: girdi.id }, select: { carpan: true, parcaNo: true, operasyonNo: true, tezgahKod: true } })
+    if (!eski) throw new Error('Çarpan kaydı bulunamadı')
+    await prisma.iproSayacCarpani.update({ where: { id: girdi.id }, data: { carpan, kaynak: 'MANUEL', dogrulanacak: false, guncelleyenId: kullaniciId } })
+    await ref(girdi.id, `${eski.parcaNo}/${eski.operasyonNo}/${eski.tezgahKod ?? 'genel'}=${eski.carpan}`, `çarpan=${carpan}`)
+    return
+  }
+  const parcaNo = girdi.parcaNo.trim(), operasyonNo = girdi.operasyonNo.trim()
+  const tezgahKod = girdi.tezgahKod?.trim() || null
+  if (!parcaNo || !operasyonNo) throw new Error('Parça ve operasyon zorunlu')
+  const mevcut = await prisma.iproSayacCarpani.findFirst({ where: { parcaNo, operasyonNo, tezgahKod }, select: { id: true, carpan: true } })
+  if (mevcut) {
+    await prisma.iproSayacCarpani.update({ where: { id: mevcut.id }, data: { carpan, kaynak: 'MANUEL', dogrulanacak: false, guncelleyenId: kullaniciId } })
+    await ref(mevcut.id, String(mevcut.carpan), `çarpan=${carpan}`)
+  } else {
+    const c = await prisma.iproSayacCarpani.create({ data: { parcaNo, operasyonNo, tezgahKod, carpan, kaynak: 'MANUEL', dogrulanacak: false, guncelleyenId: kullaniciId } })
+    await ref(c.id, null, `${parcaNo}/${operasyonNo}/${tezgahKod ?? 'genel'}=${carpan}`)
+  }
+}
+
+export async function carpanSil(kullaniciId: string | null, id: string) {
+  const eski = await prisma.iproSayacCarpani.findUnique({ where: { id }, select: { parcaNo: true, operasyonNo: true, tezgahKod: true, carpan: true } })
+  if (!eski) return
+  await prisma.iproSayacCarpani.delete({ where: { id } })
+  await ayarGecmisYaz(kullaniciId, 'sayac_carpani', id, `${eski.parcaNo}/${eski.operasyonNo}/${eski.tezgahKod ?? 'genel'}=${eski.carpan}`, null)
 }
 
 export { gunBiti }

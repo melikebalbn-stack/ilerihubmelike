@@ -11960,6 +11960,31 @@ model IproPlcSayacDurum {
   @@map("ipro_plc_sayac_durum")
 }
 
+// Parça+operasyon(+tezgah) → PLC sayaç ÇARPANI. PLC ham Σdelta × çarpan = gerçek adet.
+// Çözüm sırası (carpanBul): tezgahlı satır > tezgahsız satır (tezgahKod NULL) > 1.
+// MAS'tan tohumlanır (carpan-tohum.ts); MANUEL satırlara tohum DOKUNMAZ. Sayım hesabında
+// HENÜZ kullanılmaz (helper hazır, poller/is-bitir/oee-canli DEĞİŞMEZ). göz/cavity = bu çarpan.
+// Tekillik: (parcaNo,operasyonNo,tezgahKod) — tezgahsız (NULL) için ayrıca partial unique
+// (migration'da: ipro_sayac_carpani_genel_uq WHERE tezgahKod IS NULL; PG14 NULLS NOT DISTINCT yok).
+model IproSayacCarpani {
+  id           String   @id @default(cuid())
+  parcaNo      String // IFS PartNo = MAS MaterialCode
+  operasyonNo  String // IFS/MAS OperationCode
+  tezgahKod    String? // NULL = tezgahsız (genel) satır
+  carpan       Int
+  kaynak       String   @default("MAS") // 'MAS' | 'MANUEL'
+  baskinPay    Decimal? // MAS tohumda baskın çarpanın payı (%) — <80 ise dogrulanacak
+  isSayisi     Int? // MAS tohumda katkı veren iş (WorkOrder) sayısı
+  dogrulanacak Boolean  @default(false)
+  guncelleyenId String? // User.id (MANUEL düzenleyen; IproAyarGecmis deseni — bare FK, relation'sız)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([parcaNo, operasyonNo, tezgahKod])
+  @@index([dogrulanacak])
+  @@map("ipro_sayac_carpani")
+}
+
 // Vardiya tanımları — OEE kullanılabilirlik/planlı-zaman hesabının 1. halkası (Melike #5).
 // SADECE VERİ GİRİŞİ: hesap/rapor bu modelde YOK. is-basla/is-bitir/poller dokunmaz.
 // Saatler string "HH:mm" (TZ tuzağı yok — hesap ileride dakikaya çevirir).

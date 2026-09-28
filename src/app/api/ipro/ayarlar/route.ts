@@ -4,7 +4,7 @@ import { hasPermission } from '@/lib/auth/has-permission'
 import { iproHata } from '@/lib/ipro/yonetim-hata'
 import {
   ayarVerisi, esikKaydet, tezgahIstisnaKaydet, tezgahIstisnaSil,
-  molaKaydet, molaPasifYap, vardiyaKaydet, tatilEkle, tatilSil,
+  molaKaydet, molaPasifYap, vardiyaKaydet, tatilEkle, tatilSil, carpanKaydet, carpanSil,
 } from '@/lib/ipro/ayar-service'
 
 export const runtime = 'nodejs'
@@ -58,6 +58,13 @@ export async function POST(req: Request) {
         await tatilEkle(userId, s(body.tarih), s(body.tip), s(body.aciklama)); break
       case 'tatil-sil':
         await tatilSil(userId, s(body.id)); break
+      case 'carpan':
+        await carpanKaydet(userId, {
+          id: sOrNull(body.id) ?? undefined, parcaNo: s(body.parcaNo), operasyonNo: s(body.operasyonNo),
+          tezgahKod: sOrNull(body.tezgahKod), carpan: n(body.carpan),
+        }); break
+      case 'carpan-sil':
+        await carpanSil(userId, s(body.id)); break
       default:
         return NextResponse.json({ ok: false, error: 'Bilinmeyen işlem' }, { status: 400 })
     }

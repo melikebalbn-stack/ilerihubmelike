@@ -8,9 +8,10 @@ type Mola = { id: string; vardiyaId: string; bolum: string | null; baslangic: st
 type Vardiya = { id: string; kod: string; ad: string; baslangicSaat: string; bitisSaat: string; ertesiGuneTasar: boolean; aktif: boolean }
 type Tatil = { id: string; tarih: string; tip: string; aciklama: string }
 type Gecmis = { zaman: string; kullaniciId: string | null; alan: string; kayitRef: string | null; eski: string | null; yeni: string | null }
+type Carpan = { id: string; parcaNo: string; operasyonNo: string; tezgahKod: string | null; carpan: number; kaynak: string; baskinPay: number | null; isSayisi: number | null; dogrulanacak: boolean; updatedAt: string }
 type Data = {
   canEdit: boolean; genel: Genel; istisnalar: Istisna[]; molalar: Mola[]; vardiyalar: Vardiya[]; tatiller: Tatil[]; gecmis: Gecmis[]
-  sebepler: { id: string; ad: string }[]; bolumler: string[]; tumTezgahlar: { id: string; kod: string }[]
+  sebepler: { id: string; ad: string }[]; bolumler: string[]; tumTezgahlar: { id: string; kod: string }[]; carpanlar: Carpan[]
 }
 const GUN = ['Pt', 'Sa', 'Ça', 'Pe', 'Cu', 'Ct', 'Pz']
 const TIP_STIL: Record<string, { z: string; c: string; ad: string }> = {
@@ -44,7 +45,7 @@ export function AyarlarClient() {
   return (
     <div className="flex gap-5">
       <nav className="sticky top-4 flex h-fit w-52 shrink-0 flex-col gap-1 rounded-xl border border-[#dde1e7] bg-white p-2.5">
-        {[['esik', 'Duruş eşikleri'], ['mola', 'Mola takvimi'], ['vardiya', 'Vardiya ve tatil'], ['gecmis', 'Değişiklik geçmişi']].map(([id, ad]) => (
+        {[['esik', 'Duruş eşikleri'], ['mola', 'Mola takvimi'], ['carpan', 'Sayaç çarpanları'], ['vardiya', 'Vardiya ve tatil'], ['gecmis', 'Değişiklik geçmişi']].map(([id, ad]) => (
           <a key={id} href={`#${id}`} className="rounded-lg px-3 py-2.5 text-sm text-[#14171c] hover:bg-[#eef2ff]">{ad}</a>
         ))}
         {ro ? <div className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">Salt görüntüleme — düzenleme izni yok</div> : null}
@@ -56,6 +57,7 @@ export function AyarlarClient() {
 
         <EsikBolum d={d} ro={ro} bekle={bekle} gonder={gonder} />
         <MolaBolum d={d} ro={ro} bekle={bekle} gonder={gonder} />
+        <CarpanBolum d={d} ro={ro} bekle={bekle} gonder={gonder} />
         <VardiyaTatilBolum d={d} ro={ro} bekle={bekle} gonder={gonder} />
         <GecmisBolum gecmis={d.gecmis} />
       </div>
@@ -77,6 +79,61 @@ function Kart({ id, baslik, aciklama, sag, children }: { id?: string; baslik: st
       </div>
       {children}
     </section>
+  )
+}
+
+function CarpanBolum({ d, ro, bekle, gonder }: { d: Data; ro: boolean; bekle: boolean; gonder: Gonder }) {
+  const bos = { id: '', parcaNo: '', operasyonNo: '', tezgahKod: '', carpan: '' }
+  const [yalnizDog, setYalnizDog] = useState(false)
+  const [form, setForm] = useState<typeof bos | null>(null)
+  const list = d.carpanlar.filter((c) => !yalnizDog || c.dogrulanacak)
+  const dogSayi = d.carpanlar.filter((c) => c.dogrulanacak).length
+  const kaydet = async () => {
+    if (!form) return
+    const ok = await gonder({ action: 'carpan', id: form.id || undefined, parcaNo: form.parcaNo, operasyonNo: form.operasyonNo, tezgahKod: form.tezgahKod, carpan: form.carpan })
+    if (ok) setForm(null)
+  }
+  return (
+    <Kart id="carpan" baslik="Sayaç çarpanları"
+      aciklama="PLC ham sayımı × çarpan = gerçek adet (göz/cavity). Çözüm sırası: tezgahlı > tezgahsız > 1. MAS'tan tohumlanır; elle ekleme/düzenleme MANUEL olur (tohum bir daha dokunmaz)."
+      sag={!ro ? <button type="button" onClick={() => setForm(form ? null : { ...bos })} className="h-10 rounded-lg bg-[#1d4ed8] px-4 text-sm font-semibold text-white">+ Çarpan ekle</button> : null}>
+      <label className="flex w-fit items-center gap-2 text-[13px] text-slate-600"><input type="checkbox" checked={yalnizDog} onChange={(e) => setYalnizDog(e.target.checked)} /> Yalnız doğrulanacak ({dogSayi})</label>
+      {form && !ro ? (
+        <div className="grid grid-cols-2 gap-3 rounded-lg border border-[#dde1e7] bg-slate-50 p-4 sm:grid-cols-5">
+          <label className="flex flex-col gap-1 text-xs text-slate-500">Parça<input value={form.parcaNo} disabled={!!form.id} onChange={(e) => setForm({ ...form, parcaNo: e.target.value })} className="h-9 rounded-lg border border-[#cfd5dd] px-2 text-sm disabled:bg-slate-100" /></label>
+          <label className="flex flex-col gap-1 text-xs text-slate-500">Operasyon<input value={form.operasyonNo} disabled={!!form.id} onChange={(e) => setForm({ ...form, operasyonNo: e.target.value })} className="h-9 rounded-lg border border-[#cfd5dd] px-2 text-sm disabled:bg-slate-100" /></label>
+          <label className="flex flex-col gap-1 text-xs text-slate-500">Tezgah (boş=genel)
+            <select value={form.tezgahKod} disabled={!!form.id} onChange={(e) => setForm({ ...form, tezgahKod: e.target.value })} className="h-9 rounded-lg border border-[#cfd5dd] px-2 text-sm disabled:bg-slate-100"><option value="">(genel)</option>{d.tumTezgahlar.map((t) => <option key={t.id} value={t.kod}>{t.kod}</option>)}</select></label>
+          <label className="flex flex-col gap-1 text-xs text-slate-500">Çarpan<input type="number" min="1" step="1" value={form.carpan} onChange={(e) => setForm({ ...form, carpan: e.target.value })} className="h-9 rounded-lg border border-[#cfd5dd] px-2 text-sm" /></label>
+          <div className="flex items-end gap-2"><button type="button" disabled={bekle} onClick={kaydet} className="h-9 rounded-lg bg-[#1d4ed8] px-4 text-sm font-semibold text-white disabled:opacity-50">Kaydet</button><button type="button" onClick={() => setForm(null)} className="h-9 rounded-lg border border-[#cfd5dd] px-3 text-sm">Vazgeç</button></div>
+        </div>
+      ) : null}
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead><tr className="border-b border-[#dde1e7] text-left text-xs text-slate-500">
+            <th className="py-2 pr-3">Parça</th><th className="py-2 pr-3">Op</th><th className="py-2 pr-3">Tezgah</th><th className="py-2 pr-3 text-right">Çarpan</th><th className="py-2 pr-3">Kaynak</th><th className="py-2 pr-3 text-right">Baskın %</th><th className="py-2 pr-3 text-right">İş</th><th className="py-2 pr-3"></th>{!ro ? <th className="py-2"></th> : null}
+          </tr></thead>
+          <tbody>
+            {list.length === 0 ? <tr><td colSpan={9} className="py-6 text-center text-slate-400">Kayıt yok</td></tr> : list.map((c) => (
+              <tr key={c.id} className="border-b border-[#f1f3f6]">
+                <td className="py-2 pr-3 font-medium">{c.parcaNo}</td>
+                <td className="py-2 pr-3">{c.operasyonNo}</td>
+                <td className="py-2 pr-3">{c.tezgahKod ?? <span className="text-slate-400">(genel)</span>}</td>
+                <td className="py-2 pr-3 text-right tabular-nums">{c.carpan}</td>
+                <td className="py-2 pr-3"><span className={`rounded px-1.5 py-0.5 text-xs ${c.kaynak === 'MANUEL' ? 'bg-violet-100 text-violet-700' : 'bg-slate-100 text-slate-600'}`}>{c.kaynak}</span>{c.dogrulanacak ? <span className="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-800">doğrulanacak</span> : null}</td>
+                <td className="py-2 pr-3 text-right tabular-nums">{c.baskinPay != null ? c.baskinPay.toFixed(1) : '—'}</td>
+                <td className="py-2 pr-3 text-right tabular-nums">{c.isSayisi ?? '—'}</td>
+                <td className="py-2 pr-3"></td>
+                {!ro ? <td className="py-2 text-right whitespace-nowrap">
+                  <button type="button" onClick={() => setForm({ id: c.id, parcaNo: c.parcaNo, operasyonNo: c.operasyonNo, tezgahKod: c.tezgahKod ?? '', carpan: String(c.carpan) })} className="text-[13px] text-[#1d4ed8]">Düzenle</button>
+                  <button type="button" disabled={bekle} onClick={() => { if (confirm('Silinsin mi?')) gonder({ action: 'carpan-sil', id: c.id }) }} className="ml-3 text-[13px] text-red-600 disabled:opacity-50">Sil</button>
+                </td> : null}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Kart>
   )
 }
 

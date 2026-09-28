@@ -63,6 +63,8 @@ export default defineConfig({
             'src/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}',
             // PLC poller saf hesap testleri (PLC/DB dokunmaz → unit'te paralel koşar).
             'scripts/ipro/plc-poller/**/*.{test,spec}.{ts,mts,cts}',
+            // scripts/ipro saf yardımcı testleri (ör. carpan-tohum hedefleriTuret; DB dokunmaz).
+            'scripts/ipro/*.{test,spec}.{ts,mts,cts}',
           ],
           // DB isteyen testler buradan HARİÇ — ayrı 'integration' projesinde seri koşar.
           exclude: ['node_modules', '.next', 'dist', ...DB_INTEGRATION],

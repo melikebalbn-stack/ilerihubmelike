@@ -29,10 +29,11 @@
  *
  * Kullanım (worktree kökünden):
  *   npx tsx --env-file=<.env yolu> scripts/zimmet/it-devir-import.ts <csv> --created-by <User.id>
- *       [--kisi-eslestirme <json>] [--coklu-birlestir] [--yenile] [--apply --db-name <ad>]
+ *       [--override <json>] [--coklu-birlestir] [--yenile] [--apply --db-name <ad>]
  *   Varsayılan DRY-RUN: tüm kararları hesaplar, hiçbir şey yazmaz.
  *   --apply: tek transaction; --db-name current_database() ile aynı değilse durur.
- *   Kişi eşleştirme override'ı: {"Excel adı": "User.id"} — varsayılan ~/zimmet_kisi_eslestirme.json (varsa).
+ *   Kişi eşleştirme override'ı: {"Excel adı": "User.id"}. --override <yol> verilirse dosya zorunlu
+ *   (yoksa durur); verilmezse ~/zimmet_kisi_eslestirme.json varsa kullanılır.
  *
  * Geri alma: scripts/zimmet/it-devir-geri-al.ts (apply raporunu girdi alır).
  */
@@ -62,8 +63,9 @@ const YENILE = process.argv.includes('--yenile')
 const CSV_YOLU = process.argv[2] && !process.argv[2].startsWith('--') ? process.argv[2] : null
 const CREATED_BY = argDeger('--created-by')
 const DB_NAME = argDeger('--db-name')
-const KISI_ESLESTIRME =
-  argDeger('--kisi-eslestirme') ?? path.join(os.homedir(), 'zimmet_kisi_eslestirme.json')
+// --override verilirse dosya ZORUNLU (yoksa durur); verilmezse varsayılan dosya varsa kullanılır.
+const OVERRIDE_ARG = argDeger('--override')
+const OVERRIDE_YOLU = OVERRIDE_ARG ?? path.join(os.homedir(), 'zimmet_kisi_eslestirme.json')
 
 const TUR_DEGERLERI = new Set<string>(Object.values(ZimmetTuru))
 const BLUECOLLAR_DOMAIN = '@bluecollar.ilerigroup.com'
@@ -146,9 +148,14 @@ async function main() {
   console.log(`CSV: ${CSV_YOLU} (${satirlar.length} satır) · oluşturan: ${olusturan.name ?? olusturan.id}`)
 
   let override: Record<string, string> = {}
-  if (fs.existsSync(KISI_ESLESTIRME)) {
-    override = JSON.parse(fs.readFileSync(KISI_ESLESTIRME, 'utf-8'))
-    console.log(`Kişi eşleştirme override: ${KISI_ESLESTIRME} (${Object.keys(override).length} kayıt)`)
+  if (OVERRIDE_ARG && !fs.existsSync(OVERRIDE_ARG)) {
+    throw new Error(`--override dosyası bulunamadı: ${OVERRIDE_ARG}`)
+  }
+  if (fs.existsSync(OVERRIDE_YOLU)) {
+    override = JSON.parse(fs.readFileSync(OVERRIDE_YOLU, 'utf-8'))
+    console.log(`Kişi eşleştirme override: ${OVERRIDE_YOLU} — ${Object.keys(override).length} anahtar yüklendi`)
+  } else {
+    console.log(`Kişi eşleştirme override: YOK (varsayılan ${OVERRIDE_YOLU} bulunamadı)`)
   }
   const overrideNorm = new Map(Object.entries(override).map(([ad, id]) => [adNormalize(ad), id]))
 

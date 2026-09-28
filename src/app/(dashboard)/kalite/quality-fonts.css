@@ -1,0 +1,5 @@
+/* KALITE modülü font değişkenleri (quality-fonts.ts). Aile adları @fontsource paketlerinden. */
+.kalite-font-degiskenleri {
+  --font-quality-sans: 'Manrope', system-ui, sans-serif;
+  --font-quality-mono: 'JetBrains Mono', ui-monospace, monospace;
+}

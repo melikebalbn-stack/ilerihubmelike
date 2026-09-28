@@ -648,3 +648,10 @@
     overflow: visible !important;
   }
 }
+
+/* Global Inter — YEREL (@fontsource/inter, src/app/layout.tsx). Eskiden next/font Inter className'i body'ye
+   aynı iki özelliği veriyordu; katmansız (unlayered) kalması da aynı öncelik için. */
+.font-inter {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-style: normal;
+}

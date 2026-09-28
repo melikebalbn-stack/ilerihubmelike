@@ -1,11 +1,21 @@
 import type { Metadata, Viewport } from "next";
-import { Inter } from "next/font/google";
+// Inter YEREL (@fontsource/inter; eskiden next/font/google — build fonts.googleapis.com'a bağımlıydı).
+// next/font Inter değişken fonttu (100–900); aynı aralık statik ağırlıklarla. Tüm alt kümeler (latin-ext
+// dahil) unicode-range ile — next/font'ta da CSS tüm alt kümeleri içeriyordu, `subsets` yalnız preload'dı.
+import "@fontsource/inter/100.css";
+import "@fontsource/inter/200.css";
+import "@fontsource/inter/300.css";
+import "@fontsource/inter/400.css";
+import "@fontsource/inter/500.css";
+import "@fontsource/inter/600.css";
+import "@fontsource/inter/700.css";
+import "@fontsource/inter/800.css";
+import "@fontsource/inter/900.css";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { SessionProvider } from "@/components/providers/session-provider";
 import { ServiceWorkerRegister } from "@/components/pwa/sw-register";
 
-const inter = Inter({ subsets: ["latin"] });
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -45,7 +55,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="tr" suppressHydrationWarning>
-      <body className={inter.className}>
+      <body className="font-inter">
         <ServiceWorkerRegister />
         <SessionProvider>
           <ThemeProvider

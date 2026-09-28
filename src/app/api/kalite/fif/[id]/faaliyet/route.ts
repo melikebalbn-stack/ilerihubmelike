@@ -133,11 +133,13 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       where: { id: faaliyetId },
       data: {
         sira: f.sira, aciklama: f.aciklama,
-        // aksiyonTuru KISMİ güncellemede korunur: ES ekranı (FifEklerPanel) bu alanı
-        // göndermiyor; `?? null` yazılsaydı her ES kaydında türü siliyor olurduk.
+        // KISMİ güncelleme: gönderilmeyen alan KORUNUR. ES ekranı (FifEklerPanel)
+        // aksiyonTuru / gerceklesenTarih / paraf göndermiyor; eskiden `?? null` her ES
+        // kaydında gerçekleşen tarihi (ve türü) siliyordu. Paraf yalnız `parafla` ile.
         ...(f.aksiyonTuru !== undefined ? { aksiyonTuru: f.aksiyonTuru } : {}),
-        hedefTarih: f.hedefTarih ?? null, gerceklesenTarih: f.gerceklesenTarih ?? null,
-        sonuc: f.sonuc ?? null,
+        ...(f.hedefTarih !== undefined ? { hedefTarih: f.hedefTarih } : {}),
+        ...(f.gerceklesenTarih !== undefined ? { gerceklesenTarih: f.gerceklesenTarih } : {}),
+        ...(f.sonuc !== undefined ? { sonuc: f.sonuc } : {}),
         ...(paraf.veri ?? {}),
       },
     })

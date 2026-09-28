@@ -139,7 +139,9 @@ export function FifFormClient({ initial }: { initial: FifInitial }) {
       kysDegisikligi, riskFirsatGuncelleme, ogrenilenDers,
       yayilimVarMi,
       yayilimAciklama: yayilimAciklama || null,
+      // id → PUT mevcut satırı günceller (paraf/sonuç/gerçekleşen korunur); id'siz → yeni satır.
       faaliyetler: faaliyetler.filter((f) => f.aciklama.trim()).map((f) => ({
+        ...(f.id ? { id: f.id } : {}),
         sira: f.sira, aciklama: f.aciklama,
         aksiyonTuru: f.aksiyonTuru || null,
         hedefTarih: f.hedefTarih || null,

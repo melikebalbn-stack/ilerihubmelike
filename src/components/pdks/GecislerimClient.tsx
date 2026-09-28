@@ -26,6 +26,7 @@ const ETIKET: Record<string, { t: string; c: string }> = {
   EKSIK_GIRIS: { t: 'Eksik giriş', c: 'border-amber-300 bg-amber-50 text-amber-900' },
   EKSIK_CIKIS: { t: 'Eksik çıkış', c: 'border-amber-300 bg-amber-50 text-amber-900' },
   GELMEDI: { t: 'Kayıt yok', c: 'border-slate-300 bg-slate-100 text-slate-700' },
+  IZINLI: { t: 'İzinli', c: 'border-blue-200 bg-blue-50 text-blue-700' },
   TATIL: { t: 'Tatil', c: 'border-slate-200 text-slate-500' },
   HAFTA_SONU: { t: 'Hafta sonu', c: 'border-slate-200 text-slate-500' },
   BEKLENMIYOR: { t: '—', c: 'border-slate-200 text-slate-400' },

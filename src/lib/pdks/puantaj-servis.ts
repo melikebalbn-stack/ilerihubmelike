@@ -4,7 +4,6 @@ import type { Prisma, PrismaClient } from '@/generated/prisma'
 import { logAuditEvent } from '@/lib/audit-log'
 import {
   KURAL_SURUMU,
-  bosIzinKaynagi,
   pdksTakvimTipi,
   puantajHesapla,
   yerel,
@@ -12,6 +11,7 @@ import {
   type PuantajSonucu,
   type VardiyaTanim,
 } from './puantaj-motor'
+import { prismaIzinKaynagi } from '../izin/pdks-izin-kaynagi'
 
 /**
  * PDKS Faz 4 — puantaj servisi: motoru (puantaj-motor.ts, saf) DB'ye bağlar.
@@ -90,6 +90,9 @@ export function prismaPuantajYazici(db: Db): PuantajYazici {
             fiiliDakika: s.fiiliDakika,
             dusulenMolaDakika: s.dusulenMolaDakika,
             mesaiPersonelId: s.mesaiPersonelId,
+            izinTalepId: s.izinTalepId,
+            izinPay: s.izinPay,
+            izinEtiketi: s.izinEtiketi,
             uyarilar: s.uyarilar,
             hesaplamaSurumu: KURAL_SURUMU,
             hesaplandiAt,
@@ -174,7 +177,8 @@ export async function gunuHesapla(
       select: { id: true, personnelId: true, overtimeForm: { select: { isFullDay: true, startTime: true, endTime: true } } },
     }),
   ])
-  const izinler = await (o.izinKaynagi ?? bosIzinKaynagi).izinDurumlari(ids, gun)
+  // İzin: varsayılan kaynak onaylı izin günleri (İzin Faz 3). Testler kendi kaynağını verir.
+  const izinler = await (o.izinKaynagi ?? prismaIzinKaynagi(db)).izinDurumlari(ids, gun)
   const takvim = pdksTakvimTipi(gun, tatil?.tip ?? null)
   const saatGecerli = (s: string | null) => (s && /^\d{2}:\d{2}$/.test(s) ? s : null)
 
@@ -249,7 +253,7 @@ export async function kilitDegistir(db: Db, bas: string, bit: string, kilitli: b
 const PUANTAJ_SEC = {
   personnelId: true, gun: true, durum: true, ilkGiris: true, sonCikis: true, girisKaynak: true, cikisKaynak: true,
   gecDakika: true, erkenCikisDakika: true, calismaDakika: true, fiiliDakika: true, dusulenMolaDakika: true,
-  onayliMesaiDakika: true, fazlaDakika: true, uyarilar: true, kilitli: true, hesaplamaSurumu: true, hesaplandiAt: true,
+  onayliMesaiDakika: true, fazlaDakika: true, uyarilar: true, kilitli: true, hesaplamaSurumu: true, hesaplandiAt: true, izinPay: true,
   vardiya: { select: { kod: true, ad: true } },
   personnel: { select: { sicilNo: true, adSoyad: true, bolum: true, departmentId: true, department: { select: { name: true } } } },
 } satisfies Prisma.PdksPuantajGunSelect
@@ -269,12 +273,13 @@ export async function puantajGunu(db: Db, gun: string, f: { departmentId?: strin
     db.personnel.count({ where: { aktif: true, ...(f.departmentId ? { departmentId: f.departmentId } : {}) } }),
     db.departmentDefinition.findMany({ where: { isActive: true }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
   ])
-  const bekleyen = (d: string) => !['TATIL', 'HAFTA_SONU', 'BEKLENMIYOR'].includes(d)
+  const bekleyen = (d: string) => !['TATIL', 'HAFTA_SONU', 'BEKLENMIYOR', 'IZINLI'].includes(d)
   const ozet = {
     beklenen: satirlar.filter((s) => bekleyen(s.durum)).length,
     tam: satirlar.filter((s) => s.durum === 'TAM' || s.durum === 'TAM_FORMLA' || s.durum === 'MESAI').length,
     eksik: satirlar.filter((s) => s.durum === 'EKSIK_GIRIS' || s.durum === 'EKSIK_CIKIS').length,
     gelmedi: satirlar.filter((s) => s.durum === 'GELMEDI').length,
+    izinli: satirlar.filter((s) => s.durum === 'IZINLI').length,
     gec: satirlar.filter((s) => s.gecDakika > 0).length,
   }
   const hesaplandi = satirlar.reduce<Date | null>((m, s) => (!m || s.hesaplandiAt > m ? s.hesaplandiAt : m), null)
@@ -317,7 +322,7 @@ export async function puantajGunu(db: Db, gun: string, f: { departmentId?: strin
 // ── Excel ────────────────────────────────────────────────────────────────────
 
 const DURUM_ETIKET: Record<string, string> = {
-  TAM: 'Tam', TAM_FORMLA: 'Tam (formla)', EKSIK_GIRIS: 'Eksik giriş', EKSIK_CIKIS: 'Eksik çıkış', GELMEDI: 'Gelmedi · izin bilgisi yok',
+  TAM: 'Tam', TAM_FORMLA: 'Tam (formla)', EKSIK_GIRIS: 'Eksik giriş', EKSIK_CIKIS: 'Eksik çıkış', GELMEDI: 'Gelmedi', IZINLI: 'İzinli',
   TATIL: 'Tatil', HAFTA_SONU: 'Hafta sonu', MESAI: 'Mesai (onaylı form)', BEKLENMIYOR: 'Beklenmiyor',
 }
 const saatStr = (d: Date | null) => (d ? new Date(d.getTime() + 3 * 3600_000).toISOString().slice(11, 16) : '')
@@ -350,15 +355,16 @@ export async function puantajExcel(db: Db, bas: string, bit: string, departmentI
     Kilitli: s.kilitli ? 'evet' : '',
     Uyarılar: s.uyarilar.join(', '),
   }))
-  const kisi = new Map<string, { Sicil: string; 'Ad Soyad': string; Departman: string; 'Çalışma (dk)': number; 'Mesai formu (dk)': number; 'Geç (dk)': number; 'Geç gün': number; 'Eksik okutma gün': number; 'Gelmedi gün': number; 'Formla tamamlanan': number }>()
+  const kisi = new Map<string, { Sicil: string; 'Ad Soyad': string; Departman: string; 'Çalışma (dk)': number; 'Mesai formu (dk)': number; 'Geç (dk)': number; 'Geç gün': number; 'Eksik okutma gün': number; 'Gelmedi gün': number; 'İzinli gün': number; 'Formla tamamlanan': number }>()
   for (const s of rs) {
-    const k = kisi.get(s.personnelId) ?? { Sicil: s.personnel.sicilNo ?? '', 'Ad Soyad': s.personnel.adSoyad, Departman: s.personnel.department?.name ?? s.personnel.bolum, 'Çalışma (dk)': 0, 'Mesai formu (dk)': 0, 'Geç (dk)': 0, 'Geç gün': 0, 'Eksik okutma gün': 0, 'Gelmedi gün': 0, 'Formla tamamlanan': 0 }
+    const k = kisi.get(s.personnelId) ?? { Sicil: s.personnel.sicilNo ?? '', 'Ad Soyad': s.personnel.adSoyad, Departman: s.personnel.department?.name ?? s.personnel.bolum, 'Çalışma (dk)': 0, 'Mesai formu (dk)': 0, 'Geç (dk)': 0, 'Geç gün': 0, 'Eksik okutma gün': 0, 'Gelmedi gün': 0, 'İzinli gün': 0, 'Formla tamamlanan': 0 }
     k['Çalışma (dk)'] += s.calismaDakika ?? 0
     k['Mesai formu (dk)'] += s.onayliMesaiDakika ?? 0
     k['Geç (dk)'] += s.gecDakika
     if (s.gecDakika > 0) k['Geç gün']++
     if (s.durum === 'EKSIK_GIRIS' || s.durum === 'EKSIK_CIKIS') k['Eksik okutma gün']++
     if (s.durum === 'GELMEDI') k['Gelmedi gün']++
+    k['İzinli gün'] += s.durum === 'IZINLI' ? Number(s.izinPay ?? 1) : s.izinPay ? Number(s.izinPay) : 0
     if (s.durum === 'TAM_FORMLA') k['Formla tamamlanan']++
     kisi.set(s.personnelId, k)
   }

@@ -9,7 +9,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 
-type Durum = 'TAM' | 'TAM_FORMLA' | 'EKSIK_GIRIS' | 'EKSIK_CIKIS' | 'GELMEDI' | 'TATIL' | 'HAFTA_SONU' | 'MESAI' | 'BEKLENMIYOR'
+type Durum = 'TAM' | 'TAM_FORMLA' | 'EKSIK_GIRIS' | 'EKSIK_CIKIS' | 'GELMEDI' | 'TATIL' | 'HAFTA_SONU' | 'MESAI' | 'IZINLI' | 'BEKLENMIYOR'
 type Satir = {
   personnelId: string; sicil: string | null; adSoyad: string; departman: string | null; vardiya: string | null
   ilkGiris: string | null; sonCikis: string | null; girisKaynak: string | null; cikisKaynak: string | null
@@ -19,7 +19,7 @@ type Satir = {
 type Veri = {
   gun: string
   satirlar: Satir[]
-  ozet: { beklenen: number; tam: number; eksik: number; gelmedi: number; gec: number }
+  ozet: { beklenen: number; tam: number; eksik: number; gelmedi: number; izinli: number; gec: number }
   meta: { kayit: number; aktifPersonel: number; hesaplanmamis: number; sonHesaplama: string | null; kuralSurumleri: number[]; guncelKuralSurumu: number; kilitli: boolean; kismenKilitli: boolean }
   departmanlar: { id: string; name: string }[]
 }
@@ -31,7 +31,8 @@ const DURUM: Record<Durum, { etiket: string; sinif: string }> = {
   MESAI: { etiket: 'Mesai (form)', sinif: 'border-blue-300 bg-blue-100 text-blue-900' },
   EKSIK_GIRIS: { etiket: 'Eksik giriş', sinif: 'border-amber-300 bg-amber-50 text-amber-900' },
   EKSIK_CIKIS: { etiket: 'Eksik çıkış', sinif: 'border-amber-300 bg-amber-50 text-amber-900' },
-  GELMEDI: { etiket: 'Gelmedi · izin bilgisi yok', sinif: 'border-slate-300 bg-slate-100 text-slate-700' },
+  GELMEDI: { etiket: 'Gelmedi', sinif: 'border-slate-300 bg-slate-100 text-slate-700' },
+  IZINLI: { etiket: 'İzinli', sinif: 'border-blue-200 bg-blue-50 text-blue-700' },
   TATIL: { etiket: 'Tatil', sinif: 'border-slate-200 bg-white text-slate-500' },
   HAFTA_SONU: { etiket: 'Hafta sonu', sinif: 'border-slate-200 bg-white text-slate-500' },
   BEKLENMIYOR: { etiket: 'Beklenmiyor', sinif: 'border-slate-200 bg-white text-slate-400' },
@@ -127,7 +128,7 @@ export function PuantajClient({ canManage }: { canManage: boolean }) {
         <Ozet ikon={<Users className="h-4 w-4" />} baslik="Beklenen" deger={o?.beklenen} ton="gri" />
         <Ozet ikon={<UserCheck className="h-4 w-4" />} baslik="Tam" deger={o?.tam} ton="mavi" />
         <Ozet ikon={<AlertTriangle className="h-4 w-4" />} baslik="Eksik okutma" deger={o?.eksik} ton="turuncu" />
-        <Ozet ikon={<UserX className="h-4 w-4" />} baslik="Gelmedi" deger={o?.gelmedi} ton="gri" />
+        <Ozet ikon={<UserX className="h-4 w-4" />} baslik="Gelmedi" deger={o?.gelmedi} ton="gri" alt={o?.izinli ? `${o.izinli} kişi izinli` : undefined} />
         <Ozet ikon={<Clock className="h-4 w-4" />} baslik="Geç kalan" deger={o?.gec} ton="turuncu" />
       </div>
 
@@ -227,7 +228,7 @@ export function PuantajClient({ canManage }: { canManage: boolean }) {
   )
 }
 
-function Ozet({ ikon, baslik, deger, ton }: { ikon: React.ReactNode; baslik: string; deger?: number; ton: 'mavi' | 'turuncu' | 'gri' }) {
+function Ozet({ ikon, baslik, deger, ton, alt }: { ikon: React.ReactNode; baslik: string; deger?: number; ton: 'mavi' | 'turuncu' | 'gri'; alt?: string }) {
   return (
     <Card className="shadow-none">
       <CardContent className="p-4">
@@ -235,6 +236,7 @@ function Ozet({ ikon, baslik, deger, ton }: { ikon: React.ReactNode; baslik: str
           {ikon}{baslik}
         </div>
         <div className="mt-1 text-2xl font-semibold tabular-nums text-slate-900">{deger ?? '—'}</div>
+        {alt && <div className="mt-0.5 text-xs text-slate-500">{alt}</div>}
       </CardContent>
     </Card>
   )

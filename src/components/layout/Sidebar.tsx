@@ -317,8 +317,9 @@ const pdksMenuItems = [
 
 // İV › İzin alt grubu — sayfa guard'larıyla birebir (permission; PDKS deseni). Faz 2: Bakiyeler,
 // İzin türleri, Açılış içe aktarımı (izin.admin; gerçek aktarım sayfada izin.bakiye.admin).
-// Onay Bekleyenler / Ekip Takvimi Faz 3 / 5'te eklenecek.
+// Faz 3: Onay Bekleyenler (İV kademesi; ayar kapalıyken de İV deneyebilsin). Ekip Takvimi Faz 5.
 const izinMenuItems = [
+  { name: "Onay Bekleyenler", icon: ClipboardCheck, href: "/izin/onay", roles: [] as string[], permission: ["izin.admin"] },
   { name: "Bakiyeler", icon: Wallet, href: "/izin/yonetim", roles: [] as string[], permission: ["izin.admin", "izin.bakiye.admin"] },
   { name: "İzin Türleri", icon: ListChecks, href: "/izin/yonetim/turler", roles: [] as string[], permission: ["izin.admin", "izin.bakiye.admin"] },
   { name: "Açılış İçe Aktarım", icon: FileText, href: "/izin/yonetim/ice-aktarim", roles: [] as string[], permission: ["izin.admin", "izin.bakiye.admin"] },
@@ -530,6 +531,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const [denemeBaslik, setDenemeBaslik] = useState("Deneme Değerlendirme")
   const [avansBayrak, setAvansBayrak] = useState<{ kendim: boolean; sorumlu: boolean }>({ kendim: false, sorumlu: false })
   const [gecislerimGorunur, setGecislerimGorunur] = useState(false)
+  const [izinBayrak, setIzinBayrak] = useState({ talep: false, onay: false, bekleyen: 0 })
 
   // Collapse/pin (yalnız masaüstü; mobil sheet'te isOpen=true → her zaman geniş)
   const { collapsed, pinned, hovering, setCollapsed, setPinned, setHovering } = useSidebar()
@@ -700,6 +702,18 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
       .catch(() => {})
   }, [session])
 
+  // İzin — SUNUCU bayrağı (SystemSetting izin_talep_acik + onaycılık); client'ta yetki hesaplanmaz.
+  useEffect(() => {
+    if (!session?.user) return
+    fetch('/api/izin/menu-bayrak')
+      .then(async (r) => {
+        if (!r.ok) return
+        const d = await r.json()
+        setIzinBayrak({ talep: !!d.talep, onay: !!d.onay, bekleyen: Number(d.bekleyen) || 0 })
+      })
+      .catch(() => {})
+  }, [session])
+
   // Avans formu menü bayrakları — SUNUCUDA hesaplanır (kendim: aktif BEYAZ/GRİ
   // yaka · sorumlu: herhangi bir bölümde sorumlu olarak geçen aktif personel).
   // Client'ta yetki HESAPLANMAZ.
@@ -859,12 +873,16 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const avansKendimItem = { name: "Avans Talebim", icon: Wallet, href: "/avans-formu/kendi", roles: ["*"], subgroup: "iv" as FormAltGrup }
   const avansSorumluItem = { name: "Avans Formu (Ekibim)", icon: Wallet, href: "/avans-formu", roles: ["*"], subgroup: "iv" as FormAltGrup }
   const gecislerimItem = { name: "Geçişlerim", icon: ScanLine, href: "/pdks/gecislerim", roles: ["*"], subgroup: "iv" as FormAltGrup }
+  const izinTalebimItem = { name: "İzin Talebim", icon: CalendarDays, href: "/izin/talebim", roles: ["*"], subgroup: "iv" as FormAltGrup }
+  const izinOnaylarimItem = { name: "İzin Onaylarım", icon: ClipboardCheck, href: "/izin/onay", roles: ["*"], subgroup: "iv" as FormAltGrup }
   const filteredFormsItems = [
     ...filterItems(formsMenuItems),
     ...(kadroTalepAcabilir ? [kadroTalepItem] : []),
     ...(avansBayrak.kendim ? [avansKendimItem] : []),
     ...(avansBayrak.sorumlu ? [avansSorumluItem] : []),
     ...(gecislerimGorunur ? [gecislerimItem] : []),
+    ...(izinBayrak.talep ? [izinTalebimItem] : []),
+    ...(izinBayrak.onay ? [izinOnaylarimItem] : []),
   ]
   // Formlar alt grupları — YETKİ FİLTRESİNDEN GEÇMİŞ listeden bölünür, yani
   // görünürlük mantığı burada tekrarlanmaz. Alt grubu olmayan bir kalem
@@ -1058,6 +1076,8 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
 
     // Mesajlar icin badge goster
     const showBadge = item.href === "/messages" && unreadMessages > 0
+    // İzin Onaylarım: bekleyen talep sayısı (turuncu — kırmızı değil)
+    const izinBadge = item.href === "/izin/onay" && izinBayrak.bekleyen > 0
     // Kesif/temsili sayfalar icin kucuk not etiketi (or. "temsili veri")
     const note = 'note' in item ? (item as { note?: string }).note : null
 
@@ -1091,6 +1111,11 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
               : "bg-rose-500 text-white"
           )}>
             {unreadMessages > 99 ? "99+" : unreadMessages}
+          </span>
+        )}
+        {izinBadge && (
+          <span className={cn("flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-xs font-bold", isActive ? "bg-white text-teal-600" : "bg-amber-500 text-white")}>
+            {izinBayrak.bekleyen > 99 ? "99+" : izinBayrak.bekleyen}
           </span>
         )}
       </Link>

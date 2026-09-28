@@ -183,9 +183,11 @@ describe('tatil + yarım gün', () => {
 })
 
 describe('diğer kurallar', () => {
-  it('hiç okutma yok → GELMEDI + IZIN_BILGISI_YOK; izin kaynağı izinli derse BEKLENMIYOR', () => {
+  it('hiç okutma yok → GELMEDI + IZIN_BILGISI_YOK; onaylı tam gün izin → IZINLI (gelmedi sayılmaz)', () => {
     expect(puantajHesapla(gun({})).uyarilar).toContain('IZIN_BILGISI_YOK')
-    expect(puantajHesapla(gun({ izin: { izinli: true, tur: 'YILLIK' } }))).toMatchObject({ durum: 'BEKLENMIYOR', uyarilar: ['IZINLI:YILLIK'] })
+    expect(puantajHesapla(gun({ izin: { izinli: true, talepId: 't1', pay: 1, etiket: 'İzinli' } }))).toMatchObject({
+      durum: 'IZINLI', izinTalepId: 't1', izinPay: 1, izinEtiketi: 'İzinli', calismaDakika: null, uyarilar: [],
+    })
   })
   it('sensör zorunluyken yalnız sensöre bağlı okutmalar sayılır', () => {
     const gecisler = [G(t(PZT, '07:00'), 'GIRIS', false), G(t(PZT, '07:20'), 'GIRIS', true), G(t(PZT, '17:00'), 'CIKIS', true)]
@@ -202,5 +204,41 @@ describe('diğer kurallar', () => {
   })
   it('beklenenAralik gece için ertesi güne taşar', () => {
     expect(beklenenAralik(PZT, GECE)).toEqual({ bas: t(PZT, '21:00'), bit: t(PZT, '07:00', 1) })
+  })
+})
+
+describe('izin (İzin Faz 3 — kural sürümü 2)', () => {
+  const izin = (yarim: 'SABAH' | 'OGLEDEN_SONRA' | null, pay = yarim ? 0.5 : 1) => ({ izinli: true, yarim, talepId: 'tz', pay, etiket: 'İzinli' })
+
+  it('tam gün izinli günde okutma varsa yine IZINLI + IZINLI_GUNDE_GECIS uyarısı', () => {
+    const r = puantajHesapla(gun({ gecisler: tamGun(), izin: izin(null) }))
+    expect(r).toMatchObject({ durum: 'IZINLI', izinTalepId: 'tz', izinPay: 1, uyarilar: ['IZINLI_GUNDE_GECIS'] })
+  })
+
+  it('öğleden sonra izinli: beklenen 07:00–13:00; 07:00–13:00 geldiyse TAM, erken çıkış yok', () => {
+    const r = puantajHesapla(gun({ gecisler: tamGun(PZT, '07:00', '13:00'), izin: izin('OGLEDEN_SONRA') }))
+    expect(r.beklenenBitis).toEqual(t(PZT, '13:00'))
+    expect(r).toMatchObject({ durum: 'TAM', erkenCikisDakika: 0, izinPay: 0.5, izinEtiketi: 'İzinli' })
+    expect(r.uyarilar).toContain('YARIM_GUN_IZINLI')
+  })
+
+  it('sabah izinli: beklenen 13:00–17:00; 13:20 girişte geç kalma 13:00\'ten sayılır', () => {
+    const r = puantajHesapla(gun({ gecisler: tamGun(PZT, '13:20', '17:00'), izin: izin('SABAH') }))
+    expect(r.beklenenBaslangic).toEqual(t(PZT, '13:00'))
+    expect(r).toMatchObject({ durum: 'TAM', gecDakika: 20 })
+  })
+
+  it('yarım izinli ve hiç gelmedi → GELMEDI ama IZIN_BILGISI_YOK yok (izin kaydı var)', () => {
+    const r = puantajHesapla(gun({ izin: izin('SABAH') }))
+    expect(r.durum).toBe('GELMEDI')
+    expect(r.uyarilar).toEqual(['YARIM_GUN_IZINLI'])
+  })
+
+  it('yarım tatil (arefe) gününde sabah izni = tüm çalışma → IZINLI', () => {
+    expect(puantajHesapla(gun({ takvim: 'YARIM', izin: izin('SABAH') })).durum).toBe('IZINLI')
+  })
+
+  it('hafta sonu / tatilde izin kaydı motoru etkilemez (kaynak pay=0 günleri vermez)', () => {
+    expect(puantajHesapla(gun({ gun: CMT, takvim: 'HAFTA_SONU', izin: izin(null) })).durum).toBe('HAFTA_SONU')
   })
 })

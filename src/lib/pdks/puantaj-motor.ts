@@ -17,10 +17,14 @@
  * - Kart okutamama formu YALNIZ onayDurumu=ONAYLANDI VE ivOnaylandi=true ise eksik tarafı tamamlar
  *   (TAM_FORMLA). Cihaz okutması varsa cihaz kazanır, formla çelişki uyarı olur.
  * - pdks_gecis_sensoru_zorunlu=true → yalnız "geçti" sensörüne bağlı okutmalar sayılır.
- * - İzin modülü yok → gelmeyen GELMEDI + IZIN_BILGISI_YOK uyarısı (IzinKaynagi arayüzü şimdilik boş).
+ * - İzin (İzin Faz 3, kural sürümü 2): onaylı TAM gün izin → IZINLI (gelmedi SAYILMAZ, beklenen saat yok;
+ *   izinli günde okutma varsa IZINLI_GUNDE_GECIS uyarısı). YARIM gün izin → beklenen aralık kısalır
+ *   (sabah izni: yarım gün bitişi → vardiya sonu; öğleden sonra izni: vardiya başı → yarım gün bitişi), durum
+ *   normal hesaplanır, YARIM_GUN_IZINLI uyarısı + izinPay 0,5. İzin kaydı yoksa gelmeyen GELMEDI + IZIN_BILGISI_YOK.
+ *   Etiket yalnız "İzinli" gibi PDKS etiketidir — tür adı motora hiç gelmez.
  */
 
-export const KURAL_SURUMU = 1
+export const KURAL_SURUMU = 2
 
 export type PuantajDurum =
   | 'TAM'
@@ -31,6 +35,7 @@ export type PuantajDurum =
   | 'TATIL'
   | 'HAFTA_SONU'
   | 'MESAI'
+  | 'IZINLI'
   | 'BEKLENMIYOR'
 
 export type TakvimTipi = 'CALISMA' | 'HAFTA_SONU' | 'TATIL' | 'YARIM'
@@ -91,8 +96,8 @@ export interface PuantajGirdi {
   kartFormlari: KartOkutamamaGirdi[]
   mesaiFormlari: MesaiGirdi[]
   ayarlar: { sensorZorunlu: boolean; yarimGunBitis: string }
-  /** İzin kaynağı sonucu (şimdilik hep null — izin modülü yok). */
-  izin: { izinli: boolean; tur?: string } | null
+  /** Onaylı izin günü (İzin modülü). null = izin yok. */
+  izin: IzinGunuGirdi | null
   simdi: Date
 }
 
@@ -117,7 +122,20 @@ export interface PuantajSonucu {
   onayliMesaiDakika: number | null
   mesaiPersonelId: string | null
   fazlaDakika: number | null
+  izinTalepId: string | null
+  izinPay: number | null
+  izinEtiketi: string | null
   uyarilar: string[]
+}
+
+export interface IzinGunuGirdi {
+  izinli: boolean
+  /** null = tam gün; SABAH = sabah izinli (öğleden sonra çalışır); OGLEDEN_SONRA = öğleden sonra izinli */
+  yarim?: 'SABAH' | 'OGLEDEN_SONRA' | null
+  talepId?: string
+  pay?: number
+  /** PDKS etiketi ("İzinli") — tür adı DEĞİL */
+  etiket?: string
 }
 
 // ── Zaman (Europe/Istanbul, +03:00 sabit — Türkiye 2016'dan beri DST yok) ────
@@ -192,7 +210,7 @@ export function puantajHesapla(g: PuantajGirdi): PuantajSonucu {
     durum: 'BEKLENMIYOR', vardiyaId: v.id, vardiyaKaynak: g.vardiyaKaynak, beklenenBaslangic: null, beklenenBitis: null,
     ilkGiris: null, sonCikis: null, ilkGirisGecisId: null, sonCikisGecisId: null, girisKaynak: null, cikisKaynak: null,
     kartOkutamamaId: null, gecDakika: 0, erkenCikisDakika: 0, fiiliDakika: null, dusulenMolaDakika: null, calismaDakika: null,
-    onayliMesaiDakika: null, mesaiPersonelId: null, fazlaDakika: null, uyarilar,
+    onayliMesaiDakika: null, mesaiPersonelId: null, fazlaDakika: null, izinTalepId: null, izinPay: null, izinEtiketi: null, uyarilar,
   }
   if (g.iseGiris && g.gun < g.iseGiris) return { ...bos, uyarilar: ['ISE_GIRIS_ONCESI'] }
 
@@ -274,10 +292,28 @@ export function puantajHesapla(g: PuantajGirdi): PuantajSonucu {
 
   // 6. Çalışma günü (ya da yarım gün)
   const beklenen = beklenenAralik(g.gun, v)
-  if (g.takvim === 'YARIM') {
-    const yb = vardiyaSaati(g.gun, g.ayarlar.yarimGunBitis, v.gunDonumSaat)
-    if (yb > beklenen.bas && yb < beklenen.bit) beklenen.bit = yb
+  const yb = vardiyaSaati(g.gun, g.ayarlar.yarimGunBitis, v.gunDonumSaat)
+  const ybIcinde = yb > beklenen.bas && yb < beklenen.bit
+  if (g.takvim === 'YARIM' && ybIcinde) beklenen.bit = yb
+  // 6a. Onaylı izin: yarım gün beklenen aralığı kısaltır; beklenen aralık kalmazsa (tam gün ya da yarım
+  // tatil gününün sabahı) gün IZINLI olur.
+  const izin = g.izin?.izinli ? g.izin : null
+  const izinAlanlari = izin
+    ? { izinTalepId: izin.talepId ?? null, izinPay: izin.pay ?? (izin.yarim ? 0.5 : 1), izinEtiketi: izin.etiket ?? 'İzinli' }
+    : {}
+  let tamIzin = !!izin && !izin.yarim
+  if (izin?.yarim && ybIcinde) {
+    if (izin.yarim === 'SABAH') beklenen.bas = yb
+    else beklenen.bit = yb
+    if (beklenen.bit <= beklenen.bas) tamIzin = true
+  } else if (izin?.yarim && g.takvim === 'YARIM' && izin.yarim === 'SABAH') tamIzin = true
+  if (tamIzin) {
+    return {
+      ...ortak, ...izinAlanlari, durum: 'IZINLI', calismaDakika: null,
+      uyarilar: gecerli.length ? [...uyarilar, 'IZINLI_GUNDE_GECIS'] : uyarilar,
+    }
   }
+  if (izin?.yarim) uyarilar.push('YARIM_GUN_IZINLI')
   // Normal çalışma vardiya penceresine kırpılır — vardiya dışı süre yalnız mesai formuyla sayılır.
   let normalNet: number | null = null
   if (ilkGiris && sonCikis && sonCikis > ilkGiris) {
@@ -286,7 +322,7 @@ export function puantajHesapla(g: PuantajGirdi): PuantajSonucu {
     normalNet = b > a ? dakikaFark(a, b) - dusulenMola(g.gun, v, molalar, a, b) : 0
   }
   const sonuc: PuantajSonucu = {
-    ...ortak, beklenenBaslangic: beklenen.bas, beklenenBitis: beklenen.bit, calismaDakika: normalNet,
+    ...ortak, ...izinAlanlari, beklenenBaslangic: beklenen.bas, beklenenBitis: beklenen.bit, calismaDakika: normalNet,
     onayliMesaiDakika: formDakika, mesaiPersonelId: form?.overtimePersonnelId ?? null, durum: 'GELMEDI',
   }
   if (form) sonuc.calismaDakika = (normalNet ?? 0) + (formDakika ?? 0) // akşam mesaisi: normal (kırpılmış) + form süresi
@@ -311,9 +347,8 @@ export function puantajHesapla(g: PuantajGirdi): PuantajSonucu {
     if (gunSuruyor) uyarilar.push('GUN_SURUYOR')
   } else if (sonCikis) sonuc.durum = 'EKSIK_GIRIS'
   else {
-    if (g.izin?.izinli) return { ...sonuc, durum: 'BEKLENMIYOR', uyarilar: [...uyarilar, `IZINLI${g.izin.tur ? `:${g.izin.tur}` : ''}`] }
     sonuc.durum = 'GELMEDI'
-    uyarilar.push('IZIN_BILGISI_YOK')
+    if (!izin) uyarilar.push('IZIN_BILGISI_YOK')
     if (gunSuruyor) uyarilar.push('GUN_SURUYOR')
   }
   if (sonuc.durum === 'EKSIK_GIRIS' || sonuc.durum === 'EKSIK_CIKIS') sonuc.calismaDakika = form ? formDakika : null
@@ -331,8 +366,8 @@ export function pdksTakvimTipi(gun: string, iproTatilTip: string | null): Takvim
   return 'CALISMA'
 }
 
-/** İzin kaynağı arayüzü — izin modülü gelince uygulanır. Şimdilik hep null döner. */
+/** İzin kaynağı arayüzü — uygulaması src/lib/izin/pdks-izin-kaynagi.ts (onaylı IzinTalepGun). */
 export interface IzinKaynagi {
-  izinDurumlari(personnelIdleri: string[], gun: string): Promise<Map<string, { izinli: boolean; tur?: string }>>
+  izinDurumlari(personnelIdleri: string[], gun: string): Promise<Map<string, IzinGunuGirdi>>
 }
 export const bosIzinKaynagi: IzinKaynagi = { izinDurumlari: async () => new Map() }

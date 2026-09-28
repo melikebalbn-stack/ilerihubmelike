@@ -48,19 +48,40 @@ describe('izin API rota taraması', () => {
     : []
   const IV_GUARD = /requirePermission\(\s*(\[\s*)?'izin\.(admin|bakiye\.admin)'(\s*,\s*'izin\.(admin|bakiye\.admin)')?\s*\]?\s*\)/
 
-  it('her rota ya yalnız İV izniyle korunur ya da ekip rotası olarak tür seçmez ve ekipIzinGunu kullanır', () => {
-    expect(rotalar.length).toBeGreaterThan(0)
+  // İV DIŞI rotaların (çalışan / yönetici — requireUser + izinErisim) import edebileceği izin modülleri. Bu
+  // servislerin yönetici/ekip çıktısı gorunum.ts'den geçer (aşağıdaki servis taraması + talep-akis.test.ts
+  // çalışma zamanı sızıntı testleri). Yeni bir modül eklemek = bu listeye bilinçli ekleme + sızıntı testi.
+  const GUVENLI = ['gorunum', 'talep-servis', 'onay-servis', 'erisim', 'talep-ortak', 'yonetim']
+
+  it('her rota ya yalnız İV izniyle korunur ya da yalnız güvenli servisleri kullanır ve tür SEÇMEZ', () => {
+    expect(rotalar.length).toBeGreaterThanOrEqual(15) // Faz 2 (8) + Faz 3 (10) — kapsam boşa geçmesin
     const ihlal: string[] = []
+    let ivDisi = 0
     for (const f of rotalar) {
       const s = fs.readFileSync(f, 'utf8')
       const ad = path.relative(KOK, f)
       const guardlar = [...s.matchAll(/requirePermission\([^)]*\)/g)].map((m) => m[0])
       const yalnizIv = guardlar.length > 0 && guardlar.every((g) => IV_GUARD.test(g))
       if (yalnizIv) continue
-      if (!/from '@\/lib\/izin\/gorunum'/.test(s) || !/ekipIzinGunu\(/.test(s)) ihlal.push(`${ad}: İV dışı rota ekipIzinGunu kullanmıyor`)
-      if (/\btur(Id)?\s*:/.test(s) || /include:\s*{[^}]*\btur\b/.test(s)) ihlal.push(`${ad}: İV dışı rota tür seçiyor`)
+      ivDisi++
+      for (const m of s.matchAll(/from '@\/lib\/izin\/([\w-]+)'/g)) if (!GUVENLI.includes(m[1])) ihlal.push(`${ad}: İV dışı rota güvenli olmayan modülü kullanıyor (${m[1]})`)
+      if (/prisma\./.test(s)) ihlal.push(`${ad}: İV dışı rota doğrudan prisma sorgusu yapıyor (servis üzerinden olmalı)`)
+      if (/\btur(Id|Ad)?\s*:/.test(s) || /include:\s*{[^}]*\btur\b/.test(s)) ihlal.push(`${ad}: İV dışı rota tür seçiyor`)
     }
+    expect(ivDisi).toBeGreaterThanOrEqual(8) // talebim, takvim, önizleme, talepler, geri-cek, adına, onay, onay/:id, menu-bayrak
     expect(ihlal).toEqual([])
+  })
+
+  it('güvenli servisler yönetici/ekip çıktısını gorunum üzerinden üretir', () => {
+    const oku = (m: string) => fs.readFileSync(path.join(KOK, 'src/lib/izin', `${m}.ts`), 'utf8')
+    const onay = oku('onay-servis')
+    // Onay listesi/detayındaki her kalem onayKalemi'nden geçer; ekip tablosu ekipIzinGunu'ndan
+    expect(onay).toMatch(/onayKalemi\(await kalemGirdisi\(t\), false\)/) // yönetici kademesi = kapalı şekil
+    expect(onay).toMatch(/ekipIzinGunu\(/)
+    expect(onay).not.toMatch(/turAd:\s*t\.tur\.ad[^\n]*\n[^\n]*return/) // tür yalnız kalemGirdisi → onayKalemi
+    const talep = oku('talep-servis')
+    expect(talep).toMatch(/ekipIzinGunu\(/) // takvim noktası
+    expect(talep).toMatch(/listeGorur = hedef === ctx\.personnelId \|\| ctx\.ivMi/) // adına açan yönetici liste görmez
   })
 
   it('İV guard deseni yalnız izin.admin / izin.bakiye.admin kabul eder', () => {

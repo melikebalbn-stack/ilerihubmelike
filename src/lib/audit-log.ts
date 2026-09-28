@@ -84,6 +84,9 @@ export type AuditTargetType =
   | 'IZIN_BAKIYE'
   // İzin türleri (şirkete özel). action: IZIN_TURU_EKLENDI / IZIN_TURU_GUNCELLENDI.
   | 'IZIN_TURU'
+  // İzin talebi yaşam döngüsü. action: IZIN_TALEP_OLUSTURULDU / _GERI_CEKILDI / _IPTAL_EDILDI /
+  // IZIN_TALEP_ONAYLANDI / _REDDEDILDI (details.kademe YONETICI|IV).
+  | 'IZIN_TALEP'
 
 export interface AuditLogParams {
   action: string

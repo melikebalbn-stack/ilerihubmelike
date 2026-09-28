@@ -60,3 +60,40 @@ export function turSiziyorMu(o: unknown): string | null {
   }
   return bak(o, '$')
 }
+
+// ── Onay listesi / detay kalemi ─────────────────────────────────────────────
+
+export interface OnayKalemiGirdi {
+  id: string
+  personnelId: string
+  personelAd: string
+  sicil: string | null
+  bolum: string | null
+  durum: string
+  baslangic: string
+  bitis: string
+  baslangicYarim: string | null
+  bitisYarim: string | null
+  gunSayisi: number
+  olusturma: string
+  sahipsiz: boolean
+  ekipCakisma: number
+  talepEden: string | null
+  /** İV'ye özel — yönetici kaleminde KOPYALANMAZ */
+  turAd: string
+  aciklama: string | null
+}
+
+/**
+ * Onay ekranı kalemi. `iv=false` (yönetici kademesi / yöneticinin karar geçmişi) → KAPALI şekil: tür adı,
+ * açıklama YOK; etiket "İzin". `iv=true` → tür ve açıklama eklenir (yalnız izin.admin, İV kademesinde).
+ */
+export function onayKalemi(t: OnayKalemiGirdi, iv: boolean) {
+  const temel = {
+    id: t.id, personnelId: t.personnelId, personelAd: t.personelAd, sicil: t.sicil, bolum: t.bolum, durum: t.durum,
+    baslangic: t.baslangic, bitis: t.bitis, baslangicYarim: t.baslangicYarim, bitisYarim: t.bitisYarim,
+    gunSayisi: t.gunSayisi, olusturma: t.olusturma, sahipsiz: t.sahipsiz, ekipCakisma: t.ekipCakisma, talepEden: t.talepEden,
+    etiket: 'İzin' as const,
+  }
+  return iv ? { ...temel, iv: { turAd: t.turAd, not: t.aciklama } } : temel
+}

@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/auth/require-user";
 import { prisma } from "@/lib/prisma";
 import { projeDetaySchema } from "../_lib/proje-detay-schema";
 import { projeDetayAlanlari } from "../_lib/proje-detay-map";
+import { resolveCanSeeProjeFiyat } from "@/lib/proje-takip/can-see-fiyat.server";
 import { generateProjeNo } from "../_lib/proje-no";
 import { projeAcildiBildirimGonder } from "../_lib/bildirim";
 
@@ -22,7 +23,8 @@ export async function POST(req: NextRequest) {
   }
 
   const projeNo = await generateProjeNo();
-  const alanlar = projeDetayAlanlari(parsed.data);
+  const canSeeFiyat = await resolveCanSeeProjeFiyat(user);
+  const alanlar = projeDetayAlanlari(parsed.data, { canSeeFiyat });
 
   const kayit = await prisma.projeTakip.create({
     data: {

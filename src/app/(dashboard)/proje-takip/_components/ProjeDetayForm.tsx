@@ -16,11 +16,19 @@ import {
 } from "@/app/api/proje-takip/_lib/proje-detay-schema";
 import { DURUM_DEGERLERI } from "@/app/api/proje-takip/_lib/sabitler";
 import type { MuhendislikKisi } from "@/app/api/proje-takip/_lib/muhendislik-ekibi";
+import {
+  PROJE_FIYAT_ALANLARI,
+  type ProjeFiyatAlani,
+} from "@/lib/proje-takip/can-see-fiyat";
 import type { ProjeTakip } from "@/generated/prisma";
 
 const ANA_RENK = "#1B4F72";
 
 type FormState = Partial<Record<keyof ProjeDetayValues, string>>;
+
+// canSeeFiyat false ise sayfa fiyat alanlarını objeden çıkarıp gönderiyor.
+type ProjeDetayProje = Omit<ProjeTakip, ProjeFiyatAlani> &
+  Partial<Pick<ProjeTakip, ProjeFiyatAlani>>;
 
 function tarihStr(d: Date | null | undefined): string {
   return d ? d.toISOString().slice(0, 10) : "";
@@ -30,7 +38,7 @@ function sayiStr(n: { toString(): string } | number | null | undefined): string 
   return n === null || n === undefined ? "" : String(n);
 }
 
-function baslangicDegerleri(proje: ProjeTakip | null): FormState {
+function baslangicDegerleri(proje: ProjeDetayProje | null): FormState {
   if (!proje) {
     return { yil: String(new Date().getFullYear()) };
   }
@@ -92,10 +100,12 @@ export function ProjeDetayForm({
   proje,
   projeSorumlusuAdi,
   muhendisler,
+  canSeeFiyat,
 }: {
-  proje: ProjeTakip | null;
+  proje: ProjeDetayProje | null;
   projeSorumlusuAdi: string;
   muhendisler: MuhendislikKisi[];
+  canSeeFiyat: boolean;
 }) {
   const router = useRouter();
   const yeniMi = proje === null;
@@ -128,13 +138,20 @@ export function ProjeDetayForm({
     }
     setHatalar({});
 
+    // canSeeFiyat=false ise fiyat alanları hiç gönderilmez - form onları zaten
+    // göstermiyor, sunucu da yok sayıyor; payload'a da sızmasın.
+    const gonderilecek: Partial<ProjeDetayValues> = { ...sonuc.data };
+    if (!canSeeFiyat) {
+      for (const alan of PROJE_FIYAT_ALANLARI) delete gonderilecek[alan];
+    }
+
     setGonderiliyor(true);
     try {
       if (yeniMi) {
         const res = await fetch("/api/proje-takip/create", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(sonuc.data),
+          body: JSON.stringify(gonderilecek),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data?.error ?? "Kayıt oluşturulamadı");
@@ -145,7 +162,7 @@ export function ProjeDetayForm({
       const res = await fetch(`/api/proje-takip/${proje.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(sonuc.data),
+        body: JSON.stringify(gonderilecek),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error ?? "Kayıt güncellenemedi");
@@ -411,33 +428,37 @@ export function ProjeDetayForm({
               <label className="text-sm font-medium">Lokasyon</label>
               <Input value={values.lokasyon ?? ""} onChange={(e) => alanGuncelle("lokasyon", e.target.value)} />
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-sm font-medium">Birim Fiyat</label>
-                <Input type="number" step="0.01" value={values.birimFiyat ?? ""} onChange={(e) => alanGuncelle("birimFiyat", e.target.value)} />
-              </div>
-              <div>
-                <label className="text-sm font-medium">Para Birimi</label>
-                <Select value={values.birimFiyatParaBirimi} onValueChange={(v) => alanGuncelle("birimFiyatParaBirimi", v)}>
-                  <SelectTrigger><SelectValue placeholder="Seçin" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="EUR">EUR</SelectItem>
-                    <SelectItem value="USD">USD</SelectItem>
-                    <SelectItem value="TRY">TRY</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-sm font-medium">Hedef/Yıllık</label>
-                <Input type="number" value={values.hedefYillik ?? ""} onChange={(e) => alanGuncelle("hedefYillik", e.target.value)} />
-              </div>
-              <div>
-                <label className="text-sm font-medium">Kalıp Tutar</label>
-                <Input type="number" value={values.kalipTutar ?? ""} onChange={(e) => alanGuncelle("kalipTutar", e.target.value)} />
-              </div>
-            </div>
+            {canSeeFiyat && (
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-sm font-medium">Birim Fiyat</label>
+                    <Input type="number" step="0.01" value={values.birimFiyat ?? ""} onChange={(e) => alanGuncelle("birimFiyat", e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">Para Birimi</label>
+                    <Select value={values.birimFiyatParaBirimi} onValueChange={(v) => alanGuncelle("birimFiyatParaBirimi", v)}>
+                      <SelectTrigger><SelectValue placeholder="Seçin" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="EUR">EUR</SelectItem>
+                        <SelectItem value="USD">USD</SelectItem>
+                        <SelectItem value="TRY">TRY</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-sm font-medium">Hedef/Yıllık</label>
+                    <Input type="number" value={values.hedefYillik ?? ""} onChange={(e) => alanGuncelle("hedefYillik", e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">Kalıp Tutar</label>
+                    <Input type="number" value={values.kalipTutar ?? ""} onChange={(e) => alanGuncelle("kalipTutar", e.target.value)} />
+                  </div>
+                </div>
+              </>
+            )}
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-sm font-medium">Kick Off/Statü</label>
@@ -448,40 +469,44 @@ export function ProjeDetayForm({
                 <Input value={values.poKalip ?? ""} onChange={(e) => alanGuncelle("poKalip", e.target.value)} />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-sm font-medium">Prototip Fiyatı</label>
-                <Input type="number" step="0.01" value={values.prototipFiyati ?? ""} onChange={(e) => alanGuncelle("prototipFiyati", e.target.value)} />
-              </div>
-              <div>
-                <label className="text-sm font-medium">Para Birimi</label>
-                <Select value={values.prototipParaBirimi} onValueChange={(v) => alanGuncelle("prototipParaBirimi", v)}>
-                  <SelectTrigger><SelectValue placeholder="Seçin" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="EUR">EUR</SelectItem>
-                    <SelectItem value="USD">USD</SelectItem>
-                    <SelectItem value="TRY">TRY</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-sm font-medium">NRE</label>
-                <Input type="number" step="0.01" value={values.nre ?? ""} onChange={(e) => alanGuncelle("nre", e.target.value)} />
-              </div>
-              <div>
-                <label className="text-sm font-medium">NRE Para Birimi</label>
-                <Select value={values.nreParaBirimi} onValueChange={(v) => alanGuncelle("nreParaBirimi", v)}>
-                  <SelectTrigger><SelectValue placeholder="Seçin" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="EUR">EUR</SelectItem>
-                    <SelectItem value="USD">USD</SelectItem>
-                    <SelectItem value="TRY">TRY</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
+            {canSeeFiyat && (
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-sm font-medium">Prototip Fiyatı</label>
+                    <Input type="number" step="0.01" value={values.prototipFiyati ?? ""} onChange={(e) => alanGuncelle("prototipFiyati", e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">Para Birimi</label>
+                    <Select value={values.prototipParaBirimi} onValueChange={(v) => alanGuncelle("prototipParaBirimi", v)}>
+                      <SelectTrigger><SelectValue placeholder="Seçin" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="EUR">EUR</SelectItem>
+                        <SelectItem value="USD">USD</SelectItem>
+                        <SelectItem value="TRY">TRY</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-sm font-medium">NRE</label>
+                    <Input type="number" step="0.01" value={values.nre ?? ""} onChange={(e) => alanGuncelle("nre", e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">NRE Para Birimi</label>
+                    <Select value={values.nreParaBirimi} onValueChange={(v) => alanGuncelle("nreParaBirimi", v)}>
+                      <SelectTrigger><SelectValue placeholder="Seçin" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="EUR">EUR</SelectItem>
+                        <SelectItem value="USD">USD</SelectItem>
+                        <SelectItem value="TRY">TRY</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </>
+            )}
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-sm font-medium">Kickoff CW / Yıl</label>

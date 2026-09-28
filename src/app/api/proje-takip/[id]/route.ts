@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/auth/require-user";
 import { prisma } from "@/lib/prisma";
 import { projeDetaySchema } from "@/app/api/proje-takip/_lib/proje-detay-schema";
 import { projeDetayAlanlari } from "@/app/api/proje-takip/_lib/proje-detay-map";
+import { resolveCanSeeProjeFiyat } from "@/lib/proje-takip/can-see-fiyat.server";
 
 export const dynamic = "force-dynamic";
 
@@ -33,11 +34,12 @@ export async function PATCH(
   }
 
   const v = sonuc.data;
+  const canSeeFiyat = await resolveCanSeeProjeFiyat(user);
 
   const guncellenen = await prisma.projeTakip.update({
     where: { id },
     data: {
-      ...projeDetayAlanlari(v),
+      ...projeDetayAlanlari(v, { canSeeFiyat }),
       durum: v.durum,
     },
   });

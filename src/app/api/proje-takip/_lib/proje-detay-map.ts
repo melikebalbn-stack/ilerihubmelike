@@ -1,16 +1,22 @@
 import { hesaplaYilHafta } from "@/lib/proje-takip/tarih-hesapla";
+import { PROJE_FIYAT_ALANLARI } from "@/lib/proje-takip/can-see-fiyat";
 import type { ProjeDetayValues } from "./proje-detay-schema";
 
 // create/route.ts (POST) ve [id]/route.ts (PATCH) aynı tam alan setini
 // yazıyor - tek kaynak burada, iki route'un birbirinden sapmasını önler.
 // undefined = Prisma o alana dokunmaz (PATCH'te "değiştirme" anlamına gelir;
 // create'te zaten tüm alanlar create data'sında ilk kez set ediliyor).
-export function projeDetayAlanlari(v: ProjeDetayValues) {
+// canSeeFiyat false ise fiyat alanları undefined'a çekilir — body'de gelse bile
+// yazılmaz, mevcut değer korunur (bkz. can-see-fiyat.ts).
+export function projeDetayAlanlari(
+  v: ProjeDetayValues,
+  { canSeeFiyat }: { canSeeFiyat: boolean }
+) {
   const rfpHesap = hesaplaYilHafta(v.rfpTarih);
   const sevkiyatHesap = hesaplaYilHafta(v.sevkiyatTrh);
   const onayHesap = hesaplaYilHafta(v.onayTrh);
 
-  return {
+  const alanlar = {
     // ── Proje Bilgileri (satış) ──
     musteriFirma: v.musteriFirma,
     musteriYetkilisi: v.musteriYetkilisi,
@@ -66,4 +72,9 @@ export function projeDetayAlanlari(v: ProjeDetayValues) {
     poOngCW: v.poOngCW,
     poOngYil: v.poOngYil,
   };
+
+  if (!canSeeFiyat) {
+    for (const alan of PROJE_FIYAT_ALANLARI) alanlar[alan] = undefined;
+  }
+  return alanlar;
 }

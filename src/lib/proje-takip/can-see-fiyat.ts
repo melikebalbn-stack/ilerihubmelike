@@ -1,63 +1,54 @@
-import { prisma } from "@/lib/prisma";
 import { normalizeTr } from "@/lib/normalize-tr";
 
 /**
- * Şu an kullanılmıyor - Nurgül'ün kararıyla fiyat görünürlüğü herkese açık
- * (2026-09-24). İleride kısıtlama gerekirse bu helper tekrar route'lara
- * bağlanabilir.
+ * Proje Takip fiyat görünürlüğü — Melih Bey'in iş kuralı (2026-09-28).
+ * Sadece ADMIN/SUPER_ADMIN ve aşağıdaki bölümler fiyat alanlarını görür/yazar.
+ * Kural sunucu tarafında uygulanır (sayfa verisi + create/PATCH data'sı);
+ * UI'da gizlemek tek başına yeterli değil.
  *
- * Melih Bey'in orijinal tasarımından sapma var — bkz. docs/proje-takip/SCHEMA-DIFF-MELIH.md
- * ("canSeeProjeFiyat" notu). "Yönetim" departman olarak DB'de karşılığı
- * olmadığı için GENEL MÜDÜRLÜK + unvanında "müdür" geçen herkes olarak
- * yeniden tanımlandı (Nurgül onayladı, Melih Bey'e ayrıca bildirilecek).
+ * İleride eklenecek rapor fiyat özetleri ve Excel/PDF export da bu kurala tabidir.
  *
- * DİKKAT (çağıran taraf): requireUser() varsayılan olarak Personnel'i
- * include ETMEZ — user.personnel'i sağlamak çağıranın sorumluluğu
- * (örn. prisma.user.findUnique({ include: { personnel: { select: { bolum: true, gorev: true } } } })).
+ * Bu dosya SAF ve client-safe (Prisma/DB import'u YOK) — client component'ler
+ * (ProjeDetayForm) buradan import ediyor. DB'den Personnel çeken
+ * resolveCanSeeProjeFiyat() → can-see-fiyat.server.ts.
  */
 
 const FIYAT_GORUNUR_BOLUMLER = [
   "Mühendislik Müdürlüğü",
-  "Satış & Pazarlama Müdürlüğü", // SADECE bu yazım - "SATIŞ PAZARLAMA MÜDÜRLÜĞÜ" (büyük harfli) bilinçli DAHİL DEĞİL
-  "GENEL MÜDÜRLÜK",
+  "Satış & Pazarlama Müdürlüğü",
+  "GENEL MÜDÜRLÜK", // "Yönetim" - DB'de bu isimle yok, daha önce canlı sorguyla doğrulanmış en yakın karşılık
 ] as const;
 
-// Bölüm/unvan kuralına girmeyen ama erişimi onaylanan isimler (2026-09-22, Nurgül + Melih Bey).
-const FIYAT_GORUNUR_EK_KISILER = [
-  "Azra İleri",
+// Kısıta tabi alanlar — tek kaynak (sayfa, form ve create/PATCH map'i bunu kullanır).
+export const PROJE_FIYAT_ALANLARI = [
+  "prototipFiyati",
+  "prototipParaBirimi",
+  "nre",
+  "nreParaBirimi",
+  "birimFiyat",
+  "birimFiyatParaBirimi",
+  "hedefYillik",
+  "kalipTutar",
 ] as const;
 
-type ProjeFiyatKullanici = {
+export type ProjeFiyatAlani = (typeof PROJE_FIYAT_ALANLARI)[number];
+
+export type ProjeFiyatKullanici = {
   role: string;
-  personnel: { bolum: string | null; gorev: string | null; adSoyad: string | null } | null;
+  personnel: { bolum: string | null } | null;
 };
 
 export function canSeeProjeFiyat(user: ProjeFiyatKullanici): boolean {
   if (user.role === "SUPER_ADMIN" || user.role === "ADMIN") return true;
-
   const bolum = normalizeTr(user.personnel?.bolum ?? "");
-  if (FIYAT_GORUNUR_BOLUMLER.some((b) => normalizeTr(b) === bolum)) return true;
-
-  const gorev = normalizeTr(user.personnel?.gorev ?? "");
-  if (gorev.includes(normalizeTr("müdür"))) return true;
-
-  const adSoyad = normalizeTr(user.personnel?.adSoyad ?? "");
-  if (FIYAT_GORUNUR_EK_KISILER.some((k) => normalizeTr(k) === adSoyad)) return true;
-
-  return false;
+  return FIYAT_GORUNUR_BOLUMLER.some((b) => normalizeTr(b) === bolum);
 }
 
-// Çağıran taraf için ortak yardımcı: requireUser()'ın döndürdüğü user'da
-// personnel gelmediği için Personnel'i burada ayrıca çekiyor.
-export async function resolveCanSeeProjeFiyat(user: {
-  role: string;
-  personnelId: string | null;
-}): Promise<boolean> {
-  const personnel = user.personnelId
-    ? await prisma.personnel.findUnique({
-        where: { id: user.personnelId },
-        select: { bolum: true, gorev: true, adSoyad: true },
-      })
-    : null;
-  return canSeeProjeFiyat({ role: user.role, personnel });
+// Fiyat alanlarını objeden tamamen çıkarır (null değil, key'in kendisi gitmez).
+export function fiyatAlanlariniCikar<T extends Record<string, unknown>>(
+  obj: T
+): Omit<T, ProjeFiyatAlani> {
+  const kopya: Record<string, unknown> = { ...obj };
+  for (const alan of PROJE_FIYAT_ALANLARI) delete kopya[alan];
+  return kopya as Omit<T, ProjeFiyatAlani>;
 }

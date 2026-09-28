@@ -17,6 +17,9 @@ function durumRozetSinifi(durum: string | null): string {
 
 const ANA_RENK = "#1B4F72";
 
+// Şu an raporda fiyat toplamı/özeti YOK. İleride eklenirse fiyat görünürlük
+// kuralına tabidir: resolveCanSeeProjeFiyat() false ise fiyat verisi sorgulanmamalı
+// ve gösterilmemeli (bkz. src/lib/proje-takip/can-see-fiyat.ts + can-see-fiyat.server.ts).
 async function getRaporVerisi() {
   const toplam = await prisma.projeTakip.count();
 

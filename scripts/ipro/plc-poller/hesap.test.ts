@@ -183,15 +183,30 @@ describe('sayacIsle — kalıcı değerden (sonDeger) restart kurtarma', () => {
   })
 
   it('SÜREÇ YENİDEN BAŞLAMASI kalıcı değerden kayıpsız devam eder', () => {
-    // 1. süreç: 100→103→105 üret, son güvenilir prev=105 kalıcıya yazılır.
+    // 1. süreç: 100→103→105 üret. sonDeger, delta ile ATOMİK yazıldığı için son kredilendirilen mutlak=105.
     let prev: number | undefined
     for (const cur of [100, 103, 105]) prev = sayacIsle({ prev, cur, baselineTazele: false, blokGecersiz: false }).yeniPrev
-    const kalici = prev! // = 105 (persistDurum bunu yazar)
+    const kalici = prev! // = 105 (faz2DeltaYaz delta insert'iyle aynı transaction'da yazdı)
     expect(kalici).toBe(105)
     // 2. süreç (restart): prev sıfırlanır, sonDeger=kalıcı; PLC bu arada 108'e çıkmış.
     const r = sayacIsle({ prev: undefined, cur: 108, baselineTazele: false, blokGecersiz: false, sonDeger: kalici, deltaMakulUst: MAKUL })
     expect(r.olay).toBe('gap-kurtarma')
     expect(r.delta).toBe(3) // 105→108 restart boşluğu — KAYIP YOK
+  })
+
+  it('ÇİFT SAYIM 0: son delta kredilendi (sonDeger=105) + süreç öldü + cur hâlâ 105 → restart delta 0', () => {
+    // Kusurun özü: sonDeger LEDGER'a kredilendirilen son mutlakla ATOMİK olduğundan çökmede geride kalmaz.
+    // Restart seed'i tam kredilendirilen yerden başlar → son tur İKİNCİ KEZ SAYILMAZ.
+    const r = sayacIsle({ prev: undefined, cur: 105, baselineTazele: false, blokGecersiz: false, sonDeger: 105, deltaMakulUst: MAKUL })
+    expect(r.delta).toBe(0) // çift sayım YOK
+    expect(r.olay).toBe('normal')
+  })
+
+  it('RED sonDeger\'i İLERLETMEZ: reddedilen turda ledger yazılmaz → sonDeger değişmez → çift sayım yok', () => {
+    // gap-buyuk-atlandi: delta 0 (kredilenmez). Kural: red → sonDeger değişmez (faz2DeltaYaz yalnız delta>0 pini yazar).
+    const r = sayacIsle({ prev: undefined, cur: 163072, baselineTazele: false, blokGecersiz: false, sonDeger: 637, deltaMakulUst: MAKUL })
+    expect(r.delta).toBe(0)
+    expect(r.olay).toBe('gap-buyuk-atlandi') // ledger'a yazılmaz → sonDeger 637'de kalır (upsert tetiklenmez)
   })
 })
 

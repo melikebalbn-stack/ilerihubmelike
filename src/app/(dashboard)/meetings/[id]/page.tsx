@@ -297,6 +297,21 @@ export default function MeetingDetailPage({ params }: { params: Promise<{ id: st
     }
   }
 
+  /**
+   * Sunucunun döndüğü hata mesajını okur. Uçlar artık FK/enum/doğrulama
+   * hatalarını 400 + anlaşılır Türkçe mesajla döndürüyor; sabit metin
+   * göstermek o bilgiyi çöpe atıyordu ("Karar eklenemedi" — neden?).
+   * Gövde okunamazsa (HTML hata sayfası, boş yanıt) yedek metne düşer.
+   */
+  const sunucuHatasi = async (res: Response, yedek: string): Promise<string> => {
+    try {
+      const j = await res.json()
+      return typeof j?.error === "string" && j.error ? j.error : yedek
+    } catch {
+      return yedek
+    }
+  }
+
   const updateMeetingStatus = async (newStatus: string) => {
     try {
       const res = await fetch(`/api/meetings/${resolvedParams.id}`, {
@@ -309,7 +324,7 @@ export default function MeetingDetailPage({ params }: { params: Promise<{ id: st
         toast.success("Toplanti durumu guncellendi")
         fetchMeeting()
       } else {
-        toast.error("Durum guncellenemedi")
+        toast.error(await sunucuHatasi(res, "Durum guncellenemedi"))
       }
     } catch (error) {
       console.error("Durum guncellenirken hata:", error)
@@ -335,7 +350,7 @@ export default function MeetingDetailPage({ params }: { params: Promise<{ id: st
         setEditingNotes(false)
         fetchMeeting()
       } else {
-        toast.error("Notlar kaydedilemedi")
+        toast.error(await sunucuHatasi(res, "Notlar kaydedilemedi"))
       }
     } catch (error) {
       console.error("Notlar kaydedilirken hata:", error)
@@ -357,7 +372,7 @@ export default function MeetingDetailPage({ params }: { params: Promise<{ id: st
         toast.success("Katilim durumu guncellendi")
         fetchMeeting()
       } else {
-        toast.error("Katilim durumu guncellenemedi")
+        toast.error(await sunucuHatasi(res, "Katilim durumu guncellenemedi"))
       }
     } catch (error) {
       console.error("Katilim durumu guncellenirken hata:", error)
@@ -397,7 +412,7 @@ export default function MeetingDetailPage({ params }: { params: Promise<{ id: st
         setEditingAgendaId(null)
         fetchMeeting()
       } else {
-        toast.error("Gundem maddesi guncellenemedi")
+        toast.error(await sunucuHatasi(res, "Gundem maddesi guncellenemedi"))
       }
     } catch (error) {
       console.error("Gundem maddesi guncellenirken hata:", error)
@@ -419,7 +434,9 @@ export default function MeetingDetailPage({ params }: { params: Promise<{ id: st
         body: JSON.stringify({
           title: newDecisionTitle,
           description: newDecisionDescription || null,
-          responsibleId: newDecisionResponsible?.id || null,
+          // Seçicinin `id`'si LDAP kaynağında User.id DEĞİL (distinguishedName /
+          // ldap_<user>) — e-posta gönderilir, uç User.id'ye çevirir.
+          responsibleEmail: newDecisionResponsible?.email || null,
           dueDate: newDecisionDueDate
             ? new Date(newDecisionDueDate).toISOString()
             : null,
@@ -437,7 +454,7 @@ export default function MeetingDetailPage({ params }: { params: Promise<{ id: st
         setNewDecisionPriority("MEDIUM")
         fetchMeeting()
       } else {
-        toast.error("Karar eklenemedi")
+        toast.error(await sunucuHatasi(res, "Karar eklenemedi"))
       }
     } catch (error) {
       console.error("Karar eklenirken hata:", error)
@@ -459,7 +476,7 @@ export default function MeetingDetailPage({ params }: { params: Promise<{ id: st
         toast.success("Tutanak onaylandi")
         fetchMeeting()
       } else {
-        toast.error("Tutanak onaylanamadi")
+        toast.error(await sunucuHatasi(res, "Tutanak onaylanamadi"))
       }
     } catch (error) {
       console.error("Tutanak onaylanirken hata:", error)

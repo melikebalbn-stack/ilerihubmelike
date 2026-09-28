@@ -8130,7 +8130,11 @@ model MeetingDecision {
 
   // Karar detayları
   title       String
-  description String @db.Text
+  /// 28.09.2026: NULLABLE yapildi. Modalda "Aciklama" yildizsiz (opsiyonel
+  /// gorunuyor) ama uc + sema zorunlu tutuyordu; kullanici bos birakinca
+  /// "Karar eklenemedi" 400'u aliyor, sebebini goremiyordu. Mevcut satirlar
+  /// dolu, migration additive.
+  description String? @db.Text
 
   // Sorumlu
   responsibleId   String?

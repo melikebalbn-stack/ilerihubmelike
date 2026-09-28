@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireSession } from '@/lib/auth/require-session'
+import { toplantiKullaniciIdCoz } from '@/lib/meetings/kullanici-coz'
+import {
+  toplantiHataYaniti, enumDogrula, KARAR_ONCELIKLERI, KARAR_DURUMLARI,
+} from '@/lib/meetings/hata'
 
 // Karar numarası oluştur
 async function generateDecisionNumber(meetingId: string): Promise<string> {
@@ -35,18 +39,32 @@ export async function POST(
     const {
       title,
       description,
+      responsibleEmail,
       responsibleId,
       responsibleName,
       dueDate,
       priority = 'MEDIUM'
     } = body
 
-    if (!title || !description) {
+    // Açıklama ARTIK OPSİYONEL: modalda yıldızsız görünüyordu ama uç zorunlu
+    // tutuyordu; kullanıcı boş bırakınca sebebini göremeden 400 alıyordu.
+    if (!title) {
       return NextResponse.json(
-        { error: 'Karar başlığı ve açıklaması zorunludur' },
+        { error: 'Karar başlığı zorunludur' },
         { status: 400 }
       )
     }
+
+    const oncelikKontrol = enumDogrula('priority', priority, KARAR_ONCELIKLERI)
+    if (!oncelikKontrol.ok) return oncelikKontrol.yanit
+
+    // Sorumlu: e-posta → User.id. Seçici LDAP kaynağında User.id DÖNDÜRMEZ
+    // (distinguishedName / ldap_<user>) — ham değer MeetingDecision_responsibleId_fkey
+    // ihlaline yol açıyordu. Çözülemezse null, istek patlamaz.
+    const cozulmusResponsibleId = await toplantiKullaniciIdCoz(
+      prisma,
+      responsibleEmail ?? responsibleId,
+    )
 
     const decisionNumber = await generateDecisionNumber(meetingId)
 
@@ -55,8 +73,8 @@ export async function POST(
         meetingId,
         decisionNumber,
         title,
-        description,
-        responsibleId: responsibleId || null,
+        description: description || null,
+        responsibleId: cozulmusResponsibleId,
         responsibleName: responsibleName || null,
         dueDate: dueDate ? new Date(dueDate) : null,
         priority,
@@ -71,8 +89,7 @@ export async function POST(
 
     return NextResponse.json(decision, { status: 201 })
   } catch (error) {
-    console.error('Karar eklenirken hata:', error)
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })
+    return toplantiHataYaniti('decisions/POST', error)
   }
 }
 
@@ -94,6 +111,7 @@ export async function PUT(
       decisionId,
       title,
       description,
+      responsibleEmail,
       responsibleId,
       responsibleName,
       dueDate,
@@ -106,10 +124,19 @@ export async function PUT(
       return NextResponse.json({ error: 'Karar ID gerekli' }, { status: 400 })
     }
 
+    const oncelikKontrol = enumDogrula('priority', priority, KARAR_ONCELIKLERI)
+    if (!oncelikKontrol.ok) return oncelikKontrol.yanit
+    const durumKontrol = enumDogrula('status', status, KARAR_DURUMLARI)
+    if (!durumKontrol.ok) return durumKontrol.yanit
+
     const updateData: Record<string, unknown> = {}
     if (title !== undefined) updateData.title = title
-    if (description !== undefined) updateData.description = description
-    if (responsibleId !== undefined) updateData.responsibleId = responsibleId || null
+    // Açıklama nullable — boş gönderilirse temizlenir.
+    if (description !== undefined) updateData.description = description || null
+    // POST ile AYNI çözüm (e-posta önce, legacy id varlık kontrolünden geçer).
+    if (responsibleEmail !== undefined || responsibleId !== undefined) {
+      updateData.responsibleId = await toplantiKullaniciIdCoz(prisma, responsibleEmail ?? responsibleId)
+    }
     if (responsibleName !== undefined) updateData.responsibleName = responsibleName
     if (dueDate !== undefined) updateData.dueDate = dueDate ? new Date(dueDate) : null
     if (priority !== undefined) updateData.priority = priority
@@ -135,8 +162,7 @@ export async function PUT(
 
     return NextResponse.json(decision)
   } catch (error) {
-    console.error('Karar güncellenirken hata:', error)
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })
+    return toplantiHataYaniti('decisions/PUT', error)
   }
 }
 
@@ -163,7 +189,6 @@ export async function DELETE(
 
     return NextResponse.json({ message: 'Karar silindi' })
   } catch (error) {
-    console.error('Karar silinirken hata:', error)
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })
+    return toplantiHataYaniti('decisions/DELETE', error)
   }
 }

@@ -85,3 +85,28 @@ export const TOPLANTI_TURLERI = [
 export const TOPLANTI_DURUMLARI = [
   'PLANNED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'POSTPONED',
 ] as const
+
+// ── Karar ve katılımcı enum'ları (28.09.2026) ──
+// Uçlar bu değerleri doğrulamadan Prisma'ya geçiriyordu; geçersiz değer
+// PrismaClientValidationError ile 500 oluyordu. Listeler şemadan birebir.
+
+/** MeetingPriority — karar önceliği. */
+export const KARAR_ONCELIKLERI = ['LOW', 'MEDIUM', 'HIGH', 'URGENT'] as const
+
+/** DecisionStatus — karar durumu. */
+export const KARAR_DURUMLARI = [
+  'PENDING', 'IN_PROGRESS', 'COMPLETED', 'OVERDUE', 'CANCELLED',
+] as const
+
+/** InviteStatus — davet yanıtı. */
+export const DAVET_DURUMLARI = ['PENDING', 'ACCEPTED', 'DECLINED', 'TENTATIVE'] as const
+
+/** AttendanceStatus — katılım durumu. */
+export const KATILIM_DURUMLARI = [
+  'UNKNOWN', 'PRESENT', 'ABSENT', 'LATE', 'LEFT_EARLY', 'EXCUSED',
+] as const
+
+/** AttendeeRole — katılımcı rolü. */
+export const KATILIMCI_ROLLERI = [
+  'CHAIRMAN', 'RAPPORTEUR', 'PRESENTER', 'PARTICIPANT', 'OBSERVER', 'GUEST',
+] as const

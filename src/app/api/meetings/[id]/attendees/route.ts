@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireSession } from '@/lib/auth/require-session'
+import { toplantiKullaniciIdCoz } from '@/lib/meetings/kullanici-coz'
+import {
+  toplantiHataYaniti, enumDogrula, KATILIMCI_ROLLERI, DAVET_DURUMLARI, KATILIM_DURUMLARI,
+} from '@/lib/meetings/hata'
 
 // POST - Katılımcı ekle
 export async function POST(
@@ -45,6 +49,9 @@ export async function POST(
       )
     }
 
+    const rolKontrol = enumDogrula('role', role, KATILIMCI_ROLLERI)
+    if (!rolKontrol.ok) return rolKontrol.yanit
+
     // Email'den database ID'ye çevir
     let resolvedUserId: string | null = null
     let fallbackName: string | null = null // DB'de yoksa LDAP adını sakla
@@ -69,7 +76,11 @@ export async function POST(
         if (userJobTitle) fallbackTitle = userJobTitle
       }
     } else if (userId) {
-      resolvedUserId = userId
+      // GİZLİ RİSK kapatıldı (28.09.2026): bu dal ham `userId`'yi VARLIK
+      // KONTROLÜ OLMADAN yazıyordu. LDAP kaynaklı bir id gelirse
+      // MeetingAttendee_userId_fkey ihlali olurdu — presenterId/responsibleId
+      // ile aynı desen. Artık ortak çözücüden geçiyor.
+      resolvedUserId = await toplantiKullaniciIdCoz(prisma, userId)
     }
 
     // Dahili kullanıcı zaten ekli mi kontrol et
@@ -113,8 +124,7 @@ export async function POST(
 
     return NextResponse.json(attendee, { status: 201 })
   } catch (error) {
-    console.error('Katılımcı eklenirken hata:', error)
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })
+    return toplantiHataYaniti('attendees/POST', error)
   }
 }
 
@@ -143,6 +153,13 @@ export async function PUT(
       return NextResponse.json({ error: 'Katılımcı ID gerekli' }, { status: 400 })
     }
 
+    const davetKontrol = enumDogrula('inviteStatus', inviteStatus, DAVET_DURUMLARI)
+    if (!davetKontrol.ok) return davetKontrol.yanit
+    const katilimKontrol = enumDogrula('attendanceStatus', attendanceStatus, KATILIM_DURUMLARI)
+    if (!katilimKontrol.ok) return katilimKontrol.yanit
+    const putRolKontrol = enumDogrula('role', role, KATILIMCI_ROLLERI)
+    if (!putRolKontrol.ok) return putRolKontrol.yanit
+
     const updateData: Record<string, unknown> = {}
     if (inviteStatus !== undefined) updateData.inviteStatus = inviteStatus
     if (attendanceStatus !== undefined) updateData.attendanceStatus = attendanceStatus
@@ -163,8 +180,7 @@ export async function PUT(
 
     return NextResponse.json(attendee)
   } catch (error) {
-    console.error('Katılımcı güncellenirken hata:', error)
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })
+    return toplantiHataYaniti('attendees/PUT', error)
   }
 }
 
@@ -191,7 +207,6 @@ export async function DELETE(
 
     return NextResponse.json({ message: 'Katılımcı silindi' })
   } catch (error) {
-    console.error('Katılımcı silinirken hata:', error)
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })
+    return toplantiHataYaniti('attendees/DELETE', error)
   }
 }

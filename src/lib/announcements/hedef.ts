@@ -4,11 +4,13 @@ import type { PrismaClient } from "@/generated/prisma";
 /**
  * Duyuru hedef-kitle (departman) eşleşmesi — TEK KAYNAK.
  *
- * Sorun: form departman seçicisi "Sistem Geliştirme" (DepartmentDefinition/OrgUnit
- * taksonomisi) yazıyor; User.department Azure AD metni ("Sistem Geliştirme
- * Departmanı", "SİSTEM GELİŞTİRME MÜDÜRLÜĞÜ" varyantları). Tam-metin karşılaştırma
- * tutmuyordu → audience 0 → ne popup ne push. Çözüm: normalizeTr + sondaki
- * kurumsal ek ("departmanı/müdürlüğü/bölümü") soyularak karşılaştır.
+ * Sorun 1: form "Sistem Geliştirme" yazıyor; departman metni "…Departmanı/
+ * Müdürlüğü" varyantlı. Çözüm: normalizeTr + kurumsal ek ("departmanı/müdürlüğü/
+ * bölümü") soyularak karşılaştır (bolumEsit).
+ * Sorun 2 (28.09): eşleşme User.department (Azure) üzerinden yapılıyordu; bazı
+ * personelde Azure department BOŞ (ör. Nursel Micik) → hedefte olsa da bildirim/
+ * popup ALMIYORDU. Çözüm: KAYNAK = Personnel.bolum (HR master, dolu; atama
+ * modülüyle aynı kaynak). User.department yalnız fallback.
  */
 
 // normalizeTr sonrası (küçük + Türkçe harf sadeleştirme) kurumsal ekler.
@@ -37,27 +39,40 @@ export function bolumEsit(a: string | null | undefined, b: string | null | undef
 }
 
 /**
- * Bir kullanıcının departmanıyla eşleşen TÜM hedef-departman string'leri
+ * Bir kullanıcının bölümüyle eşleşen TÜM hedef-departman string'leri
  * (DB'deki DEPARTMENTS duyurularının targetDepartments değerlerinden). Route'lar
  * bunu `targetDepartments hasSome <liste>` ile kullanır → pagination korunur,
- * tam-metin karşılaştırma kalmaz.
+ * tam-metin karşılaştırma kalmaz. `userBolum` = Personnel.bolum (fallback User.department).
  */
 export async function eslesenHedefBolumler(
   prisma: Pick<PrismaClient, "announcement">,
-  userDepartment: string | null | undefined
+  userBolum: string | null | undefined
 ): Promise<string[]> {
-  if (!userDepartment) return [];
+  if (!userBolum) return [];
   const rows = await prisma.announcement.findMany({
     where: { targetType: "DEPARTMENTS" },
     select: { targetDepartments: true },
   });
   const all = new Set<string>();
   for (const r of rows) for (const d of r.targetDepartments) all.add(d);
-  return [...all].filter((d) => bolumEsit(d, userDepartment));
+  return [...all].filter((d) => bolumEsit(d, userBolum));
+}
+
+/** Kullanıcının bölümü: Personnel.bolum (HR master) öncelikli, User.department fallback. */
+export async function kullaniciBolumu(
+  prisma: Pick<PrismaClient, "user">,
+  userId: string
+): Promise<string | null> {
+  const u = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { department: true, personnel: { select: { bolum: true } } },
+  });
+  return u?.personnel?.bolum ?? u?.department ?? null;
 }
 
 /**
  * Hedef departmanlarla eşleşen aktif kullanıcı id'leri (notify audience için).
+ * KAYNAK = Personnel.bolum (Azure User.department boş olabilir → hedef kaçardı).
  * Aday kullanıcılar çekilip JS'te bolumEsit ile süzülür (kullanıcı sayısı küçük).
  */
 export async function eslesenKullaniciIdleri(
@@ -70,12 +85,15 @@ export async function eslesenKullaniciIdleri(
     where: {
       isActive: true,
       email: { not: "" },
-      department: { not: null },
+      personnel: { is: { aktif: true } },
       ...(opts?.excludeUserId ? { id: { not: opts.excludeUserId } } : {}),
     },
-    select: { id: true, department: true },
+    select: { id: true, department: true, personnel: { select: { bolum: true } } },
   });
   return users
-    .filter((u) => targetDepartments.some((td) => bolumEsit(td, u.department)))
+    .filter((u) => {
+      const bolum = u.personnel?.bolum ?? u.department;
+      return targetDepartments.some((td) => bolumEsit(td, bolum));
+    })
     .map((u) => u.id);
 }

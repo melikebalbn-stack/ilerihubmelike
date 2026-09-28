@@ -29,14 +29,13 @@ export async function resolveAudienceUserIds(
   const base = {
     isActive: true,
     email: { not: "" },
-    id: { not: ann.authorId }, // yazara kendi duyurusu gitmez
+    // 28.09: yazar-hariç kaldırıldı — yayınlayan da (test eden admin dahil) kendi
+    // duyurusunun in-app+push'unu alır; hedef kitledeki HERKES bildirilir.
   } as const;
 
   if (ann.targetType === "DEPARTMENTS") {
-    // Tam-metin DEĞİL: aday kullanıcılar çekilip normalize (ek soyma) ile süzülür.
-    return eslesenKullaniciIdleri(prisma, ann.targetDepartments, {
-      excludeUserId: ann.authorId,
-    });
+    // Tam-metin DEĞİL: aday kullanıcılar Personnel.bolum üzerinden normalize süzülür.
+    return eslesenKullaniciIdleri(prisma, ann.targetDepartments);
   }
 
   if (ann.targetType === "ROLES") {

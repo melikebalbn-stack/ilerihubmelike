@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
 import { notifyAnnouncementPublished } from '@/lib/announcements/notify-announcement'
-import { eslesenHedefBolumler } from '@/lib/announcements/hedef'
+import { eslesenHedefBolumler, kullaniciBolumu } from '@/lib/announcements/hedef'
 
 // GET - Duyuruları listele
 export async function GET(request: NextRequest) {
@@ -20,7 +20,6 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get('search')
 
     const userEmail = user.email
-    const userDepartment = user.department
 
     // PR-Y10: saf RBAC, duyuru.admin permission. Admin tüm duyuruları görür
     // (visibility filter bypass), normal user sadece audience'a uygun olanı.
@@ -42,8 +41,8 @@ export async function GET(request: NextRequest) {
 
     // Admin değilse sadece yayınlanmış ve hedef kitlesine uygun duyuruları göster
     if (!isAdmin) {
-      // Hedef departman eşleşmesi normalize (ek soyma) ile — tam-metin DEĞİL.
-      const eslesenBolumler = await eslesenHedefBolumler(prisma, userDepartment)
+      // Hedef departman eşleşmesi normalize (ek soyma) ile; kaynak Personnel.bolum.
+      const eslesenBolumler = await eslesenHedefBolumler(prisma, await kullaniciBolumu(prisma, user.id))
       andConditions.push({ status: 'PUBLISHED' })
       andConditions.push({
         OR: [

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
 import { notifyAnnouncementPublished } from '@/lib/announcements/notify-announcement'
-import { bolumEsit } from '@/lib/announcements/hedef'
+import { bolumEsit, kullaniciBolumu } from '@/lib/announcements/hedef'
 import { viewCountDelta } from '@/lib/announcements/view-count'
 
 // GET - Tek duyuru getir
@@ -82,10 +82,12 @@ export async function GET(
         return NextResponse.json({ error: 'Bu duyuruya erisim yetkiniz yok' }, { status: 403 })
       }
 
-      // Hedef kitle kontrolü — normalize eşleşme (tam-metin DEĞİL)
-      if (announcement.targetType === 'DEPARTMENTS' &&
-          !announcement.targetDepartments.some((d) => bolumEsit(d, userDepartment))) {
-        return NextResponse.json({ error: 'Bu duyuru sizin departmaniniz icin degil' }, { status: 403 })
+      // Hedef kitle kontrolü — normalize eşleşme; kaynak Personnel.bolum (fallback User.department)
+      if (announcement.targetType === 'DEPARTMENTS') {
+        const userBolum = await kullaniciBolumu(prisma, user.id)
+        if (!announcement.targetDepartments.some((d) => bolumEsit(d, userBolum))) {
+          return NextResponse.json({ error: 'Bu duyuru sizin departmaniniz icin degil' }, { status: 403 })
+        }
       }
 
       if (announcement.targetType === 'ROLES' &&

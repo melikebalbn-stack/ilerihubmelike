@@ -238,6 +238,8 @@ model User {
 
   // PR-PERSONNEL-DEPARTMENT-TRANSFER
   recordedDepartmentTransfers PersonnelDepartmentTransfer[] @relation("DepartmentTransferRecorder")
+  actigiBolumTalepleri        BolumDegisiklikTalep[]        @relation("BolumTalepAcan")
+  kararVerdigiBolumTalepleri  BolumDegisiklikTalep[]        @relation("BolumTalepKararVeren")
 
   // KALITE-1: Ölçüm Raporları (back-relations)
   qualitySymbolsCreated       QualitySymbol[]       @relation("QualitySymbolCreatedBy")
@@ -9518,6 +9520,7 @@ model Personnel {
   evaluationEmails              PersonnelEvaluationEmailLog[]
   user                          User?                         @relation("UserPersonnel")
   departmentTransfers           PersonnelDepartmentTransfer[]
+  bolumDegisiklikTalepleri      BolumDegisiklikTalep[]        @relation("BolumTalepPersonel")
   // PR-A: çok-dönem istihdam geçmişi (additive; mevcut iseGirisTarihi/exitDate paralel kalır)
   employmentPeriods             EmploymentPeriod[]
   // OFFB-1: Zimmet İade / İlişik Kesme formları
@@ -9667,6 +9670,10 @@ model PersonnelDepartmentTransfer {
   // PR-PERSONNEL-DEPARTMENT-HISTORY: Excel import işareti
   isHistorical Boolean @default(false)
 
+  // Bölüm Değişikliği Talep Formu'ndan (İV onayı) doğduysa kaynak talep.
+  // NULL: personel kartındaki doğrudan "Bölüm Değiştir" ya da historical import.
+  talep BolumDegisiklikTalep? @relation("TalepTransferi")
+
   // Audit
   kayitEdenId String?
   kayitEden   User?    @relation("DepartmentTransferRecorder", fields: [kayitEdenId], references: [id], onDelete: SetNull)
@@ -9676,6 +9683,75 @@ model PersonnelDepartmentTransfer {
   @@index([transferTarihi])
   @@index([isHistorical])
   @@map("personnel_department_transfer")
+}
+
+// ─── BÖLÜM DEĞİŞİKLİĞİ TALEP FORMU (28.09.2026) ────────────────────────────
+// Müdür / müdür yardımcısı talep açar → İV tek onayla karara bağlar. ONAYLANDI
+// anında mevcut transfer akışı (bolumTransferiUygula) koşar ve buradaki
+// transferId ile bağlanır; REDDEDILDI'de Personnel'e DOKUNULMAZ.
+//
+// İV kendisi TALEP AÇMAZ — onun yolu personel kartındaki doğrudan
+// "Bölüm Değiştir" (POST /api/personnel/[id]/department-transfer) ve o yol
+// AYNEN korunur. Bu tablo yalnız talep→onay akışının kaydı.
+model BolumDegisiklikTalep {
+  id      String @id @default(cuid())
+  talepNo String @unique // BDT-2026-001
+
+  personnelId String
+  personnel   Personnel @relation("BolumTalepPersonel", fields: [personnelId], references: [id], onDelete: Cascade)
+
+  // ── TALEP (müdür / müdür yrd. doldurur) ──
+  acanUserId      String
+  acan            User               @relation("BolumTalepAcan", fields: [acanUserId], references: [id], onDelete: Cascade)
+  acanPersonnelId String? // koltuk sahibi Personnel (FK DEĞİL — sorumluId deseni)
+  acanRol         BolumTalepAcanRol
+  acanBolum       String? // açanın kendi bölümü — snapshot
+  mevcutBolum     String // talep anındaki Personnel.bolum — snapshot
+  hedefBolum      String
+  talepTarihi     DateTime  @default(now())
+  transferTarihi  DateTime? @db.Date // OPSİYONEL — boşsa İV onayda belirler
+
+  gerekceler        String[] // KISI_* / IS_* (department-transfer ile aynı sabitler)
+  gerekceAciklamasi String?  @db.Text
+  gerekceDigerKisi  String?
+  gerekceDigerIs    String?
+
+  // ── KARAR (yalnız İV) ──
+  durum        BolumTalepDurum @default(BEKLIYOR)
+  kararVerenId String?
+  kararVeren   User?           @relation("BolumTalepKararVeren", fields: [kararVerenId], references: [id], onDelete: SetNull)
+  kararTarihi  DateTime?
+  redGerekcesi String?         @db.Text // REDDEDILDI'de zorunlu
+  isgOnayi     TransferOnay? // İV onay ekranında doldurur
+  doktorOnayi  TransferOnay? // "
+
+  transferId String?                      @unique
+  transfer   PersonnelDepartmentTransfer? @relation("TalepTransferi", fields: [transferId], references: [id], onDelete: SetNull)
+
+  // FAZ 2 — personel onayı. Şu an HİÇ yazılmaz, yeri açık bırakıldı.
+  personelOnayi      TransferOnay?
+  personelOnayTarihi DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([durum])
+  @@index([personnelId])
+  @@index([acanUserId])
+  @@index([hedefBolum])
+  @@map("bolum_degisiklik_talep")
+}
+
+enum BolumTalepDurum {
+  BEKLIYOR
+  ONAYLANDI
+  REDDEDILDI
+  IPTAL // açan kendi bekleyen talebini geri çekti
+}
+
+enum BolumTalepAcanRol {
+  MUDUR
+  MUDUR_YRD
 }
 
 enum TransferTalepEden {

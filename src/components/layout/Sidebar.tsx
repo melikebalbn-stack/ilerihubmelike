@@ -528,6 +528,9 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   // İş Analizi menü bayrakları — SUNUCUDAN (amir DB sorgusu + ik OR mantığı iaRolCozumle'de).
   const [iaFlags, setIaFlags] = useState<{ amir: boolean; ik: boolean }>({ amir: false, ik: false })
   const [kadroTalepAcabilir, setKadroTalepAcabilir] = useState(false)
+  // Bölüm Değişikliği Talep Formu — SUNUCU bayrağı: talepAcabilir (müdür/müdür-yrd),
+  // iv (kuyruk ekranı), bekleyen (kuyruk başlığındaki sayı).
+  const [bolumTalepBayrak, setBolumTalepBayrak] = useState({ talepAcabilir: false, iv: false, bekleyen: 0 })
   const [kpiGorunur, setKpiGorunur] = useState(false)
   const [ifsRaporGorunur, setIfsRaporGorunur] = useState(false)
   const [denemeGorunur, setDenemeGorunur] = useState(false)
@@ -664,6 +667,22 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         if (!r.ok) return
         const d = await r.json()
         setKadroTalepAcabilir(!!d.talepAcabilir)
+      })
+      .catch(() => {})
+  }, [session])
+
+  // Bölüm değişikliği talebi bayrağı — SUNUCUDA hesaplanır (bolum-talep-yetki).
+  useEffect(() => {
+    if (!session?.user) return
+    fetch('/api/bolum-degisiklik-talep/menu-bayrak')
+      .then(async (r) => {
+        if (!r.ok) return
+        const d = await r.json()
+        setBolumTalepBayrak({
+          talepAcabilir: !!d.talepAcabilir,
+          iv: !!d.iv,
+          bekleyen: Number(d.bekleyen ?? 0),
+        })
       })
       .catch(() => {})
   }, [session])
@@ -872,10 +891,23 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     filteredPdksItems.length > 0 || filteredIzinItems.length > 0 ||
     // İV yetkisi olup canSeeIk kapısından geçmeyen kullanıcı da grubu görebilsin,
     // yoksa menü öğesi hesaplanır ama grup hiç çizilmediği için görünmezdi.
-    denemeGorunur
+    denemeGorunur ||
+    // İV kuyruk kalemi tek başına görünüyorsa grup da açılsın.
+    bolumTalepBayrak.iv
   // Kadro talep — SUNUCU bayrağı (kadroTalepAcabilir) ile; client'ta yetki hesaplanmaz.
   // Link recruitment sayfasına (varsayılan "requests"/kadro talep sekmesine düşer).
   const kadroTalepItem = { name: "Personel Talep Formu", icon: FileText, href: "/strategic-hr/kadro-talep", roles: ["*"], subgroup: "iv" as FormAltGrup }
+  // Bölüm değişikliği talebi — yalnız müdür/müdür-yrd (İV bu formu KULLANMAZ; onun
+  // yolu personel kartındaki doğrudan "Bölüm Değiştir"). Kuyruk ekranı İV menüsünde.
+  const bolumTalepItem = { name: "Bölüm Değişikliği Talebi", icon: ArrowRightLeft, href: "/forms/bolum-degisiklik", roles: ["*"], subgroup: "iv" as FormAltGrup }
+  const bolumTalepKuyrukItem = {
+    name: bolumTalepBayrak.bekleyen > 0
+      ? `Bölüm Değişikliği Talepleri (${bolumTalepBayrak.bekleyen})`
+      : "Bölüm Değişikliği Talepleri",
+    icon: ArrowRightLeft,
+    href: "/personnel/bolum-degisiklik-talepleri",
+    roles: ["*"],
+  }
   // Avans formu — SUNUCU bayraklariyla (avansBayrak); client'ta yetki hesaplanmaz.
   const avansKendimItem = { name: "Avans Talebim", icon: Wallet, href: "/avans-formu/kendi", roles: ["*"], subgroup: "iv" as FormAltGrup }
   const avansSorumluItem = { name: "Avans Formu (Ekibim)", icon: Wallet, href: "/avans-formu", roles: ["*"], subgroup: "iv" as FormAltGrup }
@@ -885,6 +917,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const filteredFormsItems = [
     ...filterItems(formsMenuItems),
     ...(kadroTalepAcabilir ? [kadroTalepItem] : []),
+    ...(bolumTalepBayrak.talepAcabilir ? [bolumTalepItem] : []),
     ...(avansBayrak.kendim ? [avansKendimItem] : []),
     ...(avansBayrak.sorumlu ? [avansSorumluItem] : []),
     ...(gecislerimGorunur ? [gecislerimItem] : []),
@@ -920,6 +953,11 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   // Personel öğeleri — tümü canSeeIk kapısında (JSX'teki eski satır-satır
   // `canSeeIk && renderMenuItem(...)` ile birebir aynı sonuç).
   const filteredPersonnelItems = canSeeIk ? personnelMenuItems : []
+  // İV kuyruk kalemi — bayrak SUNUCUDAN (bolum-talep-yetki.iv); canSeeIk ile aynı
+  // kitle olsa da kapı tek kaynak olsun diye ayrı bayrağa bağlandı.
+  const filteredPersonnelItemsPlus = bolumTalepBayrak.iv
+    ? [...filteredPersonnelItems, bolumTalepKuyrukItem]
+    : filteredPersonnelItems
 
   // ── Menü araması ──────────────────────────────────────────────────────────
   // KAYNAK: yalnızca YETKİ FİLTRESİNDEN GEÇMİŞ listeler. Böylece kullanıcının
@@ -1456,7 +1494,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         )}
         {showIkGroup && ikOpen && (
           <div className="space-y-1 ml-4">
-            {filteredPersonnelItems.map(item => renderMenuItem(item))}
+            {filteredPersonnelItemsPlus.map(item => renderMenuItem(item))}
             {filteredOffboardingItems.map(item => renderMenuItem(item))}
             {/* IV-FR-27 deneme değerlendirme listesi — SUNUCU bayrağı (İV ya da zincir üyesi). */}
             {denemeGorunur && renderMenuItem(denemeItem)}

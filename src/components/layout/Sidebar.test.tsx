@@ -416,13 +416,18 @@ describe('Sidebar — "Servis: Bu Ay Ne Değişti?" menü öğesi (FAZ 1B-EK Mad
 })
 
 describe('Sidebar — Stratejik İK "Servis" alt-başlığı (Formlar deseninin uygulanması, 2026-09-18)', () => {
-  it('servis.view izinli kullanıcıda "Servis" başlığı görünür ve altında YALNIZ 3 öğe vardır', () => {
+  it('servis.view izinli kullanıcıda "Servis" başlığı görünür ve altında YALNIZ 4 öğe vardır (servis.sikayet.view/servis.kvkk.view isteyen öğeler ayrı testte)', () => {
     mockSession({ role: 'KULLANICI', department: 'Üretim', permissions: ['servis.view'] })
     renderSidebar()
     acIvGrubunu()
     const servisKutu = screen.getByTestId('strategic-hr-subgroup-servis').parentElement as HTMLElement
     const linkler = Array.from(servisKutu.querySelectorAll('a')).map((a) => a.textContent?.trim())
-    expect(linkler).toEqual(['Servis Yönetimi', 'Servis: Bu Ay Ne Değişti?', 'Veri Kalite Merkezi'])
+    expect(linkler).toEqual([
+      'Servis Yönetimi',
+      'Servis: Bu Ay Ne Değişti?',
+      'Veri Kalite Merkezi',
+      'Operasyonel Servis Listesi',
+    ])
   })
 
   it('servis.view izni yoksa "Servis" başlığı hiç render edilmez (boş alt grup çizilmez)', () => {
@@ -460,9 +465,14 @@ describe('Sidebar — Stratejik İK "Servis" alt-başlığı (Formlar deseninin 
       .filter(
         (ad): ad is string =>
           !!ad &&
-          !['Servis Yönetimi', 'Servis: Bu Ay Ne Değişti?', 'Veri Kalite Merkezi', 'Servis Şikâyetleri'].includes(
-            ad,
-          ),
+          ![
+            'Servis Yönetimi',
+            'Servis: Bu Ay Ne Değişti?',
+            'Veri Kalite Merkezi',
+            'Servis Şikâyetleri',
+            'Operasyonel Servis Listesi',
+            'Acil Durum Servis Listesi',
+          ].includes(ad),
       )
     expect(duzAdlar).toEqual(digerOgeler)
   })

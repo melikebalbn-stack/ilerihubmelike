@@ -1,10 +1,14 @@
 /**
  * ============================================================================
- * SERVİS TANIM PAKETİ — yerleşke · firma · güzergâh · durak
+ * SERVİS TANIM PAKETİ — yerleşke · firma · güzergâh · durak · araç · sefer dilimi
  * ============================================================================
  *
- * Prod'da bu dört tablo BOŞ. Göç script'i (--apply) tanım verisi YARATMAZ,
- * yalnız `kod` ile arar; bu paket o boşluğu doldurur.
+ * Prod'da bu tablolar BOŞ. Göç script'i (--apply) tanım verisi YARATMAZ,
+ * yalnız `kod`/`plaka` ile arar; bu paket o boşluğu doldurur.
+ *
+ * 🔴 ŞOFÖR EKLENMEDİ — kişisel veri, git'e girmez (Elif kararı, 2026-09-29).
+ * Güzergâh→araç ANA varsayılan ataması da BOŞ — bkz. servis-tanim-verisi.ts
+ * GUZERGAH_ARAC_ANA_ATAMA yorumu (liste ayrıca gelecek, gelene kadar yazılmaz).
  *
  * 🔴 BOOTSTRAP-ONLY + IDEMPOTENT (emsal: prisma/seed-permissions.ts)
  * Her kayıt `kod` ile aranır: VARSA DOKUNULMAZ, yoksa oluşturulur.
@@ -47,8 +51,18 @@ import 'dotenv/config'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { Pool } from 'pg'
 import { PrismaClient } from '../src/generated/prisma'
-import { durakKodu } from '../src/lib/servis-yonetimi/servis-durak-kodu'
-import { TUM_GUZERGAHLAR, TEYIT_BEKLIYOR } from '../src/lib/servis-yonetimi/servis-tanim-verisi'
+import {
+  TUM_GUZERGAHLAR,
+  TEYIT_BEKLIYOR,
+  ARACLAR,
+  SEFER_DILIMLERI,
+  GUZERGAH_ARAC_ANA_ATAMA,
+} from '../src/lib/servis-yonetimi/servis-tanim-verisi'
+import {
+  isleGuzergahVeDuraklar,
+  isleAraclar,
+  isleSeferDilimleri,
+} from '../src/lib/servis-yonetimi/servis-tanim-seed-mantigi'
 
 export * from '../src/lib/servis-yonetimi/servis-tanim-verisi'
 
@@ -94,8 +108,8 @@ async function main() {
     }
     console.log(`✅ Veritabanı doğrulandı: ${gercekDb}${APPLY ? ' — APPLY MODU' : ' — DRY-RUN'}\n`)
 
-    let olusturulacak = { yerleske: 0, firma: 0, guzergah: 0, durak: 0, bag: 0 }
-    let mevcut = { yerleske: 0, firma: 0, guzergah: 0, durak: 0, bag: 0 }
+    let olusturulacak = { yerleske: 0, firma: 0, guzergah: 0, durak: 0, bag: 0, arac: 0, dilim: 0 }
+    let mevcut = { yerleske: 0, firma: 0, guzergah: 0, durak: 0, bag: 0, arac: 0, dilim: 0 }
 
     // --- Yerleşke -----------------------------------------------------------
     const yerleskeVar = await prisma.servisYerleske.findFirst({ where: { kod: yerleskeKod } })
@@ -111,45 +125,37 @@ async function main() {
     firmaVar ? mevcut.firma++ : olusturulacak.firma++
     if (!firmaVar && APPLY) await prisma.servisFirma.create({ data: { ad: firmaAd } })
 
-    // --- Güzergâh + durak ---------------------------------------------------
-    for (const g of TUM_GUZERGAHLAR) {
-      const gVar = await prisma.servisGuzergah.findFirst({ where: { kod: g.kod } })
-      gVar ? mevcut.guzergah++ : olusturulacak.guzergah++
-      const gId =
-        gVar?.id ??
-        (APPLY
-          ? (await prisma.servisGuzergah.create({ data: { kod: g.kod, ad: g.ad, yerleskeId } })).id
-          : '(dry-run)')
+    // --- Güzergâh + durak + bağ ----------------------------------------------
+    const guzergahSonuc = await isleGuzergahVeDuraklar(prisma, APPLY, yerleskeId, TUM_GUZERGAHLAR)
+    olusturulacak.guzergah = guzergahSonuc.olusturulacak.guzergah
+    olusturulacak.durak = guzergahSonuc.olusturulacak.durak
+    olusturulacak.bag = guzergahSonuc.olusturulacak.bag
+    mevcut.guzergah = guzergahSonuc.mevcut.guzergah
+    mevcut.durak = guzergahSonuc.mevcut.durak
+    mevcut.bag = guzergahSonuc.mevcut.bag
 
-      for (const d of g.duraklar) {
-        const kod = durakKodu(g.kod, d.sira)
-        const dVar = await prisma.servisDurak.findFirst({ where: { kod } })
-        dVar ? mevcut.durak++ : olusturulacak.durak++
-        const dId =
-          dVar?.id ??
-          (APPLY ? (await prisma.servisDurak.create({ data: { kod, ad: d.ad } })).id : '(dry-run)')
+    // --- Araç (şoför EKLENMEDİ — kişisel veri) --------------------------------
+    const aracSonuc = await isleAraclar(prisma, APPLY, ARACLAR)
+    olusturulacak.arac = aracSonuc.olusturulacak.arac
+    mevcut.arac = aracSonuc.mevcut.arac
 
-        if (APPLY) {
-          const bagVar = await prisma.servisGuzergahDurak.findFirst({
-            where: { guzergahId: gId, durakId: dId },
-          })
-          bagVar ? mevcut.bag++ : olusturulacak.bag++
-          if (!bagVar) {
-            await prisma.servisGuzergahDurak.create({
-              data: { guzergahId: gId, durakId: dId, sira: d.sira },
-            })
-          }
-        } else {
-          olusturulacak.bag++
-        }
-      }
-    }
+    // --- Sefer dilimi ---------------------------------------------------------
+    const dilimSonuc = await isleSeferDilimleri(prisma, APPLY, SEFER_DILIMLERI)
+    olusturulacak.dilim = dilimSonuc.olusturulacak.dilim
+    mevcut.dilim = dilimSonuc.mevcut.dilim
 
     console.log('═══ ÖZET ═══')
-    for (const k of ['yerleske', 'firma', 'guzergah', 'durak', 'bag'] as const) {
+    for (const k of ['yerleske', 'firma', 'guzergah', 'durak', 'bag', 'arac', 'dilim'] as const) {
       console.log(`  ${k.padEnd(10)} oluşturulacak: ${String(olusturulacak[k]).padStart(4)} · mevcut korundu: ${mevcut[k]}`)
     }
     if (!APPLY) console.log('\n(DRY-RUN — hiçbir şey yazılmadı. --apply ile gerçek yazım yapılır.)')
+
+    // 🔴 Güzergâh → araç ANA varsayılan ataması: Elif güzergah/plaka listesini
+    // AYRICA iletecek (bkz. servis-tanim-verisi.ts). Liste gelene kadar BOŞ —
+    // seed burada hiçbir create() ÇAĞIRMAZ, yalnız durumu raporlar.
+    console.log(
+      `\n(Güzergâh→araç ANA atama: ${GUZERGAH_ARAC_ANA_ATAMA.length} kayıt — liste bekleniyor, seed yazmadı.)`,
+    )
 
     // 🔴 ServisDurak'ta not/açıklama alanı YOK (schema.prisma, migration
     // açılmadı) — bu liste DB'ye YAZILMAZ, yalnız burada, konsolda basılır.

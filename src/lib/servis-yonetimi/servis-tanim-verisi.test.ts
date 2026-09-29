@@ -244,4 +244,30 @@ describe('TEYIT_BEKLIYOR — Elif kararı, İdari İşler cevabı beklenmedi', (
       expect(kodlar, `${t.madde}: ${t.guzergah}`).toContain(t.guzergah)
     }
   })
+
+  // İdari İşler'in resmi form numarası, bu dosyanın kendi madde
+  // numaralandırmasıyla örtüşmüyor (resmi taraf bazı maddeleri birleştiriyor);
+  // her kaydın GEÇERLİ bir formRef'e sahip olduğu (eşleme tablosunda
+  // unutulan/yanlış yazılan madde olmadığı) burada doğrulanır.
+  it('her maddenin geçerli (A veya B ile başlayan) bir formRef karşılığı var', () => {
+    for (const t of TEYIT_BEKLIYOR) {
+      expect(t.formRef, `${t.madde} için formRef eksik/tanımsız`).toBeDefined()
+      expect(t.formRef, `${t.madde}: formRef "${t.formRef}"`).toMatch(/^[AB]\d+$/)
+    }
+  })
+
+  it('bilinen çapraz-referanslar: Eriş(6)/Eriş Durağı(7) çifti hem A3 hem B5 için formRef A5', () => {
+    const a3 = TEYIT_BEKLIYOR.find((t) => t.madde === 'A3')
+    const b5 = TEYIT_BEKLIYOR.find((t) => t.madde === 'B5')
+    expect(a3?.formRef).toBe('A5')
+    expect(b5?.formRef).toBe('A5')
+    expect(b5?.konu).toContain('Eriş')
+  })
+
+  it('Tel Boyu üçlüsü (B3, B8, B16) resmi tarafta TEK madde olarak birleşiyor: formRef B1', () => {
+    for (const madde of ['B3', 'B8', 'B16']) {
+      const kayit = TEYIT_BEKLIYOR.find((t) => t.madde === madde)
+      expect(kayit?.formRef, madde).toBe('B1')
+    }
+  })
 })

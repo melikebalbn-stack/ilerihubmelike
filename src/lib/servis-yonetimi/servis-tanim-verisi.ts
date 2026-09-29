@@ -728,12 +728,29 @@ export const BELIRSIZ_DURAKLAR = [
 //   dışarıda bırakılmadı.
 export interface TeyitBekleyenKarar {
   madde: string
+  formRef: string
   guzergah: string
   konu: string
   durum: 'yeni durak (geçici sıra)' | 'mevcut durağa bağlandı' | 'iki kayıt korunur, birleştirilmedi'
 }
 
-export const TEYIT_BEKLIYOR: TeyitBekleyenKarar[] = [
+// 🔴 FORM_REF_ESLEME — İdari İşler'in resmi form numaraları (Elif, 2026-09-29)
+// bu dosyanın kendi `madde` (A1-A8/B1-B18) numaralarıyla BİREBİR ÖRTÜŞMÜYOR:
+// resmi taraf bazı maddeleri TEK numarada birleştiriyor (ör. resmi A1 = GÜL
+// PASTANESİ + KARAKOL = burada ayrı A4 + A5; resmi B1 = Tel Boyu üçlüsü =
+// burada ayrı B3 + B8 + B16) ve B sırası tamamen farklı numaralandırılmış.
+// Eşleme, her resmi maddenin konu metniyle OLASI_YINELENEN_CIFTLER'daki
+// içerik karşılaştırılarak çıkarıldı — uydurma YOK, birebir metin eşleşmesi.
+// Not: Eriş(6)/Eriş Durağı(7) çifti (buradaki hem A3 hem B5) resmi tarafta
+// TEK maddeye (A5) bağlanıyor; bu satır aşağıda ayrıca belirtildi.
+const FORM_REF_ESLEME: Record<string, string> = {
+  A1: 'A3', A2: 'A4', A3: 'A5', A4: 'A1', A5: 'A1', A6: 'A2', A7: 'A2', A8: 'A6',
+  B1: 'A7', B2: 'A8', B3: 'B1', B4: 'B2', B5: 'A5', B6: 'B3', B7: 'B4', B8: 'B1',
+  B9: 'B5', B10: 'B6', B11: 'B7', B12: 'B8', B13: 'B9', B14: 'B10', B15: 'B11',
+  B16: 'B1', B17: 'B12', B18: 'B13',
+}
+
+const TEYIT_BEKLIYOR_HAM: Omit<TeyitBekleyenKarar, 'formRef'>[] = [
   // --- 1. tur — A1-A8 ---
   { madde: 'A1', guzergah: 'DARICA', konu: 'MEZBAHANE DURAĞI / MEZBAHANE EDİŞ YAPI → "Mezbahane Ediş Yapı" (mevcut, sıra 12)', durum: 'mevcut durağa bağlandı' },
   { madde: 'A2', guzergah: 'GEBZE_DEVELI', konu: 'AKSE SAPAĞI / AKSE SAP DURAK PASTA / DURAK PASTANESİ → "Akse Sapağı Durak Pastanesi" (mevcut, sıra 8)', durum: 'mevcut durağa bağlandı' },
@@ -751,3 +768,82 @@ export const TEYIT_BEKLIYOR: TeyitBekleyenKarar[] = [
     durum: 'iki kayıt korunur, birleştirilmedi' as const,
   })),
 ]
+
+export const TEYIT_BEKLIYOR: TeyitBekleyenKarar[] = TEYIT_BEKLIYOR_HAM.map((t) => ({
+  ...t,
+  formRef: FORM_REF_ESLEME[t.madde],
+}))
+
+// ----------------------------------------------------------------------------
+// 🔴 ARAÇLAR — dev DB'den ölçüldü (2026-09-29): 9 araç, plaka benzersiz.
+// ----------------------------------------------------------------------------
+//
+// ŞOFÖR EKLENMEDİ (kişisel veri, git'e girmez — Elif kararı, 2026-09-29).
+// Idempotent anahtar `kod` DEĞİL `plaka` (ServisArac'ta kod alanı yok, plaka
+// UNIQUE) — talimattaki "kod ile idempotent" ifadesi burada plaka karşılığı.
+//
+// 🔴 FİRMA — dev'de araçlar TEK firmaya değil İKİ firmaya bağlı (ölçüldü):
+// 8 araç "Taşeron Firma A (Genel)", 1 araç (34LYL484) "Taşeron Firma B
+// (Kaynarca-Kartal)". Seed script'in --firma-ad parametresi TEK firma alır
+// (yerleşke/firma başlığındaki tasarım). Araç verisi bu yüzden kendi
+// firmaAd'ını taşır; seed bunu ayrı, plaka'dan bağımsız bir find-or-create
+// ile çözer (aynı idempotent desen, --firma-ad akışından BAĞIMSIZ). Firma
+// adlarının kendisi de PLACEHOLDER (İdari İşler'den gerçek ad bekleniyor) —
+// bu metin YENİ bir placeholder İCAT ETMİYOR, dev DB'de zaten var olan
+// metnin birebir kopyası.
+export interface AracTanimi {
+  plaka: string
+  kapasite: number
+  firmaAd: string
+}
+
+export const ARACLAR: AracTanimi[] = [
+  { plaka: '34LAC828', kapasite: 15, firmaAd: 'Taşeron Firma A (PLACEHOLDER - Genel) - gerçek ad bekleniyor' },
+  { plaka: '34LDP316', kapasite: 27, firmaAd: 'Taşeron Firma A (PLACEHOLDER - Genel) - gerçek ad bekleniyor' },
+  { plaka: '34LUU645', kapasite: 15, firmaAd: 'Taşeron Firma A (PLACEHOLDER - Genel) - gerçek ad bekleniyor' },
+  { plaka: '34LYL484', kapasite: 27, firmaAd: 'Taşeron Firma B (PLACEHOLDER - Kaynarca-Kartal) - gerçek ad bekleniyor' },
+  { plaka: '41P0145', kapasite: 15, firmaAd: 'Taşeron Firma A (PLACEHOLDER - Genel) - gerçek ad bekleniyor' },
+  { plaka: '41P0327', kapasite: 15, firmaAd: 'Taşeron Firma A (PLACEHOLDER - Genel) - gerçek ad bekleniyor' },
+  { plaka: '41P4607', kapasite: 27, firmaAd: 'Taşeron Firma A (PLACEHOLDER - Genel) - gerçek ad bekleniyor' },
+  { plaka: '41P5093', kapasite: 15, firmaAd: 'Taşeron Firma A (PLACEHOLDER - Genel) - gerçek ad bekleniyor' },
+  { plaka: '41P5573', kapasite: 27, firmaAd: 'Taşeron Firma A (PLACEHOLDER - Genel) - gerçek ad bekleniyor' },
+]
+
+// ----------------------------------------------------------------------------
+// 🔴 SEFER DİLİMLERİ — dev DB'den ölçüldü (2026-09-29): 2 dilim.
+// ----------------------------------------------------------------------------
+export interface SeferDilimiTanimi {
+  kod: string
+  ad: string
+  yon: 'GIDIS' | 'DONUS'
+  grupKodu: string
+  sira: number
+}
+
+export const SEFER_DILIMLERI: SeferDilimiTanimi[] = [
+  { kod: 'SABAH_GIDIS', ad: 'Sabah Servisi', yon: 'GIDIS', grupKodu: 'GUNDUZ', sira: 1 },
+  { kod: 'AKSAM_DONUS', ad: 'Akşam Servisi', yon: 'DONUS', grupKodu: 'GUNDUZ', sira: 2 },
+]
+
+// ----------------------------------------------------------------------------
+// 🔴 GÜZERGÂH → ARAÇ ANA VARSAYILAN ATAMASI — BOŞ (Elif kararı, 2026-09-29)
+// ----------------------------------------------------------------------------
+//
+// Ölçüldü: dev'de servis_guzergah_arac_varsayilan şu an 0 satır. Elif
+// güzergah/plaka listesini AYRICA iletecek; liste gelene kadar bu dizi
+// BOŞ kalır ve seed hiçbir atama YAZMAZ.
+//
+// 🔴 DİLİM ZORUNLU ALAN: servis_guzergah_arac_varsayilan.dilimId NOT NULL
+// (FK → servis_sefer_dilimi). Liste yalnız güzergah+plaka içeriyorsa, HANGİ
+// dilime (SABAH_GIDIS mi, AKSAM_DONUS mu, ikisi birden mi — iki ayrı satır
+// gerekir) yazılacağı liste ile birlikte AYRICA belirtilmeli; varsayım
+// (örn. "ikisine de yaz") YAPILMADI. Ayrıca rol (ANA/YEDEK — burada yalnız
+// ANA bekleniyor), baslangicTarihi ve createdById (User FK) de zorunlu;
+// bunlar da liste ile birlikte netleşmeden seed yazamaz.
+export interface GuzergahAracAnaAtamasi {
+  guzergahKod: string
+  plaka: string
+  dilimKod: string
+}
+
+export const GUZERGAH_ARAC_ANA_ATAMA: GuzergahAracAnaAtamasi[] = []

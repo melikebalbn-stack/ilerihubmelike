@@ -102,6 +102,9 @@ export default function DenemeFormPage() {
   const [yonAra, setYonAra] = useState("")
   const [yonHedef, setYonHedef] = useState<Aday | null>(null)
   const [yonGerekce, setYonGerekce] = useState("")
+  // ── Puan geri alma (İV) ──
+  const [griSira, setGriSira] = useState<1 | 2>(1)
+  const [griGerekce, setGriGerekce] = useState("")
   const [adaylar, setAdaylar] = useState<Aday[]>([])
   const [adaylarYuklendi, setAdaylarYuklendi] = useState(false)
 
@@ -182,6 +185,21 @@ export default function DenemeFormPage() {
     return liste
   }, [form, roller])
   const yonlendirebilir = yonlendirilebilirSiralar.length > 0
+
+  // Puanı GERİ ALINABİLİR adımlar: yalnız İV, form kapalı değilse ve o adım
+  // GÖNDERİLMİŞSE (damga var). Sonraki adım puanlıysa 1. sıra listelenmez —
+  // kural sunucuda da uygulanır, buradaki liste yalnız ekranı sadeleştirir.
+  const geriAlinabilirSiralar = useMemo<(1 | 2)[]>(() => {
+    if (!form || !roller.includes("IK")) return []
+    if (["TAMAMLANDI", "IPTAL"].includes(form.durum)) return []
+    const liste: (1 | 2)[] = []
+    const p1 = form.puanlar.some((p) => p.degerlendiriciSira === 1)
+    const p2 = form.puanlar.some((p) => p.degerlendiriciSira === 2)
+    if (p1 && !p2) liste.push(1)
+    if (p2 && form.degerlendirici2) liste.push(2)
+    return liste
+  }, [form, roller])
+  const geriAlabilir = geriAlinabilirSiralar.length > 0
 
   const ivIptalEdebilir =
     roller.includes("IK") &&
@@ -286,6 +304,31 @@ export default function DenemeFormPage() {
       await yukle()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Yönlendirilemedi")
+    } finally {
+      setKaydediyor(false)
+    }
+  }
+
+  async function puanGeriAl() {
+    if (griGerekce.trim().length < 10) return
+    setKaydediyor(true)
+    try {
+      const res = await apiFetch(`/api/deneme/${id}/puan-geri-al`, {
+        method: "POST",
+        body: JSON.stringify({ sira: griSira, gerekce: griGerekce.trim() }),
+      })
+      const j = await res.json()
+      if (!res.ok) throw new Error(j.error ?? "Puan geri alınamadı")
+      toast.success(`${griSira}. değerlendiricinin puanı geri alındı (${j.silinenPuanSatiri} kriter silindi)`)
+      // Bildirim geri almayı BLOKE ETMEZ; ulaşmadıysa kullanıcı bilsin.
+      if (!j.bildirim?.gonderildi) {
+        toast.warning(j.bildirim?.sebep ?? "Bildirim gönderilemedi — değerlendiriciyi ayrıca haberdar edin")
+      }
+      if (j.onayDusuruldu) toast.warning("Onay izi de düşürüldü — form yeniden onaydan geçecek")
+      setGriGerekce("")
+      await yukle()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Puan geri alınamadı")
     } finally {
       setKaydediyor(false)
     }
@@ -734,6 +777,79 @@ export default function DenemeFormPage() {
                   <AlertDialogFooter>
                     <AlertDialogCancel>Vazgeç</AlertDialogCancel>
                     <AlertDialogAction onClick={() => kapat("KAPAT")}>Kapat</AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── İV PUAN GERİ ALMA ── Yanlış puanlanan adımı geri alır. Yönlendirme
+          DEĞİL: değerlendirici AYNI kalır, yalnız puanları silinip form o adımın
+          bekleme durumuna döner. Yönlendirme kapısı ("puanlanmış adım
+          yönlendirilemez") olduğu gibi durur — önce geri al, sonra yönlendir. */}
+      {geriAlabilir && (
+        <Card>
+          <CardHeader className="border-b bg-muted/40 py-3">
+            <CardTitle className="text-base">İnsan Varlıkları — Puanı Geri Al</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4 p-6">
+            <p className="text-sm text-muted-foreground">
+              Değerlendirici yanlış puanladıysa adım geri alınabilir. Puanlar silinir,
+              form aynı değerlendiriciye geri döner ve yeniden doldurması istenir.
+              Kendisine e-posta ve uygulama içi bildirim gönderilir. <strong>Bu işlem geri alınamaz.</strong>
+            </p>
+
+            {geriAlinabilirSiralar.length > 1 && (
+              <div className="space-y-2">
+                <Label>Hangi adım?</Label>
+                <div className="flex gap-2">
+                  {geriAlinabilirSiralar.map((n) => (
+                    <Button
+                      key={n}
+                      type="button"
+                      variant={griSira === n ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setGriSira(n)}
+                    >
+                      {n}. Değerlendirici
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label htmlFor="gri-gerekce">Gerekçe (zorunlu, en az 10 karakter)</Label>
+              <Textarea
+                id="gri-gerekce"
+                placeholder="Örn. Kriterler yanlış anlaşılmış, değerlendirme yeniden yapılacak."
+                value={griGerekce}
+                onChange={(e) => setGriGerekce(e.target.value)}
+                rows={2}
+              />
+            </div>
+
+            <div className="flex justify-end">
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="outline" disabled={kaydediyor || griGerekce.trim().length < 10}>
+                    <Undo2 className="mr-2 h-4 w-4" /> Puanı Geri Al
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Puan geri alınsın mı?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      {griSira}. değerlendiricinin <strong>tüm puanları silinecek</strong> ve form
+                      yeniden onun adımına dönecek. İşlem geri alınamaz; form geçmişine
+                      gerekçesiyle yazılır.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Vazgeç</AlertDialogCancel>
+                    <AlertDialogAction onClick={puanGeriAl}>Geri Al</AlertDialogAction>
                   </AlertDialogFooter>
                 </AlertDialogContent>
               </AlertDialog>

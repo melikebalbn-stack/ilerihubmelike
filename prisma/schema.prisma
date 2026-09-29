@@ -14969,6 +14969,9 @@ enum DenemeDegerlendiriciRol {
 enum DenemeLogOlayTipi {
   /// Insan Varliklari bir adimin degerlendiricisini degistirdi.
   YONLENDIRME
+  /// Insan Varliklari puanlanmis bir adimi geri aldi — puanlar silindi,
+  /// damga kalkti, form o adimin bekleme durumuna dondu.
+  PUAN_GERI_ALMA
 }
 
 // Kriter kataloğu — IV-FR-27 Rev.2 ile seed edilir, `hr.admin` yönetebilir.

@@ -11,6 +11,7 @@ import { requireUser } from '@/lib/auth/require-user'
 import { bolumTalepYetkisiCore } from '@/lib/bolum-talep/bolum-talep-yetki'
 import { yeniTalepNo } from '@/lib/bolum-talep/talep-no'
 import { talepAcildiBildir } from '@/lib/bolum-talep/bolum-talep-bildirim'
+import { platformYoneticiDenetim } from '@/lib/auth/platform-yonetici'
 import type { Prisma } from '@/generated/prisma'
 
 export const dynamic = 'force-dynamic'
@@ -180,6 +181,18 @@ export async function POST(request: NextRequest) {
 
       return olusan
     })
+
+    // Kapsam platform yöneticisi kuralından geldiyse denetime düşsün (yazma).
+    if (yetki.platformBypass) {
+      await platformYoneticiDenetim({
+        userId: user.id,
+        userEmail: user.email,
+        islem: 'bolum-talep:olustur',
+        targetType: 'PERSONNEL',
+        targetId: personnel.id,
+        detay: { talepNo: talep.talepNo, mevcutBolum: talep.mevcutBolum, hedefBolum: talep.hedefBolum },
+      })
+    }
 
     // Bildirim best-effort — talebi düşürmez.
     await talepAcildiBildir(talep, user.name ?? user.email ?? 'Bilinmiyor')

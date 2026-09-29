@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
+import { platformYoneticiDenetim } from '@/lib/auth/platform-yonetici'
 import { getBulkCardScanAccess } from '../_lib/access'
 import {
   notifyHrOfBulkCardScanRecords,
@@ -40,12 +41,22 @@ export async function POST(request: NextRequest) {
     if (access.level !== 'FULL') {
       return NextResponse.json({ error: 'Toplu kayıt girme yetkiniz yok' }, { status: 403 })
     }
-
     const body = await request.json()
     const items: BulkItem[] = Array.isArray(body?.items) ? body.items : []
 
     if (items.length === 0) {
       return NextResponse.json({ error: 'Kayıt listesi boş' }, { status: 400 })
+    }
+
+    // Bu uca erişim platform yöneticisi kapsam bypassından geldiyse denetime
+    // düşsün (yazma işlemi — normalde yalnız İV'ye açık).
+    if (access.platformBypass) {
+      await platformYoneticiDenetim({
+        userId: user.id,
+        userEmail: user.email,
+        islem: 'kart-okutamama:bulk',
+        detay: { kayitSayisi: items.length },
+      })
     }
 
     const personnelIds = [...new Set(items.map((i) => i.personnelId))]

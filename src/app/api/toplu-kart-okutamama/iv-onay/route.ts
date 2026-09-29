@@ -18,7 +18,9 @@ export async function POST(request: NextRequest) {
     if (error) return error
 
     const access = await getBulkCardScanAccess(user.id)
-    if (access.level !== 'FULL') {
+    // ONAY KARARI — platform yöneticisi bypass'ı burada GEÇMEZ (29.09.2026):
+    // kapsam bypassı görünürlük içindir, İV onayı gerçek İV yetkisi ister.
+    if (access.level !== 'FULL' || access.platformBypass) {
       return NextResponse.json({ error: 'İV onayı verme yetkiniz yok' }, { status: 403 })
     }
 

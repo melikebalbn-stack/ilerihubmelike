@@ -53,7 +53,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const isOrphan = !record.approverId && !record.approverId2 && !record.approverId3
     if (!isNamedApprover) {
       const access = isOrphan ? await getBulkCardScanAccess(user.id) : null
-      if (!(isOrphan && access?.level === 'FULL')) {
+      // platformBypass: görünürlük bypassı onay kararı VERMEZ (29.09.2026).
+      if (!(isOrphan && access?.level === 'FULL' && !access.platformBypass)) {
         return NextResponse.json({ error: 'Bu kaydı onaylama/reddetme yetkiniz yok' }, { status: 403 })
       }
     }

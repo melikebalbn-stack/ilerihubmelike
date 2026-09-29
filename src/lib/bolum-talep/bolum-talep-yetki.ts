@@ -16,6 +16,7 @@
 import { prisma } from '@/lib/prisma'
 import { isInsanVarliklari } from '@/lib/auth/personnel-access'
 import { resolveMudurKoltukDeptler } from '@/lib/overtime-performance'
+import { platformYoneticiIdMi } from '@/lib/auth/platform-yonetici'
 
 const IV_ROLLERI = ['ADMIN', 'HR_MANAGER', 'SUPER_ADMIN']
 
@@ -34,6 +35,12 @@ export interface BolumTalepYetki {
   talepAcabilir: boolean
   /** Forma/uçlara erişim: talep açabilen ya da İV. */
   erisebilir: boolean
+  /**
+   * Kapsam/talep hakkı PLATFORM YÖNETİCİSİ kuralından geldiyse true (29.09.2026,
+   * Melih kararı: test edebilmek için tüm personel için talep açabilir).
+   * KARAR (onay/red) bu bayrakla AÇILMAZ — o `iv` ile gelir.
+   */
+  platformBypass: boolean
 }
 
 export function ivMi(role: string | null | undefined, department: string | null | undefined): boolean {
@@ -64,6 +71,27 @@ export async function bolumTalepYetkisiCore(
     else if (dept?.mudurYardimcisiId === personnelId) rol = 'MUDUR_YRD'
   }
 
+  // PLATFORM YÖNETİCİSİ: koltuk kapsamı yerine TÜM aktif departmanlar. Talep
+  // açabilir (rol yoksa MUDUR sayılır — kayıtta acanRol bu değerle yazılır).
+  const platformBypass = platformYoneticiIdMi(userId)
+  if (platformBypass) {
+    const hepsi = await prisma.departmentDefinition.findMany({
+      where: { isActive: true },
+      select: { id: true, name: true },
+      orderBy: { name: 'asc' },
+    })
+    return {
+      userId,
+      personnelId,
+      rol: rol ?? 'MUDUR',
+      kapsamBolumler: hepsi,
+      iv,
+      talepAcabilir: true,
+      erisebilir: true,
+      platformBypass: true,
+    }
+  }
+
   // Kapsam yalnız koltuk sahibinde hesaplanır (İV'nin kapsam kısıtı yok, talep de açmaz).
   const kapsamBolumler = rol ? await resolveMudurKoltukDeptler(userId) : []
 
@@ -75,5 +103,6 @@ export async function bolumTalepYetkisiCore(
     iv,
     talepAcabilir: rol !== null,
     erisebilir: rol !== null || iv,
+    platformBypass: false,
   }
 }

@@ -9,7 +9,8 @@ Bu skill sandbox'ta çalışan geliştiricinin kod asistanı içindir. Amaç: da
 
 ## 1. Çalışma düzeni
 - Ana repo dev server'a ayrılır, **dal değiştirmez**.
-- Her aktif iş kendi worktree'sinde: `git worktree add ../wt-<is> origin/main -b dev/<ad>/<is>`; `node_modules`, `src/generated`, `.env` ana repoya symlink.
+- Her aktif iş kendi worktree'sinde: `git worktree add ../wt-<is> origin/main -b dev/<ad>/<is>`; `node_modules` ve `.env` ana repoya symlink.
+- `src/generated` symlink YAPILMAZ: her worktree kendi dizininde tutar ve orada `prisma generate` çalıştırır. Paylaşılırsa worktree'deki generate ana repodaki dev server'ın client'ını ezer ve farklı şemalı dallarda sahte test sonucu üretir.
 - Dal adı `dev/<ad>/` ile başlar ve işi anlatır. **Her iş için main'den taze dal.** Bir günden uzun yaşayan dal her gün rebase edilir.
 - Meta-iş (CI, lint, başka modül bulguları) yapma; tek satır not düş, Melih isterse açılır.
 

@@ -13,7 +13,7 @@ const govdeSchema = z.object({
 });
 
 // "Satışa Bildir": müşteri IFS'te bulunamadığında IFS'te müşteri açılması için
-// Azra İleri'ye email + in-app bildirim (bkz. _lib/musteri-bildirim.ts).
+// Satış & Pazarlama Müdürlüğü'ne email + in-app bildirim (bkz. _lib/musteri-bildirim.ts).
 export async function POST(req: NextRequest) {
   const { user, error } = await requireUser();
   if (error) return error;
@@ -23,16 +23,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Geçersiz müşteri adı" }, { status: 400 });
   }
 
+  let aliciSayisi: number;
   try {
-    await musteriAcmaBildirimGonder(sonuc.data.musteriFirma, {
+    ({ aliciSayisi } = await musteriAcmaBildirimGonder(sonuc.data.musteriFirma, {
       name: user.name,
       email: user.email,
-    });
+    }));
   } catch (e) {
     console.error("[proje-takip] müşteri açma bildirimi gönderilemedi:", e);
     const mesaj = e instanceof MusteriBildirimHatasi ? e.message : "Bildirim gönderilemedi";
     return NextResponse.json({ error: mesaj }, { status: 502 });
   }
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, aliciSayisi });
 }

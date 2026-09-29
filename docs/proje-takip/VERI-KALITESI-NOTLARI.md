@@ -22,10 +22,12 @@ yetki de verilemez — ve hata sessizdir.
 bazlı) büyük olasılıkla bu yüzden Azra İleri için hiç çalışmamıştı (917fc56f'te
 kaldırıldı; bölüm kuralı onu zaten kapsıyor).
 
-**Kural:** Belirli bir kişiye bağlı iş kuralı/bildirim → **sabit `User.id`**
-kullan, isimle arama. Sabit id'nin yanına nerede doğrulandığını yaz ve prod'da
-doğrulanmasını iste. Örnek: `IFS_MUSTERI_ACMA_SORUMLUSU_ID = "ad_azra.ileri"`
-(`src/app/api/proje-takip/_lib/musteri-bildirim.ts`).
+**Kural (Melih Bey, 2026-09-29):** Bildirim/yetki **kişiye değil bölüme**
+bağlanır — `Personnel.bolum` (normalizeTr tam eşleşme) + `aktif` + bağlı `User`.
+Kodda sabit `User.id` veya kişi adı tutulmaz. Örnek: "Satışa Bildir" alıcıları
+`getSatisPazarlamaEkibi()` (`src/app/api/proje-takip/_lib/satis-pazarlama-ekibi.ts`),
+`getMuhendislikEkibi()` ile aynı desen. Kişiyi adla bulmak gerekirse `Personnel.adSoyad`
+güvenilmez (yukarıdaki örnek) — sonucu mutlaka `aktif` + bağlı `User` ile doğrula.
 
 ## 2. Müşteri adları serbest metin, tutarsız yazılıyor (2026-09-28)
 

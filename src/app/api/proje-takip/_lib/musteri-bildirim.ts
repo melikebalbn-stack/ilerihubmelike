@@ -1,17 +1,16 @@
 import { prisma } from "@/lib/prisma";
 import { sendEmail } from "@/lib/email";
+import { getSatisPazarlamaEkibi, type SatisPazarlamaKisi } from "./satis-pazarlama-ekibi";
 
 /**
  * "Satışa Bildir" — Yeni Proje formunda müşteri IFS'te bulunamadığında, IFS'te
- * müşteri açılması için Azra İleri'ye bildirim. 2 kanal: email + in-app (push yok,
- * bildirim.ts ile aynı). Kanal izolasyonu: Promise.allSettled.
+ * müşteri açılması için Satış & Pazarlama Müdürlüğü'ne bildirim.
  *
- * Alıcı isimle ARANMAZ: Personnel.adSoyad üzerinden "Azra İleri" araması pasif ve
- * User hesabı olmayan başka bir kayda düşüyor (bkz. docs/proje-takip/VERI-KALITESI-NOTLARI.md).
- * Dev DB'de doğrulandı (2026-09-28): ad_azra.ileri · azra.ileri@ilerigroup.com · aktif.
- * Prod'da aynı id olduğu Melih Bey tarafından doğrulanmalı.
+ * Alıcı seçimi (Melih Bey'in kuralı, 2026-09-29): bildirim KİŞİYE değil BÖLÜME
+ * bağlı — getSatisPazarlamaEkibi()'ndeki tüm aktif+hesaplı kişilere gider. Kodda
+ * sabit User.id / kişi adı YOK. 2 kanal: email + in-app (push yok, bildirim.ts ile
+ * aynı). Kanal izolasyonu: Promise.allSettled.
  */
-export const IFS_MUSTERI_ACMA_SORUMLUSU_ID = "ad_azra.ileri";
 
 const esc = (s: string): string =>
   s
@@ -31,13 +30,14 @@ export class MusteriBildirimHatasi extends Error {
 }
 
 async function sendMusteriAcmaEmail(
-  alici: { name: string; email: string },
+  alici: SatisPazarlamaKisi,
   musteriFirma: string,
   bildiren: Bildiren
 ): Promise<void> {
+  const aliciAdi = alici.name ?? alici.email;
   const bildirenAdi = bildiren.name ?? bildiren.email;
   const subject = `[ILERIHub] IFS'te müşteri açılması gerekiyor: ${musteriFirma}`;
-  const body = `Merhaba ${alici.name},
+  const body = `Merhaba ${aliciAdi},
 
 Bu proje için IFS'te müşteri açılması gerekiyor.
 
@@ -46,7 +46,7 @@ Bildiren: ${bildirenAdi}
 
 Yeni Proje formunda girilen bu müşteri IFS'te bulunamadı.`;
   const html = `
-    <p>Merhaba ${esc(alici.name)},</p>
+    <p>Merhaba ${esc(aliciAdi)},</p>
     <p>Bu proje için <strong>IFS'te müşteri açılması gerekiyor</strong>.</p>
     <p>Müşteri: <strong>${esc(musteriFirma)}</strong><br/>Bildiren: ${esc(bildirenAdi)}</p>
     <p>Yeni Proje formunda girilen bu müşteri IFS'te bulunamadı.</p>
@@ -54,18 +54,18 @@ Yeni Proje formunda girilen bu müşteri IFS'te bulunamadı.`;
 
   // sendEmail hata fırlatmıyor, { success: false } dönüyor — allSettled'ın
   // görebilmesi için burada hataya çevriliyor.
-  const sonuc = await sendEmail([alici], subject, body, html);
+  const sonuc = await sendEmail([{ name: aliciAdi, email: alici.email }], subject, body, html);
   if (!sonuc.success) throw new Error(sonuc.error ?? "E-posta gönderilemedi");
 }
 
 async function createMusteriAcmaInAppNotification(
-  aliciId: string,
+  alici: SatisPazarlamaKisi,
   musteriFirma: string,
   bildiren: Bildiren
 ): Promise<void> {
   await prisma.notification.create({
     data: {
-      userId: aliciId,
+      userId: alici.id,
       title: "IFS'te Müşteri Açılması Gerekiyor",
       message: `Bu proje için IFS'te müşteri açılması gerekiyor: "${musteriFirma}" (bildiren: ${bildiren.name ?? bildiren.email}).`,
       type: "WARNING",
@@ -76,31 +76,31 @@ async function createMusteriAcmaInAppNotification(
 export async function musteriAcmaBildirimGonder(
   musteriFirma: string,
   bildiren: Bildiren
-): Promise<void> {
-  const alici = await prisma.user.findUnique({
-    where: { id: IFS_MUSTERI_ACMA_SORUMLUSU_ID },
-    select: { id: true, name: true, email: true, isActive: true },
-  });
-  if (!alici || !alici.isActive) {
+): Promise<{ aliciSayisi: number }> {
+  const alicilar = await getSatisPazarlamaEkibi();
+  if (alicilar.length === 0) {
     throw new MusteriBildirimHatasi(
-      `Bildirim alıcısı (${IFS_MUSTERI_ACMA_SORUMLUSU_ID}) bulunamadı veya pasif`
+      "Satış & Pazarlama Müdürlüğü'nde bildirim alacak aktif hesap bulunamadı"
     );
   }
-  const aliciAdi = alici.name ?? alici.email;
 
-  const results = await Promise.allSettled([
-    sendMusteriAcmaEmail({ name: aliciAdi, email: alici.email }, musteriFirma, bildiren),
-    createMusteriAcmaInAppNotification(alici.id, musteriFirma, bildiren),
-  ]);
+  const results = await Promise.allSettled(
+    alicilar.flatMap((r) => [
+      sendMusteriAcmaEmail(r, musteriFirma, bildiren),
+      createMusteriAcmaInAppNotification(r, musteriFirma, bildiren),
+    ])
+  );
 
-  const kanallar = ["email", "in-app"] as const;
   results.forEach((r, i) => {
     if (r.status === "rejected") {
-      console.error(`[proje-takip] müşteri açma bildirimi (${kanallar[i]}) → ${alici.email} hatası:`, r.reason);
+      const alici = alicilar[Math.floor(i / 2)];
+      const kanal = i % 2 === 0 ? "email" : "in-app";
+      console.error(`[proje-takip] müşteri açma bildirimi → ${alici.email} (${kanal}) hatası:`, r.reason);
     }
   });
 
   if (results.every((r) => r.status === "rejected")) {
     throw new MusteriBildirimHatasi("Bildirim hiçbir kanaldan gönderilemedi");
   }
+  return { aliciSayisi: alicilar.length };
 }

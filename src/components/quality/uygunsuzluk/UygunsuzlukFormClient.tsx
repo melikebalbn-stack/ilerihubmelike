@@ -32,6 +32,7 @@ interface SatirState {
   malzemeAdi: string
   redAdeti: string
   reworkAdedi: string
+  hurdaAdedi: string
   olusanBolumId: string | null
   hataKoduId: string | null
   hataDetayi: string
@@ -47,17 +48,21 @@ export interface UygunsuzlukDetay {
   isEmriAdeti: number | null
   tespitEdenBolumId: string | null
   kokNeden: string | null
+  kacisKokNedeni: string | null
   duzelticiFaaliyet: string | null
+  geciciAksiyon: string | null
   sorumluId: string | null
   sorumlu?: { adSoyad: string; sicilNo: string | null } | null
   termin: string | null
   kapanisTarihi: string | null
+  ogrenilmisDersler: string[]
   satirlar: {
     siraNo: number
     yariMamulKodu: string | null
     malzemeAdi: string | null
     redAdeti: number
     reworkAdedi: number | null
+    hurdaAdedi: number | null
     olusanBolumId: string | null
     hataKoduId: string | null
     hataDetayi: string | null
@@ -72,6 +77,7 @@ const yeniSatir = (): SatirState => ({
   malzemeAdi: '',
   redAdeti: '',
   reworkAdedi: '',
+  hurdaAdedi: '',
   olusanBolumId: null,
   hataKoduId: null,
   hataDetayi: '',
@@ -113,7 +119,9 @@ export function UygunsuzlukFormClient({
     initial?.tespitEdenBolumId ?? null,
   )
   const [kokNeden, setKokNeden] = useState(initial?.kokNeden ?? '')
+  const [kacisKokNedeni, setKacisKokNedeni] = useState(initial?.kacisKokNedeni ?? '')
   const [duzelticiFaaliyet, setDuzelticiFaaliyet] = useState(initial?.duzelticiFaaliyet ?? '')
+  const [geciciAksiyon, setGeciciAksiyon] = useState(initial?.geciciAksiyon ?? '')
   const [sorumlu, setSorumlu] = useState<MusteriOption | null>(
     initial?.sorumluId && initial.sorumlu
       ? {
@@ -125,6 +133,9 @@ export function UygunsuzlukFormClient({
   )
   const [termin, setTermin] = useState(initial ? isoToDate(initial.termin) : '')
   const [kapanisTarihi, setKapanisTarihi] = useState(initial ? isoToDate(initial.kapanisTarihi) : '')
+  const [ogrenilmisDersler, setOgrenilmisDersler] = useState(
+    initial?.ogrenilmisDersler?.join('\n') ?? '',
+  )
 
   const [satirlar, setSatirlar] = useState<SatirState[]>(
     initial && initial.satirlar.length
@@ -134,6 +145,7 @@ export function UygunsuzlukFormClient({
           malzemeAdi: s.malzemeAdi ?? '',
           redAdeti: String(s.redAdeti),
           reworkAdedi: s.reworkAdedi != null ? String(s.reworkAdedi) : '',
+          hurdaAdedi: s.hurdaAdedi != null ? String(s.hurdaAdedi) : '',
           olusanBolumId: s.olusanBolumId,
           hataKoduId: s.hataKoduId,
           hataDetayi: s.hataDetayi ?? '',
@@ -195,16 +207,23 @@ export function UygunsuzlukFormClient({
         isEmriAdeti: isEmriAdeti ? Number(isEmriAdeti) : null,
         tespitEdenBolumId,
         kokNeden: kokNeden.trim() || null,
+        kacisKokNedeni: kacisKokNedeni.trim() || null,
         duzelticiFaaliyet: duzelticiFaaliyet.trim() || null,
+        geciciAksiyon: geciciAksiyon.trim() || null,
         sorumluId: sorumlu?.id ?? null,
         termin: termin || null,
         kapanisTarihi: kapanisTarihi || null,
+        ogrenilmisDersler: ogrenilmisDersler
+          .split('\n')
+          .map((s) => s.trim())
+          .filter(Boolean),
         satirlar: satirlar.map((s, i) => ({
           siraNo: i + 1,
           yariMamulKodu: s.yariMamulKodu.trim() || null,
           malzemeAdi: s.malzemeAdi.trim() || null,
           redAdeti: Number(s.redAdeti),
           reworkAdedi: s.reworkAdedi ? Number(s.reworkAdedi) : null,
+          hurdaAdedi: s.hurdaAdedi ? Number(s.hurdaAdedi) : null,
           olusanBolumId: s.olusanBolumId,
           hataKoduId: s.hataKoduId,
           hataDetayi: s.hataDetayi.trim() || null,
@@ -316,13 +335,32 @@ export function UygunsuzlukFormClient({
         </div>
         <div className="md:col-span-2 lg:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
-            <Label className="text-xs text-slate-600">Kök neden</Label>
+            <Label className="text-xs text-slate-600">Kök neden (oluşum)</Label>
             <Textarea value={kokNeden} disabled={ro} onChange={(e) => setKokNeden(e.target.value)} rows={3} className="mt-1" />
           </div>
           <div>
-            <Label className="text-xs text-slate-600">Düzeltici faaliyet</Label>
+            <Label className="text-xs text-slate-600">Kaçış kök nedeni</Label>
+            <Textarea value={kacisKokNedeni} disabled={ro} onChange={(e) => setKacisKokNedeni(e.target.value)} rows={3} className="mt-1" />
+          </div>
+          <div>
+            <Label className="text-xs text-slate-600">Geçici aksiyon</Label>
+            <Textarea value={geciciAksiyon} disabled={ro} onChange={(e) => setGeciciAksiyon(e.target.value)} rows={3} className="mt-1" />
+          </div>
+          <div>
+            <Label className="text-xs text-slate-600">Kalıcı aksiyon (düzeltici faaliyet)</Label>
             <Textarea value={duzelticiFaaliyet} disabled={ro} onChange={(e) => setDuzelticiFaaliyet(e.target.value)} rows={3} className="mt-1" />
           </div>
+        </div>
+        <div className="md:col-span-2 lg:col-span-3">
+          <Label className="text-xs text-slate-600">Öğrenilmiş dersler</Label>
+          <Textarea
+            value={ogrenilmisDersler}
+            disabled={ro}
+            onChange={(e) => setOgrenilmisDersler(e.target.value)}
+            rows={2}
+            placeholder="Her satıra bir ders yazın"
+            className="mt-1"
+          />
         </div>
       </div>
 
@@ -379,6 +417,10 @@ export function UygunsuzlukFormClient({
               <div>
                 <Label className="text-xs text-slate-600">Rework adedi</Label>
                 <Input type="number" min={0} value={s.reworkAdedi} disabled={ro} onChange={(e) => updSatir(i, { reworkAdedi: e.target.value })} className="mt-1 h-9" />
+              </div>
+              <div>
+                <Label className="text-xs text-slate-600">Hurda adedi</Label>
+                <Input type="number" min={0} value={s.hurdaAdedi} disabled={ro} onChange={(e) => updSatir(i, { hurdaAdedi: e.target.value })} className="mt-1 h-9" />
               </div>
             </div>
 

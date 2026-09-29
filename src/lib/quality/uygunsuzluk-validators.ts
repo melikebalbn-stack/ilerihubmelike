@@ -26,6 +26,7 @@ export const uygunsuzlukSatirInput = z.object({
   malzemeAdi: bosStr,
   redAdeti: z.number().int().min(1, 'Red adeti en az 1 olmalı'),
   reworkAdedi: z.number().int().min(0).optional().nullable(),
+  hurdaAdedi: z.number().int().min(0).optional().nullable(),
   olusanBolumId: bosId,
   hataKoduId: bosId,
   hataDetayi: bosStr,
@@ -43,10 +44,13 @@ export const uygunsuzlukInput = z
     isEmriAdeti: z.number().int().min(1, 'İş emri adeti en az 1 olmalı').optional().nullable(),
     tespitEdenBolumId: bosId,
     kokNeden: bosStr,
+    kacisKokNedeni: bosStr,
     duzelticiFaaliyet: bosStr,
+    geciciAksiyon: bosStr,
     sorumluId: bosId,
     termin: z.coerce.date().optional().nullable(),
     kapanisTarihi: z.coerce.date().optional().nullable(),
+    ogrenilmisDersler: z.array(z.string().trim().min(1)).optional().default([]),
     satirlar: z.array(uygunsuzlukSatirInput).min(1, 'En az bir ürün satırı zorunlu'),
   })
   .superRefine((data, ctx) => {

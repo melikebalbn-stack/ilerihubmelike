@@ -27,6 +27,8 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
           hataKodu: { select: { id: true, kod: true, ad: true } },
         },
       },
+      tarihGecmisi: { orderBy: { degistirmeTarihi: 'desc' } },
+      dosyalar: { orderBy: { yuklemeTarihi: 'desc' } },
     },
   })
   if (!kayit) return NextResponse.json({ error: 'Uygunsuzluk kaydı bulunamadı' }, { status: 404 })
@@ -47,7 +49,10 @@ export async function PATCH(request: NextRequest, { params }: Ctx) {
   }
   const { id } = await params
 
-  const mevcut = await prisma.kaliteUygunsuzluk.findUnique({ where: { id }, select: { id: true } })
+  const mevcut = await prisma.kaliteUygunsuzluk.findUnique({
+    where: { id },
+    select: { id: true, termin: true, kapanisTarihi: true },
+  })
   if (!mevcut) return NextResponse.json({ error: 'Uygunsuzluk kaydı bulunamadı' }, { status: 404 })
 
   const body = await request.json().catch(() => null)
@@ -70,6 +75,24 @@ export async function PATCH(request: NextRequest, { params }: Ctx) {
   }
 
   const updated = await prisma.$transaction(async (tx) => {
+    // Tarih revizyon geçmişi: termin/kapanisTarihi değiştiyse eski değeri sakla.
+    const eskiYeni: { alanAdi: string; eskiDeger: Date | null; yeniDeger: Date | null }[] = []
+    if ((mevcut.termin?.getTime() ?? null) !== (d.termin?.getTime() ?? null)) {
+      eskiYeni.push({ alanAdi: 'termin', eskiDeger: mevcut.termin, yeniDeger: d.termin ?? null })
+    }
+    if ((mevcut.kapanisTarihi?.getTime() ?? null) !== (d.kapanisTarihi?.getTime() ?? null)) {
+      eskiYeni.push({
+        alanAdi: 'kapanisTarihi',
+        eskiDeger: mevcut.kapanisTarihi,
+        yeniDeger: d.kapanisTarihi ?? null,
+      })
+    }
+    if (eskiYeni.length > 0) {
+      await tx.kaliteUygunsuzlukTarihGecmisi.createMany({
+        data: eskiYeni.map((e) => ({ uygunsuzlukId: id, ...e, degistirenId: userId })),
+      })
+    }
+
     // Satır tam-liste replace: mevcutları sil, yenilerini yaz. `no` DOKUNULMAZ.
     await tx.kaliteUygunsuzlukSatir.deleteMany({ where: { uygunsuzlukId: id } })
     return tx.kaliteUygunsuzluk.update({
@@ -81,10 +104,13 @@ export async function PATCH(request: NextRequest, { params }: Ctx) {
         isEmriAdeti: d.isEmriAdeti ?? null,
         tespitEdenBolumId: d.tespitEdenBolumId ?? null,
         kokNeden: d.kokNeden ?? null,
+        kacisKokNedeni: d.kacisKokNedeni ?? null,
         duzelticiFaaliyet: d.duzelticiFaaliyet ?? null,
+        geciciAksiyon: d.geciciAksiyon ?? null,
         sorumluId: d.sorumluId ?? null,
         termin: d.termin ?? null,
         kapanisTarihi: d.kapanisTarihi ?? null,
+        ogrenilmisDersler: d.ogrenilmisDersler ?? [],
         guncelleyenId: userId,
         satirlar: {
           create: d.satirlar.map((s) => ({
@@ -93,6 +119,7 @@ export async function PATCH(request: NextRequest, { params }: Ctx) {
             malzemeAdi: s.malzemeAdi ?? null,
             redAdeti: s.redAdeti,
             reworkAdedi: s.reworkAdedi ?? null,
+            hurdaAdedi: s.hurdaAdedi ?? null,
             olusanBolumId: s.olusanBolumId ?? null,
             hataKoduId: s.hataKoduId ?? null,
             hataDetayi: s.hataDetayi ?? null,

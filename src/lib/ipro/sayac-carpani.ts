@@ -28,8 +28,8 @@ export function carpanSec(satirlar: CarpanSatiri[], tezgahKod?: string | null): 
 export async function carpanBul(parcaNo: string, operasyonNo: string, tezgahKod?: string | null): Promise<number> {
   if (tezgahKod) {
     const t = await prisma.iproSayacCarpani.findFirst({ where: { parcaNo, operasyonNo, tezgahKod }, select: { carpan: true } })
-    if (t) return t.carpan
+    if (t) return Number(t.carpan) // Prisma Decimal → number
   }
   const genel = await prisma.iproSayacCarpani.findFirst({ where: { parcaNo, operasyonNo, tezgahKod: null }, select: { carpan: true } })
-  return genel?.carpan ?? 1
+  return genel ? Number(genel.carpan) : 1
 }

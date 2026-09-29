@@ -55,7 +55,7 @@ const ICERIK = {
       { alan: 'parca', baslik: 'Parça', gorunur: true },
       { alan: 'op', baslik: 'Op', gorunur: true },
       { alan: 'plcAdet', baslik: 'PLC adet', bicim: '#.##0', toplam: 'topla', gorunur: true },
-      { alan: 'carpanBul', baslik: 'carpanBul', bicim: '#.##0', gorunur: true },
+      { alan: 'carpanBul', baslik: 'carpanBul', bicim: '#.##0,0###', gorunur: true },
       { alan: 'hesapAdet', baslik: 'PLC×çarpan', bicim: '#.##0', toplam: 'topla', gorunur: true },
       { alan: 'masAmount', baslik: 'MAS Amount', bicim: '#.##0', toplam: 'topla', gorunur: true },
       { alan: 'masCarpan', baslik: 'MAS çarpan', bicim: '#.##0', gorunur: true },

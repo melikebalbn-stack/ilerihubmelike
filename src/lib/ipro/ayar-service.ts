@@ -95,7 +95,7 @@ export async function ayarVerisi() {
     bolumler,
     tumTezgahlar: tezgahlar.map((t) => ({ id: t.id, kod: t.kod })).sort((a, b) => a.kod.localeCompare(b.kod, 'tr')),
     carpanlar: carpanlar.map((c) => ({
-      id: c.id, parcaNo: c.parcaNo, operasyonNo: c.operasyonNo, tezgahKod: c.tezgahKod, carpan: c.carpan,
+      id: c.id, parcaNo: c.parcaNo, operasyonNo: c.operasyonNo, tezgahKod: c.tezgahKod, carpan: Number(c.carpan),
       kaynak: c.kaynak, baskinPay: c.baskinPay != null ? Number(c.baskinPay) : null, isSayisi: c.isSayisi,
       dogrulanacak: c.dogrulanacak, updatedAt: c.updatedAt.toISOString(),
     })),
@@ -209,8 +209,9 @@ export async function carpanKaydet(
   kullaniciId: string | null,
   girdi: { id?: string; parcaNo: string; operasyonNo: string; tezgahKod?: string | null; carpan: number },
 ) {
-  const carpan = Math.trunc(Number(girdi.carpan))
-  if (!(carpan > 0)) throw new Error('Çarpan pozitif tam sayı olmalı')
+  const carpan = Number(girdi.carpan) // ondalık kabul (Decimal 8,4): 0,5 / 0,333 gibi
+  if (!(carpan > 0) || !Number.isFinite(carpan)) throw new Error('Çarpan pozitif olmalı')
+  if (Math.round(carpan * 10000) !== carpan * 10000) throw new Error('Çarpan en çok 4 ondalık olmalı')
   const ref = (id: string, eski: string | null, yeni: string | null) => ayarGecmisYaz(kullaniciId, 'sayac_carpani', id, eski, yeni)
   if (girdi.id) {
     const eski = await prisma.iproSayacCarpani.findUnique({ where: { id: girdi.id }, select: { carpan: true, parcaNo: true, operasyonNo: true, tezgahKod: true } })

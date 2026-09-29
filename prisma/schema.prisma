@@ -12048,7 +12048,7 @@ model IproSayacCarpani {
   parcaNo       String // IFS PartNo = MAS MaterialCode
   operasyonNo   String // IFS/MAS OperationCode
   tezgahKod     String? // NULL = tezgahsız (genel) satır
-  carpan        Int
+  carpan        Decimal  @db.Decimal(8, 4) // PLC ham × çarpan = gerçek adet; ondalık (punta 1/2=0,5, 1/3=0,333)
   kaynak        String   @default("MAS") // 'MAS' | 'MANUEL'
   baskinPay     Decimal? // MAS tohumda baskın çarpanın payı (%) — <80 ise dogrulanacak
   isSayisi      Int? // MAS tohumda katkı veren iş (WorkOrder) sayısı

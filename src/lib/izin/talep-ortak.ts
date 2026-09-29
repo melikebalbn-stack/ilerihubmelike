@@ -124,14 +124,14 @@ export async function mailTalebi(talepId: string): Promise<MailTalep & { personn
   const t = await prisma.izinTalep.findUniqueOrThrow({
     where: { id: talepId },
     select: {
-      id: true, baslangic: true, bitis: true, gunSayisi: true, durum: true, personnelId: true, onayci1Id: true, onayci2Id: true, onayci3Id: true,
+      id: true, baslangic: true, bitis: true, gunSayisi: true, dakika: true, durum: true, personnelId: true, onayci1Id: true, onayci2Id: true, onayci3Id: true,
       tur: { select: { ad: true } },
       personnel: { select: { adSoyad: true, sicilNo: true, user: { select: { id: true } } } },
     },
   })
   return {
     id: t.id, personelAd: t.personnel.adSoyad, sicil: t.personnel.sicilNo, turAd: t.tur.ad, baslangic: g(t.baslangic)!, bitis: g(t.bitis)!,
-    gunSayisi: Number(t.gunSayisi), personnelId: t.personnelId, calisanUserId: t.personnel.user?.id ?? null,
+    gunSayisi: Number(t.gunSayisi), dakika: t.dakika, personnelId: t.personnelId, calisanUserId: t.personnel.user?.id ?? null,
     onaycilar: [t.onayci1Id, t.onayci2Id, t.onayci3Id], durum: t.durum,
   }
 }

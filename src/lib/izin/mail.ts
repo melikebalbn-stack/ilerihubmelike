@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { sendEmail } from '@/lib/email'
 import { esc, logoAttachments, p, quote, renderEmail } from '@/lib/email-templates/layout'
 import { ileriHubUrl } from '@/lib/email-templates/akademi/_base'
-import { fmt } from './talep-kurallari'
+import { fmt, saatFmt } from './talep-kurallari'
 
 /**
  * İzin bildirimleri — Hub standart şablonu (renderEmail, modül "İnsan Varlıkları"). Plan §4.3:
@@ -23,12 +23,15 @@ export interface MailTalep {
   baslangic: string
   bitis: string
   gunSayisi: number
+  /** Saatlik (MAZERET) talepte süre dakika; günlük talepte null */
+  dakika?: number | null
 }
 
 type Alici = { email: string; name: string }
 
 const tarih = (g: string) => `${g.slice(8, 10)}.${g.slice(5, 7)}.${g.slice(0, 4)}`
 const aralik = (t: MailTalep) => (t.baslangic === t.bitis ? tarih(t.baslangic) : `${tarih(t.baslangic)} – ${tarih(t.bitis)}`)
+const sure = (t: MailTalep) => (t.dakika ? saatFmt(t.dakika) : `${fmt(t.gunSayisi)} gün`)
 
 async function kullanicilar(ids: (string | null | undefined)[]): Promise<Alici[]> {
   const temiz = [...new Set(ids.filter((x): x is string => !!x && x !== 'sistem'))]
@@ -82,14 +85,14 @@ async function gonder(alicilar: Alici[], o: { konu: string; baslik: string; altB
 export const yoneticiSatirlari = (t: MailTalep) => [
   { label: 'Personel', value: `<strong>${esc(t.personelAd)}</strong>${t.sicil ? ` · ${esc(t.sicil)}` : ''}` },
   { label: 'Tarih', value: esc(aralik(t)) },
-  { label: 'Süre', value: `${esc(fmt(t.gunSayisi))} gün` },
+  { label: 'Süre', value: esc(sure(t)) },
 ]
 /** Çalışana ve İV'ye giden satırlar — tür dahil. */
 export const tamSatirlar = (t: MailTalep) => [
   { label: 'Personel', value: `<strong>${esc(t.personelAd)}</strong>${t.sicil ? ` · ${esc(t.sicil)}` : ''}` },
   { label: 'Tür', value: esc(t.turAd) },
   { label: 'Tarih', value: esc(aralik(t)) },
-  { label: 'Süre', value: `${esc(fmt(t.gunSayisi))} gün` },
+  { label: 'Süre', value: esc(sure(t)) },
 ]
 
 export async function yoneticiyeTalep(t: MailTalep, yoneticiIdleri: (string | null)[]) {
@@ -165,4 +168,47 @@ export async function erkenDonusBildir(adet: number) {
     link: '/izin/onay?sekme=erken',
     buton: 'Erken dönüş kuyruğu',
   })
+}
+
+// ── Faz 6 — onay hatırlatmaları (eskalasyon YOK). İKİ KADEMEDE DE TÜR YOK: yöneticiSatirlari. ──
+// Dönüş: alıcı sayısı (izin_hatirlatma.aliciSayisi; e-posta saklanmaz).
+
+export async function yoneticiyeHatirlatma(t: MailTalep, yoneticiIdleri: (string | null)[]) {
+  const alicilar = await kullanicilar(yoneticiIdleri)
+  await gonder(alicilar, {
+    konu: `Hatırlatma: izin talebi onayınızı bekliyor — ${t.personelAd}`,
+    baslik: 'İzin talebi hâlâ onayınızı bekliyor',
+    altBaslik: `${t.personelAd} · ${aralik(t)}`,
+    satirlar: yoneticiSatirlari(t),
+    link: '/izin/onay',
+    buton: 'Onay Bekleyenler',
+  })
+  return alicilar.length
+}
+
+export async function iveHatirlatma(t: MailTalep) {
+  const alicilar = await ivAlicilari()
+  await gonder(alicilar, {
+    konu: `Hatırlatma: izin talebi İV onayında — ${t.personelAd}`,
+    baslik: 'İzin talebi hâlâ İV onayını bekliyor',
+    altBaslik: `${t.personelAd} · ${aralik(t)}`,
+    satirlar: yoneticiSatirlari(t),
+    link: '/izin/onay',
+    buton: 'Onay Bekleyenler',
+  })
+  return alicilar.length
+}
+
+/** Erken dönüş kuyruğunda bekleyenler — özet (kişi/tür mailde YOK; ekranda). */
+export async function erkenDonusHatirlatma(adet: number) {
+  const alicilar = await ivAlicilari()
+  await gonder(alicilar, {
+    konu: `Hatırlatma: ${adet} erken dönüş kaydı kararınızı bekliyor`,
+    baslik: 'Erken dönüş kararı bekleniyor',
+    altBaslik: 'Kalan günleri bakiyeye iade etmek İV kararıdır — otomatik iade yapılmaz',
+    satirlar: [{ label: 'Bekleyen kayıt', value: String(adet) }],
+    link: '/izin/onay?sekme=erken',
+    buton: 'Erken dönüş kuyruğu',
+  })
+  return alicilar.length
 }

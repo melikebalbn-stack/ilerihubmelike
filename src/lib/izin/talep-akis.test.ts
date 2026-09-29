@@ -64,11 +64,15 @@ vi.mock('@/lib/prisma', () => {
       belgeler: (db.t.izinBelge ?? []).filter((b) => b.talepId === r.id),
       gunler: (db.t.izinTalepGun ?? []).filter((g) => g.talepId === r.id),
       erkenDonus: (db.t.izinErkenDonus ?? []).find((e) => e.talepId === r.id) ?? null,
+      hatirlatmalar: (db.t.izinHatirlatma ?? []).filter((h) => h.talepId === r.id),
       _count: { belgeler: (db.t.izinBelge ?? []).filter((b) => b.talepId === r.id).length },
     }),
     izinTalepGun: (r) => ({ ...r, talep: zengin.izinTalep(db.t.izinTalep.find((t) => t.id === r.talepId)!) }),
     izinBelge: (r) => ({ ...r, talep: zengin.izinTalep(db.t.izinTalep.find((t) => t.id === r.talepId)!) }),
-    izinErkenDonus: (r) => ({ ...r, personnel: db.t.personnel.find((p) => p.id === r.personnelId), talep: zengin.izinTalep(db.t.izinTalep.find((t) => t.id === r.talepId)!) }),
+    izinErkenDonus: (r) => ({
+      ...r, personnel: db.t.personnel.find((p) => p.id === r.personnelId), talep: zengin.izinTalep(db.t.izinTalep.find((t) => t.id === r.talepId)!),
+      hatirlatmalar: (db.t.izinHatirlatma ?? []).filter((h) => h.erkenDonusId === r.id),
+    }),
     pdksPuantajGun: (r) => ({ ...r, izinTalep: r.izinTalepId ? zengin.izinTalep(db.t.izinTalep.find((t) => t.id === r.izinTalepId)!) : null }),
     izinOnay: (r) => ({ ...r, talep: zengin.izinTalep(db.t.izinTalep.find((t) => t.id === r.talepId)!) }),
     personnel: (r) => ({
@@ -85,7 +89,12 @@ vi.mock('@/lib/prisma', () => {
     findFirst: async ({ where }: { where?: Row } = {}) => { const r = (db.t[m] ?? []).find((x) => es(m, x, where)); return r ? oku(m, r) : null },
     findMany: async ({ where }: { where?: Row } = {}) => (db.t[m] ?? []).filter((x) => es(m, x, where)).map((r) => oku(m, r)),
     count: async ({ where }: { where?: Row } = {}) => (db.t[m] ?? []).filter((x) => es(m, x, where)).length,
-    create: async ({ data }: { data: Row }) => { const r = { id: `${m}-${++db.seq}`, createdAt: new Date(Date.now() + db.seq), ...data }; (db.t[m] ??= []).push(r); return r },
+    create: async ({ data }: { data: Row }) => {
+      // izin_hatirlatma.anahtar UNIQUE (Faz 6) — gerçek DB gibi P2002
+      if (m === 'izinHatirlatma' && (db.t[m] ?? []).some((x) => x.anahtar === data.anahtar)) throw Object.assign(new Error('Unique constraint failed'), { code: 'P2002' })
+      const r = { id: `${m}-${++db.seq}`, createdAt: new Date(Date.now() + db.seq), ...data }; (db.t[m] ??= []).push(r); return r
+    },
+    update: async ({ where, data }: { where: Row; data: Row }) => { const r = (db.t[m] ?? []).find((x) => es(m, x, where)); if (!r) throw new Error(`${m} yok`); Object.assign(r, data); return r },
     createMany: async ({ data, skipDuplicates }: { data: Row[]; skipDuplicates?: boolean }) => {
       let n = 0
       for (const d of data) {
@@ -101,7 +110,7 @@ vi.mock('@/lib/prisma', () => {
   const prisma: Record<string, unknown> = {}
   for (const m of [
     'user', 'personnel', 'personnelSensitive', 'izinTuru', 'izinTalep', 'izinOnay', 'izinTalepGun', 'izinBakiyeHareketi', 'systemSetting', 'iproTatil',
-    'izinBelge', 'izinErkenDonus', 'pdksPuantajGun', 'personnelAccessLog', 'permissionAuditLog',
+    'izinBelge', 'izinErkenDonus', 'pdksPuantajGun', 'personnelAccessLog', 'permissionAuditLog', 'izinHatirlatma',
   ]) prisma[m] = model(m)
   prisma.$transaction = async (a: unknown) => (Array.isArray(a) ? Promise.all(a) : (a as (tx: unknown) => unknown)(prisma))
   return { prisma }
@@ -126,10 +135,11 @@ vi.mock('@/lib/onay/yonetici-cozumu', () => ({
   getManagedPersonnelIds: async (pid: string) => (pid === 'p-m' ? ['p-c', 'p-d'] : []),
 }))
 vi.mock('./mail', () => {
-  const kaydet = (fn: string) => async (...args: unknown[]) => { db.mailler.push({ fn, args }) }
+  const kaydet = (fn: string) => async (...args: unknown[]) => { db.mailler.push({ fn, args }); return 1 }
   return {
     yoneticiyeTalep: kaydet('yoneticiyeTalep'), iveTalep: kaydet('iveTalep'), calisanaSonuc: kaydet('calisanaSonuc'), yoneticiyeBilgi: kaydet('yoneticiyeBilgi'),
     iptalBildir: kaydet('iptalBildir'), erkenDonusBildir: kaydet('erkenDonusBildir'),
+    yoneticiyeHatirlatma: kaydet('yoneticiyeHatirlatma'), iveHatirlatma: kaydet('iveHatirlatma'), erkenDonusHatirlatma: kaydet('erkenDonusHatirlatma'),
   }
 })
 vi.mock('./talep-ortak', async (orj) => {
@@ -147,6 +157,7 @@ import type { Baglam } from './talep-ortak'
 import { belgeAc } from './belge-servis'
 import { erkenDonusKarar, erkenDonusListesi, erkenDonusTara } from './erken-donus'
 import { IzinYetkiHatasi } from './gun-sayimi'
+import { hatirlatmaIsi } from './hatirlatma'
 
 const tur = (kod: string, o: Row = {}) => ({
   id: `t-${kod}`, kod, ad: kod === 'YILLIK' ? 'Yıllık izin' : kod === 'EVLILIK' ? 'Evlilik izni' : kod, yasal: true, bakiyeli: kod === 'YILLIK', sabitGun: null,
@@ -174,6 +185,7 @@ beforeEach(() => {
     personnelSensitive: [],
     izinTuru: [tur('YILLIK'), tur('EVLILIK', { sabitGun: 3 }), tur('RAPOR', { ozelNitelikli: true, belgeZorunlu: true, onayAkisi: 'YALNIZ_IV' })],
     izinTalep: [], izinOnay: [], izinTalepGun: [], izinBelge: [], izinErkenDonus: [], pdksPuantajGun: [], personnelAccessLog: [], permissionAuditLog: [],
+    izinHatirlatma: [],
     izinBakiyeHareketi: [{ id: 'h0', personnelId: 'p-c', turId: 't-YILLIK', hareket: 'ACILIS', gun: 12, tarih: d('2026-09-20') }],
     systemSetting: [{ key: 'izin_gecis_tarihi', value: '2026-09-20' }],
     // 28 Ekim 2026 yarım gün (arefe), 29 Ekim tatil — plan §3.2 senaryosu
@@ -458,5 +470,137 @@ describe('Faz 4 — erken dönüş kuyruğu (otomatik iade YOK)', () => {
     const once = db.t.izinBakiyeHareketi.length
     expect(await erkenDonusKarar(IV, db.t.izinErkenDonus[0].id as string, { karar: 'RED', not: 'mesaiye çağrıldı, izin sürüyor' })).toEqual({ durum: 'REDDEDILDI', iadeGun: 0 })
     expect(db.t.izinBakiyeHareketi.length).toBe(once)
+  })
+})
+
+// ═══════════════════════════════ İZİN FAZ 6 — onay hatırlatmaları ═══════════════════════════════
+
+describe('Faz 6 — onay hatırlatması (eskalasyon yok, kademe başına tek mail)', () => {
+  /** Yerel (+03:00) "YYYY-MM-DD HH:mm" → UTC Date */
+  const yerel = (s: string) => new Date(`${s.replace(' ', 'T')}:00+03:00`)
+  const saat = (t: Date, h: number) => new Date(t.getTime() + h * 3600_000)
+  const hMail = () => db.mailler.filter((m) => /Hatirlatma$/.test(m.fn))
+  const ac = () => db.t.systemSetting.push({ key: 'izin_talep_acik', value: 'true' })
+  /** Yönetici kademesinde bekleyen talep; oluşturma anı sabitlenir */
+  const bekleyen = async (olusturma: Date) => {
+    const { id } = await talepOlustur(CALISAN, { turId: 't-EVLILIK', baslangic: '2026-11-09', bitis: '2026-11-10' })
+    db.t.izinTalep.find((t) => t.id === id)!.createdAt = olusturma
+    db.mailler = []
+    return id
+  }
+  beforeEach(ac)
+
+  it('24 saat sınırı: 23:59 sonra gitmez, tam 24 saatte gider (iş günü 10:00)', async () => {
+    const simdi = yerel('2026-11-04 10:00') // Çarşamba
+    await bekleyen(saat(simdi, -24 + 1 / 60))
+    expect(await hatirlatmaIsi({ simdi })).toMatchObject({ yonetici: 0 })
+    expect(hMail()).toHaveLength(0)
+    db.t.izinTalep[0].createdAt = saat(simdi, -24)
+    expect(await hatirlatmaIsi({ simdi })).toMatchObject({ yonetici: 1, iv: 0 })
+    expect(hMail().map((m) => m.fn)).toEqual(['yoneticiyeHatirlatma'])
+    expect(hMail()[0].args[1]).toEqual(['u-m', null, null]) // talep anında çözülen yönetici adayları
+  })
+
+  it('tek gönderim: ikinci ve sonraki çalışmada aynı talep+kademe için gitmez', async () => {
+    const simdi = yerel('2026-11-04 10:00')
+    await bekleyen(saat(simdi, -30))
+    await hatirlatmaIsi({ simdi })
+    await hatirlatmaIsi({ simdi: saat(simdi, 1) })
+    await hatirlatmaIsi({ simdi: saat(simdi, 48) })
+    expect(hMail()).toHaveLength(1)
+    expect(db.t.izinHatirlatma).toHaveLength(1)
+    expect(db.t.izinHatirlatma[0]).toMatchObject({ kademe: 'YONETICI', aliciSayisi: 1 })
+    expect(db.t.izinHatirlatma[0].anahtar).toMatch(/^TALEP:.+:YONETICI$/)
+  })
+
+  it('kademe değişince yeni sayaç: İV hatırlatması yönetici onayından 24 saat sonra, bir kez', async () => {
+    const simdi = yerel('2026-11-04 10:00')
+    const id = await bekleyen(saat(simdi, -30))
+    await hatirlatmaIsi({ simdi }) // yönetici hatırlatması
+    await kararVer(YONETICI, id, { karar: 'ONAY' })
+    db.t.izinOnay.find((o) => o.talepId === id && o.kademe === 'YONETICI')!.createdAt = simdi
+    db.mailler = []
+    expect(await hatirlatmaIsi({ simdi: saat(simdi, 23) })).toMatchObject({ yonetici: 0, iv: 0 })
+    expect(await hatirlatmaIsi({ simdi: saat(simdi, 24) })).toMatchObject({ yonetici: 0, iv: 1 })
+    expect(await hatirlatmaIsi({ simdi: saat(simdi, 26) })).toMatchObject({ iv: 0 })
+    expect(hMail().map((m) => m.fn)).toEqual(['iveHatirlatma'])
+    expect(db.t.izinHatirlatma.map((h) => h.kademe).sort()).toEqual(['IV', 'YONETICI'])
+  })
+
+  it('doğrudan İV\'ye giden talep (YALNIZ_IV): sayaç oluşturmadan başlar', async () => {
+    const simdi = yerel('2026-11-04 10:00')
+    db.t.izinTuru.push(tur('IDARI', { onayAkisi: 'YALNIZ_IV' }))
+    const { id } = await talepOlustur(CALISAN, { turId: 't-IDARI', baslangic: '2026-11-09', bitis: '2026-11-09' })
+    db.t.izinTalep.find((t) => t.id === id)!.createdAt = saat(simdi, -25)
+    db.mailler = []
+    expect(await hatirlatmaIsi({ simdi })).toMatchObject({ yonetici: 0, iv: 1 })
+  })
+
+  it('hafta sonu, resmi tatil ve 08:30 öncesi ertelenir; bir sonraki iş günü 08:30 sonrası ilk çalışmada gider', async () => {
+    // Süre Çarşamba 28.10 (arefe — YARIM, iş günü) 20:00'de dolar; 29.10 TATIL; 30.10 Cuma
+    await bekleyen(yerel('2026-10-27 20:00'))
+    expect(await hatirlatmaIsi({ simdi: yerel('2026-10-28 19:59') })).toMatchObject({ yonetici: 0 })
+    expect(await hatirlatmaIsi({ simdi: yerel('2026-10-29 10:00') })).toMatchObject({ ertelendi: 'resmi tatil', yonetici: 0 })
+    expect(await hatirlatmaIsi({ simdi: yerel('2026-10-30 08:29') })).toMatchObject({ ertelendi: '08:30 öncesi' })
+    expect(await hatirlatmaIsi({ simdi: yerel('2026-10-30 08:30') })).toMatchObject({ yonetici: 1 })
+    expect(hMail()).toHaveLength(1)
+  })
+
+  it('hafta sonu dolan süre Pazartesi 08:30 sonrasında gider; arefe (YARIM) iş günüdür', async () => {
+    await bekleyen(yerel('2026-10-30 12:00')) // Cuma → süre Cumartesi 12:00
+    expect(await hatirlatmaIsi({ simdi: yerel('2026-10-31 12:00') })).toMatchObject({ ertelendi: 'hafta sonu' })
+    expect(await hatirlatmaIsi({ simdi: yerel('2026-11-01 09:00') })).toMatchObject({ ertelendi: 'hafta sonu' })
+    expect(await hatirlatmaIsi({ simdi: yerel('2026-11-02 09:00') })).toMatchObject({ yonetici: 1 })
+    db.t.izinTalep = []
+    db.mailler = []
+    await bekleyen(yerel('2026-10-27 09:00'))
+    expect(await hatirlatmaIsi({ simdi: yerel('2026-10-28 09:00') })).toMatchObject({ yonetici: 1 }) // arefe
+  })
+
+  it('izin_talep_acik kapalıyken no-op: satır da mail de yok', async () => {
+    db.t.systemSetting = db.t.systemSetting.filter((a) => a.key !== 'izin_talep_acik')
+    const simdi = yerel('2026-11-04 10:00')
+    await bekleyen(saat(simdi, -48))
+    expect(await hatirlatmaIsi({ simdi })).toMatchObject({ kapali: true, yonetici: 0, iv: 0, erkenDonus: 0 })
+    db.t.systemSetting.push({ key: 'izin_talep_acik', value: 'false' })
+    expect(await hatirlatmaIsi({ simdi })).toMatchObject({ kapali: true })
+    expect(hMail()).toHaveLength(0)
+    expect(db.t.izinHatirlatma).toHaveLength(0)
+  })
+
+  it('dryRun gerçek mail göndermez ve satır yazmaz; ardından gerçek çalışma gönderir', async () => {
+    const simdi = yerel('2026-11-04 10:00')
+    await bekleyen(saat(simdi, -30))
+    expect(await hatirlatmaIsi({ simdi, dryRun: true })).toMatchObject({ dryRun: true, yonetici: 1 })
+    expect(hMail()).toHaveLength(0)
+    expect(db.t.izinHatirlatma).toHaveLength(0)
+    expect(await hatirlatmaIsi({ simdi })).toMatchObject({ dryRun: false, yonetici: 1 })
+  })
+
+  it('izin_hatirlatma_saat ayarı okunur (48 saat)', async () => {
+    db.t.systemSetting.push({ key: 'izin_hatirlatma_saat', value: '48' })
+    const simdi = yerel('2026-11-04 10:00')
+    await bekleyen(saat(simdi, -30))
+    expect(await hatirlatmaIsi({ simdi })).toMatchObject({ saat: 48, yonetici: 0 })
+  })
+
+  it('erken dönüş kuyruğunda BEKLIYOR kalan kayıt: İV\'ye aynı kuralla tek özet hatırlatma; karar verilmişe gitmez', async () => {
+    const simdi = yerel('2026-11-04 10:00')
+    const ids: string[] = []
+    for (const [bas, bit] of [['2026-10-05', '2026-10-06'], ['2026-10-12', '2026-10-13'], ['2026-10-19', '2026-10-20']]) {
+      const { id } = await talepOlustur(CALISAN, { turId: 't-EVLILIK', baslangic: bas, bitis: bit })
+      db.t.izinTalep.find((t) => t.id === id)!.durum = 'ONAYLANDI' // onaylı izin → talep hatırlatması yok
+      ids.push(id)
+    }
+    db.t.izinErkenDonus.push(
+      { id: 'e1', talepId: ids[0], personnelId: 'p-c', tarih: d('2026-10-06'), durum: 'BEKLIYOR', createdAt: saat(simdi, -25) },
+      { id: 'e2', talepId: ids[1], personnelId: 'p-c', tarih: d('2026-10-13'), durum: 'ONAYLANDI', createdAt: saat(simdi, -50) },
+      { id: 'e3', talepId: ids[2], personnelId: 'p-c', tarih: d('2026-10-20'), durum: 'BEKLIYOR', createdAt: saat(simdi, -2) },
+    )
+    db.mailler = []
+    expect(await hatirlatmaIsi({ simdi })).toMatchObject({ erkenDonus: 1 })
+    expect(await hatirlatmaIsi({ simdi: saat(simdi, 1) })).toMatchObject({ erkenDonus: 0 })
+    expect(hMail()).toEqual([{ fn: 'erkenDonusHatirlatma', args: [1] }])
+    expect(db.t.izinHatirlatma.map((h) => h.anahtar)).toEqual(['ERKEN:e1'])
   })
 })

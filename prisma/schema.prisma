@@ -16247,6 +16247,7 @@ model IzinTalep {
   bakiyeHareketleri  IzinBakiyeHareketi[]
   pdksPuantajGunleri PdksPuantajGun[]
   erkenDonus         IzinErkenDonus?
+  hatirlatmalar      IzinHatirlatma[]
 
   @@index([personnelId, baslangic])
   @@index([durum])
@@ -16350,7 +16351,27 @@ model IzinErkenDonus {
   kararNotu    String?
   createdAt    DateTime             @default(now())
 
+  hatirlatmalar IzinHatirlatma[]
+
   @@index([durum])
   @@index([personnelId])
   @@map("izin_erken_donus")
+}
+
+// Faz 6 — onay hatırlatması gönderim kaydı. anahtar UNIQUE → aynı talep+kademe (ya da erken dönüş kaydı) için
+// TEK hatırlatma: satır ÖNCE yazılır, yazılabildiyse mail gider (eşzamanlı ikinci tur yazamaz, göndermez).
+// Alıcı e-postası TUTULMAZ, yalnız sayısı.
+model IzinHatirlatma {
+  id           String          @id @default(cuid())
+  anahtar      String          @unique // TALEP:<talepId>:YONETICI | TALEP:<talepId>:IV | ERKEN:<erkenDonusId>
+  talepId      String?
+  talep        IzinTalep?      @relation(fields: [talepId], references: [id], onDelete: Restrict)
+  erkenDonusId String?
+  erkenDonus   IzinErkenDonus? @relation(fields: [erkenDonusId], references: [id], onDelete: Restrict)
+  kademe       String // YONETICI | IV
+  aliciSayisi  Int             @default(0)
+  gonderildiAt DateTime        @default(now())
+
+  @@index([talepId])
+  @@map("izin_hatirlatma")
 }

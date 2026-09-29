@@ -117,6 +117,68 @@ export async function getRafBilgisi(kod: string): Promise<DepoRafBilgisi | null>
   return null
 }
 
+// ── Hedef raf önerisi ────────────────────────────────────────────────────────
+
+/**
+ * Stok hareket geçmişinde "giriş" sayılan işlem kodları (IFS test, 29.09 veri dağılımı):
+ * INVM-IN taşıma girişi · NREC stoğa giriş · OOREC üretim (iş emri) girişi · ARRIVAL satın alma kabulü.
+ * Dışarıda: PICK-IN (sevk lokasyonu / geri alma), AVAIL-IN (kullanılabilirlik değişimi), HANDLUNIT+ (taşıma birimi
+ * değişimi), COUNT-IN (sayım farkı), OERET-* (iade) — fiziksel yerleştirme değil.
+ */
+const GIRIS_KODLARI = ['INVM-IN', 'NREC', 'OOREC', 'ARRIVAL']
+
+/**
+ * Malzemenin (PartNo, Contract) en son GİRİŞ yaptığı lokasyon — haricLok (kaynak raf) hariç, ters kaydı olmayan.
+ * InventoryTransactionHistoryHandling (/main), tek sorgu, $top=1, TransactionId azalan (artan sıra = zaman sırası).
+ */
+export async function sonGirisLokasyonu(partNo: string, haricLok?: string): Promise<{ locationNo: string; tarih: string } | null> {
+  const { contract } = getIfsConfig()
+  const p = [
+    `Contract eq '${esc(contract)}'`,
+    `PartNo eq '${esc(partNo)}'`,
+    `Direction eq '+'`,
+    'QtyReversed eq 0',
+    `(${GIRIS_KODLARI.map((k) => `TransactionCode eq '${k}'`).join(' or ')})`,
+  ]
+  if (haricLok) p.push(`LocationNo ne '${esc(haricLok)}'`)
+  const { status, body } = await mainGet<{ value?: { LocationNo?: string; DateCreated?: string }[] }>(
+    `InventoryTransactionHistoryHandling.svc/InventoryTransactionHistSet?$filter=${encodeURIComponent(p.join(' and '))}` +
+      `&$select=TransactionId,LocationNo,DateCreated&$orderby=TransactionId desc&$top=1`,
+  )
+  if (status !== 200) throw new Error(`IFS hareket geçmişi okunamadı (HTTP ${status})`)
+  const r = body?.value?.[0]
+  return r?.LocationNo ? { locationNo: str(r.LocationNo), tarih: str(r.DateCreated) } : null
+}
+
+export interface RafOnerisi {
+  locationNo: string
+  aciklama: string
+  /** 'son-giris' → tarih dolu; 'varsayilan' → IFS malzeme varsayılan lokasyonu. */
+  kaynak: 'son-giris' | 'varsayilan'
+  tarih: string | null
+}
+
+/**
+ * Hedef raf önerisi: son giriş lokasyonu (kaynak hariç) → yoksa IFS varsayılan lokasyonu
+ * (MoveInventoryPart.GetDefaultLocation; kaynakla aynıysa önerilmez) → yoksa null.
+ */
+export async function rafOnerisi(partNo: string, haricLok?: string): Promise<RafOnerisi | null> {
+  let oneri: Omit<RafOnerisi, 'aciklama'> | null = null
+  const son = await sonGirisLokasyonu(partNo, haricLok)
+  if (son) oneri = { locationNo: son.locationNo, kaynak: 'son-giris', tarih: son.tarih || null }
+  else {
+    const { contract } = getIfsConfig()
+    const { status, body } = await mainGet<{ value?: string }>(
+      `MoveInventoryPart.svc/GetDefaultLocation(${encodeURI(`Contract='${esc(contract)}',PartNo='${esc(partNo)}'`)})`,
+    )
+    const lok = status === 200 ? str(body?.value).trim() : ''
+    if (lok && lok !== haricLok) oneri = { locationNo: lok, kaynak: 'varsayilan', tarih: null }
+  }
+  if (!oneri) return null
+  const raf = await getRafBilgisi(oneri.locationNo).catch(() => null)
+  return { ...oneri, aciklama: raf?.aciklama ?? '' }
+}
+
 /**
  * Parça adını (Description) InventoryPartHandling'den getirir. Etiket üretimi parça
  * adı yüzünden ASLA bloklanmasın diye hata/yoksa null döner (throw etmez).

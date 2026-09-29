@@ -20,7 +20,7 @@ import {
 import { cn } from '@/lib/utils'
 import { barkodIdAday, parseEtiket, type EtiketKaynak } from '@/lib/depo/etiket-parse'
 import { useScanner } from '@/lib/depo/use-scanner'
-import type { DepoRafBilgisi, DepoStokKaydi } from '@/lib/ifs/depo-stok'
+import type { DepoRafBilgisi, DepoStokKaydi, RafOnerisi } from '@/lib/ifs/depo-stok'
 import type { FifoKaynak } from '@/lib/ifs/tuketim'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -109,6 +109,40 @@ async function cozKaynakCekirdek(giris: string, kaynak: EtiketKaynak): Promise<K
   return { tip: 'yok', sorgu: giris }
 }
 
+/** Hedef raf önerisi — hata/yoksa null (ekran bozulmaz, öneri gizlenir). */
+async function oneriGetir(partNo: string, kaynakLok: string): Promise<RafOnerisi | null> {
+  try {
+    const res = await fetch(`/api/depo/raf-oneri?${new URLSearchParams({ partNo, kaynak: kaynakLok }).toString()}`)
+    const data = await res.json().catch(() => null)
+    return res.ok && data?.ok ? ((data.oneri ?? null) as RafOnerisi | null) : null
+  } catch {
+    return null
+  }
+}
+
+const gunAy = (iso: string | null) => (iso && /^\d{4}-\d{2}-\d{2}/.test(iso) ? `${iso.slice(8, 10)}.${iso.slice(5, 7)}` : '')
+
+/** "Önerilen: Y1A03 (64) · son giriş 27.09" — dokununca hedef seçilir; okutma ile başka raf her zaman seçilebilir. */
+function OneriKart({ oneri, onSec }: { oneri: RafOnerisi; onSec: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onSec}
+      className="flex min-h-12 items-center gap-2 rounded-xl border border-dashed bg-card px-3 py-2 text-left text-sm active:bg-muted/70"
+      style={{ borderColor: TERMINAL_ACCENT }}
+    >
+      <MapPin className="h-4 w-4 shrink-0" style={{ color: TERMINAL_ACCENT }} />
+      <span className="min-w-0 flex-1">
+        Önerilen: <b>{oneri.aciklama ? `${oneri.aciklama} (${oneri.locationNo})` : oneri.locationNo}</b>
+        <span className="text-xs text-muted-foreground">
+          {oneri.kaynak === 'son-giris' ? (gunAy(oneri.tarih) ? ` · son giriş ${gunAy(oneri.tarih)}` : ' · son giriş') : ' · varsayılan lokasyon'}
+        </span>
+      </span>
+      <span className="shrink-0 text-xs font-semibold" style={{ color: TERMINAL_ACCENT }}>Seç</span>
+    </button>
+  )
+}
+
 export function StokTasimaClient() {
   const router = useRouter()
 
@@ -118,6 +152,7 @@ export function StokTasimaClient() {
   const [secilenStok, setSecilenStok] = useState<DepoStokKaydi | null>(null)
   const [miktar, setMiktar] = useState('')
   const [hedefRaf, setHedefRaf] = useState<DepoRafBilgisi | null>(null)
+  const [oneri, setOneri] = useState<RafOnerisi | null>(null)
   const [loading, setLoading] = useState(false)
   const [tasiniyor, setTasiniyor] = useState(false)
   const [sonucYol, setSonucYol] = useState<'CREATE' | 'UPDATE' | null>(null)
@@ -139,6 +174,7 @@ export function StokTasimaClient() {
   const [hPartCip, setHPartCip] = useState<string | null>(null) // '{partNo}{ · lot}'
   const [hMiktar, setHMiktar] = useState('')
   const [hHedef, setHHedef] = useState<DepoRafBilgisi | null>(null)
+  const [hOneri, setHOneri] = useState<RafOnerisi | null>(null)
   const [hLoading, setHLoading] = useState(false)
   const [hTasiniyor, setHTasiniyor] = useState(false)
   const [hSonuc, setHSonuc] = useState<HizliSonuc | null>(null)
@@ -164,6 +200,26 @@ export function StokTasimaClient() {
     const t = setTimeout(() => setErrorMsg(null), 2500)
     return () => clearTimeout(t)
   }, [errorKey, errorMsg])
+
+  // Hedef raf önerisi: sihirbaz HEDEF_RAF adımına gelince / Hızlı'da kaynak seçilince (kaynak raf hariç).
+  const oneriPart = step === 'HEDEF_RAF' ? secilenStok?.stokKodu : undefined
+  const oneriKaynak = step === 'HEDEF_RAF' ? kaynakRaf?.locationNo : undefined
+  useEffect(() => {
+    setOneri(null)
+    if (!oneriPart || !oneriKaynak) return
+    let iptal = false
+    void oneriGetir(oneriPart, oneriKaynak).then((o) => { if (!iptal) setOneri(o) })
+    return () => { iptal = true }
+  }, [oneriPart, oneriKaynak])
+  const hOneriPart = hKaynak?.kimlik.partNo
+  const hOneriKaynak = hKaynak?.locationNo
+  useEffect(() => {
+    setHOneri(null)
+    if (!hOneriPart || !hOneriKaynak) return
+    let iptal = false
+    void oneriGetir(hOneriPart, hOneriKaynak).then((o) => { if (!iptal) setHOneri(o) })
+    return () => { iptal = true }
+  }, [hOneriPart, hOneriKaynak])
 
   // ── Malzeme kaynağını (FifoKaynak) seç → DepoStokKaydi + kaynakRaf kur, MIKTAR'a geç ─
   const secKaynakStok = useCallback((k: FifoKaynak) => {
@@ -821,6 +877,7 @@ export function StokTasimaClient() {
               ))}
             </div>
 
+            {!hHedef && hOneri && <OneriKart oneri={hOneri} onSec={() => void cozHizliHedef(hOneri.locationNo)} />}
             {!hHedef ? (
               <HizliOkutAlani
                 label="Hedef rafını okut"
@@ -1117,6 +1174,9 @@ export function StokTasimaClient() {
             manualPlaceholder="Hedef raf kodu"
             compact
           />
+          {oneri && hedefRaf?.locationNo !== oneri.locationNo && (
+            <OneriKart oneri={oneri} onSec={() => void cozRafHedef(oneri.locationNo)} />
+          )}
           <div className="rounded-2xl border bg-card p-4 text-sm">
             <div className="font-semibold">
               {secilenStok.stokKodu} · {miktar} {secilenStok.birim}

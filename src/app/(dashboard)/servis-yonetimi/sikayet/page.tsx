@@ -29,6 +29,7 @@ import {
 } from '@/lib/servis-yonetimi/sikayet-durum'
 // Paylaşılan tarihçe dialogu — 13 tanım modeliyle AYNI bileşen (rule 6).
 import { ServisGecmisDialog, GecmisButonu } from '../_components/ServisGecmisDialog'
+import { SikayetciSecici } from './_components/SikayetciSecici'
 
 type Durum = 'ACIK' | 'AKSIYON_ALINDI' | 'KAPANDI' | 'REDDEDILDI'
 
@@ -354,13 +355,11 @@ export default function SikayetListesiPage() {
               <div>
                 {/* 🔴 Zorunluluk işareti KAYNAĞA göre değişir: çalışan kendi
                     bildirdiyse kimlik zaten biliniyor. Kural uçta da var. */}
-                <Label htmlFor="f-sikayetci">
-                  Şikâyetçi {fKaynak === 'PERSONEL' ? '*' : '(opsiyonel)'}
-                </Label>
-                <input
-                  id="f-sikayetci" value={fSikayetci} onChange={e => setFSikayetci(e.target.value)}
-                  placeholder="Personel ID"
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
+                <SikayetciSecici
+                  value={fSikayetci}
+                  zorunlu={fKaynak === 'PERSONEL'}
+                  onChange={(personnelId) => setFSikayetci(personnelId)}
+                />
               </div>
               <div>
                 <Label htmlFor="f-durak">Durak</Label>

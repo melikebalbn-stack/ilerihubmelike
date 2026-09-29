@@ -2,6 +2,7 @@ import { prisma } from '@/lib/prisma'
 import { isIvBolumuFk } from '@/lib/auth/iv-bolum-fk'
 import { getManagedPersonnelIds } from '@/lib/onay/yonetici-cozumu'
 import { getUserPermissions } from '@/lib/auth/get-user-permissions'
+import { platformYoneticiIdMi } from '@/lib/auth/platform-yonetici'
 
 export type BulkCardScanAccessLevel = 'NONE' | 'FULL' | 'GRI' | 'SELF' | 'GUVENLIK'
 
@@ -21,6 +22,13 @@ export interface BulkCardScanAccess {
    * bunun yerine BulkCardScanBolumYetki.bolumAdi'den önceden çözülüp buraya konur.
    */
   scopePersonnelIds: string[] | null
+  /**
+   * FULL seviyesi PLATFORM YÖNETİCİSİ kuralından geldiyse true (29.09.2026).
+   * Okuma/kapsam uçları farkı GÖRMEZ — fabrika geneli görünürlük açılır. Ama
+   * ONAY KARARI veren uçlar (iv-onay, [id]/decision orphan istisnası) bu bayrağı
+   * REDDEDER: platform yöneticisi görebilir, onaylayamaz (§3 kuralı).
+   */
+  platformBypass?: boolean
 }
 
 // Eskiden FULL veren roller — ARTIK FULL VERMEZ (Melih kararı). İV-dışıysa org
@@ -50,6 +58,14 @@ export async function getBulkCardScanAccess(userId: string): Promise<BulkCardSca
   const yakaRengi = user?.personnel?.yakaRengi
   const personnelId = user?.personnel?.id ?? null
   const bolum = user?.personnel?.bolum ?? null
+
+  // PLATFORM YÖNETİCİSİ (29.09.2026): DEMOTE_ROLES kararının ruhu korunur —
+  // bypass ROLE değil, SABİT KULLANICI LİSTESİNE bağlı. Yani "SUPER_ADMIN rolü
+  // fabrika görünürlüğü vermez" kuralı aynen geçerli; yalnız platformu işleten
+  // adlandırılmış kullanıcı istisnadır. platformBypass=true → onay uçları reddeder.
+  if (platformYoneticiIdMi(userId)) {
+    return { level: 'FULL', personnelId, bolum, scopePersonnelIds: null, platformBypass: true }
+  }
 
   // Fabrika görünürlüğü YALNIZ İnsan Varlıkları'ndan gelir (rol DEĞİL).
   // FAZ 3a: karar Personnel.departmentId FK'sından; FK boşsa eski normalize yolu.

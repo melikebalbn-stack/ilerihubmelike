@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import { normalizeTr } from '@/lib/normalize-tr'
+import { platformYoneticiIdMi } from '@/lib/auth/platform-yonetici'
 
 export type SorumluPersonel = {
   id: string
@@ -17,6 +18,11 @@ export type SorumluEkibiSonucu =
       // sorumlunun kendisi de (işaretsiz) eşleşiyorsa o bölüm burada YOK.
       vekaletenBolumler: string[]
       personel: SorumluPersonel[]
+      /**
+       * Kapsam PLATFORM YÖNETİCİSİ kuralından geldiyse true (29.09.2026) —
+       * sorumlu metni yerine tüm bölümler. POST bunu denetime yazar.
+       */
+      platformBypass?: boolean
     }
   // PERSONEL_YOK: kullanıcıya bağlı bir Personnel kaydı hiç bulunamadı.
   // PERSONEL_PASIF: Personnel kaydı var ama aktif=false (işten ayrılmış) —
@@ -126,7 +132,8 @@ export async function bulSorumluBolumleri(adSoyad: string): Promise<BolumEslesme
  * aktif mavi yaka personeli bulur (kendisi dahil). GET ve POST ortak mantığı.
  */
 export async function bulSorumluVeEkibiByPersonnelId(
-  personnelId: string
+  personnelId: string,
+  secenek?: { tumBolumler?: boolean }
 ): Promise<SorumluEkibiSonucu> {
   const selfPersonnel = await prisma.personnel.findUnique({
     where: { id: personnelId },
@@ -137,8 +144,21 @@ export async function bulSorumluVeEkibiByPersonnelId(
 
   const adSoyad = selfPersonnel.adSoyad.trim()
 
-  const bolumEslesmeleri = await bulSorumluBolumleri(adSoyad)
-  const bolumler = bolumEslesmeleri.map((b) => b.bolum)
+  // tumBolumler: platform yöneticisi kapsamı — sorumlu metni ARANMAZ, aktif mavi
+  // yakası olan tüm bölümler gelir. Vekâlet işareti bu yolda anlamsız (boş kalır).
+  const bolumEslesmeleri = secenek?.tumBolumler ? [] : await bulSorumluBolumleri(adSoyad)
+  const bolumler = secenek?.tumBolumler
+    ? (
+        await prisma.personnel.findMany({
+          // Personnel.bolum şemada NOT NULL — ayrı null süzgeci gerekmiyor.
+          where: { aktif: true, yakaRengi: 'MAVI' },
+          select: { bolum: true },
+          distinct: ['bolum'],
+        })
+      )
+        .map((p) => p.bolum)
+        .sort((a, b) => a.localeCompare(b, 'tr'))
+    : bolumEslesmeleri.map((b) => b.bolum)
   const vekaletenBolumler = bolumEslesmeleri.filter((b) => b.vekaletenMi).map((b) => b.bolum)
 
   const maviYakaListesi = bolumler.length
@@ -171,6 +191,7 @@ export async function bulSorumluVeEkibiByPersonnelId(
     bolumler,
     vekaletenBolumler,
     personel,
+    ...(secenek?.tumBolumler ? { platformBypass: true } : {}),
   }
 }
 
@@ -185,6 +206,15 @@ export async function bulSorumluVeEkibi(userId: string): Promise<SorumluEkibiSon
   })
 
   if (!dbUser?.personnelId) return { ok: false, reason: 'PERSONEL_YOK' }
+
+  // PLATFORM YÖNETİCİSİ (29.09.2026): avans kapsamı `Personnel.birimSorumlusu`
+  // SERBEST METNİNDEN geliyor; platformu işleten kişinin adı o alanlarda geçmek
+  // zorunda değil (geçse bile bölümünde mavi yaka olmayabilir → EKIP_BOS).
+  // Bu yüzden kapsam koltuk/metin yerine TÜM bölümler olur. Onay zinciri YOK,
+  // bu modülde yalnız görünürlük/gönderim var.
+  if (platformYoneticiIdMi(userId)) {
+    return bulSorumluVeEkibiByPersonnelId(dbUser.personnelId, { tumBolumler: true })
+  }
 
   return bulSorumluVeEkibiByPersonnelId(dbUser.personnelId)
 }

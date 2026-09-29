@@ -3,6 +3,7 @@ import { requireUser } from '@/lib/auth/require-user'
 import { prisma } from '@/lib/prisma'
 import { donemAcikMi, donemKilidiKontrol } from '@/lib/avans/donem-kilidi'
 import { bulSorumluVeEkibi, sonucHataMesaji, sonucHataStatus } from './_lib/avans-formu-helpers'
+import { platformYoneticiDenetim } from '@/lib/auth/platform-yonetici'
 
 export const dynamic = 'force-dynamic'
 
@@ -202,6 +203,20 @@ export async function POST(request: NextRequest) {
 
     return sonuclar
   })
+
+  // Kapsam platform yöneticisi kuralından geldiyse gönderim denetime düşsün.
+  if (sonuc.platformBypass) {
+    await platformYoneticiDenetim({
+      userId: user.id,
+      userEmail: user.email,
+      islem: 'avans:gonderim',
+      detay: {
+        donem: `${body.donemYil}-${String(body.donemAy).padStart(2, '0')}`,
+        bolumSayisi: sonuclar.length,
+        satirSayisi: body.secimler.length,
+      },
+    })
+  }
 
   return NextResponse.json({
     success: true,

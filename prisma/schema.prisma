@@ -11178,12 +11178,15 @@ model KaliteUygunsuzluk {
   isEmriAdeti       Int?
   tespitEdenBolumId String?
   tespitEdenBolum   HataKodu?  @relation("UygunsuzlukTespitEdenBolum", fields: [tespitEdenBolumId], references: [id], onDelete: Restrict)
-  kokNeden          String?    @db.Text
-  duzelticiFaaliyet String?    @db.Text
+  kokNeden          String?    @db.Text // Oluşum kök nedeni
+  kacisKokNedeni    String?    @db.Text // Kaçış kök nedeni
+  duzelticiFaaliyet String?    @db.Text // Kalıcı aksiyon
+  geciciAksiyon     String?    @db.Text // Geçici aksiyon
   sorumluId         String?
   sorumlu           Personnel? @relation(fields: [sorumluId], references: [id], onDelete: SetNull)
   termin            DateTime?
   kapanisTarihi     DateTime?
+  ogrenilmisDersler String[] // Excel'e aktarılabilir liste
 
   // Audit — userId string (User FK/back-ref eklemez; mevcut audit deseni)
   olusturanId      String?
@@ -11191,7 +11194,9 @@ model KaliteUygunsuzluk {
   guncelleyenId    String?
   guncellemeTarihi DateTime @updatedAt
 
-  satirlar KaliteUygunsuzlukSatir[]
+  satirlar     KaliteUygunsuzlukSatir[]
+  dosyalar     KaliteUygunsuzlukDosya[]
+  tarihGecmisi KaliteUygunsuzlukTarihGecmisi[]
 
   @@index([isEmriNo])
   @@index([tarih])
@@ -11208,6 +11213,7 @@ model KaliteUygunsuzlukSatir {
   malzemeAdi    String?
   redAdeti      Int
   reworkAdedi   Int?
+  hurdaAdedi    Int?
   olusanBolumId String?
   olusanBolum   HataKodu?         @relation("UygunsuzlukSatirOlusanBolum", fields: [olusanBolumId], references: [id], onDelete: Restrict)
   hataKoduId    String?
@@ -11217,6 +11223,41 @@ model KaliteUygunsuzlukSatir {
 
   @@index([uygunsuzlukId])
   @@index([hataKoduId])
+}
+
+/// Uygunsuzluk döküman eki. Başlık silinince cascade. Audit deseni: yükleyenId
+/// plain string, User/Personnel'e FK eklemez (mevcut KaliteUygunsuzluk deseni).
+model KaliteUygunsuzlukDosya {
+  id            String            @id @default(cuid())
+  uygunsuzlukId String
+  uygunsuzluk   KaliteUygunsuzluk @relation(fields: [uygunsuzlukId], references: [id], onDelete: Cascade)
+
+  dosyaAdi    String
+  dosyaUrl    String
+  dosyaTipi   String?
+  dosyaBoyutu Int?
+
+  yukleyenId    String?
+  yuklemeTarihi DateTime @default(now())
+
+  @@index([uygunsuzlukId])
+}
+
+/// Termin/kapanış tarihi revize edildiğinde eski değeri saklar. Audit deseni:
+/// degistirenId plain string, FK eklemez (mevcut KaliteUygunsuzluk deseni).
+model KaliteUygunsuzlukTarihGecmisi {
+  id            String            @id @default(cuid())
+  uygunsuzlukId String
+  uygunsuzluk   KaliteUygunsuzluk @relation(fields: [uygunsuzlukId], references: [id], onDelete: Cascade)
+
+  alanAdi   String // "termin" | "kapanisTarihi"
+  eskiDeger DateTime?
+  yeniDeger DateTime?
+
+  degistirenId     String?
+  degistirmeTarihi DateTime @default(now())
+
+  @@index([uygunsuzlukId])
 }
 
 /// Kalite hata kodu ağacı (KAL-KYT-15 Bölüm 1).

@@ -34,7 +34,7 @@ const k = (partNo: string, locationNo: string, lotBatchNo = '*'): StokKimlik => 
 })
 
 export const MOCK_STOK: DepoStokKaydi[] = [
-  { stokKodu: '21970032', stokAdi: '', lot: 'L26-0341', miktar: 400, birim: 'ad', kimlik: k('21970032', '40', 'L26-0341') },
-  { stokKodu: '31450027', stokAdi: '', miktar: 120, birim: 'ad', kimlik: k('31450027', '40') },
-  { stokKodu: '21970029', stokAdi: '', lot: 'L26-0355', miktar: 250, birim: 'ad', kimlik: k('21970029', '61', 'L26-0355') },
+  { stokKodu: '21970032', stokAdi: '', lot: 'L26-0341', miktar: 400, rezerve: 0, birim: 'ad', kimlik: k('21970032', '40', 'L26-0341') },
+  { stokKodu: '31450027', stokAdi: '', miktar: 120, rezerve: 0, birim: 'ad', kimlik: k('31450027', '40') },
+  { stokKodu: '21970029', stokAdi: '', lot: 'L26-0355', miktar: 250, rezerve: 0, birim: 'ad', kimlik: k('21970029', '61', 'L26-0355') },
 ]

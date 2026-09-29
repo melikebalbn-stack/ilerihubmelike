@@ -61,6 +61,9 @@ export interface FifoKaynak {
   lotBatchNo?: string
   alinacak: number
   mevcutMiktar: number
+  /** Rezerve korumalı taşınabilir (QtyOnhand − QtyReserved, AvailableQtyToMove ile sınırlı) — Stok Taşıma sınırı. */
+  kullanilabilir?: number
+  rezerve?: number
   receiptDate: string
   /** Kaynak tipi: FIFO önerisi mi yoksa planlama rezervi mi. Varsayılan FIFO. */
   kaynak?: 'FIFO' | 'REZERV'
@@ -405,6 +408,8 @@ interface RawStock {
   ActivitySeq?: number | null
   HandlingUnitId?: number | null
   AvailableQtyToMove?: number | null
+  QtyOnhand?: number | null
+  QtyReserved?: number | null
   ReceiptDate?: string | null
 }
 
@@ -439,6 +444,8 @@ async function fetchStokKaynaklari(partNo: string): Promise<FifoKaynak[]> {
       lotBatchNo: lot && lot !== '*' ? lot : undefined,
       alinacak: mevcut,
       mevcutMiktar: mevcut,
+      kullanilabilir: Math.max(0, Math.min(mevcut, num(r.QtyOnhand) - num(r.QtyReserved))),
+      rezerve: num(r.QtyReserved),
       receiptDate: r.ReceiptDate ? String(r.ReceiptDate).slice(0, 10) : '',
     })
   }

@@ -1,11 +1,12 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, ArrowRightLeft, Boxes, Loader2, MapPin, PackageOpen, PackagePlus, ScanLine, Trash2, Truck, X } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useScanner } from '@/lib/depo/use-scanner'
+import { miktarOku, rezerveMesaji } from '@/lib/depo/miktar'
 import type { EtiketKaynak } from '@/lib/depo/etiket-parse'
 import { TERMINAL_ACCENT } from '../../_shared'
 import type { HuStokSatiri, Palet, PaletIcerik, PaletTuru } from '@/lib/ifs/tasima-birimi'
@@ -40,7 +41,7 @@ const KARTLAR: { mod: Mod; label: string; alt: string; Icon: LucideIcon }[] = [
   { mod: 'DEGISTIR', label: 'Değiştir', alt: 'Paletten palete aktar', Icon: ArrowRightLeft },
 ]
 
-export function TasimaBirimiClient() {
+export function TasimaBirimiClient({ baslangicPalet = null }: { baslangicPalet?: number | null }) {
   const router = useRouter()
   const [mod, setMod] = useState<Mod>('MENU')
   const [loading, setLoading] = useState(false)
@@ -132,6 +133,15 @@ export function TasimaBirimiClient() {
     return d ? (d.palet as Palet) : null
   }, [api])
 
+  // Dışarıdan palet no ile gelindi (Stok Bilgisi → "Palet Taşı'ya git"): Taşı modunda palet yüklü aç.
+  const baslangicYuklendi = useRef(false)
+  useEffect(() => {
+    if (!baslangicPalet || baslangicYuklendi.current) return
+    baslangicYuklendi.current = true
+    setMod('TASI')
+    void paletYukle(baslangicPalet).then((p) => { if (p) setPalet(p) })
+  }, [baslangicPalet, paletYukle])
+
   const olustur = async () => {
     if (!secTur) return showError('Tür seçin')
     const d = await post('/api/depo/tasima-birimi', { tur: secTur })
@@ -156,9 +166,9 @@ export function TasimaBirimiClient() {
 
   const ekle = async () => {
     if (!palet || !secAday) return
-    const m = Number(miktar.replace(',', '.'))
-    if (!(m > 0)) return showError('Miktar girin')
-    if (m > secAday.kullanilabilir) return showError(`En fazla ${fmt(secAday.kullanilabilir)} ${secAday.birim}`)
+    const m = miktarOku(miktar)
+    if (m == null || !(m > 0)) return showError('Geçerli bir miktar girin (en fazla 4 ondalık)')
+    if (m > secAday.kullanilabilir) return showError(rezerveMesaji(secAday.kullanilabilir, secAday.rezerve, secAday.birim, 'eklenebilir'))
     const d = await post(`/api/depo/tasima-birimi/${palet.id}/ekle`, { stok: kaynakKimlik(secAday), miktar: m })
     if (!d) return
     setInfo(`${secAday.partNo} · ${fmt(m)} ${secAday.birim} palete eklendi`)
@@ -168,7 +178,7 @@ export function TasimaBirimiClient() {
 
   const cikar = async () => {
     if (!palet || !cikarSatir) return
-    const m = Number(cikarMiktar.replace(',', '.'))
+    const m = miktarOku(cikarMiktar) ?? 0
     if (!(m > 0) || m > cikarSatir.eldeki) return showError(`Miktar 0 ile ${fmt(cikarSatir.eldeki)} arasında olmalı`)
     const d = await post(`/api/depo/tasima-birimi/${palet.id}/cikar`, { stok: kimlik(cikarSatir), miktar: m })
     if (!d) return
@@ -188,8 +198,10 @@ export function TasimaBirimiClient() {
 
   const aktar = async () => {
     if (!palet || !degSatir || !hedefPalet) return
-    const m = Number(degMiktar.replace(',', '.'))
-    if (!(m > 0) || m > degSatir.eldeki) return showError(`Miktar 0 ile ${fmt(degSatir.eldeki)} arasında olmalı`)
+    // Rezerve koruması: aktarılabilir = kullanılabilir (eldeki − rezerve).
+    const m = miktarOku(degMiktar)
+    if (m == null || !(m > 0)) return showError('Geçerli bir miktar girin (en fazla 4 ondalık)')
+    if (m > degSatir.kullanilabilir) return showError(rezerveMesaji(degSatir.kullanilabilir, degSatir.rezerve, degSatir.birim, 'aktarılabilir'))
     const d = await post(`/api/depo/tasima-birimi/${palet.id}/degistir`, { hedefId: hedefPalet.id, stok: kimlik(degSatir), miktar: m })
     if (!d) return
     setInfo(`${degSatir.partNo} · ${fmt(m)} ${degSatir.birim}: palet ${palet.id} → ${hedefPalet.id}`)
@@ -396,7 +408,7 @@ export function TasimaBirimiClient() {
       {/* DEĞİŞTİR */}
       {mod === 'DEGISTIR' && palet && !loading && (
         <div className="flex flex-col gap-2">
-          <PaletKart palet={palet} secilebilir={!degSatir} secili={degSatir} onSec={(s) => { setDegSatir(s); setDegMiktar(String(s.eldeki)) }} secEtiket="Seç" />
+          <PaletKart palet={palet} secilebilir={!degSatir} secili={degSatir} onSec={(s) => { setDegSatir(s); setDegMiktar(String(s.kullanilabilir).replace('.', ',')) }} secEtiket="Seç" />
           {degSatir && (
             <div className="flex flex-col gap-2 rounded-2xl border p-3" style={{ borderColor: TERMINAL_ACCENT }}>
               <div className="text-sm font-semibold">{degSatir.partNo} · aktarılacak miktar (en fazla {fmt(degSatir.eldeki)} {degSatir.birim})</div>

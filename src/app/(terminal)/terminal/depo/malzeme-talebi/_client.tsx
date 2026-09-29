@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { ArrowLeft, Check, Loader2, MapPin, Plus, ScanLine, Trash2, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useScanner } from '@/lib/depo/use-scanner'
+import { miktarOku, rezerveMesaji } from '@/lib/depo/miktar'
 import type { EtiketKaynak } from '@/lib/depo/etiket-parse'
 import { TERMINAL_ACCENT } from '../../_shared'
 import type { StokKimligi, TalepDetay, TalepListeleri, TalepSatir, TuketSatirSonuc } from '@/lib/ifs/malzeme-talebi'
@@ -191,9 +192,9 @@ export function MalzemeTalebiClient() {
 
   const ekle = async () => {
     if (!talep || !secili) return
-    const m = Number(miktar.replace(',', '.'))
-    if (!(m > 0)) return showError('Miktar girin')
-    if (m > secili.kullanilabilir) return showError(`En fazla ${fmt(secili.kullanilabilir)} ${secili.birim}`)
+    const m = miktarOku(miktar)
+    if (m == null || !(m > 0)) return showError('Geçerli bir miktar girin (en fazla 4 ondalık)')
+    if (m > secili.kullanilabilir) return showError(rezerveMesaji(secili.kullanilabilir, secili.rezerve, secili.birim, 'verilebilir'))
     setLoading(true)
     try {
       const res = await fetch(`/api/depo/malzeme-talebi/${encodeURIComponent(talep.orderNo)}/satir`, {

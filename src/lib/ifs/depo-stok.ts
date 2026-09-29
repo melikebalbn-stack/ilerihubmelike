@@ -42,8 +42,13 @@ export interface DepoStokKaydi {
   /** PartDescription bu projeksiyonda YOK → şimdilik '' (TODO: parça master lookup). */
   stokAdi: string
   lot?: string
-  /** AvailableQtyToMove — taşınabilir miktar. */
+  /**
+   * Taşınabilir miktar = kullanılabilir (QtyOnhand − QtyReserved), IFS AvailableQtyToMove ile sınırlı.
+   * AvailableQtyToMove rezerveyi de taşınabilir sayar → rezerve koruması için tek başına KULLANILMAZ.
+   */
   miktar: number
+  /** QtyReserved — rezerve miktar (sınır mesajında gösterilir). */
+  rezerve: number
   /** TODO: base UoM alanı bu projeksiyonda yok → 'ad' fallback. */
   birim: string
   kimlik: StokKimlik
@@ -209,7 +214,13 @@ interface RawStock {
   ActivitySeq?: number | null
   HandlingUnitId?: number | null
   AvailableQtyToMove?: number | null
+  QtyOnhand?: number | null
+  QtyReserved?: number | null
 }
+
+/** Rezerve korumalı taşınabilir miktar: min(AvailableQtyToMove, QtyOnhand − QtyReserved), ≥ 0. */
+export const tasinabilirMiktar = (r: { AvailableQtyToMove?: number | null; QtyOnhand?: number | null; QtyReserved?: number | null }) =>
+  Math.max(0, Math.min(num(r.AvailableQtyToMove), num(r.QtyOnhand) - num(r.QtyReserved)))
 
 /** Belirtilen LocationNo'daki taşınabilir stok kayıtları (10-anahtar kimlikle). */
 export async function getRaftakiStok(locationNo: string): Promise<DepoStokKaydi[]> {
@@ -226,7 +237,8 @@ export async function getRaftakiStok(locationNo: string): Promise<DepoStokKaydi[
       stokKodu: str(r.PartNo),
       stokAdi: '', // TODO: PartDescription bu projeksiyonda yok
       lot: lot && lot !== '*' ? lot : undefined,
-      miktar: num(r.AvailableQtyToMove),
+      miktar: tasinabilirMiktar(r),
+      rezerve: num(r.QtyReserved),
       birim: 'ad', // TODO: base UoM alanı yok
       kimlik: {
         contract,

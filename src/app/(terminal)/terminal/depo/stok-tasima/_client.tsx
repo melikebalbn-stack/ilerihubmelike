@@ -20,6 +20,7 @@ import {
 import { cn } from '@/lib/utils'
 import { barkodIdAday, parseEtiket, type EtiketKaynak } from '@/lib/depo/etiket-parse'
 import { useScanner } from '@/lib/depo/use-scanner'
+import { fmtMiktar, miktarOku, miktarTusla, rezerveMesaji } from '@/lib/depo/miktar'
 import type { DepoRafBilgisi, DepoStokKaydi, RafOnerisi } from '@/lib/ifs/depo-stok'
 import type { FifoKaynak } from '@/lib/ifs/tuketim'
 import { Button } from '@/components/ui/button'
@@ -227,7 +228,9 @@ export function StokTasimaClient() {
       stokKodu: k.kimlik.partNo,
       stokAdi: '',
       lot: k.lotBatchNo,
-      miktar: k.mevcutMiktar,
+      // Rezerve korumalı sınır (QtyOnhand − QtyReserved); eski yanıtta alan yoksa AvailableQtyToMove.
+      miktar: k.kullanilabilir ?? k.mevcutMiktar,
+      rezerve: k.rezerve ?? 0,
       birim: 'ad',
       kimlik: k.kimlik,
     }
@@ -379,6 +382,8 @@ export function StokTasimaClient() {
       lotBatchNo: kaydi.lot,
       alinacak: kaydi.miktar,
       mevcutMiktar: kaydi.miktar,
+      kullanilabilir: kaydi.miktar,
+      rezerve: kaydi.rezerve,
       receiptDate: '',
     }
     setHPartCip(`${kaydi.stokKodu}${kaydi.lot ? ` · ${kaydi.lot}` : ''}`)
@@ -449,19 +454,13 @@ export function StokTasimaClient() {
     }
   }
 
-  const hMax = hKaynak?.mevcutMiktar ?? 0
-  const hMiktarNum = Number(hMiktar || '0')
+  // Sınır rezerve korumalı kullanılabilir; ondalık (virgül) en fazla 4 basamak.
+  const hMax = hKaynak ? (hKaynak.kullanilabilir ?? hKaynak.mevcutMiktar) : 0
+  const hMiktarNum = miktarOku(hMiktar) ?? 0
   const hMiktarExceed = hMiktarNum > hMax
   const hMiktarValid = hMiktarNum > 0 && hMiktarNum <= hMax
 
-  const hPressKey = (k: string) => {
-    if (k === '⌫') return setHMiktar((m) => m.slice(0, -1))
-    if (k === '.') return setHMiktar((m) => (m.includes('.') ? m : m === '' ? '0.' : `${m}.`))
-    setHMiktar((m) => {
-      const next = m === '0' ? k : m + k
-      return next.length > 8 ? m : next
-    })
-  }
+  const hPressKey = (k: string) => setHMiktar((m) => miktarTusla(m, k))
 
   // Okutma dağıtımı (Hızlı panel): kaynak yoksa çöz/seç; kaynak varsa hedef.
   const hizliHandle = (raw: string, kaynak: EtiketKaynak = 'okutma') => {
@@ -637,17 +636,14 @@ export function StokTasimaClient() {
     setMalzemeTeyit(null)
   }
 
+  // Sınır rezerve korumalı kullanılabilir; ondalık (virgül) en fazla 4 basamak.
   const maxMiktar = secilenStok?.miktar ?? 0
-  const miktarNum = Number(miktar || '0')
+  const miktarNum = miktarOku(miktar) ?? 0
   const miktarExceed = miktarNum > maxMiktar
-  const miktarValid = miktarNum >= 1 && miktarNum <= maxMiktar
+  const miktarValid = miktarNum > 0 && miktarNum <= maxMiktar
   const pressKey = (k: string) => {
     if (k === 'C') return setMiktar('')
-    if (k === '⌫') return setMiktar((m) => m.slice(0, -1))
-    setMiktar((m) => {
-      const next = m === '0' ? k : m + k
-      return next.length > 7 ? m : next
-    })
+    setMiktar((m) => miktarTusla(m, k))
   }
 
   const stoguTasi = async () => {
@@ -742,7 +738,7 @@ export function StokTasimaClient() {
               className="flex items-center gap-1.5 rounded-full border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-sm font-medium text-emerald-700"
             >
               <MapPin className="h-4 w-4" />
-              {hKaynak.lokasyonAdi || hKaynak.locationNo} · {hKaynak.mevcutMiktar} {HIZLI_BIRIM}
+              {hKaynak.lokasyonAdi || hKaynak.locationNo} · {fmtMiktar(hMax)} {HIZLI_BIRIM}
             </span>
             <button
               type="button"
@@ -804,7 +800,7 @@ export function StokTasimaClient() {
                   </div>
                 </div>
                 <div className="shrink-0 text-sm font-semibold" style={{ color: TERMINAL_ACCENT }}>
-                  {k.mevcutMiktar} {HIZLI_BIRIM}
+                  {fmtMiktar(k.kullanilabilir ?? k.mevcutMiktar)} {HIZLI_BIRIM}
                 </div>
               </button>
             ))}
@@ -861,11 +857,11 @@ export function StokTasimaClient() {
             </div>
             {hMiktarExceed && (
               <p className="text-center text-xs font-medium text-red-600">
-                En fazla {hMax} {HIZLI_BIRIM} taşınabilir
+                {rezerveMesaji(hMax, hKaynak?.rezerve ?? 0, HIZLI_BIRIM)}
               </p>
             )}
             <div className="grid grid-cols-3 gap-1.5">
-              {['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', '⌫'].map((key) => (
+              {['1', '2', '3', '4', '5', '6', '7', '8', '9', ',', '0', '⌫'].map((key) => (
                 <button
                   key={key}
                   type="button"
@@ -1053,7 +1049,7 @@ export function StokTasimaClient() {
                   </div>
                 </div>
                 <div className="shrink-0 text-sm font-semibold" style={{ color: TERMINAL_ACCENT }}>
-                  {k.mevcutMiktar} ad
+                  {fmtMiktar(k.kullanilabilir ?? k.mevcutMiktar)} ad
                 </div>
               </button>
             ))}
@@ -1113,8 +1109,9 @@ export function StokTasimaClient() {
             <div className="mt-1 text-sm">
               Taşınabilir:{' '}
               <span className="font-semibold" style={{ color: TERMINAL_ACCENT }}>
-                {secilenStok.miktar} {secilenStok.birim}
+                {fmtMiktar(secilenStok.miktar)} {secilenStok.birim}
               </span>
+              {secilenStok.rezerve > 0 && <span className="text-xs text-muted-foreground"> · {fmtMiktar(secilenStok.rezerve)} rezerve</span>}
             </div>
           </div>
 
@@ -1129,12 +1126,12 @@ export function StokTasimaClient() {
           </div>
           {miktarExceed && (
             <p className="text-center text-sm font-medium text-red-600">
-              En fazla {maxMiktar} {secilenStok.birim} taşınabilir
+              {rezerveMesaji(maxMiktar, secilenStok.rezerve, secilenStok.birim)}
             </p>
           )}
 
           <div className="grid grid-cols-3 gap-2">
-            {['1', '2', '3', '4', '5', '6', '7', '8', '9', 'C', '0', '⌫'].map((key) => (
+            {['1', '2', '3', '4', '5', '6', '7', '8', '9', ',', '0', '⌫'].map((key) => (
               <button
                 key={key}
                 type="button"

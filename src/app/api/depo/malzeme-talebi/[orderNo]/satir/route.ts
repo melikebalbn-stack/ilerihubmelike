@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
+import { ondalikUygun } from '@/lib/depo/miktar'
 import { requirePermission } from '@/lib/auth/require-permission'
 import { logDepoHareket } from '@/lib/depo/hareket-log'
 import { satirCikar, satirEkleVeRezerve } from '@/lib/ifs/malzeme-talebi'
@@ -22,7 +23,7 @@ const EkleSchema = z.object({
     activitySeq: z.number(),
     handlingUnitId: z.number(),
   }),
-  miktar: z.number().positive(),
+  miktar: z.number().positive().refine(ondalikUygun),
 })
 
 // POST /api/depo/malzeme-talebi/{orderNo}/satir { stok, miktar } → satır ekle + okutulan stoktan rezerv. IFS'e YAZAR.

@@ -334,7 +334,10 @@ export async function paletDegistir(kaynakId: number, hedefId: number, stok: HuS
     throw new Error(`Hedef palet ${hedef.lokasyonNo} lokasyonunda, kaynak ${stok.locationNo} — önce aynı lokasyona taşıyın`)
   }
   const kaynak = await stokSatiri(stok)
-  if (num(kaynak.QtyOnhand) < miktar) throw new Error(`Kaynak palette yeterli miktar yok: ${num(kaynak.QtyOnhand)} < ${miktar}`)
+  // Rezerve koruması: sınır kullanılabilir (AvailableQty = QtyOnhand − QtyReserved), QtyOnhand DEĞİL.
+  if (num(kaynak.AvailableQty) < miktar) {
+    throw new Error(`En fazla ${num(kaynak.AvailableQty)} aktarılabilir (${num(kaynak.QtyReserved)} rezerve)`)
+  }
   const { contract } = getIfsConfig()
   await zorunlu('Palet aktarma', 'POST', `${HU}RepackPartInHandlingUnit`, {
     OldHandlingUnitId: kaynakId,

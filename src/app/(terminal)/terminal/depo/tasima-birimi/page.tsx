@@ -5,9 +5,12 @@ import { TasimaBirimiClient } from './_client'
 export const dynamic = 'force-dynamic'
 
 // Taşıma birimi (palet) işlemleri. Guard: depo.terminal.use | admin.system.manage.
-export default async function TasimaBirimiPage() {
+// ?palet=N → doğrudan "Taşı" modunda o palet yüklü açılır (Stok Bilgisi kartından "Palet Taşı'ya git").
+export default async function TasimaBirimiPage({ searchParams }: { searchParams: Promise<{ palet?: string }> }) {
   const { error } = await requirePermission(['depo.terminal.use', 'admin.system.manage'])
   if (error) return <TerminalYetkiYok />
 
-  return <TasimaBirimiClient />
+  const ham = (await searchParams).palet ?? ''
+  const palet = /^\d+$/.test(ham) ? Number(ham) : null
+  return <TasimaBirimiClient baslangicPalet={palet && Number.isSafeInteger(palet) ? palet : null} />
 }

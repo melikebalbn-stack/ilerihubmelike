@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { requirePermission } from '@/lib/auth/require-permission'
 import { logDepoHareket } from '@/lib/depo/hareket-log'
 import { getRafBilgisi, getRaftakiStok, moveStok, type StokKimlik } from '@/lib/ifs/depo-stok'
+import { ondalikUygun, rezerveMesaji } from '@/lib/depo/miktar'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -22,7 +23,8 @@ const KimlikSchema = z.object({
 const BodySchema = z.object({
   kimlik: KimlikSchema,
   hedefLocationNo: z.string().min(1),
-  miktar: z.number().int().min(1),
+  // Ondalıklı miktar (en fazla 4 basamak) — kg vb. birimler.
+  miktar: z.number().positive().refine(ondalikUygun, 'en fazla 4 ondalık basamak'),
 })
 
 const sameKeys = (a: StokKimlik, b: StokKimlik) =>
@@ -68,12 +70,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, error: 'Kaynak stok kaydı bulunamadı' }, { status: 404 })
     }
 
-    // b) miktar güncel taşınabilir miktarı aşıyor mu
-    if (miktar > kayit.miktar) {
-      return NextResponse.json(
-        { ok: false, error: `Rafta yeterli miktar yok (güncel: ${kayit.miktar})` },
-        { status: 409 },
-      )
+    // b) rezerve koruması: sınır kullanılabilir (QtyOnhand − QtyReserved), AvailableQtyToMove DEĞİL
+    if (miktar > kayit.miktar + 1e-9) {
+      return NextResponse.json({ ok: false, error: rezerveMesaji(kayit.miktar, kayit.rezerve) }, { status: 409 })
     }
 
     // d) hedef lokasyon gerçekten var mı

@@ -216,6 +216,19 @@ const SABIT_STAT_KARTLARI: StatKartTanimi[] = [
 // ZimmetTanim'a eklenen yeni türler ("Yazılım" hariç, bilinenOzelTurler zaten
 // onu içermiyor) için kart üretir - sabit kartlardan SONRA eklenir. Anahtar
 // `ozel:` önekiyle isim çakışmasından korunuyor (yukarıdaki not).
+// Kök (parentId=null) ZimmetTanim listesi - hata olursa null (çağıran mevcut
+// listeyi korur). Hem sayfa açılışında hem Düzenle dialogu açılırken kullanılır.
+async function kokTanimlariniGetir(): Promise<{ id: string; ad: string }[] | null> {
+  try {
+    const res = await fetch('/api/zimmet-formu/tanim?parentId=null')
+    if (!res.ok) return null
+    const data: unknown = await res.json()
+    return Array.isArray(data) ? (data as { id: string; ad: string }[]) : null
+  } catch {
+    return null
+  }
+}
+
 function ozelTurKartAdi(ad: string): string {
   return `ozel:${ad}`
 }
@@ -645,12 +658,9 @@ export function ZimmetListesi() {
   // kaybolmaz, sadece prefill daha az akıllı olur).
   useEffect(() => {
     let cancelled = false
-    fetch('/api/zimmet-formu/tanim?parentId=null')
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data: { id: string; ad: string }[] | null) => {
-        if (!cancelled && Array.isArray(data)) setKokTanimlar(data)
-      })
-      .catch(() => {})
+    kokTanimlariniGetir().then((data) => {
+      if (!cancelled && data) setKokTanimlar(data)
+    })
     return () => {
       cancelled = true
     }
@@ -900,9 +910,16 @@ export function ZimmetListesi() {
     let turDigerPrefill = z.turDiger ?? ''
 
     if (z.tur === 'DIGER' || z.tur === 'OFFICE_365') {
-      const { turAdi, altDal } = turSecimindenTuret(z.tur, z.turDiger, bilinenOzelTurler)
+      // Kök listesi sayfa açılışında bir kez çekiliyor - sonradan (bu oturumda
+      // veya başka bir ekrandan) eklenen/yeniden adlandırılan bir tür o listede
+      // yoksa kayıt "Yazılım" sanılıp alt-dal kutusu yanlış kökle açılıyordu.
+      // Dialog açılırken güncel kök listesi çekilir (hata olursa mevcut liste).
+      const guncelKokler = (await kokTanimlariniGetir()) ?? kokTanimlar
+      setKokTanimlar(guncelKokler)
+      const guncelOzelTurler = guncelKokler.filter((t) => t.ad !== YAZILIM_KOK_ADI).map((t) => t.ad)
+      const { turAdi, altDal } = turSecimindenTuret(z.tur, z.turDiger, guncelOzelTurler)
       setDuzenleTurAilesi(turAdi)
-      const turAilesiId = kokTanimlar.find((t) => t.ad === turAdi)?.id ?? null
+      const turAilesiId = guncelKokler.find((t) => t.ad === turAdi)?.id ?? null
       setDuzenleTurAilesiId(turAilesiId)
       turDigerPrefill = altDal
 
@@ -957,6 +974,17 @@ export function ZimmetListesi() {
     setDuzenleTurAilesiId(
       ad === YAZILIM_KOK_ADI ? (kokTanimlar.find((t) => t.ad === YAZILIM_KOK_ADI)?.id ?? null) : id
     )
+    // "+ Yeni tür ekle" ile O AN eklenen (veya yeniden adlandırılan) kök
+    // listeye de yansısın - liste satırlarındaki tür gösterimi ve kartlar
+    // (bilinenOzelTurler) yeni türü tanısın.
+    if (id && ad !== YAZILIM_KOK_ADI) {
+      setKokTanimlar((onceki) => {
+        const i = onceki.findIndex((t) => t.id === id)
+        if (i === -1) return [...onceki, { id, ad }]
+        if (onceki[i].ad === ad) return onceki
+        return onceki.map((t) => (t.id === id ? { id, ad } : t))
+      })
+    }
     setDuzenleAltDalSecimi('')
     setDuzenleAlan('turDiger', '')
   }
@@ -1733,9 +1761,15 @@ export function ZimmetListesi() {
 
                 {(duzenleTurAilesiId || duzenleTurAilesi === YAZILIM_KOK_ADI) && (
                   <div className="col-span-2 space-y-1.5">
+                    {/* Sihirbazla (ZimmetFormuStep1) AYNI davranış: özel türde alt-dal
+                        her zaman görünür ve opsiyoneldir; seçilmezse turDiger = "Tür". */}
                     <Label htmlFor="duzenle-turDiger">
-                      {duzenleTurAilesi === YAZILIM_KOK_ADI ? 'Hangi yazılım?' : `${duzenleTurAilesi} - alt tür`}{' '}
-                      {duzenleTurAilesi === YAZILIM_KOK_ADI ? <RequiredMark /> : null}
+                      {duzenleTurAilesi === YAZILIM_KOK_ADI ? 'Hangi yazılım?' : 'Alt dal'}{' '}
+                      {duzenleTurAilesi === YAZILIM_KOK_ADI ? (
+                        <RequiredMark />
+                      ) : (
+                        <span className="text-xs text-slate-400">(opsiyonel)</span>
+                      )}
                     </Label>
                     {/* Kök id'si (henüz) çözülemediyse (tablo migration'ı
                         uygulanmadı veya geçici hata) bile dropdown gösterilir
@@ -1755,8 +1789,8 @@ export function ZimmetListesi() {
                       haricTutulacaklar={
                         duzenleTurAilesi === YAZILIM_KOK_ADI ? [...YAZILIM_ALT_DAL_SABIT_SECENEKLERI] : []
                       }
-                      placeholder={duzenleTurAilesi === YAZILIM_KOK_ADI ? 'Yazılım seçin' : 'Alt tür seçin'}
-                      ekleEtiketi="Yeni alt-dal ekle"
+                      placeholder={duzenleTurAilesi === YAZILIM_KOK_ADI ? 'Yazılım seçin' : `${duzenleTurAilesi} için alt dal seçin`}
+                      ekleEtiketi="Yeni alt dal ekle"
                       className={
                         duzenleTurAilesi === YAZILIM_KOK_ADI && !duzenleAltDalSecimi
                           ? 'border-rose-300 ring-1 ring-rose-200'
@@ -1767,7 +1801,7 @@ export function ZimmetListesi() {
                       <Input
                         value={duzenleForm.turDiger}
                         onChange={(e) => setDuzenleAlan('turDiger', e.target.value)}
-                        placeholder={duzenleTurAilesi === YAZILIM_KOK_ADI ? 'Yazılımı yazın' : 'Alt türü yazın'}
+                        placeholder={duzenleTurAilesi === YAZILIM_KOK_ADI ? 'Yazılımı yazın' : 'Alt dalı yazın'}
                         className={
                           duzenleTurAilesi === YAZILIM_KOK_ADI && !duzenleForm.turDiger.trim()
                             ? 'border-rose-300 ring-1 ring-rose-200'

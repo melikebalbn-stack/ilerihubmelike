@@ -50,6 +50,12 @@ export const GUZERGAHLAR: GuzergahTanimi[] = [
       { sira: 16, ad: 'ANADOLU LİSESİ' },
       { sira: 17, ad: 'ARAP ÇEŞME SEHLL PETROL' },
       { sira: 18, ad: 'İLBEYOĞLU' },
+      // 🔴 A8 — Personnel'de 'GÜNSAŞ FIRIN' geçiyor (dev'deki 'Kaşkar Fırın'
+      // farklı bir durak). Elif kararı (2026-09-29): Personnel metni esas
+      // alınır, TEYİT BEKLİYOR (bkz. TEYIT_BEKLIYOR sabiti, madde A8).
+      // Sıra GEÇİCİ: güzergâhtaki gerçek fiziksel sırası bilinmiyor, mevcut
+      // max'tan devam ettirildi.
+      { sira: 19, ad: 'GÜNSAŞ FIRIN' },
     ],
   },
   {
@@ -62,6 +68,11 @@ export const GUZERGAHLAR: GuzergahTanimi[] = [
       { sira: 4, ad: 'Viaport' },
       { sira: 5, ad: 'Şekerpınar' },
       { sira: 6, ad: 'Yakacık Yeni Mah.' },
+      // 🔴 A6/A7 — ŞEKERPINAR: İdari İşler 1. turda "tek durak mı iki mi"
+      // çelişkisi vardı; Elif kararı (2026-09-29): Personnel'deki iki metin
+      // İKİ AYRI durak olarak kalır, TEYİT BEKLİYOR. Sıra GEÇİCİ.
+      { sira: 7, ad: 'ŞEKERPINAR TOKİ' },
+      { sira: 8, ad: 'ŞEKERPINAR KÖY İÇİ' },
     ],
   },
   {
@@ -86,6 +97,11 @@ export const GUZERGAHLAR: GuzergahTanimi[] = [
       //    SIRA GERÇEK DEĞİL: güzergâhtaki fiziksel sırası bilinmiyor,
       //    mevcut max'tan (14) devam ettirildi. TODO(elif): gerçek sıra.
       { sira: 15, ad: 'YAVUZ SELİM DURAĞI' },
+      // 🔴 A4/A5 — GÜL PASTANESİ ve KARAKOL: İdari İşler cevap vermedi; Elif
+      // kararı (2026-09-29): Personnel metni kendi durağı sayılır, TEYİT
+      // BEKLİYOR. Sıra GEÇİCİ.
+      { sira: 16, ad: 'GÜL PASTANESİ' },
+      { sira: 17, ad: 'KARAKOL' },
     ],
   },
   {
@@ -331,6 +347,30 @@ export const DURAK_ESLEME: DurakEsleme[] = [
   { satir: 63, guzergah: 'USKUDAR', hamMetin: 'RİTİM ESENKENT', kisi: 1, hedef: 'Esenkent Metro' },
   { satir: 64, guzergah: 'USKUDAR', hamMetin: 'ZEYNEP KAMİL / ECZANE ÖNÜ', kisi: 1, hedef: 'Zeynep Kamil Kavşak' },
   { satir: 65, guzergah: 'USKUDAR', hamMetin: 'ÇEKMEKÖY', kisi: 1, hedef: 'ÇEKMEKÖY' },
+  // ----------------------------------------------------------------------
+  // 🔴 Elif kararı (2026-09-29) — İdari İşler'in 1. tur ACIK_MADDELER'ine
+  // (A1-A8) karşılık, TEYIT_BEKLIYOR ile işaretli. Bkz. o sabit.
+  // ----------------------------------------------------------------------
+  // A3 — ERİŞ kümesi -> ERİŞ DURAĞI (madde 5 kapandı): DARICA ERİŞ DURAĞI
+  // zaten mevcut "Eriş Durağı" (sıra 7) durağına karşılık geliyor.
+  { satir: 27, guzergah: 'DARICA', hamMetin: 'DARICA ERİŞ DURAĞI', kisi: 1, hedef: 'Eriş Durağı' },
+  // A1 — MEZBAHANE -> MEZBAHANE DURAĞI (madde 3 kapandı): ikisi de mevcut
+  // "Mezbahane Ediş Yapı" (sıra 12) durağına karşılık geliyor.
+  { satir: 28, guzergah: 'DARICA', hamMetin: 'MEZBAHANE DURAĞI', kisi: 1, hedef: 'Mezbahane Ediş Yapı' },
+  { satir: 34, guzergah: 'DARICA', hamMetin: 'MEZBAHANE EDİŞ YAPI', kisi: 1, hedef: 'Mezbahane Ediş Yapı' },
+  // A2 — AKSE üçlüsü -> DURAK PASTANESİ (madde 4 kapandı): üçü de mevcut
+  // "Akse Sapağı Durak Pastanesi" (sıra 8) durağına karşılık geliyor.
+  { satir: 38, guzergah: 'GEBZE_DEVELI', hamMetin: 'AKSE SAP DURAK PASTA', kisi: 1, hedef: 'Akse Sapağı Durak Pastanesi' },
+  { satir: 42, guzergah: 'GEBZE_DEVELI', hamMetin: 'AKSE SAPAĞI', kisi: 1, hedef: 'Akse Sapağı Durak Pastanesi' },
+  { satir: 43, guzergah: 'GEBZE_DEVELI', hamMetin: 'DURAK PASTANESİ', kisi: 1, hedef: 'Akse Sapağı Durak Pastanesi' },
+  // A8 — GÜNSAŞ FIRIN: Personnel metni kendi (yeni) durağı.
+  { satir: 6, guzergah: 'ARAPCESME', hamMetin: 'GÜNSAŞ FIRIN', kisi: 1, hedef: 'GÜNSAŞ FIRIN' },
+  // A6/A7 — ŞEKERPINAR: iki metin, iki ayrı (yeni) durak.
+  { satir: 9, guzergah: 'AYDOS_KURTKOY', hamMetin: 'ŞEKERPINAR TOKİ', kisi: 4, hedef: 'ŞEKERPINAR TOKİ' },
+  { satir: 10, guzergah: 'AYDOS_KURTKOY', hamMetin: 'ŞEKERPINAR KÖY İÇİ', kisi: 1, hedef: 'ŞEKERPINAR KÖY İÇİ' },
+  // A4/A5 — GÜL PASTANESİ, KARAKOL: Personnel metni kendi (yeni) durağı.
+  { satir: 14, guzergah: 'BEYLIKBAGI_GUZELTEPE', hamMetin: 'GÜL PASTANESİ', kisi: 2, hedef: 'GÜL PASTANESİ' },
+  { satir: 15, guzergah: 'BEYLIKBAGI_GUZELTEPE', hamMetin: 'KARAKOL', kisi: 1, hedef: 'KARAKOL' },
 ]
 
 // ----------------------------------------------------------------------------
@@ -341,39 +381,14 @@ export const DURAK_ESLEME: DurakEsleme[] = [
 // script'i bunları eşleşmeyen listesinde bırakır. Cevap gelince
 // DURAK_ESLEME'ye taşınır ve buradan silinir.
 export const ESLEME_ACIK = [
-  // ARAPCESME
-  // TODO(idari-isler) satır 6
-  { satir: 6, guzergah: 'ARAPCESME', hamMetin: 'GÜNSAŞ FIRIN', kisi: 1 },
-  // AYDOS_KURTKOY
-  // TODO(idari-isler) satır 9
-  { satir: 9, guzergah: 'AYDOS_KURTKOY', hamMetin: 'ŞEKERPINAR TOKİ', kisi: 4 },
-  // TODO(idari-isler) satır 10
-  { satir: 10, guzergah: 'AYDOS_KURTKOY', hamMetin: 'ŞEKERPINAR KÖY İÇİ', kisi: 1 },
-  // BEYLIKBAGI_GUZELTEPE
-  // TODO(idari-isler) satır 14
-  { satir: 14, guzergah: 'BEYLIKBAGI_GUZELTEPE', hamMetin: 'GÜL PASTANESİ', kisi: 2 },
-  // TODO(idari-isler) satır 15
-  { satir: 15, guzergah: 'BEYLIKBAGI_GUZELTEPE', hamMetin: 'KARAKOL', kisi: 1 },
-  // DARICA
-  // TODO(idari-isler) satır 27
-  { satir: 27, guzergah: 'DARICA', hamMetin: 'DARICA ERİŞ DURAĞI', kisi: 1 },
-  // TODO(idari-isler) satır 28
-  { satir: 28, guzergah: 'DARICA', hamMetin: 'MEZBAHANE DURAĞI', kisi: 1 },
+  // DARICA — geri kalan üç satırın hiçbiri ACIK_MADDELER'in A1-A8
+  // kararlarından hiçbirine karşılık gelmiyor; hâlâ tamamen açık.
   // TODO(idari-isler) satır 29
   { satir: 29, guzergah: 'DARICA', hamMetin: 'TAKSİ DURAĞI', kisi: 1 },
   // TODO(idari-isler) satır 31
   { satir: 31, guzergah: 'DARICA', hamMetin: 'BAĞLARBAŞI PETROL OFİSİ DARICA', kisi: 1 },
   // TODO(idari-isler) satır 33
   { satir: 33, guzergah: 'DARICA', hamMetin: 'MARAŞ DONDURMA', kisi: 1 },
-  // TODO(idari-isler) satır 34
-  { satir: 34, guzergah: 'DARICA', hamMetin: 'MEZBAHANE EDİŞ YAPI', kisi: 1 },
-  // GEBZE_DEVELI
-  // TODO(idari-isler) satır 38
-  { satir: 38, guzergah: 'GEBZE_DEVELI', hamMetin: 'AKSE SAP DURAK PASTA', kisi: 1 },
-  // TODO(idari-isler) satır 42
-  { satir: 42, guzergah: 'GEBZE_DEVELI', hamMetin: 'AKSE SAPAĞI', kisi: 1 },
-  // TODO(idari-isler) satır 43
-  { satir: 43, guzergah: 'GEBZE_DEVELI', hamMetin: 'DURAK PASTANESİ', kisi: 1 },
 ] as const
 
 // ----------------------------------------------------------------------------
@@ -694,3 +709,45 @@ export const BELIRSIZ_DURAKLAR = [
   { guzergah: 'DARICA', ad: 'Mehmet Akif', siralar: [3, 8] },
   { guzergah: 'USKUDAR', ad: 'Üsküdar', siralar: [2, 4] },
 ] as const
+
+// ----------------------------------------------------------------------------
+// 🔴 TEYIT_BEKLIYOR — Elif kararı (2026-09-29): tanım paketi İdari İşler
+// cevaplarını BEKLEMEDEN sonlandırıldı. Bu sabit, resmi teyit yerine geçen
+// PRATİK kararların TEK, birleşik envanteri — göç raporunda ve (ServisDurak'ta
+// not alanı olmadığı için, bkz. seed başlığı) seed özetinde ayrı bir liste
+// olarak basılır. Migration YOK, DB'ye "TEYİT BEKLİYOR" yazılmaz.
+//
+// 1. tur (A1-A8) = ACIK_MADDELER'in (6 soru) alt-kararlara bölünmüş hâli:
+//   A1-A3: kanonik ada karar verildi, mevcut duraklara bağlandı (DURAK_ESLEME).
+//   A4-A8: Personnel metni kendi durağı sayıldı, YENİ durak (GUZERGAHLAR),
+//          sırası GEÇİCİ (güzergâhın mevcut max'ından devam).
+// 2. tur (B1-B18) = OLASI_YINELENEN_CIFTLER'in kendisi (18 kayıt).
+//   🔴 Talimatta "B1-B13" deniyordu; ölçülen gerçek sayı 18 (16 güçlü + 2
+//   eşik altı) — muhtemelen ilk turun güçlü-çift sayısına (16'ya yakın bir
+//   ara ölçüm) atıfta bulunuyordu. B1-B18 olarak numaralandırıldı, hiçbiri
+//   dışarıda bırakılmadı.
+export interface TeyitBekleyenKarar {
+  madde: string
+  guzergah: string
+  konu: string
+  durum: 'yeni durak (geçici sıra)' | 'mevcut durağa bağlandı' | 'iki kayıt korunur, birleştirilmedi'
+}
+
+export const TEYIT_BEKLIYOR: TeyitBekleyenKarar[] = [
+  // --- 1. tur — A1-A8 ---
+  { madde: 'A1', guzergah: 'DARICA', konu: 'MEZBAHANE DURAĞI / MEZBAHANE EDİŞ YAPI → "Mezbahane Ediş Yapı" (mevcut, sıra 12)', durum: 'mevcut durağa bağlandı' },
+  { madde: 'A2', guzergah: 'GEBZE_DEVELI', konu: 'AKSE SAPAĞI / AKSE SAP DURAK PASTA / DURAK PASTANESİ → "Akse Sapağı Durak Pastanesi" (mevcut, sıra 8)', durum: 'mevcut durağa bağlandı' },
+  { madde: 'A3', guzergah: 'DARICA', konu: 'ERİŞ kümesi → "Eriş Durağı" (mevcut, sıra 7)', durum: 'mevcut durağa bağlandı' },
+  { madde: 'A4', guzergah: 'BEYLIKBAGI_GUZELTEPE', konu: 'GÜL PASTANESİ — Personnel metni kendi durağı', durum: 'yeni durak (geçici sıra)' },
+  { madde: 'A5', guzergah: 'BEYLIKBAGI_GUZELTEPE', konu: 'KARAKOL — Personnel metni kendi durağı', durum: 'yeni durak (geçici sıra)' },
+  { madde: 'A6', guzergah: 'AYDOS_KURTKOY', konu: 'ŞEKERPINAR TOKİ — iki metinden biri, ayrı durak', durum: 'yeni durak (geçici sıra)' },
+  { madde: 'A7', guzergah: 'AYDOS_KURTKOY', konu: 'ŞEKERPINAR KÖY İÇİ — iki metinden biri, ayrı durak', durum: 'yeni durak (geçici sıra)' },
+  { madde: 'A8', guzergah: 'ARAPCESME', konu: 'GÜNSAŞ FIRIN — Personnel metni esas, dev\'deki "Kaşkar Fırın" değil', durum: 'yeni durak (geçici sıra)' },
+  // --- 2. tur — B1-B18 (OLASI_YINELENEN_CIFTLER'in kendisi, birleştirme yok) ---
+  ...OLASI_YINELENEN_CIFTLER.map((c, i) => ({
+    madde: `B${i + 1}`,
+    guzergah: c.guzergah,
+    konu: `${c.a.ad} (sıra ${c.a.sira}) / ${c.b.ad} (sıra ${c.b.sira}) — kanaat: ${c.kanaat}`,
+    durum: 'iki kayıt korunur, birleştirilmedi' as const,
+  })),
+]

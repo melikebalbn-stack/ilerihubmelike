@@ -48,7 +48,7 @@ import { PrismaPg } from '@prisma/adapter-pg'
 import { Pool } from 'pg'
 import { PrismaClient } from '../src/generated/prisma'
 import { durakKodu } from '../src/lib/servis-yonetimi/servis-durak-kodu'
-import { TUM_GUZERGAHLAR } from '../src/lib/servis-yonetimi/servis-tanim-verisi'
+import { TUM_GUZERGAHLAR, TEYIT_BEKLIYOR } from '../src/lib/servis-yonetimi/servis-tanim-verisi'
 
 export * from '../src/lib/servis-yonetimi/servis-tanim-verisi'
 
@@ -150,6 +150,14 @@ async function main() {
       console.log(`  ${k.padEnd(10)} oluşturulacak: ${String(olusturulacak[k]).padStart(4)} · mevcut korundu: ${mevcut[k]}`)
     }
     if (!APPLY) console.log('\n(DRY-RUN — hiçbir şey yazılmadı. --apply ile gerçek yazım yapılır.)')
+
+    // 🔴 ServisDurak'ta not/açıklama alanı YOK (schema.prisma, migration
+    // açılmadı) — bu liste DB'ye YAZILMAZ, yalnız burada, konsolda basılır.
+    // Kalıcı takip TEYIT_BEKLIYOR sabitinde (servis-tanim-verisi.ts).
+    console.log(`\n═══ TEYIT BEKLİYOR (${TEYIT_BEKLIYOR.length} madde — DB'ye yazılmadı, yalnız bu raporda) ═══`)
+    for (const t of TEYIT_BEKLIYOR) {
+      console.log(`  ${t.madde.padEnd(4)} ${t.guzergah.padEnd(22)} ${t.durum.padEnd(28)} ${t.konu}`)
+    }
   } finally {
     await prisma.$disconnect()
     await pool.end()

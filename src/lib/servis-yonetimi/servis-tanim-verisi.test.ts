@@ -7,6 +7,7 @@ import {
   ESLEME_ACIK,
   GUZERGAHLAR,
   OLASI_YINELENEN_CIFTLER,
+  TEYIT_BEKLIYOR,
   TOSB,
   TUM_GUZERGAHLAR,
 } from './servis-tanim-verisi'
@@ -70,9 +71,9 @@ describe('servis tanım verisi', () => {
   })
 
   // 106 yerleşmiş (dev DB) + 27 İdari İşler eşleme tablosundan.
-  it('9 güzergâh, 133 durak', () => {
+  it('9 güzergâh, 138 durak', () => {
     expect(GUZERGAHLAR).toHaveLength(9)
-    expect(GUZERGAHLAR.reduce((t, g) => t + g.duraklar.length, 0)).toBe(133)
+    expect(GUZERGAHLAR.reduce((t, g) => t + g.duraklar.length, 0)).toBe(138)
   })
 
   // TOSB güzergâhı tanımlı ama durakları İdari İşler'den gelmedi.
@@ -93,9 +94,9 @@ describe('servis tanım verisi', () => {
 })
 
 describe('durak eşleme tablosu', () => {
-  it('51 net satır, 14 açık satır, 65 toplam', () => {
-    expect(DURAK_ESLEME).toHaveLength(51)
-    expect(ESLEME_ACIK).toHaveLength(14)
+  it('62 net satır, 3 açık satır, 65 toplam', () => {
+    expect(DURAK_ESLEME).toHaveLength(62)
+    expect(ESLEME_ACIK).toHaveLength(3)
     expect(DURAK_ESLEME.length + ESLEME_ACIK.length).toBe(65)
   })
 
@@ -104,9 +105,9 @@ describe('durak eşleme tablosu', () => {
     expect(hepsi.sort((a, b) => a - b)).toEqual(Array.from({ length: 65 }, (_, i) => i + 1))
   })
 
-  it('kişi sayıları: net 75, açık 18', () => {
-    expect(DURAK_ESLEME.reduce((t, e) => t + e.kisi, 0)).toBe(75)
-    expect(ESLEME_ACIK.reduce((t, e) => t + e.kisi, 0)).toBe(18)
+  it('kişi sayıları: net 90, açık 3', () => {
+    expect(DURAK_ESLEME.reduce((t, e) => t + e.kisi, 0)).toBe(90)
+    expect(ESLEME_ACIK.reduce((t, e) => t + e.kisi, 0)).toBe(3)
   })
 
   // 🔴 Asıl kural: her hedef, kendi güzergâhında TAM OLARAK BİR durağa
@@ -216,5 +217,31 @@ describe('olası yinelenen çiftler', () => {
     expect(say('ESKI')).toBe(7)
     expect(say('KARISIK')).toBe(11)
     expect(say('YENI')).toBe(0)
+  })
+})
+
+describe('TEYIT_BEKLIYOR — Elif kararı, İdari İşler cevabı beklenmedi', () => {
+  it('26 madde: A1-A8 (8) + B1-B18 (OLASI_YINELENEN_CIFTLER kadar)', () => {
+    expect(TEYIT_BEKLIYOR).toHaveLength(8 + OLASI_YINELENEN_CIFTLER.length)
+    const maddeler = TEYIT_BEKLIYOR.map((t) => t.madde)
+    expect(new Set(maddeler).size).toBe(maddeler.length) // tekrar yok
+    for (let i = 1; i <= 8; i++) expect(maddeler).toContain(`A${i}`)
+    for (let i = 1; i <= OLASI_YINELENEN_CIFTLER.length; i++) expect(maddeler).toContain(`B${i}`)
+  })
+
+  it('A1-A3 mevcut durağa bağlandı, A4-A8 yeni durak — DURAK_ESLEME ile tutarlı', () => {
+    const baglanan = TEYIT_BEKLIYOR.filter((t) => t.madde.startsWith('A') && t.durum === 'mevcut durağa bağlandı')
+    const yeni = TEYIT_BEKLIYOR.filter((t) => t.madde.startsWith('A') && t.durum === 'yeni durak (geçici sıra)')
+    expect(baglanan).toHaveLength(3)
+    expect(yeni).toHaveLength(5)
+  })
+
+  // Her A-maddesinin güzergâhı gerçekten tanımlı bir güzergâh olmalı —
+  // yazım hatası (var olmayan bir kod) burada yakalanır.
+  it('her maddenin güzergâhı TUM_GUZERGAHLAR içinde', () => {
+    const kodlar = TUM_GUZERGAHLAR.map((g) => g.kod)
+    for (const t of TEYIT_BEKLIYOR) {
+      expect(kodlar, `${t.madde}: ${t.guzergah}`).toContain(t.guzergah)
+    }
   })
 })

@@ -57,7 +57,7 @@ async function main() {
   // 1) Import'un açtığı kayıtlar
   const yeniKayitlar = await prisma.zimmetFormu.findMany({
     where: { id: { startsWith: 'itdevir-' }, silindiMi: false },
-    select: { id: true, durum: true, zimmetSahibiImzaTarihi: true },
+    select: { id: true, durum: true, zimmetSahibiImzaTarihi: true, cihazDurumu: true },
     orderBy: { id: 'asc' },
   })
 
@@ -148,6 +148,8 @@ async function main() {
 
   const imzalilar = yeniKayitlar.filter((k) => k.durum === 'ONAYLANDI' || k.zimmetSahibiImzaTarihi)
   console.log(`\n${APPLY ? 'Soft-delete edildi' : 'Soft-delete edilecek'} (itdevir-%): ${yeniKayitlar.length}`)
+  const depoKayitlari = yeniKayitlar.filter((k) => k.cihazDurumu === 'PASIF').length
+  if (depoKayitlari) console.log(`  (bunlardan ${depoKayitlari} kayıt depo — cihazDurumu PASIF)`)
   if (imzalilar.length) {
     console.log(`  ⚠️  bunlardan ${imzalilar.length} kayıt sahibi tarafından onaylanmış/e-imzalı:`)
     for (const k of imzalilar) console.log(`     ${k.id} (${k.durum})`)

@@ -29,7 +29,10 @@
  *
  * Kullanım (worktree kökünden):
  *   npx tsx --env-file=<.env yolu> scripts/zimmet/it-devir-import.ts <csv> --created-by <User.id>
- *       [--override <json>] [--coklu-birlestir] [--yenile] [--apply --db-name <ad>]
+ *       [--override <json>] [--coklu-birlestir] [--yenile] [--envanter-sahibi <User.id>] [--apply --db-name <ad>]
+ *   --envanter-sahibi: islem=ENVANTER satırları depo kaydı olarak yazılır — sahip ve iadeAlan = bu kullanıcı,
+ *   cihazDurumu=PASIF, iadeTarihi=aktarım anı, aciklama "[IT listesi 09.2026] Depo · …". Eşleştirme kuralları aynı;
+ *   seri/IMEI/MAC'i olmayan depo satırı ANAHTARSIZ kararıyla yeni kayıt açılır. Verilmezse ENVANTER yalnız rapora.
  *   Varsayılan DRY-RUN: tüm kararları hesaplar, hiçbir şey yazmaz.
  *   --apply: tek transaction; --db-name current_database() ile aynı değilse durur.
  *   Kişi eşleştirme override'ı: {"Excel adı": "User.id"}. --override <yol> verilirse dosya zorunlu
@@ -42,7 +45,7 @@ import os from 'os'
 import path from 'path'
 import { Pool } from 'pg'
 import { PrismaPg } from '@prisma/adapter-pg'
-import { PrismaClient, ZimmetKaynak, ZimmetOnayDurumu, ZimmetTuru } from '../../src/generated/prisma'
+import { PrismaClient, ZimmetCihazDurumu, ZimmetKaynak, ZimmetOnayDurumu, ZimmetTuru } from '../../src/generated/prisma'
 import { normalizeTr } from '../../src/lib/normalize-tr'
 import { esitlikIcinNormalize } from '../../src/lib/zimmet/arama'
 import {
@@ -66,6 +69,9 @@ const DB_NAME = argDeger('--db-name')
 // --override verilirse dosya ZORUNLU (yoksa durur); verilmezse varsayılan dosya varsa kullanılır.
 const OVERRIDE_ARG = argDeger('--override')
 const OVERRIDE_YOLU = OVERRIDE_ARG ?? path.join(os.homedir(), 'zimmet_kisi_eslestirme.json')
+// --envanter-sahibi verilirse islem=ENVANTER satırları depo kaydı olarak yazılır (verilmezse yalnız rapora).
+const ENVANTER_SAHIBI_ID = argDeger('--envanter-sahibi')
+const DEPO_ACIKLAMA_ONEKI = '[IT listesi 09.2026] Depo'
 
 const TUR_DEGERLERI = new Set<string>(Object.values(ZimmetTuru))
 const BLUECOLLAR_DOMAIN = '@bluecollar.ilerigroup.com'
@@ -83,6 +89,7 @@ type Karar =
   | 'COKLU_ESLESME'
   | 'SAHIP_BELIRSIZ'
   | 'TANIM_YOK'
+  | 'ANAHTARSIZ'
   | 'BEKLET'
   | 'ENVANTER'
 
@@ -93,6 +100,7 @@ type Sonuc = {
   userId: string | null
   eskiIdler: string[]
   sebep: string
+  depo: boolean
 }
 
 type Kullanici = { id: string; name: string | null; firstName: string | null; lastName: string | null; email: string; isActive: boolean }
@@ -143,6 +151,17 @@ async function main() {
 
   const olusturan = await prisma.user.findUnique({ where: { id: CREATED_BY }, select: { id: true, name: true } })
   if (!olusturan) throw new Error(`--created-by kullanıcısı bulunamadı: ${CREATED_BY}`)
+
+  let envanterSahibi: Kullanici | null = null
+  if (ENVANTER_SAHIBI_ID) {
+    envanterSahibi = await prisma.user.findUnique({
+      where: { id: ENVANTER_SAHIBI_ID },
+      select: { id: true, name: true, firstName: true, lastName: true, email: true, isActive: true },
+    })
+    if (!envanterSahibi) throw new Error(`--envanter-sahibi kullanıcısı bulunamadı: ${ENVANTER_SAHIBI_ID}`)
+    if (!envanterSahibi.isActive) throw new Error(`--envanter-sahibi hesabı pasif: ${ENVANTER_SAHIBI_ID}`)
+    console.log(`Depo sorumlusu (ENVANTER satırları): ${envanterSahibi.name} (${envanterSahibi.id})`)
+  }
 
   const satirlar = csvOku(CSV_YOLU)
   console.log(`CSV: ${CSV_YOLU} (${satirlar.length} satır) · oluşturan: ${olusturan.name ?? olusturan.id}`)
@@ -257,16 +276,18 @@ async function main() {
   // ── Karar hesabı ──
   const sonuclar: Sonuc[] = []
   for (const s of satirlar) {
-    const sahipAdi = s.zimmet_sahibi_eslestir || s.zimmet_sahibi_excel
+    // ENVANTER satırları --envanter-sahibi verilirse depo kaydı olarak işlenir (sahip = depo sorumlusu).
+    const depo = s.islem === 'ENVANTER' && envanterSahibi !== null
+    const sahipAdi = depo ? envanterSahibi!.name ?? envanterSahibi!.id : s.zimmet_sahibi_eslestir || s.zimmet_sahibi_excel
     const sonuc = (karar: Karar, sebep: string, userId: string | null = null, eskiIdler: string[] = []): Sonuc => ({
-      satir: s, karar, sahipAdi, userId, eskiIdler, sebep,
+      satir: s, karar, sahipAdi, userId, eskiIdler, sebep, depo,
     })
 
-    if (s.islem === 'BEKLET' || s.islem === 'ENVANTER') {
-      sonuclar.push(sonuc(s.islem, s.sebep))
+    if (s.islem === 'BEKLET' || (s.islem === 'ENVANTER' && !depo)) {
+      sonuclar.push(sonuc(s.islem as Karar, s.sebep))
       continue
     }
-    if (s.islem !== 'AKTAR') throw new Error(`${s.ref}: bilinmeyen islem "${s.islem}"`)
+    if (s.islem !== 'AKTAR' && !depo) throw new Error(`${s.ref}: bilinmeyen islem "${s.islem}"`)
     if (!TUR_DEGERLERI.has(s.tur)) throw new Error(`${s.ref}: geçersiz tur "${s.tur}"`)
     tarihCoz(s.zimmet_tarihi) // format hatası varsa dry-run'da yakalansın
 
@@ -274,7 +295,7 @@ async function main() {
       sonuclar.push(sonuc('ATLA_ZATEN_VAR', 'id=ref kaydı zaten var'))
       continue
     }
-    const { user, sebep: sahipSebep } = sahipBul(sahipAdi)
+    const { user, sebep: sahipSebep } = depo ? { user: envanterSahibi!, sebep: 'depo sorumlusu' } : sahipBul(sahipAdi)
     if (!user) {
       sonuclar.push(sonuc('SAHIP_BELIRSIZ', sahipSebep))
       continue
@@ -287,7 +308,12 @@ async function main() {
     const { kayitlar, anahtar } = eslesenKayitlar(s)
     const eskiIdler = kayitlar.map((k) => k.id)
     if (kayitlar.length === 0) {
-      sonuclar.push(sonuc('YENI', 'eşleşen mevcut kayıt yok', user.id))
+      const anahtarsiz = !['seriNumarasi', 'imeiNumarasi', 'macAdresi'].some((kolon) => anahtarNormalize(s[kolon]))
+      sonuclar.push(
+        anahtarsiz && depo
+          ? sonuc('ANAHTARSIZ', 'depo cihazı: seri/IMEI/MAC yok — eşleştirme yapılamadı, yeni kayıt', user.id)
+          : sonuc('YENI', 'eşleşen mevcut kayıt yok', user.id),
+      )
       continue
     }
     if (kayitlar.some(imzali)) {
@@ -371,7 +397,18 @@ async function main() {
   }
 
   // ── Yazma (yalnız --apply) ──
-  const yazilacak = sonuclar.filter((r) => r.karar === 'YENI' || r.karar in ESKI_SILEN_KARARLAR)
+  const yazilacak = sonuclar.filter((r) => r.karar === 'YENI' || r.karar === 'ANAHTARSIZ' || r.karar in ESKI_SILEN_KARARLAR)
+
+  // Depo kaydı alanları: iade akışının sonucu (PASIF + iadeTarihi/iadeAlanId), sahip = depo sorumlusu.
+  const depoAciklama = (s: Satir) => {
+    const mevcut = (s.aciklama ?? '').replace(/^\s*\[IT listesi 09\.2026\]\s*/, '').trim()
+    return mevcut ? `${DEPO_ACIKLAMA_ONEKI} · ${mevcut}` : DEPO_ACIKLAMA_ONEKI
+  }
+  const depoNotu = (s: Satir) => {
+    const oncekiSahip = s.zimmet_sahibi_excel && normalizeTr(s.zimmet_sahibi_excel) !== 'envanter' ? `; önceki sahip ${s.zimmet_sahibi_excel}` : ''
+    return `IT listesi 09.2026 – depoya alındı (sorumlu: ${envanterSahibi?.name ?? envanterSahibi?.id})${oncekiSahip}`
+  }
+
   if (APPLY) {
     const simdi = new Date()
     await prisma.$transaction(
@@ -414,8 +451,11 @@ async function main() {
               ozellik: bos(s.ozellik),
               departman: bos(s.departman),
               altZimmetSahibi: bos(s.altZimmetSahibi),
-              aciklama: bos(s.aciklama),
+              aciklama: r.depo ? depoAciklama(s) : bos(s.aciklama),
               verilisTarihi: tarihCoz(s.zimmet_tarihi),
+              ...(r.depo
+                ? { cihazDurumu: ZimmetCihazDurumu.PASIF, iadeTarihi: simdi, iadeAlanId: envanterSahibi!.id }
+                : {}),
             },
           })
           await tx.zimmetDurumGecmisi.create({
@@ -424,7 +464,7 @@ async function main() {
               eskiDurum: null,
               yeniDurum: ZimmetOnayDurumu.ONAY_BEKLIYOR,
               islemYapanId: CREATED_BY!,
-              not: `IT listesi 09.2026 aktarımı (${s.sayfa}!${s.excel_satir})`,
+              not: r.depo ? depoNotu(s) : `IT listesi 09.2026 aktarımı (${s.sayfa}!${s.excel_satir})`,
             },
           })
         }
@@ -437,18 +477,23 @@ async function main() {
   const rapor = raporYolu('zimmet-it-devir', APPLY ? 'apply' : 'dry-run')
   csvYaz(
     rapor,
-    ['ref', 'karar', 'sahip', 'eslesen_user_id', 'eski_kayit_idler', 'sebep'],
-    sonuclar.map((r) => [r.satir.ref, r.karar, r.sahipAdi, r.userId ?? '', r.eskiIdler.join(' '), r.sebep]),
+    ['ref', 'karar', 'sahip', 'eslesen_user_id', 'eski_kayit_idler', 'sebep', 'depo'],
+    sonuclar.map((r) => [r.satir.ref, r.karar, r.sahipAdi, r.userId ?? '', r.eskiIdler.join(' '), r.sebep, r.depo ? 'evet' : '']),
   )
 
-  const sira: Karar[] = ['YENI', 'ATLA', 'ATLA_ZATEN_VAR', 'ATLA_IMZALI', 'TASI', 'TASI_IMZALI', 'YENILE', 'IMZALI_CAKISMA', 'COKLU_ESLESME', 'SAHIP_BELIRSIZ', 'TANIM_YOK', 'BEKLET', 'ENVANTER']
+  const sira: Karar[] = ['YENI', 'ATLA', 'ATLA_ZATEN_VAR', 'ATLA_IMZALI', 'TASI', 'TASI_IMZALI', 'YENILE', 'IMZALI_CAKISMA', 'COKLU_ESLESME', 'SAHIP_BELIRSIZ', 'TANIM_YOK', 'ANAHTARSIZ', 'BEKLET', 'ENVANTER']
   console.log('\nKarar dağılımı:')
   for (const k of sira) console.log(`  ${k.padEnd(15)} ${sonuclar.filter((r) => r.karar === k).length}`)
   console.log(`  ${'TOPLAM'.padEnd(15)} ${sonuclar.length}`)
   const eskiSilinecek = yazilacak.reduce((t, r) => t + r.eskiIdler.length, 0)
+  const depoYazilacak = yazilacak.filter((r) => r.depo).length
   console.log(
-    `\n${APPLY ? 'Yazıldı' : 'Yazılacak'}: ${yazilacak.length} yeni kayıt, ${eskiSilinecek} eski kayıt soft-delete. Bildirim: YOK.`,
+    `\n${APPLY ? 'Yazıldı' : 'Yazılacak'}: ${yazilacak.length} yeni kayıt (${depoYazilacak} depo), ${eskiSilinecek} eski kayıt soft-delete. Bildirim: YOK.`,
   )
+  if (depoYazilacak) {
+    console.log(`\nDepo satırları (${depoYazilacak}, sahip ${envanterSahibi?.name}, PASIF):`)
+    for (const r of yazilacak.filter((x) => x.depo)) console.log(`  ${r.satir.ref} | ${r.karar} | ${r.sebep}`)
+  }
   for (const k of ['SAHIP_BELIRSIZ', 'COKLU_ESLESME', 'IMZALI_CAKISMA', 'TANIM_YOK'] as Karar[]) {
     const liste = sonuclar.filter((r) => r.karar === k)
     if (!liste.length) continue

@@ -1,1 +1,10 @@
-* @melihjoe
+# Şema sahipliği — prisma/ altındaki her değişiklik Melih'in onayını ister.
+# AGENTS.md kuralı: "Şemayı değiştiren her iş önce kullanıcıya sorulur."
+# Bu dosya o kuralı GitHub tarafında zorunlu kılar (ruleset'te
+# "Require review from Code Owners" açık olmalı).
+/prisma/                @melihjoe
+
+# Deploy ve çalışma kuralları — süreç dosyaları.
+/AGENTS.md              @melihjoe
+/.github/               @melihjoe
+/docs/skills/           @melihjoe

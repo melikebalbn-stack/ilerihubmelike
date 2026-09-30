@@ -125,6 +125,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Hedef bölüm tanımlı değil' }, { status: 400 })
     }
 
+    // AÇANIN KENDİ BÖLÜMÜ (snapshot). Eskiden kapsam listesinin İLK elemanı
+    // yazılıyordu (30.09 hata: çok bölümlü müdürde/platform yöneticisinde alfabetik
+    // ilk bölüm — "Melih Dilben · Müdür · Asansör Müdürlüğü"). Doğrusu açanın
+    // Personnel.bolum değeri; Personnel bağı yoksa null kalır.
+    const acanPersonnel = yetki.personnelId
+      ? await prisma.personnel.findUnique({
+          where: { id: yetki.personnelId },
+          select: { bolum: true },
+        })
+      : null
+
     // Aynı personel için bekleyen talep varsa ikincisi açılmaz (DB'de kısmi
     // unique index de var; burada anlamlı mesajla erken dönülür).
     const bekleyenVar = await prisma.bolumDegisiklikTalep.findFirst({
@@ -146,7 +157,7 @@ export async function POST(request: NextRequest) {
           acanUserId: user.id,
           acanPersonnelId: yetki.personnelId,
           acanRol: yetki.rol!,
-          acanBolum: yetki.kapsamBolumler[0]?.name ?? null,
+          acanBolum: acanPersonnel?.bolum ?? null,
           mevcutBolum: personnel.bolum ?? '(belirtilmemiş)',
           hedefBolum,
           transferTarihi: body.transferTarihi ? new Date(body.transferTarihi) : null,

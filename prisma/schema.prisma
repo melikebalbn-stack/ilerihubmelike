@@ -12790,7 +12790,7 @@ model EnvanterSezonKalem {
 model DepoHareketLog {
   id String @id @default(cuid())
 
-  /// TOPLAMA_CIKIS | STOK_TASIMA | ETIKET_BASMA
+  /// DepoOlay (src/lib/depo/hareket-log.ts) — serbest metin; GERI_AL dahil.
   olay        String
   userId      String
   user        User   @relation("DepoHareketKullanici", fields: [userId], references: [id], onDelete: Restrict)
@@ -12816,6 +12816,12 @@ model DepoHareketLog {
   /// ETIKET_BASMA: IFS'te üretilen kalıcı BarcodeId listesi.
   etiketIdler Json?
   detay       Json?
+
+  /// GERI_AL kaydında: geri alınan orijinal hareket. @unique → bir işlem yalnız BİR kez geri alınır (yarışta da).
+  geriAlinanId String?         @unique
+  geriAlinan   DepoHareketLog? @relation("DepoGeriAl", fields: [geriAlinanId], references: [id], onDelete: Restrict)
+  /// Orijinal kayıtta: onu geri alan GERI_AL kaydı (varsa).
+  geriAlma     DepoHareketLog? @relation("DepoGeriAl")
 
   createdAt DateTime @default(now())
 

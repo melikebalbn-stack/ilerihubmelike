@@ -13,7 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Settings, Gauge, Lightbulb, CalendarCheck, Flame, Mail, Megaphone, Headphones, Smartphone, LayoutDashboard, UserCheck, Clock, Plus, Trash2, Search, Loader2, RefreshCw, Users, CheckCircle2, AlertTriangle, Briefcase, UtensilsCrossed } from "lucide-react"
+import { Settings, Gauge, Lightbulb, CalendarCheck, Flame, Mail, Megaphone, Headphones, Smartphone, LayoutDashboard, UserCheck, Clock, Plus, Trash2, Search, Loader2, RefreshCw, Users, CheckCircle2, AlertTriangle, Briefcase, UtensilsCrossed, EyeOff } from "lucide-react"
 import Link from "next/link"
 import { useSession } from "next-auth/react"
 import { toast } from "sonner"
@@ -1339,6 +1339,31 @@ export default function SettingsPage() {
           </Link>
         </div>
       </CollapsibleSection>
+
+      {/* Modül Yayın Durumu — yalnız SUPER_ADMIN (sayfa da aynı kapıyı uyguluyor) */}
+      {userRole === 'SUPER_ADMIN' && (
+        <CollapsibleSection
+          title="Modül Yayın Durumu"
+          description="Yeni modülleri kullanıcılara açma / gizleme"
+          icon={EyeOff}
+          iconBgColor="bg-slate-100 dark:bg-slate-800"
+          iconColor="text-slate-600 dark:text-slate-300"
+        >
+          <div className="text-center py-6">
+            <EyeOff className="h-12 w-12 mx-auto mb-3 opacity-30" />
+            <p className="text-muted-foreground mb-4">
+              Yeni modüller canlıya çıkabilir ama yayına buradan açılır. Gizli ve pilot
+              modüller menüde görünmez, adresi yazan 404 alır, cron ve bildirimleri susar.
+            </p>
+            <Link href="/settings/modul-durum">
+              <Button>
+                <EyeOff className="h-4 w-4 mr-2" />
+                Modül Yayın Durumunu Yönet
+              </Button>
+            </Link>
+          </div>
+        </CollapsibleSection>
+      )}
 
       {/* Mesai Formu Onay Pozisyonları */}
       <CollapsibleSection

@@ -295,8 +295,9 @@ describe('Sidebar — ADIM 2: form olmayan öğelerin taşınması', () => {
 })
 
 describe('Sidebar — ADIM 3: Genel alt grubu + Üretim alt grubu', () => {
-  it('Genel alt grubu TAM 5 öğe ve istenen sırada (Öneri, IT Destek Talebi, Ziyaret, Toplantı, Zimmetlerim)', () => {
-    // Beşi de roles:["*"] → sıradan kullanıcıda hepsi görünür.
+  it('Genel alt grubu TAM 6 öğe ve istenen sırada (Öneri, IT Destek Talebi, Ziyaret, Toplantı, Proje Takip, Zimmetlerim)', () => {
+    // Altısı da roles:["*"] → sıradan kullanıcıda hepsi görünür.
+    // Proje Takip 30.09'da (d046431) bu alt gruba eklendi, test güncellenmemişti.
     mockSession({ role: 'KULLANICI', department: 'Üretim', permissions: [] })
     renderSidebar()
     fireEvent.click(screen.getByText('Formlar'))
@@ -310,6 +311,7 @@ describe('Sidebar — ADIM 3: Genel alt grubu + Üretim alt grubu', () => {
       'IT Destek Talebi',
       'Ziyaret Raporları',
       'Toplantı Raporu',
+      'Proje Takip',
       'Zimmetlerim',
     ])
 

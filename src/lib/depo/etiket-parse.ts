@@ -14,11 +14,15 @@
 //   • Kısa sayı → iş emri / uzun-alfanumerik → stok kodu ayrımını ÇAĞIRAN yapar
 //     (önce iş emri dener, olmazsa stok kodu). parseEtiket yalnız 'yerel' üretir.
 //
+// PALET ETİKETİ (her iki kaynakta): "P413" (P + rakam, büyük/küçük harf) → palet no 413.
+//   Palet etiketindeki barkod önekli basılır ki malzeme barkoduyla (çıplak sayı) karışmasın.
+//   IFS test 30.09: P+rakam biçiminde parça no ya da lokasyon YOK.
+//
 // Barkod_id ÇÖZÜMÜ sunucuda (IFS) yapılır; bu fonksiyon yalnız SINIFLANDIRIR (senkron).
 // Raf kodları adım bağlamıyla ayrıca çözülür (parseEtiket raf çözmez).
 
 export type EtiketKaynak = 'okutma' | 'elle'
-export type EtiketTip = 'barkodId' | 'yerel'
+export type EtiketTip = 'barkodId' | 'yerel' | 'palet'
 
 export interface EtiketParse {
   tip: EtiketTip
@@ -29,7 +33,21 @@ export interface EtiketParse {
   lot?: string
   miktar?: number
   etiketNo?: string
+  /** tip='palet' → taşıma birimi (HandlingUnitId). */
+  paletNo?: number
 }
+
+/** Palet etiketi / palet alanı: "P413" (ya da palet alanında çıplak "413") → 413. */
+export const PALET_ONEKI = 'P'
+export function paletNoAday(ham: string, ciplakSayiKabul = false): number | null {
+  const s = (ham ?? '').trim()
+  const m = /^[Pp](\d+)$/.exec(s) ?? (ciplakSayiKabul ? /^(\d+)$/.exec(s) : null)
+  if (!m) return null
+  const n = Number(m[1])
+  return Number.isSafeInteger(n) && n > 0 ? n : null
+}
+/** Palet etiketi malzeme beklenen bir alana okutulunca gösterilecek ortak uyarı. */
+export const PALET_UYARISI = 'Bu bir palet etiketi — Taşıma Birimi ekranını kullanın'
 
 /** Salt-sayısal okuma → pozitif tamsayı adayı. Değilse null. */
 export function barkodIdAday(ham: string): number | null {
@@ -52,6 +70,10 @@ function yerelCoz(s: string): EtiketParse {
 export function parseEtiket(ham: string, kaynak: EtiketKaynak = 'okutma'): EtiketParse {
   const s = (ham ?? '').trim()
   if (!s) return { tip: 'yerel' }
+
+  // Palet etiketi (okutma ve elle): "P413"
+  const palet = paletNoAday(s)
+  if (palet != null) return { tip: 'palet', paletNo: palet }
 
   // ELLE: barkod asla denenmez → daima yerel.
   if (kaynak === 'elle') return yerelCoz(s)

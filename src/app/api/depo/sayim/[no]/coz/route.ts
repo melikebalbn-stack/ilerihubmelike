@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/auth/require-permission'
 import { cozBarkodId } from '@/lib/ifs/barkod'
-import { parseEtiket } from '@/lib/depo/etiket-parse'
+import { PALET_UYARISI, parseEtiket } from '@/lib/depo/etiket-parse'
 import { GUARD, hata, raporNo } from '../../_ortak'
 
 export const runtime = 'nodejs'
@@ -18,6 +18,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ no: 
   if (!okut) return NextResponse.json({ ok: false, error: 'Okutma değeri gerekli' }, { status: 400 })
   try {
     const p = parseEtiket(okut, sp.get('kaynak') === 'elle' ? 'elle' : 'okutma')
+    if (p.tip === 'palet') return NextResponse.json({ ok: false, error: PALET_UYARISI }, { status: 400 })
     if (p.tip === 'barkodId' && p.barkodId != null) {
       const k = await cozBarkodId(p.barkodId)
       if (!k) return NextResponse.json({ ok: false, error: `Barkod bulunamadı: ${p.barkodId}` }, { status: 404 })

@@ -1,7 +1,7 @@
 import 'server-only'
 import { prisma } from '@/lib/prisma'
 import { cozBarkodId } from '@/lib/ifs/barkod'
-import { parseEtiket, type EtiketKaynak } from '@/lib/depo/etiket-parse'
+import { PALET_UYARISI, parseEtiket, type EtiketKaynak } from '@/lib/depo/etiket-parse'
 import type { RezervSatiri, Sevkiyat } from '@/lib/ifs/sevkiyat'
 
 
@@ -61,6 +61,7 @@ export async function okutmaCoz(
   kaynak: EtiketKaynak,
 ): Promise<{ partNo: string; lotBatchNo: string | null; barkodId: number | null; adaylar: OkutmaAdayi[] }> {
   const p = parseEtiket(ham, kaynak)
+  if (p.tip === 'palet') throw new Error(PALET_UYARISI)
   let partNo = (p.stokKodu ?? ham).trim()
   let lot: string | null = p.lot ?? null
   let barkodId: number | null = null

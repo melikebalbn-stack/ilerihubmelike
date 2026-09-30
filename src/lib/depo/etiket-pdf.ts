@@ -48,7 +48,7 @@ const FONT_DIR = path.join(process.cwd(), 'public', 'fonts')
 
 let cachedReg: Buffer | null = null
 let cachedBold: Buffer | null = null
-async function loadFonts() {
+export async function loadFonts() {
   if (!cachedReg || !cachedBold) {
     const [reg, bold] = await Promise.all([
       fs.readFile(path.join(FONT_DIR, 'Poppins-Regular.ttf')),
@@ -67,15 +67,28 @@ export function genEtiketNo(): string {
   return `ETK-${yy}-${n}`
 }
 
-function fmtDate(iso?: string): string {
-  const d = iso ? iso.slice(0, 10) : new Date().toISOString().slice(0, 10)
-  const [y, m, day] = d.split('-')
-  return y && m && day ? `${day}.${m}.${y}` : d
+// Etiket saatleri Türkiye saatiyle (sunucu UTC) — Malzeme Tanıtım Kartı ve Palet Etiketi ortak.
+const TR_TZ = 'Europe/Istanbul'
+function trParcalar(d = new Date()) {
+  const p = Object.fromEntries(
+    new Intl.DateTimeFormat('en-GB', { timeZone: TR_TZ, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+      .formatToParts(d)
+      .map((x) => [x.type, x.value]),
+  )
+  return { y: p.year, m: p.month, d: p.day, hh: p.hour, mm: p.minute }
 }
-function nowStamp(): string {
-  const d = new Date()
-  const p = (n: number) => String(n).padStart(2, '0')
-  return `${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`
+function fmtDate(iso?: string): string {
+  if (!iso) {
+    const t = trParcalar()
+    return `${t.d}.${t.m}.${t.y}`
+  }
+  const [y, m, day] = iso.slice(0, 10).split('-')
+  return y && m && day ? `${day}.${m}.${y}` : iso
+}
+/** "dd.MM.yyyy HH:mm" — Europe/Istanbul. */
+export function nowStamp(): string {
+  const t = trParcalar()
+  return `${t.d}.${t.m}.${t.y} ${t.hh}:${t.mm}`
 }
 
 /**
@@ -83,7 +96,7 @@ function nowStamp(): string {
  * sığmıyorsa allowTruncate ise sondan '…' ile kısaltır, değilse min puntoda tam basar
  * (kritik alanlar — ETIKET NO / LOT — asla kısaltılmaz).
  */
-function fitText(
+export function fitText(
   text: string,
   font: PDFFont,
   maxW: number,

@@ -18,7 +18,7 @@ import {
   Zap,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { barkodIdAday, parseEtiket, type EtiketKaynak } from '@/lib/depo/etiket-parse'
+import { barkodIdAday, PALET_UYARISI, parseEtiket, type EtiketKaynak } from '@/lib/depo/etiket-parse'
 import { useScanner } from '@/lib/depo/use-scanner'
 import { fmtMiktar, miktarOku, miktarTusla, rezerveMesaji } from '@/lib/depo/miktar'
 import type { DepoRafBilgisi, DepoStokKaydi, RafOnerisi } from '@/lib/ifs/depo-stok'
@@ -318,6 +318,8 @@ export function StokTasimaClient() {
     (raw: string, kaynak: EtiketKaynak = 'okutma') => {
       const val = raw.trim()
       if (!val) return
+      // Palet etiketi: bütün palet Taşıma Birimi ekranında taşınır.
+      if (parseEtiket(val, kaynak).tip === 'palet') return showError(PALET_UYARISI)
       if (step === 'KAYNAK_RAF') return void cozKaynak(val, kaynak)
       if (step === 'KAYNAK_SECIM') {
         // Okunan kodu listedeki locationNo / lokasyonAdi ile eşleştir.
@@ -466,6 +468,7 @@ export function StokTasimaClient() {
   const hizliHandle = (raw: string, kaynak: EtiketKaynak = 'okutma') => {
     const val = raw.trim()
     if (!val || hLoading || hTasiniyor) return
+    if (parseEtiket(val, kaynak).tip === 'palet') return showError(PALET_UYARISI)
     if (!hKaynak) {
       // Raf çözüldü → o raftaki malzemeyi okutarak seç.
       if (hRaf && hRafStok.length > 0) {
@@ -939,7 +942,7 @@ export function StokTasimaClient() {
                 miktar: hSonuc.miktar,
                 birim: hSonuc.birim,
                 lot: hSonuc.lot,
-                girisTarihi: new Date().toISOString().slice(0, 10),
+                girisTarihi: new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Istanbul' }).format(new Date()), // TR tarihi (yyyy-MM-dd)
                 kaynakBilgi: `Stok Tasima · ${hSonuc.kaynakAdi} → ${hSonuc.hedefAdi}`,
                 lokasyon: hSonuc.hedefAdi,
                 kaynakModul: 'Depo El Terminali / Hizli Tasima',
@@ -1243,7 +1246,7 @@ export function StokTasimaClient() {
                       miktar: miktarNum,
                       birim: secilenStok.birim,
                       lot: secilenStok.lot,
-                      girisTarihi: new Date().toISOString().slice(0, 10),
+                      girisTarihi: new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Istanbul' }).format(new Date()), // TR tarihi (yyyy-MM-dd)
                       kaynakBilgi: `Stok Tasima · ${kaynakRaf.aciklama || kaynakRaf.locationNo} → ${hedefRaf.aciklama || hedefRaf.locationNo}`,
                       lokasyon: hedefRaf.aciklama || hedefRaf.locationNo,
                       kaynakModul: 'Depo El Terminali / Stok Tasima',

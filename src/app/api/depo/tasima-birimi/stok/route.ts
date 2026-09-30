@@ -23,6 +23,7 @@ export async function GET(request: Request) {
     }
     const kaynak = sp.get('kaynak') === 'elle' ? 'elle' : 'okutma'
     const r = await okutVeGetir(okut, kaynak, { locationNo: lokasyon, handlingUnitId: 0 })
+    if (r.cozum?.tip === 'palet') return NextResponse.json({ ok: false, error: 'Bu bir palet etiketi — palete eklenecek malzemeyi okutun' }, { status: 400 })
     const satirlar = r.cozum && r.cozum.tip !== 'lokasyon' ? r.satirlar.filter((s) => s.kullanilabilir > 0) : []
     return NextResponse.json({ ok: true, lokasyon, toplam: satirlar.length, satirlar })
   } catch (e) {

@@ -23,6 +23,8 @@ export type DepoOlay =
   | 'HU_CIKAR'
   | 'HU_TASI'
   | 'HU_DEGISTIR'
+  // Palet etiketi basımı (PDF; IFS'e yazmaz): orderNo = palet no, partNo '-', miktar = içerik kalem sayısı.
+  | 'HU_ETIKET'
   // Toplu taşıma (TRDST fişi): orderNo = fiş no (TransferId); OLUSTUR/IPTAL'de partNo '-'.
   | 'TOPLU_TASIMA_OLUSTUR'
   | 'TOPLU_TASIMA_EKLE'

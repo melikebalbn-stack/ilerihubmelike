@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { PALET_UYARISI } from '@/lib/depo/etiket-parse'
 import { requirePermission } from '@/lib/auth/require-permission'
 import { getStokBilgisi, okutVeGetir } from '@/lib/ifs/stok-bilgisi'
 import { GUARD, hata } from '../_ortak'
@@ -26,6 +27,7 @@ export async function GET(request: Request) {
     }
     const kaynak = sp.get('kaynak') === 'elle' ? 'elle' : 'okutma'
     const r = await okutVeGetir(okut, kaynak, { locationNo: lokasyon })
+    if (r.cozum?.tip === 'palet') return NextResponse.json({ ok: false, error: PALET_UYARISI }, { status: 400 })
     let satirlar = r.cozum && r.cozum.tip !== 'lokasyon' ? r.satirlar.filter((s) => s.kullanilabilir > 0) : []
     const tumu = satirlar.length
     if (partNo) satirlar = satirlar.filter((s) => s.partNo === partNo)

@@ -174,7 +174,7 @@ export function StokBilgisiClient() {
       >
         <ScanLine className="h-6 w-6 shrink-0" style={{ color: TERMINAL_ACCENT }} />
         <div className="min-w-0 flex-1 leading-tight">
-          <div className="text-sm font-semibold" style={{ color: TERMINAL_ACCENT }}>Barkod, stok no veya lokasyon okut</div>
+          <div className="text-sm font-semibold" style={{ color: TERMINAL_ACCENT }}>Barkod, stok no, lokasyon ya da palet okut</div>
           <div className="truncate text-xs text-muted-foreground">stoktaki tüm satırlar listelenir</div>
         </div>
       </div>
@@ -206,7 +206,9 @@ export function StokBilgisiClient() {
               ? `Barkod ${cozum.deger} → ${cozum.barkod.partNo}${cozum.barkod.lotBatchNo !== '*' ? ` · lot ${cozum.barkod.lotBatchNo}` : ''}`
               : cozum.tip === 'parca'
                 ? `Stok no: ${cozum.deger}`
-                : `Lokasyon: ${cozum.deger}`}
+                : cozum.tip === 'palet'
+                  ? `Palet: P${cozum.deger}`
+                  : `Lokasyon: ${cozum.deger}`}
           </span>
           <button type="button" onClick={temizle} aria-label="Temizle" className="shrink-0 text-muted-foreground active:opacity-60">
             <X className="h-4 w-4" />

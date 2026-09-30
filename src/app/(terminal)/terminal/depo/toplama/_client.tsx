@@ -23,7 +23,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useScanner } from '@/lib/depo/use-scanner'
-import { parseEtiket, type EtiketKaynak } from '@/lib/depo/etiket-parse'
+import { PALET_UYARISI, parseEtiket, type EtiketKaynak } from '@/lib/depo/etiket-parse'
 import { TERMINAL_ACCENT } from '../../_shared'
 import type { BekleyenIs, FifoKaynak, IsEmriBaslik, ToplamaSatiri } from '@/lib/ifs/tuketim'
 
@@ -495,12 +495,13 @@ export function MalzemeToplamaClient() {
   // Geliş yolu (kaynak) belirler: scanner → 'okutma', elle giriş → 'elle'.
   const handleScan = useCallback(
     (v: string, kaynak: EtiketKaynak = 'okutma') => {
+      if (parseEtiket(v, kaynak).tip === 'palet') return showError(PALET_UYARISI)
       if (step === 'IS_EMRI') return void girisOkut(v, kaynak)
       if (step === 'LISTE') return listeScanEkle(v, kaynak)
       if (step === 'TEYIT' && sapmaAcik && !sapmaSecili) return void rafOkut(v)
       if (step === 'TEYIT') return void malzemeOkut(v, kaynak)
     },
-    [step, sapmaAcik, sapmaSecili, girisOkut, listeScanEkle, malzemeOkut, rafOkut],
+    [step, sapmaAcik, sapmaSecili, girisOkut, listeScanEkle, malzemeOkut, rafOkut, showError],
   )
 
   const tumBitti = step === 'LISTE' && satirlar.length > 0 && satirlar.every((s) => s.kalan === 0)

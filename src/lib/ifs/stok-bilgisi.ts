@@ -54,7 +54,7 @@ export interface StokBilgisiSatir {
   barkodVar: boolean
 }
 
-export type OkutCozumTip = 'barkod' | 'parca' | 'lokasyon'
+export type OkutCozumTip = 'barkod' | 'parca' | 'lokasyon' | 'palet'
 
 export interface StokBilgisiSonuc {
   satirlar: StokBilgisiSatir[]
@@ -219,6 +219,12 @@ export async function okutVeGetir(
 ): Promise<StokBilgisiSonuc> {
   const v = dolu(ham)
   const p = parseEtiket(v, kaynak)
+
+  // Palet etiketi "P413" → o taşıma biriminin satırları.
+  if (p.tip === 'palet' && p.paletNo != null) {
+    const r = await getStokBilgisi({ ...ekFiltre, handlingUnitId: p.paletNo }, sayfa)
+    return { ...r, cozum: { tip: 'palet', deger: String(p.paletNo) } }
+  }
 
   if (p.tip === 'barkodId' && p.barkodId != null) {
     const k = await cozBarkodId(p.barkodId)

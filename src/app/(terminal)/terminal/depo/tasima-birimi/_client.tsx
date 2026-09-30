@@ -2,12 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, ArrowRightLeft, Boxes, Loader2, MapPin, PackageOpen, PackagePlus, ScanLine, Trash2, Truck, X } from 'lucide-react'
+import { ArrowLeft, ArrowRightLeft, Boxes, Loader2, MapPin, PackageOpen, PackagePlus, Printer, ScanLine, Trash2, Truck, X } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useScanner } from '@/lib/depo/use-scanner'
 import { miktarOku, rezerveMesaji } from '@/lib/depo/miktar'
-import type { EtiketKaynak } from '@/lib/depo/etiket-parse'
+import { paletNoAday, type EtiketKaynak } from '@/lib/depo/etiket-parse'
 import { TERMINAL_ACCENT } from '../../_shared'
 import type { HuStokSatiri, Palet, PaletIcerik, PaletTuru } from '@/lib/ifs/tasima-birimi'
 import type { StokBilgisiSatir } from '@/lib/ifs/stok-bilgisi'
@@ -19,12 +19,8 @@ type EkleAdim = 'LOKASYON' | 'MALZEME' | 'MIKTAR'
 
 const fmt = (n: number) => n.toLocaleString('tr-TR', { maximumFractionDigits: 3 })
 const tire = (v: string) => (!v || v === '*' ? '—' : v)
-const paletNoOf = (v: string): number | null => {
-  const s = v.trim()
-  if (!/^\d+$/.test(s)) return null
-  const n = Number(s)
-  return Number.isSafeInteger(n) && n > 0 ? n : null
-}
+// Palet alanı: palet etiketindeki önekli "P413" ya da çıplak "413".
+const paletNoOf = (v: string): number | null => paletNoAday(v, true)
 const kimlik = (s: PaletIcerik | HuStokSatiri): HuStokSatiri => ({
   partNo: s.partNo, locationNo: s.locationNo, lotBatchNo: s.lotBatchNo, serialNo: s.serialNo, engChgLevel: s.engChgLevel,
   waivDevRejNo: s.waivDevRejNo, configurationId: s.configurationId, activitySeq: s.activitySeq, handlingUnitId: s.handlingUnitId,
@@ -327,6 +323,7 @@ export function TasimaBirimiClient({ baslangicPalet = null }: { baslangicPalet?:
             <Boxes className="h-8 w-8" style={{ color: TERMINAL_ACCENT }} />
             <div className="text-sm text-muted-foreground">Yeni palet</div>
             <div className="text-5xl font-bold tracking-wide" style={{ color: TERMINAL_ACCENT }}>{olusan}</div>
+            <EtiketBasButon paletId={olusan} />
             <div className="grid w-full grid-cols-2 gap-2">
               <button type="button" onClick={() => setOlusan(null)} className="h-11 rounded-xl border text-sm font-semibold">Bir tane daha</button>
               <button type="button" onClick={async () => { const id = olusan; modAc('ICERIK'); const p = await paletYukle(id); if (p) setPalet(p) }} className="h-11 rounded-xl text-sm font-semibold text-white" style={{ background: TERMINAL_ACCENT }}>İçeriğe git</button>
@@ -350,6 +347,7 @@ export function TasimaBirimiClient({ baslangicPalet = null }: { baslangicPalet?:
       {mod === 'ICERIK' && palet && !loading && (
         <div className="flex flex-col gap-2">
           <PaletKart palet={palet} secilebilir={!ekleAcik} secili={cikarSatir} onSec={(s) => { setCikarSatir(s); setCikarMiktar(String(s.eldeki)) }} secEtiket="Çıkar" />
+          {!ekleAcik && !cikarSatir && <EtiketBasButon paletId={palet.id} />}
           {cikarSatir && (
             <div className="flex flex-col gap-2 rounded-2xl border border-red-300 p-3">
               <div className="text-sm font-semibold">{cikarSatir.partNo} · paletten çıkar (en fazla {fmt(cikarSatir.eldeki)} {cikarSatir.birim})</div>
@@ -469,6 +467,45 @@ function PaletKart({ palet, ozet, secilebilir, secili, onSec, secEtiket }: {
           </div>
         ))
       )}
+    </div>
+  )
+}
+
+/**
+ * "Etiket Bas" — palet etiketi PDF'i (80×100 mm, barkod "P{id}") yeni sekmede açılır; yazıcıyı cihazın
+ * yazdırma penceresi seçer (Stok Taşıma "Etiket Yazdır" ile aynı yol). IFS'e yazmaz, tekrar basılabilir.
+ */
+function EtiketBasButon({ paletId }: { paletId: number }) {
+  const [yukleniyor, setYukleniyor] = useState(false)
+  const [hata, setHata] = useState<string | null>(null)
+  const bas = async () => {
+    if (yukleniyor) return
+    setYukleniyor(true)
+    setHata(null)
+    try {
+      const res = await fetch(`/api/depo/tasima-birimi/${paletId}/etiket`, { method: 'POST' })
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        setHata(data?.error ?? `Etiket üretilemedi (HTTP ${res.status})`)
+        return
+      }
+      const url = URL.createObjectURL(await res.blob())
+      window.open(url, '_blank')
+      setTimeout(() => URL.revokeObjectURL(url), 60_000)
+    } catch {
+      setHata('Bağlantı hatası — tekrar deneyin')
+    } finally {
+      setYukleniyor(false)
+    }
+  }
+  return (
+    <div className="flex w-full flex-col gap-1">
+      <button type="button" onClick={() => void bas()} disabled={yukleniyor}
+        className="flex h-11 w-full items-center justify-center gap-2 rounded-xl border text-sm font-semibold active:bg-muted/70 disabled:opacity-50"
+        style={{ borderColor: TERMINAL_ACCENT, color: TERMINAL_ACCENT }}>
+        {yukleniyor ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />} Etiket Bas (P{paletId})
+      </button>
+      {hata && <div className="text-center text-xs font-medium text-red-700">{hata}</div>}
     </div>
   )
 }

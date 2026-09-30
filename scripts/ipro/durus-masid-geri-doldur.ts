@@ -52,14 +52,20 @@ async function main() {
   const pool = await masBaglan()
   try {
     // MAS: son GUN günde başlayan + hâlâ açık (son GUN gün içinde başlamış) duruşlar.
-    const mr = await pool.request().input('gun', sql.Int, GUN).query<MasDurusGirdi>(
+    type MasSatir = MasDurusGirdi & { planned: boolean | null; nonProd: boolean | null }
+    const mr = await pool.request().input('gun', sql.Int, GUN).query<MasSatir>(
       `SELECT pdt.Id AS id, wc.Code AS tezgahKod, pdt.StartDateTime AS baslangic, pdt.EndDateTime AS bitis, ` +
-        `d.Code AS sebepKod, d.Name AS sebepAd ` +
+        `d.Code AS sebepKod, d.Name AS sebepAd, d.Planned AS planned, d.IsNonProduction AS nonProd ` +
         `FROM Production.ProductionDowntime pdt ` +
         `JOIN Loss.Downtime d ON d.Id = pdt.DowntimeId ` +
         `JOIN Organization.WorkCenter wc ON wc.Id = pdt.WorkCenterId ` +
         `WHERE pdt.Active = 1 AND pdt.StartDateTime >= DATEADD(DAY, -@gun, SYSDATETIME())`,
     )
+    const bayrakByKod = new Map<string, { planned: boolean; nonProd: boolean }>()
+    for (const r of mr.recordset) {
+      const k = r.sebepKod ? String(r.sebepKod).trim() : ''
+      if (k && !bayrakByKod.has(k)) bayrakByKod.set(k, { planned: !!r.planned, nonProd: !!r.nonProd })
+    }
     const mas: MasDurusGirdi[] = mr.recordset.map((r) => ({
       ...r,
       tezgahKod: r.tezgahKod ? String(r.tezgahKod).trim() : null,
@@ -100,6 +106,28 @@ async function main() {
     }
     console.log('\n== EKLENECEK duruş (tezgah bazında, ilk 20) ==')
     for (const [k, v] of [...tezgahOzet].sort((a, b) => b[1].dk - a[1].dk).slice(0, 20)) console.log(`  ${k} | adet=${v.eklenen} dk=${Math.round(v.dk)}`)
+    // Sebep bazında eklenecek duruş: süre dağılımı + MAS bayrakları (karar için)
+    const masById = new Map(mas.map((m) => [m.id, m]))
+    const sebepGrup = new Map<string, number[]>()
+    for (const o of plan.olustur) {
+      const m = masById.get(o.masId)
+      const k = `${m?.sebepKod ?? '?'}|${m?.sebepAd ?? ''}`
+      const arr = sebepGrup.get(k) ?? []
+      arr.push(dk(o.baslangic, o.bitis))
+      sebepGrup.set(k, arr)
+    }
+    const medyan = (a: number[]) => { const s = [...a].sort((x, y) => x - y); return s[Math.floor(s.length / 2)] ?? 0 }
+    console.log('\n== EKLENECEK duruş — sebep bazında (dk azalan) ==')
+    console.log('  kod | ad | planli | uretimDisi | adet | toplam dk | medyan dk | max dk | >8 saat adet')
+    for (const [k, arr] of [...sebepGrup].sort((a, b) => b[1].reduce((x, y) => x + y, 0) - a[1].reduce((x, y) => x + y, 0))) {
+      const [kod, ad] = k.split('|')
+      const b = bayrakByKod.get(kod)
+      const top = arr.reduce((x, y) => x + y, 0)
+      console.log(`  ${kod} | ${ad} | ${b?.planned ? 'E' : 'H'} | ${b?.nonProd ? 'E' : 'H'} | ${arr.length} | ${Math.round(top)} | ${Math.round(medyan(arr))} | ${Math.round(Math.max(...arr))} | ${arr.filter((x) => x > 480).length}`)
+    }
+    const acikEklenecek = plan.olustur.filter((o) => o.bitis === null)
+    console.log(`\n  eklenecek AÇIK duruş: ${acikEklenecek.length} (dk=${Math.round(acikEklenecek.reduce((s, o) => s + dk(o.baslangic, null), 0))})`)
+
     if (plan.eslesmeyenSebepler.length) console.log(`\n⚠️ IPRO'da karşılığı olmayan MAS sebepleri: ${plan.eslesmeyenSebepler.join(', ')}`)
     if (eslesmeyenKapali.length) {
       console.log(`\n== MAS'la EŞLEŞMEYEN masId'siz kapalı IPRO kaydı (silinmez, rapor) — ilk 20 ==`)

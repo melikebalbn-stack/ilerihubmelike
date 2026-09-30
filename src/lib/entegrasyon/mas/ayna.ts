@@ -4,8 +4,8 @@ import {
   acikUretimler,
   uretimlerByMasIds,
   acikOperatorler,
-  acikDuruslar,
-  acikDurusTezgahKodlari,
+  durusPenceresi,
+  duruslarByIds,
   rejectByMasIds,
   type MasUretimSatiri,
 } from '@/lib/mas/uretim'
@@ -13,11 +13,12 @@ import { isEmirineGrupla, employeeNoToSicilNo, uretimAdedi, type MasUretimGirdi 
 import { oeeKaydiHesaplaVeYaz } from '@/lib/ipro/oee-hesap'
 import { isPenceresiDeltaToplami } from '@/lib/ipro/faz2-delta'
 import { saniyeToCevrim } from '@/lib/ipro/cevrim-util'
+import { durusAynaPlani, type DurusVeri } from './durus-ayna'
 
 /**
  * MAS MES → IPRO ayna (yazma). Açık üretim → IproProductionLog ACIK; kapanan → KAPALI + OEE;
  * açık/kapanan duruş → IproMachineDowntime. Hepsi IDEMPOTENT (idempotency anahtarı
- * masProductionMasterId+ifsOrderNo+ifsOperationNo; duruşta tezgah+kaynak='MAS'+açık). dryRun DB'ye yazmaz.
+ * masProductionMasterId+ifsOrderNo+ifsOperationNo; duruşta MAS ProductionDowntime.Id = masId). dryRun DB'ye yazmaz.
  * Kiosk/terminal/is-basla/is-bitir dosyalarına DOKUNMAZ; yalnız ortak oee-hesap/faz2-delta çağırır.
  */
 const KAYNAK = 'MAS'
@@ -33,7 +34,12 @@ export interface MasAynaOzet {
   kapatilan: number
   durusAcilan: number
   durusKapatilan: number
+  durusGuncellenen: number // masId'li kayıtta bitiş/sebep/başlangıç değişikliği (kapanış dahil değil)
+  durusBaglanan: number // masId'siz eski kayıt MAS satırına bağlandı
+  durusMasSilinmis: number // MAS'ta silinmiş/pasif → sıfır süreye çekildi
+  durusSifirSure: number // süresi 0 kapalı MAS duruşu, yazılmadı
   durusBaslangicYok: number
+  durusOeeYeniden: number // duruş değişikliği değen KAPALI log OEE yeniden hesabı
   hurdaOkunan: number // MAS'tan çekilen reject satırı (hedef loglar için)
   hurdaYazilan: number // IproHurdaKaydi upsert (yeni/güncel)
   hurdaLogGuncellenen: number // qtyScrap güncellenen log sayısı
@@ -65,7 +71,7 @@ export async function runMasAyna(opts: { dryRun?: boolean; limit?: number | null
   const [acikSatir, operatorler, duruslar, tezgahlar, personeller, durusSebepleri] = await Promise.all([
     acikUretimler(),
     acikOperatorler(),
-    acikDuruslar(),
+    durusDahil ? durusPenceresi() : Promise.resolve([]),
     prisma.iproTezgah.findMany({ where: { aktif: true }, select: { id: true, kod: true, _count: { select: { plcPinler: true } } } }),
     prisma.personnel.findMany({ select: { id: true, sicilNo: true } }),
     prisma.iproDurusSebebi.findMany({ select: { id: true, kod: true } }),
@@ -79,7 +85,8 @@ export async function runMasAyna(opts: { dryRun?: boolean; limit?: number | null
 
   const ozet: MasAynaOzet = {
     dryRun, acikOkunan: acikSatir.length, acikUygun: 0, acilan: 0, guncellenen: 0, mukerrer: 0,
-    kapatilan: 0, durusAcilan: 0, durusKapatilan: 0, durusBaslangicYok: 0, hurdaOkunan: 0, hurdaYazilan: 0, hurdaLogGuncellenen: 0,
+    kapatilan: 0, durusAcilan: 0, durusKapatilan: 0, durusGuncellenen: 0, durusBaglanan: 0, durusMasSilinmis: 0, durusSifirSure: 0,
+    durusBaslangicYok: 0, durusOeeYeniden: 0, hurdaOkunan: 0, hurdaYazilan: 0, hurdaLogGuncellenen: 0,
     eslesmeyenDurusSebepleri: [], atlanan: [],
   }
 
@@ -303,65 +310,15 @@ export async function runMasAyna(opts: { dryRun?: boolean; limit?: number | null
     }
   }
 
-  // ── (c) DURUŞLAR → IproMachineDowntime aç/kapat ── (durus=0 ile tümüyle atlanır)
+  // ── (c) DURUŞLAR → IproMachineDowntime (MAS satırı başına tek kayıt, masId eşleşmesi) ──
+  // Pencere: MAS'ta açık (son MAS_DURUS_SAAT) + son 48 saatte kapanan. Bitiş = MAS EndDateTime ('simdi' değil).
+  // Duruş dizisi (UD → Kalıp → UD) ayrı kayıtlar olur. Plan saf fonksiyonda (durus-ayna.ts, birim testli).
   if (durusDahil) {
-  // AÇMA: yalnız pencereli (acikDuruslar, son N saat) — 2017 çöp kayıtları elenir.
-  for (const d of duruslar) {
-    const tz = d.tezgahKod ? tezgahByKod.get(d.tezgahKod) : undefined
-    if (!tz) {
-      ozet.atlanan.push({ sebep: 'durus_tezgah_eslesmedi', anahtar: `durus:${d.id}`, detay: d.tezgahKod ?? '—' })
-      continue
-    }
-    // BAŞLANGIÇ YOK → YAZMA: StartDateTime NULL/geçersiz (masTarih null) duruşu 'simdi' ile UYDURMA (phantom
-    // "Belirsiz Duruş" kök sebebi). Başlangıcı olmayan MAS duruşu IPRO'ya yazılmaz.
-    if (!d.baslangic) {
-      ozet.durusBaslangicYok++
-      continue
-    }
-    const sebepId = d.sebepKod ? sebepByKod.get(d.sebepKod) ?? null : null
-    if (!sebepId && d.sebepKod && !ozet.eslesmeyenDurusSebepleri.includes(`${d.sebepKod} — ${d.sebepAd ?? ''}`.trim())) {
-      ozet.eslesmeyenDurusSebepleri.push(`${d.sebepKod} — ${d.sebepAd ?? ''}`.trim())
-    }
-    if (dryRun) {
-      ozet.durusAcilan++
-      continue
-    }
-    // Bu tezgahta açık MAS duruşu yoksa aç (idempotent: tezgah+kaynak='MAS'+bitis=null tek açık).
-    // Partial-unique çakışması (yarış) tüm turu kesmesin → per-duruş try/catch.
     try {
-      const mevcut = await prisma.iproMachineDowntime.findFirst({ where: { tezgahId: tz.id, kaynak: KAYNAK, bitis: null }, select: { id: true } })
-      if (!mevcut) {
-        // MAS DEVRALIR: aynı tezgahta açık OTO (otomatik) veya TAKVIM (mola) duruş varsa kapat — sebepli
-        // MAS kaydı öncelikli (partial unique tezgah başına tek açık duruşa izin verir; kapatılmadan açılamaz).
-        await prisma.iproMachineDowntime.updateMany({
-          where: { tezgahId: tz.id, kaynak: { in: ['OTO', 'TAKVIM'] }, bitis: null },
-          data: { bitis: d.baslangic },
-        })
-        await prisma.iproMachineDowntime.create({
-          data: {
-            tezgahId: tz.id, durusSebebiId: sebepId, baslangic: d.baslangic, kaynak: KAYNAK,
-            yorum: sebepId ? null : `MAS: ${d.sebepKod ?? '?'} - ${d.sebepAd ?? ''}`.trim(),
-          },
-        })
-        ozet.durusAcilan++
-      }
+      await durusAynala(duruslar, tezgahByKod, sebepByKod, ozet, dryRun, simdi)
     } catch (e) {
-      ozet.atlanan.push({ sebep: 'durus_yazma_hatasi', anahtar: `durus:${d.id}`, detay: (e as Error)?.message?.slice(0, 120) ?? '?' })
+      ozet.atlanan.push({ sebep: 'durus_ayna_hatasi', anahtar: 'durus', detay: (e as Error)?.message?.slice(0, 120) ?? '?' })
     }
-  }
-  // KAPATMA: PENCERE YOK. MAS'ta ŞU AN açık duruşu olan tezgah kodları (tam küme) alınır; IPRO'da
-  // açık kalan MAS duruşlarından bu kümede OLMAYAN her tezgah kapatılır (bayat pencere yüzünden
-  // açık kalmasın — PE04 MAS'ta üretimde ama IPRO'da 'duruşta' kalıyordu).
-  const liveDurusKods = new Set(await acikDurusTezgahKodlari())
-  const acikMasDuruslar = await prisma.iproMachineDowntime.findMany({
-    where: { kaynak: KAYNAK, bitis: null },
-    select: { id: true, tezgah: { select: { kod: true } } },
-  })
-  for (const md of acikMasDuruslar) {
-    if (liveDurusKods.has(md.tezgah.kod)) continue
-    ozet.durusKapatilan++
-    if (!dryRun) await prisma.iproMachineDowntime.update({ where: { id: md.id }, data: { bitis: simdi } })
-  }
   } // durusDahil
 
   // ── (d) HURDA → IproHurdaKaydi (MAS Production.ProductionReject aynası) ──
@@ -417,4 +374,143 @@ export async function runMasAyna(opts: { dryRun?: boolean; limit?: number | null
   }
 
   return ozet
+}
+
+async function durusAynala(
+  mas: Awaited<ReturnType<typeof durusPenceresi>>,
+  tezgahByKod: Map<string, { id: string; sinyalli: boolean }>,
+  sebepByKod: Map<string, string>,
+  ozet: MasAynaOzet,
+  dryRun: boolean,
+  simdi: Date,
+): Promise<void> {
+  const pencereIds = new Set(mas.map((m) => m.id))
+  const enEskiBaslangic = mas.reduce<number>((min, m) => (m.baslangic ? Math.min(min, m.baslangic.getTime()) : min), simdi.getTime())
+  const sel = { id: true, masId: true, tezgahId: true, baslangic: true, bitis: true, durusSebebiId: true } as const
+
+  // IPRO tarafı: pencere satırlarına bağlı kayıtlar + tüm AÇIK MAS kayıtları + pencere aralığındaki masId'siz eski kayıtlar.
+  const ipro = await prisma.iproMachineDowntime.findMany({
+    where: {
+      kaynak: KAYNAK,
+      OR: [
+        { masId: { in: [...pencereIds] } },
+        { bitis: null },
+        { masId: null, baslangic: { gte: new Date(enEskiBaslangic - 60_000) } },
+      ],
+    },
+    select: sel,
+  })
+
+  // Pencere dışına düşmüş açık masId'li kayıtlar: MAS'taki güncel hallerini Id ile çek.
+  const disari = ipro.filter((r) => r.masId != null && r.bitis === null && !pencereIds.has(r.masId)).map((r) => r.masId!)
+  const disariMas = disari.length ? await duruslarByIds(disari) : []
+  const bulunan = new Set(disariMas.map((m) => m.id))
+
+  const plan = durusAynaPlani({
+    mas: [...mas, ...disariMas],
+    masBulunamayan: disari.filter((id) => !bulunan.has(id)),
+    ipro,
+    tezgahByKod: new Map([...tezgahByKod].map(([k, v]) => [k, v.id])),
+    sebepByKod,
+  })
+
+  for (const a of plan.atlanan) {
+    if (a.sebep === 'baslangic_yok') ozet.durusBaslangicYok++
+    else if (a.sebep === 'sifir_sure') ozet.durusSifirSure++
+    else ozet.atlanan.push({ sebep: 'durus_tezgah_eslesmedi', anahtar: `durus:${a.masId}`, detay: a.detay })
+  }
+  for (const e of plan.eslesmeyenSebepler) if (!ozet.eslesmeyenDurusSebepleri.includes(e)) ozet.eslesmeyenDurusSebepleri.push(e)
+
+  const degen: { tezgahId: string; bas: Date; bit: Date }[] = []
+  const iproById = new Map(ipro.map((r) => [r.id, r]))
+  const kaydet = (tezgahId: string, bas: Date, bit: Date | null) => degen.push({ tezgahId, bas, bit: bit ?? simdi })
+
+  const say = () => {
+    for (const g of plan.guncelle) {
+      if (g.data.masId != null) ozet.durusBaglanan++
+      const eski = iproById.get(g.id)
+      if (eski?.bitis === null && g.data.bitis != null) ozet.durusKapatilan++
+      else ozet.durusGuncellenen++
+    }
+    ozet.durusAcilan += plan.olustur.length
+    ozet.durusMasSilinmis += plan.masSilinmis.length
+    ozet.durusKapatilan += plan.eskiAcikEslesmeyen.length
+  }
+  if (dryRun) {
+    say()
+    return
+  }
+
+  // 1) Güncellemeler (kapanışlar önce — partial unique: tezgah başına tek açık duruş).
+  for (const g of plan.guncelle) {
+    try {
+      await prisma.iproMachineDowntime.update({ where: { id: g.id }, data: g.data })
+      const eski = iproById.get(g.id)!
+      if (g.data.masId != null) ozet.durusBaglanan++
+      if (eski.bitis === null && g.data.bitis != null) ozet.durusKapatilan++
+      else ozet.durusGuncellenen++
+      kaydet(eski.tezgahId, eski.baslangic, eski.bitis)
+      kaydet(eski.tezgahId, g.data.baslangic ?? eski.baslangic, g.data.bitis === undefined ? eski.bitis : g.data.bitis)
+    } catch (e) {
+      ozet.atlanan.push({ sebep: 'durus_guncelleme_hatasi', anahtar: `ipro:${g.id}`, detay: (e as Error)?.message?.slice(0, 120) ?? '?' })
+    }
+  }
+  // 2) MAS'ta silinmiş → sıfır süre (kayıt korunur, etkisi sıfırlanır).
+  for (const s of plan.masSilinmis) {
+    try {
+      await prisma.iproMachineDowntime.update({ where: { id: s.id }, data: { bitis: s.baslangic, yorum: "MAS'ta silindi" } })
+      ozet.durusMasSilinmis++
+      const eski = iproById.get(s.id)!
+      kaydet(eski.tezgahId, eski.baslangic, eski.bitis)
+    } catch (e) {
+      ozet.atlanan.push({ sebep: 'durus_silinmis_hatasi', anahtar: `ipro:${s.id}`, detay: (e as Error)?.message?.slice(0, 120) ?? '?' })
+    }
+  }
+  // 3) Geçiş dönemi: masId'siz, MAS'la eşleşmeyen açık eski kayıt. Gerçek bitiş bilinmiyor → 'simdi'.
+  //    Geri doldurma scripti eski kayıtları bağladıktan sonra bu yol boş kalır.
+  for (const e of plan.eskiAcikEslesmeyen) {
+    try {
+      await prisma.iproMachineDowntime.update({ where: { id: e.id }, data: { bitis: simdi } })
+      ozet.durusKapatilan++
+    } catch (err) {
+      ozet.atlanan.push({ sebep: 'durus_eski_kapatma_hatasi', anahtar: `ipro:${e.id}`, detay: (err as Error)?.message?.slice(0, 120) ?? '?' })
+    }
+  }
+  // 4) Yeni kayıtlar (başlangıç sırasıyla). Açık kayıt açılırken aynı tezgahtaki açık OTO/TAKVIM kapanır (MAS devralır).
+  for (const o of plan.olustur) {
+    try {
+      if (o.bitis === null) {
+        await prisma.iproMachineDowntime.updateMany({
+          where: { tezgahId: o.tezgahId, kaynak: { in: ['OTO', 'TAKVIM'] }, bitis: null },
+          data: { bitis: o.baslangic },
+        })
+      }
+      const data: DurusVeri & { masId: number; kaynak: string } = { ...o, kaynak: KAYNAK }
+      await prisma.iproMachineDowntime.create({ data })
+      ozet.durusAcilan++
+      kaydet(o.tezgahId, o.baslangic, o.bitis)
+    } catch (e) {
+      ozet.atlanan.push({ sebep: 'durus_yazma_hatasi', anahtar: `durus:${o.masId}`, detay: (e as Error)?.message?.slice(0, 120) ?? '?' })
+    }
+  }
+
+  // 5) Değişen duruşların değdiği KAPALI MAS işlerinde OEE yeniden (geç gelen/düzelen duruş OEE'ye yansısın).
+  if (degen.length) {
+    const tezgahIds = [...new Set(degen.map((d) => d.tezgahId))]
+    const enEski = new Date(Math.min(...degen.map((d) => d.bas.getTime())))
+    const loglar = await prisma.iproProductionLog.findMany({
+      where: { durum: 'KAPALI', tezgahId: { in: tezgahIds }, baslatildiAt: { not: null }, bitirildiAt: { gte: enEski } },
+      select: { id: true, tezgahId: true, baslatildiAt: true, bitirildiAt: true },
+    })
+    for (const l of loglar) {
+      const lb = l.baslatildiAt!.getTime(), le = l.bitirildiAt!.getTime()
+      if (!degen.some((d) => d.tezgahId === l.tezgahId && d.bas.getTime() < le && lb < d.bit.getTime())) continue
+      try {
+        await oeeKaydiHesaplaVeYaz(prisma, l.id)
+        ozet.durusOeeYeniden++
+      } catch {
+        /* OEE hatası ayna'yı bloklamasın */
+      }
+    }
+  }
 }

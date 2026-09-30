@@ -234,3 +234,69 @@ export async function acikDuruslar(opts: { saat?: number } = {}): Promise<MasDur
   // Duruş başlangıcı da MAS yerel-yanlış-UTC → doğru UTC. (Bu sorgu yalnız açık duruş → bitiş yok.)
   return res.recordset.map((r) => ({ ...r, baslangic: masTarih(r.baslangic) }))
 }
+
+/** Açık + kapanmış MAS duruşu (masId eşleşmeli ayna için). bitis=null → MAS'ta hâlâ açık. */
+export interface MasDurusKaydi {
+  id: number
+  tezgahKod: string | null
+  baslangic: Date | null
+  bitis: Date | null
+  sebepKod: string | null
+  sebepAd: string | null
+}
+
+const DURUS_KAYDI_SELECT =
+  `SELECT pdt.Id AS id, wc.Code AS tezgahKod, pdt.StartDateTime AS baslangic, pdt.EndDateTime AS bitis, ` +
+  `d.Code AS sebepKod, d.Name AS sebepAd ` +
+  `FROM Production.ProductionDowntime pdt ` +
+  `JOIN Loss.Downtime d ON d.Id = pdt.DowntimeId ` +
+  `JOIN Organization.WorkCenter wc ON wc.Id = pdt.WorkCenterId `
+
+function durusKaydiNormalize(r: MasDurusKaydi): MasDurusKaydi {
+  return { ...r, baslangic: masTarih(r.baslangic), bitis: masTarih(r.bitis) }
+}
+
+/**
+ * Ayna penceresi: (a) AÇIK duruşlar — son `acikSaat` (MAS_DURUS_SAAT, 2017 çöpünü eler),
+ * (b) son `kapananSaat` saatte KAPANAN duruşlar (gerçek EndDateTime ile kapatmak / ara duruşları kaçırmamak için).
+ * Pencereler MAS yerel saatiyle SYSDATETIME() üzerinden (MAS sunucusu İstanbul).
+ */
+export async function durusPenceresi(opts: { acikSaat?: number; kapananSaat?: number } = {}): Promise<MasDurusKaydi[]> {
+  const pool = await masPool()
+  const acikSaat = opts.acikSaat != null && opts.acikSaat > 0 ? opts.acikSaat : durusSaat()
+  const kapananSaat = opts.kapananSaat != null && opts.kapananSaat > 0 ? opts.kapananSaat : 48
+  const res = await pool
+    .request()
+    .input('acikSaat', sql.Int, acikSaat)
+    .input('kapananSaat', sql.Int, kapananSaat)
+    .query<MasDurusKaydi>(
+      DURUS_KAYDI_SELECT +
+        `WHERE pdt.Active = 1 AND (` +
+        `(pdt.EndDateTime IS NULL AND pdt.StartDateTime >= DATEADD(HOUR, -@acikSaat, SYSDATETIME())) ` +
+        `OR (pdt.EndDateTime IS NOT NULL AND pdt.EndDateTime >= DATEADD(HOUR, -@kapananSaat, SYSDATETIME()))` +
+        `) ORDER BY pdt.StartDateTime ASC`,
+    )
+  return res.recordset.map(durusKaydiNormalize)
+}
+
+/** Verilen MAS duruş Id'lerinin güncel hali (pencere dışına düşmüş açık IPRO kayıtlarını kapatmak için). */
+export async function duruslarByIds(ids: number[]): Promise<MasDurusKaydi[]> {
+  const uniq = [...new Set(ids.filter((x) => Number.isInteger(x)))]
+  if (uniq.length === 0) return []
+  const pool = await masPool()
+  const out: MasDurusKaydi[] = []
+  for (let i = 0; i < uniq.length; i += 500) {
+    const dilim = uniq.slice(i, i + 500)
+    const rq = pool.request()
+    const params: string[] = []
+    dilim.forEach((id, j) => {
+      rq.input(`id${j}`, sql.Int, id)
+      params.push(`@id${j}`)
+    })
+    const res = await rq.query<MasDurusKaydi & { active: boolean }>(
+      DURUS_KAYDI_SELECT.replace('SELECT ', 'SELECT pdt.Active AS active, ') + `WHERE pdt.Id IN (${params.join(',')})`,
+    )
+    out.push(...res.recordset.filter((r) => r.active).map(durusKaydiNormalize))
+  }
+  return out
+}

@@ -12223,6 +12223,8 @@ model IproMachineDowntime {
   bitis         DateTime?
   kaynak        String           @default("PLC")
   yorum         String?
+  /// MAS Production.ProductionDowntime.Id (kaynak='MAS'). Ayna eşleşme anahtarı: MAS satırı başına tek kayıt.
+  masId         Int?             @unique
 
   @@index([tezgahId, bitis])
   // Partial UNIQUE (tezgah başına tek AÇIK duruş) Prisma @@unique ile ifade

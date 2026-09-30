@@ -4,7 +4,7 @@ import { durusAynaPlani, type MasDurusGirdi, type IproDurusGirdi } from './durus
 const t = (hhmm: string) => new Date(`2026-09-30T${hhmm}:00.000Z`)
 const tezgahByKod = new Map([['PE01', 'tz-pe01']])
 const sebepByKod = new Map([
-  ['UD', 'sb-ud'],
+  ['64', 'sb-ud'],
   ['44', 'sb-kalip'],
   ['06', 'sb-cay'],
 ])
@@ -16,9 +16,9 @@ const ipro = (id: string, masId: number | null, bas: string, bit: string | null,
 })
 
 describe('durusAynaPlani', () => {
-  it('UD → Kalıp → UD dizisi: üç ayrı kayıt, gerçek bitişlerle', () => {
+  it('64 → Kalıp → 64 dizisi: üç ayrı kayıt, gerçek bitişlerle', () => {
     const plan = durusAynaPlani({
-      mas: [mas(3, 'UD', '08:39', '08:40'), mas(1, 'UD', '07:21', '08:01'), mas(2, '44', '08:01', '08:27')],
+      mas: [mas(3, '64', '08:39', '08:40'), mas(1, '64', '07:21', '08:01'), mas(2, '44', '08:01', '08:27')],
       ipro: [],
       tezgahByKod, sebepByKod,
     })
@@ -32,7 +32,7 @@ describe('durusAynaPlani', () => {
 
   it('açık IPRO kaydı MAS kapandığında MAS bitişiyle kapanır (simdi değil)', () => {
     const plan = durusAynaPlani({
-      mas: [mas(1, 'UD', '07:21', '08:01')],
+      mas: [mas(1, '64', '07:21', '08:01')],
       ipro: [ipro('a', 1, '07:21', null)],
       tezgahByKod, sebepByKod,
     })
@@ -42,7 +42,7 @@ describe('durusAynaPlani', () => {
 
   it('idempotent: değişiklik yoksa işlem yok', () => {
     const plan = durusAynaPlani({
-      mas: [mas(1, 'UD', '07:21', '08:01')],
+      mas: [mas(1, '64', '07:21', '08:01')],
       ipro: [ipro('a', 1, '07:21', '08:01')],
       tezgahByKod, sebepByKod,
     })
@@ -67,7 +67,7 @@ describe('durusAynaPlani', () => {
 
   it('masId olmayan eski kayıt tezgah+başlangıç (±1 dk) ile bağlanır ve bitişi düzeltilir', () => {
     const eski: IproDurusGirdi = { ...ipro('eski', null, '07:21', '08:30'), baslangic: new Date(t('07:21').getTime() + 30_000) }
-    const plan = durusAynaPlani({ mas: [mas(1, 'UD', '07:21', '08:01')], ipro: [eski], tezgahByKod, sebepByKod })
+    const plan = durusAynaPlani({ mas: [mas(1, '64', '07:21', '08:01')], ipro: [eski], tezgahByKod, sebepByKod })
     expect(plan.olustur).toEqual([])
     expect(plan.guncelle).toEqual([{ id: 'eski', masId: null, data: { masId: 1, baslangic: t('07:21'), bitis: t('08:01') } }])
   })
@@ -85,8 +85,8 @@ describe('durusAynaPlani', () => {
   it('tezgahı olmayan ve başlangıcı olmayan satırlar atlanır; eşleşmeyen sebep raporlanır', () => {
     const plan = durusAynaPlani({
       mas: [
-        { ...mas(1, 'UD', '07:00', null), tezgahKod: 'YOK' },
-        { ...mas(2, 'UD', '07:00', null), baslangic: null },
+        { ...mas(1, '64', '07:00', null), tezgahKod: 'YOK' },
+        { ...mas(2, '64', '07:00', null), baslangic: null },
         mas(3, 'ZZ', '07:10', null),
       ],
       ipro: [], tezgahByKod, sebepByKod,
@@ -98,11 +98,56 @@ describe('durusAynaPlani', () => {
 
   it('kapanışlar oluşturmalardan önce sıralanır', () => {
     const plan = durusAynaPlani({
-      mas: [mas(1, 'UD', '07:21', '08:01'), mas(2, '44', '08:01', null)],
+      mas: [mas(1, '64', '07:21', '08:01'), mas(2, '44', '08:01', null)],
       ipro: [ipro('a', 1, '07:21', null)],
       tezgahByKod, sebepByKod,
     })
     expect(plan.guncelle[0].data.bitis).toEqual(t('08:01'))
     expect(plan.olustur[0]).toMatchObject({ masId: 2, bitis: null })
+  })
+
+  describe('plan dışı sebepler (UD, 0151)', () => {
+    it('UD ve 0151 aynalanmaz', () => {
+      const plan = durusAynaPlani({
+        mas: [mas(1, 'UD', '01:00', '07:00'), mas(2, '0151', '07:00', '09:00'), mas(3, '44', '09:00', '09:20')],
+        ipro: [], tezgahByKod, sebepByKod,
+      })
+      expect(plan.olustur.map((o) => o.masId)).toEqual([3])
+      expect(plan.atlanan.filter((a) => a.sebep === 'plan_disi').map((a) => a.masId)).toEqual([1, 2])
+    })
+
+    it('masId ile bağlı UD kaydı silinir, güncellenmez', () => {
+      const plan = durusAynaPlani({
+        mas: [mas(1, 'UD', '07:21', '08:01')],
+        ipro: [{ ...ipro('a', 1, '07:21', null), sebepKod: 'UD' }],
+        tezgahByKod, sebepByKod,
+      })
+      expect(plan.sil.map((x) => x.id)).toEqual(['a'])
+      expect(plan.guncelle).toEqual([])
+    })
+
+    it('sebebi sonradan UD yapılan MAS satırının kaydı silinir', () => {
+      const plan = durusAynaPlani({
+        mas: [mas(1, 'UD', '07:21', null)],
+        ipro: [{ ...ipro('a', 1, '07:21', null, 'sb-kalip'), sebepKod: '44' }],
+        tezgahByKod, sebepByKod,
+      })
+      expect(plan.sil.map((x) => x.id)).toEqual(['a'])
+    })
+
+    it("pencerede eşleşmeyen eski UD kaydı da silinir; açık eski listesine girmez", () => {
+      const plan = durusAynaPlani({
+        mas: [],
+        ipro: [{ ...ipro('eski', null, '01:00', null), sebepKod: 'UD' }],
+        tezgahByKod, sebepByKod,
+      })
+      expect(plan.sil.map((x) => x.id)).toEqual(['eski'])
+      expect(plan.eskiAcikEslesmeyen).toEqual([])
+    })
+
+    it('888 gibi diğer kodlar süzülmez', () => {
+      const plan = durusAynaPlani({ mas: [mas(4, '888', '10:00', '10:30')], ipro: [], tezgahByKod, sebepByKod })
+      expect(plan.olustur.map((o) => o.masId)).toEqual([4])
+    })
   })
 })

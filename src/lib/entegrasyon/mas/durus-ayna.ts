@@ -7,7 +7,12 @@
  *  - Aynı MAS satırında sebep/bitiş değişirse IPRO kaydı güncellenir.
  *  - Süresi 0 (veya negatif) kapalı duruşlar yazılmaz (ör. takvimden anlık kapanan çay molası).
  *  - masId'siz eski (legacy) IPRO kayıtları tezgah + başlangıç (±1 dk) ile MAS satırına bağlanır.
+ *  - Plan dışı sebepler (UD Üretim Dışı, 0151 Planda üretim yok) duruş DEĞİLDİR: aynalanmaz,
+ *    IPRO'da bu sebeple kalmış kayıtlar silinir (tezgah o sürede plan dışı; OEE'ye kayıp yazılmaz).
  */
+
+/** MAS Loss.Downtime.Code — duruş sayılmayan "plan dışı" sebepler (Melih kararı, 30.09.2026). */
+export const PLAN_DISI_SEBEP_KODLARI: readonly string[] = ['UD', '0151']
 
 export interface MasDurusGirdi {
   id: number
@@ -25,6 +30,8 @@ export interface IproDurusGirdi {
   baslangic: Date
   bitis: Date | null
   durusSebebiId: string | null
+  /** Kaydın mevcut sebep kodu (IproDurusSebebi.kod) — plan dışı temizliği için. */
+  sebepKod?: string | null
 }
 
 export interface DurusVeri {
@@ -38,11 +45,13 @@ export interface DurusVeri {
 export interface DurusAynaPlani {
   olustur: (DurusVeri & { masId: number })[]
   guncelle: { id: string; masId: number | null; data: Partial<DurusVeri> & { masId?: number } }[]
+  /** Plan dışı sebepli IPRO kaydı (UD/0151) → silinir. */
+  sil: { id: string; masId: number | null; tezgahId: string; baslangic: Date; bitis: Date | null }[]
   /** masId'li IPRO kaydı, MAS'ta artık yok (silinmiş/pasif) → sıfır süreye çekilir. */
   masSilinmis: { id: string; baslangic: Date }[]
   /** masId'siz, MAS'la eşleşmeyen AÇIK eski kayıt → çağıran kapatır (tek geçiş dönemi yolu). */
   eskiAcikEslesmeyen: { id: string; tezgahId: string }[]
-  atlanan: { sebep: 'tezgah_yok' | 'baslangic_yok' | 'sifir_sure'; masId: number; detay: string }[]
+  atlanan: { sebep: 'tezgah_yok' | 'baslangic_yok' | 'sifir_sure' | 'plan_disi'; masId: number; detay: string }[]
   eslesmeyenSebepler: string[]
 }
 
@@ -60,8 +69,16 @@ export function durusAynaPlani(girdi: {
   ipro: IproDurusGirdi[]
   tezgahByKod: Map<string, string>
   sebepByKod: Map<string, string>
+  planDisiKodlar?: readonly string[]
 }): DurusAynaPlani {
-  const plan: DurusAynaPlani = { olustur: [], guncelle: [], masSilinmis: [], eskiAcikEslesmeyen: [], atlanan: [], eslesmeyenSebepler: [] }
+  const plan: DurusAynaPlani = { olustur: [], guncelle: [], sil: [], masSilinmis: [], eskiAcikEslesmeyen: [], atlanan: [], eslesmeyenSebepler: [] }
+  const planDisi = new Set((girdi.planDisiKodlar ?? PLAN_DISI_SEBEP_KODLARI).map((k) => k.trim()))
+  const silinen = new Set<string>()
+  const silEkle = (r: IproDurusGirdi) => {
+    if (silinen.has(r.id)) return
+    silinen.add(r.id)
+    plan.sil.push({ id: r.id, masId: r.masId, tezgahId: r.tezgahId, baslangic: r.baslangic, bitis: r.bitis })
+  }
 
   const iproByMasId = new Map<number, IproDurusGirdi>()
   const eskiler: IproDurusGirdi[] = []
@@ -83,6 +100,7 @@ export function durusAynaPlani(girdi: {
       continue
     }
     const sifirSure = m.bitis !== null && m.bitis.getTime() <= m.baslangic.getTime()
+    const masPlanDisi = !!m.sebepKod && planDisi.has(m.sebepKod.trim())
 
     const sebepId = m.sebepKod ? girdi.sebepByKod.get(m.sebepKod) ?? null : null
     const sebepEtiket = `${m.sebepKod ?? '?'} - ${m.sebepAd ?? ''}`.trim()
@@ -107,6 +125,12 @@ export function durusAynaPlani(girdi: {
       }
     }
 
+    if (masPlanDisi) {
+      plan.atlanan.push({ sebep: 'plan_disi', masId: m.id, detay: `${m.tezgahKod} ${sebepEtiket}` })
+      if (mevcut) silEkle(mevcut)
+      continue
+    }
+
     if (!mevcut) {
       if (sifirSure) {
         plan.atlanan.push({ sebep: 'sifir_sure', masId: m.id, detay: `${m.tezgahKod} ${sebepEtiket}` })
@@ -128,17 +152,21 @@ export function durusAynaPlani(girdi: {
     if (Object.keys(data).length) plan.guncelle.push({ id: mevcut.id, masId: mevcut.masId, data })
   }
 
+  // Pencerede eşleşmese de plan dışı sebeple kalmış IPRO kayıtları (eski ayna yazmıştı) silinir.
+  for (const r of girdi.ipro) if (r.sebepKod && planDisi.has(r.sebepKod.trim())) silEkle(r)
+
   for (const masId of girdi.masBulunamayan ?? []) {
     const r = iproByMasId.get(masId)
-    if (r && !(r.bitis && r.bitis.getTime() === r.baslangic.getTime())) plan.masSilinmis.push({ id: r.id, baslangic: r.baslangic })
+    if (r && !silinen.has(r.id) && !(r.bitis && r.bitis.getTime() === r.baslangic.getTime())) plan.masSilinmis.push({ id: r.id, baslangic: r.baslangic })
   }
 
   for (const e of eskiler) {
-    if (!eskiKullanildi.has(e.id) && e.bitis === null) plan.eskiAcikEslesmeyen.push({ id: e.id, tezgahId: e.tezgahId })
+    if (!eskiKullanildi.has(e.id) && !silinen.has(e.id) && e.bitis === null) plan.eskiAcikEslesmeyen.push({ id: e.id, tezgahId: e.tezgahId })
   }
 
   // Kapatmalar (bitiş dolan) önce, sonra oluşturmalar başlangıç sırasıyla: tezgah başına tek AÇIK duruş
   // (partial unique) kısıtı, önceki açık kaydın kapanmasından sonra yenisinin açılmasını gerektirir.
+  plan.guncelle = plan.guncelle.filter((g) => !silinen.has(g.id))
   plan.guncelle.sort((a, b) => Number(b.data.bitis != null) - Number(a.data.bitis != null))
   plan.olustur.sort((a, b) => a.baslangic.getTime() - b.baslangic.getTime())
   return plan

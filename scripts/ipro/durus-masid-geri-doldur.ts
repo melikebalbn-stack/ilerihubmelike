@@ -8,6 +8,7 @@
  *  3. MAS'ta kapanmış ama IPRO'da açık kalanları MAS bitişiyle kapatır.
  *  4. Süresi 0 kapalı duruşları yazmaz.
  *  5. MAS'la eşleşmeyen masId'siz IPRO kayıtlarını YALNIZ RAPORLAR (silmez).
+ *  5b. Plan dışı sebepler (UD, 0151) aynalanmaz; IPRO'da bu sebeple kalmış kayıtlar (yedekli) SİLİNİR.
  *  6. Değişen duruşların değdiği KAPALI işlerde OEE'yi yeniden hesaplar.
  * Plan canlı aynayla aynı saf fonksiyondan gelir (src/lib/entegrasyon/mas/durus-ayna.ts).
  *
@@ -22,7 +23,7 @@ import sql from 'mssql'
 import { createPrisma, banner, summary } from './_lib'
 import { oeeKaydiHesaplaVeYaz } from '../../src/lib/ipro/oee-hesap'
 import { masTarih } from '../../src/lib/mas/tarih'
-import { durusAynaPlani, type MasDurusGirdi } from '../../src/lib/entegrasyon/mas/durus-ayna'
+import { durusAynaPlani, PLAN_DISI_SEBEP_KODLARI, type MasDurusGirdi } from '../../src/lib/entegrasyon/mas/durus-ayna'
 
 const APPLY = process.argv.includes('--apply')
 const GUN = (() => {
@@ -75,14 +76,21 @@ async function main() {
     }))
     const pencereBas = new Date(Date.now() - GUN * 86400_000 - 60_000)
 
-    const [tezgahlar, sebepler, ipro] = await Promise.all([
+    const [tezgahlar, sebepler, iproHam] = await Promise.all([
       prisma.iproTezgah.findMany({ select: { id: true, kod: true } }),
       prisma.iproDurusSebebi.findMany({ select: { id: true, kod: true } }),
       prisma.iproMachineDowntime.findMany({
         where: { kaynak: 'MAS', OR: [{ baslangic: { gte: pencereBas } }, { bitis: null }, { masId: { in: mas.map((m) => m.id) } }] },
-        select: { id: true, masId: true, tezgahId: true, baslangic: true, bitis: true, durusSebebiId: true },
+        select: { id: true, masId: true, tezgahId: true, baslangic: true, bitis: true, durusSebebiId: true, durusSebebi: { select: { kod: true } } },
       }),
     ])
+    // Plan dışı (UD/0151) eski kayıtlar pencere dışında da olabilir → tüm geçmişten ayrıca çek.
+    const planDisiEski = await prisma.iproMachineDowntime.findMany({
+      where: { kaynak: 'MAS', durusSebebi: { kod: { in: [...PLAN_DISI_SEBEP_KODLARI] } } },
+      select: { id: true, masId: true, tezgahId: true, baslangic: true, bitis: true, durusSebebiId: true, durusSebebi: { select: { kod: true } } },
+    })
+    const iproMap = new Map([...iproHam, ...planDisiEski].map((r) => [r.id, r]))
+    const ipro = [...iproMap.values()].map(({ durusSebebi, ...r }) => ({ ...r, sebepKod: durusSebebi?.kod ?? null }))
     const tezgahByKod = new Map(tezgahlar.map((t) => [t.kod, t.id]))
     const plan = durusAynaPlani({ mas, ipro, tezgahByKod, sebepByKod: new Map(sebepler.map((s) => [s.kod, s.id])) })
 
@@ -142,11 +150,12 @@ async function main() {
       degen.push({ tezgahId: e.tezgahId, bas: g.data.baslangic ?? e.baslangic, bit: (g.data.bitis === undefined ? e.bitis : g.data.bitis) ?? new Date() })
     }
     for (const o of plan.olustur) degen.push({ tezgahId: o.tezgahId, bas: o.baslangic, bit: o.bitis ?? new Date() })
+    for (const x of plan.sil) degen.push({ tezgahId: x.tezgahId, bas: x.baslangic, bit: x.bitis ?? new Date() })
     const etkilenenLog = new Set<string>()
     const oeeIds = new Set<string>()
     if (degen.length) {
       const loglar = await prisma.iproProductionLog.findMany({
-        where: { durum: 'KAPALI', tezgahId: { in: [...new Set(degen.map((d) => d.tezgahId))] }, baslatildiAt: { not: null }, bitirildiAt: { gte: pencereBas } },
+        where: { durum: 'KAPALI', tezgahId: { in: [...new Set(degen.map((d) => d.tezgahId))] }, baslatildiAt: { not: null }, bitirildiAt: { gte: new Date(Math.min(pencereBas.getTime(), ...degen.map((d) => d.bas.getTime()))) } },
         select: { id: true, tezgahId: true, baslatildiAt: true, bitirildiAt: true },
       })
       const hedef: string[] = []
@@ -160,6 +169,7 @@ async function main() {
       }
     }
 
+    let silinen = 0
     let olusan = 0, guncellenen = 0, oeeYeniden = 0, hata = 0, yDurus = 0, yOee = 0
     if (APPLY) {
       const etiket = bugunEtiket()
@@ -182,6 +192,13 @@ async function main() {
       yDurus = await yedekle(`ipro_durus_yedek_masid_${etiket}`, 'ipro_machine_downtime', ipro.map((r) => r.id))
       yOee = await yedekle(`ipro_oee_yedek_masid_${etiket}`, 'ipro_oee_kaydi', [...oeeIds])
 
+      if (plan.sil.length) {
+        const ids = plan.sil.map((x) => x.id)
+        for (let i = 0; i < ids.length; i += 500) {
+          const r = await prisma.iproMachineDowntime.deleteMany({ where: { id: { in: ids.slice(i, i + 500) }, kaynak: 'MAS' } })
+          silinen += r.count
+        }
+      }
       for (const g of plan.guncelle) {
         try { await prisma.iproMachineDowntime.update({ where: { id: g.id }, data: g.data }); guncellenen++ } catch (e) { hata++; console.warn(`  ⚠️ güncelle ${g.id}: ${(e as Error).message.slice(0, 120)}`) }
       }
@@ -206,6 +223,9 @@ async function main() {
       ['bitişi düzelecek / kapanacak', bitisDuzelen.length],
       ['eklenecek duruş', plan.olustur.length],
       ['eklenecek dk', Math.round(eklenenDk)],
+      ['atlanan: plan dışı (UD/0151) MAS satırı', plan.atlanan.filter((a) => a.sebep === 'plan_disi').length],
+      ['silinecek plan dışı IPRO kaydı', plan.sil.length],
+      ['silinecek plan dışı dk', Math.round(plan.sil.reduce((s, x) => s + dk(x.baslangic, x.bitis), 0))],
       ['atlanan: süre 0', plan.atlanan.filter((a) => a.sebep === 'sifir_sure').length],
       ['atlanan: tezgah yok', plan.atlanan.filter((a) => a.sebep === 'tezgah_yok').length],
       ['atlanan: başlangıç yok', plan.atlanan.filter((a) => a.sebep === 'baslangic_yok').length],
@@ -213,7 +233,7 @@ async function main() {
       ["eşleşmeyen masId'siz kapalı dk", Math.round(eslesmeyenDk)],
       ["eşleşmeyen masId'siz AÇIK (rapor)", plan.eskiAcikEslesmeyen.length],
       ['etkilenen KAPALI OEE kaydı', etkilenenLog.size],
-      ...(APPLY ? ([['yedek: duruş', yDurus], ['yedek: OEE', yOee], ['güncellenen', guncellenen], ['oluşturulan', olusan], ['hata', hata], ['OEE yeniden hesap', oeeYeniden]] as [string, number][]) : []),
+      ...(APPLY ? ([['yedek: duruş', yDurus], ['silinen', silinen], ['yedek: OEE', yOee], ['güncellenen', guncellenen], ['oluşturulan', olusan], ['hata', hata], ['OEE yeniden hesap', oeeYeniden]] as [string, number][]) : []),
     ])
     if (!APPLY) console.log('\nℹ️ DRY-RUN — yazma yok. Yazmak için: --apply (prod: --apply --prod-onay)')
     await pool.close(); await disconnect()

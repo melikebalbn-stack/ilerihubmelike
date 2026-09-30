@@ -38,6 +38,7 @@ export interface MasAynaOzet {
   durusBaglanan: number // masId'siz eski kayıt MAS satırına bağlandı
   durusMasSilinmis: number // MAS'ta silinmiş/pasif → sıfır süreye çekildi
   durusSifirSure: number // süresi 0 kapalı MAS duruşu, yazılmadı
+  durusPlanDisiSilinen: number // UD/0151 (plan dışı) IPRO kaydı silindi
   durusBaslangicYok: number
   durusOeeYeniden: number // duruş değişikliği değen KAPALI log OEE yeniden hesabı
   hurdaOkunan: number // MAS'tan çekilen reject satırı (hedef loglar için)
@@ -85,7 +86,7 @@ export async function runMasAyna(opts: { dryRun?: boolean; limit?: number | null
 
   const ozet: MasAynaOzet = {
     dryRun, acikOkunan: acikSatir.length, acikUygun: 0, acilan: 0, guncellenen: 0, mukerrer: 0,
-    kapatilan: 0, durusAcilan: 0, durusKapatilan: 0, durusGuncellenen: 0, durusBaglanan: 0, durusMasSilinmis: 0, durusSifirSure: 0,
+    kapatilan: 0, durusAcilan: 0, durusKapatilan: 0, durusGuncellenen: 0, durusBaglanan: 0, durusMasSilinmis: 0, durusSifirSure: 0, durusPlanDisiSilinen: 0,
     durusBaslangicYok: 0, durusOeeYeniden: 0, hurdaOkunan: 0, hurdaYazilan: 0, hurdaLogGuncellenen: 0,
     eslesmeyenDurusSebepleri: [], atlanan: [],
   }
@@ -386,10 +387,10 @@ async function durusAynala(
 ): Promise<void> {
   const pencereIds = new Set(mas.map((m) => m.id))
   const enEskiBaslangic = mas.reduce<number>((min, m) => (m.baslangic ? Math.min(min, m.baslangic.getTime()) : min), simdi.getTime())
-  const sel = { id: true, masId: true, tezgahId: true, baslangic: true, bitis: true, durusSebebiId: true } as const
+  const sel = { id: true, masId: true, tezgahId: true, baslangic: true, bitis: true, durusSebebiId: true, durusSebebi: { select: { kod: true } } } as const
 
   // IPRO tarafı: pencere satırlarına bağlı kayıtlar + tüm AÇIK MAS kayıtları + pencere aralığındaki masId'siz eski kayıtlar.
-  const ipro = await prisma.iproMachineDowntime.findMany({
+  const iproHam = await prisma.iproMachineDowntime.findMany({
     where: {
       kaynak: KAYNAK,
       OR: [
@@ -400,6 +401,7 @@ async function durusAynala(
     },
     select: sel,
   })
+  const ipro = iproHam.map(({ durusSebebi, ...r }) => ({ ...r, sebepKod: durusSebebi?.kod ?? null }))
 
   // Pencere dışına düşmüş açık masId'li kayıtlar: MAS'taki güncel hallerini Id ile çek.
   const disari = ipro.filter((r) => r.masId != null && r.bitis === null && !pencereIds.has(r.masId)).map((r) => r.masId!)
@@ -415,6 +417,7 @@ async function durusAynala(
   })
 
   for (const a of plan.atlanan) {
+    if (a.sebep === 'plan_disi') continue
     if (a.sebep === 'baslangic_yok') ozet.durusBaslangicYok++
     else if (a.sebep === 'sifir_sure') ozet.durusSifirSure++
     else ozet.atlanan.push({ sebep: 'durus_tezgah_eslesmedi', anahtar: `durus:${a.masId}`, detay: a.detay })
@@ -435,12 +438,23 @@ async function durusAynala(
     ozet.durusAcilan += plan.olustur.length
     ozet.durusMasSilinmis += plan.masSilinmis.length
     ozet.durusKapatilan += plan.eskiAcikEslesmeyen.length
+    ozet.durusPlanDisiSilinen += plan.sil.length
   }
   if (dryRun) {
     say()
     return
   }
 
+  // 0) Plan dışı (UD/0151) kayıtlar silinir — duruş değil, OEE'ye kayıp yazılmamalı.
+  if (plan.sil.length) {
+    try {
+      const r = await prisma.iproMachineDowntime.deleteMany({ where: { id: { in: plan.sil.map((x) => x.id) }, kaynak: KAYNAK } })
+      ozet.durusPlanDisiSilinen += r.count
+      for (const x of plan.sil) kaydet(x.tezgahId, x.baslangic, x.bitis)
+    } catch (e) {
+      ozet.atlanan.push({ sebep: 'durus_plan_disi_silme_hatasi', anahtar: 'durus', detay: (e as Error)?.message?.slice(0, 120) ?? '?' })
+    }
+  }
   // 1) Güncellemeler (kapanışlar önce — partial unique: tezgah başına tek açık duruş).
   for (const g of plan.guncelle) {
     try {

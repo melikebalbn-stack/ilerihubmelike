@@ -170,6 +170,45 @@ const requestStatusColors: Record<string, string> = {
   CANCELLED: "bg-gray-100 text-gray-800"
 }
 
+type OnaySatiri = NonNullable<PersonnelRequest["approvals"]>[number]
+
+/**
+ * "Sizin Kararınız" sütunu — giriş yapan kişinin O TALEPTEKİ kendi kararı.
+ * Talebin genel durumu (Durum sütunu) ile karıştırılmamalı: zincirde üç kademe
+ * var, kişi kendi satırına bakar. Zincirde değilse sütun boş kalır.
+ */
+function kendiKarari(
+  approvals: OnaySatiri[] | undefined,
+  kullanici: { id?: string | null; email?: string | null } | undefined,
+): { etiket: string; renk: string } | null {
+  if (!approvals?.length || !kullanici) return null
+  const benim = approvals.find(
+    (a) =>
+      (!!kullanici.id && a.approver?.id === kullanici.id) ||
+      (!!kullanici.email && a.approver?.email === kullanici.email),
+  )
+  if (!benim) return null
+
+  switch (benim.decision) {
+    case "APPROVED":
+      return { etiket: "Onayladınız", renk: "bg-green-100 text-green-800" }
+    case "REJECTED":
+      return { etiket: "Red Verdiniz", renk: "bg-red-100 text-red-800" }
+    case "RETURNED":
+      return { etiket: "İade Ettiniz", renk: "bg-orange-100 text-orange-800" }
+    case "FORWARDED":
+      return { etiket: "İlettiniz", renk: "bg-blue-100 text-blue-800" }
+    default:
+      break
+  }
+
+  // Karar verilmemiş: sıra bende mi, yoksa önceki kademeyi mi bekliyorum.
+  const siradaki = approvals.find((a) => a.decision === null)
+  return siradaki?.id === benim.id
+    ? { etiket: "Sizi Bekliyor", renk: "bg-yellow-100 text-yellow-800" }
+    : { etiket: "Sıranız Gelmedi", renk: "bg-gray-100 text-gray-600" }
+}
+
 // Kadro (personel) talep paneli — TEK KAYNAK. Hem İşe Alım sayfasının "requests"
 // sekmesi hem de bağımsız /strategic-hr/kadro-talep sayfası bu bileşeni render eder.
 export function PersonelTalepPaneli() {
@@ -563,6 +602,7 @@ export function PersonelTalepPaneli() {
                   <TableHead>Kisi</TableHead>
                   <TableHead>Oncelik</TableHead>
                   <TableHead>Durum</TableHead>
+                  <TableHead>Sizin Kararınız</TableHead>
                   <TableHead>Tarih</TableHead>
                   <TableHead className="w-12"></TableHead>
                 </TableRow>
@@ -585,6 +625,16 @@ export function PersonelTalepPaneli() {
                       <Badge className={requestStatusColors[req.status]}>
                         {requestStatusLabels[req.status]}
                       </Badge>
+                    </TableCell>
+                    <TableCell>
+                      {(() => {
+                        const karar = kendiKarari(req.approvals, session?.user)
+                        return karar ? (
+                          <Badge className={karar.renk}>{karar.etiket}</Badge>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )
+                      })()}
                     </TableCell>
                     <TableCell>
                       {format(new Date(req.createdAt), "d MMM", { locale: tr })}

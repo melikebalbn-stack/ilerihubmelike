@@ -4,7 +4,7 @@
 // (dolduran + onaylayan) ve İnsan Varlıkları görür. Bölüm müdürü zincirde değilse
 // astının formunu GÖREMEZ — bölüm bazlı geniş erişim YOK.
 
-import type { DenemeDurum } from "@/generated/prisma";
+import type { DenemeDurum, DenemeDegerlendiriciRol } from "@/generated/prisma";
 import type { DenemeRol } from "./deneme-transitions";
 
 /** Formun yetki çözümü için gereken asgari alanları. */
@@ -69,6 +69,29 @@ export function adimSahibiRol(durum: DenemeDurum): DenemeRol | null {
     default:
       return null; // TASLAK / TAMAMLANDI / IPTAL
   }
+}
+
+/**
+ * GEÇİŞ MATRİSİNDE kullanılacak rol — `adimSahibiRol` ile bilerek ayrıdır.
+ *
+ * `adimSahibiRol` "hangi SLOT" sorusunu yanıtlar (bildirim bunu kullanır:
+ * 1. adım → degerlendirici1Id). Matris ise o slotta oturan kişinin GERÇEK
+ * kademesini ister. İkisi yalnız 1. adımda ayrışır:
+ *   mavi yaka  → 1. puanı takım lideri verir  → TAKIM_LIDERI
+ *   gri yaka   → 1. puanı müdür yrd. ya da müdür verir
+ *   beyaz yaka → 1. puanı bölüm müdürü (kendisiyse GMY) verir → MUDUR
+ *
+ * Rol formun KENDİ `degerlendirici1Rol` alanından okunur (form açılışında
+ * zincirden yazılır). Alan boşsa (eski kayıtlar) TAKIM_LIDERI varsayılır —
+ * eski davranış.
+ */
+export function gecisRolu(
+  durum: DenemeDurum,
+  degerlendirici1Rol: DenemeDegerlendiriciRol | null | undefined,
+): DenemeRol | null {
+  const slot = adimSahibiRol(durum);
+  if (slot !== "TAKIM_LIDERI") return slot;
+  return degerlendirici1Rol ?? "TAKIM_LIDERI";
 }
 
 /**

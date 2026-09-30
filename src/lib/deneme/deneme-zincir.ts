@@ -403,9 +403,11 @@ export async function denemeZinciriCoz(db: Db, personnelId: string): Promise<Zin
  * geçiş matrisi bu hedefin izinli olduğunu ayrıca doğrular.
  */
 export function birinciAdimSonrasiDurum(z: Extract<ZincirSonuc, { ok: true }>): DenemeDurum {
-  if (z.yakaRengi === "MAVI") {
-    return z.degerlendirici2?.rol === "MUDUR_YARDIMCISI" ? "MUDUR_YRD_BEKLIYOR" : "MUDUR_BEKLIYOR";
+  // Yaka rengine DEĞİL, zincirin kendisine bakılır: bölüme özel zincirlerde
+  // beyaz/gri yakada da 2. değerlendirici atanır (puanla ucuyla aynı kural).
+  if (z.degerlendirici2) {
+    return z.degerlendirici2.rol === "MUDUR_YARDIMCISI" ? "MUDUR_YRD_BEKLIYOR" : "MUDUR_BEKLIYOR";
   }
-  // Gri/beyaz tek puan: onaylayan varsa onaya, yoksa doğrudan İK'ya.
+  // Tek puan: onaylayan varsa onaya, yoksa doğrudan İK'ya.
   return z.onaylayan ? "ONAY_BEKLIYOR" : "IK_BEKLIYOR";
 }

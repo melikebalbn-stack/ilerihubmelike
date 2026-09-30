@@ -6,7 +6,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { aktoruCoz } from "@/lib/deneme/deneme-aktor";
-import { adimSahibiMi, adimSahibiRol, denemeRedLog } from "@/lib/deneme/deneme-yetki";
+import { adimSahibiMi, gecisRolu, denemeRedLog } from "@/lib/deneme/deneme-yetki";
 import { gecisIzinli, denemeOrtalama, denemeBasariliMi } from "@/lib/deneme/deneme-transitions";
 import type { DenemeDurum } from "@/generated/prisma";
 
@@ -34,7 +34,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     select: {
       id: true, durum: true, personnelId: true, kriterRevizyon: true, yakaRengi: true,
       degerlendirici1Id: true, degerlendirici2Id: true, onaylayanId: true,
-      degerlendirici2Rol: true, puan1: true, puan2: true,
+      degerlendirici1Rol: true, degerlendirici2Rol: true, puan1: true, puan2: true,
     },
   });
   if (!form) return NextResponse.json({ error: "Form bulunamadı" }, { status: 404 });
@@ -43,7 +43,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     denemeRedLog({ uc: "puanla", formId: id, from: form.durum, to: "-", reason: "adım sahibi değil", user: aktor.email });
     return NextResponse.json({ error: "Bu aşamada puanlama yetkiniz yok" }, { status: 403 });
   }
-  const rol = adimSahibiRol(form.durum);
+  const rol = gecisRolu(form.durum, form.degerlendirici1Rol);
   if (rol === "ONAYLAYAN" || rol === "IK" || rol === null) {
     denemeRedLog({ uc: "puanla", formId: id, from: form.durum, to: "-", reason: "bu aşamada puan girilmez", user: aktor.email });
     return NextResponse.json({ error: "Bu aşamada puan girilmez" }, { status: 400 });
@@ -73,7 +73,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   let hedef: DenemeDurum | null = null;
   if (gonder) {
     if (sira === 1) {
-      if (form.yakaRengi === "MAVI") {
+      // Hedef YAKA RENGİNDEN değil, formun KENDİ zincirinden. Yaka rengine
+      // bakmak Kalite Müdürlüğü gibi bölüme özel zincirlerde (beyaz/gri yakada
+      // da 2. değerlendirici atanır) 2. adımı atlıyordu.
+      if (form.degerlendirici2Id) {
         hedef = form.degerlendirici2Rol === "MUDUR_YARDIMCISI" ? "MUDUR_YRD_BEKLIYOR" : "MUDUR_BEKLIYOR";
       } else {
         hedef = form.onaylayanId ? "ONAY_BEKLIYOR" : "IK_BEKLIYOR";

@@ -74,9 +74,15 @@ export const DENEME_GECISLERI: Record<DenemeDurum, GecisSatiri> = {
   //   MAVİ  + müdür yrd. VAR  → MUDUR_YRD_BEKLIYOR
   //   MAVİ  + müdür yrd. YOK  → MUDUR_BEKLIYOR
   //   GRİ / BEYAZ (tek puan)  → ONAY_BEKLIYOR (beyaz+GMY) veya IK_BEKLIYOR
+  //
+  // ROL = 1. değerlendiricinin GERÇEK kademesi (form.degerlendirici1Rol), adım
+  // adı değil — bkz. deneme-yetki.ts `gecisRolu`.
   DEGERLENDIRICI1_BEKLIYOR: {
     TAKIM_LIDERI: ["MUDUR_YRD_BEKLIYOR", "MUDUR_BEKLIYOR"],
-    MUDUR_YARDIMCISI: ["IK_BEKLIYOR"], // gri yaka: müdür yrd. doldurdu, onay yok
+    // Gri yaka: müdür yrd. doldurdu, onay yok → İK.
+    // Bölüme özel zincirde (bkz. OZEL_ZINCIR_ORG_KODLARI) 1. puanı müdür yrd.
+    // verir, 2. puan MÜDÜRE düşer → MUDUR_BEKLIYOR.
+    MUDUR_YARDIMCISI: ["IK_BEKLIYOR", "MUDUR_BEKLIYOR"],
     MUDUR: ["ONAY_BEKLIYOR", "IK_BEKLIYOR"], // beyaz: GMY'ye bağlıysa onaya, değilse İK'ya
     IK: ["IPTAL"],
   },

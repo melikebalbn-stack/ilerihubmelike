@@ -46,7 +46,13 @@ export interface MetadataEntity {
   alanlar: MetadataAlan[]
 }
 
-const GIZLI_ALANLAR = new Set(['luname', 'keyref', 'objgrants', 'objstate', 'objsite', 'objkey', 'objversion', 'objid'])
+/**
+ * IFS iç alanları — katalogda pasif tutulur.
+ * Objstate BİLEREK listede değil: iş emri/sipariş durumu (Closed, Released…) rapor
+ * tasarlarken en çok gruplanan alan ve enum değerleri rapor_katalog_deger'de Türkçeleşiyor.
+ * Listeye geri eklenirse her katalog yüklemesinde tekrar gizlenir (elle UPDATE gerekir).
+ */
+const GIZLI_ALANLAR = new Set(['luname', 'keyref', 'objgrants', 'objsite', 'objkey', 'objversion', 'objid'])
 
 const SAYI_TIPLERI = new Set(['Edm.Int16', 'Edm.Int32', 'Edm.Int64', 'Edm.Decimal', 'Edm.Double', 'Edm.Single'])
 const TARIH_TIPLERI = new Set(['Edm.Date', 'Edm.DateTimeOffset', 'Edm.TimeOfDay'])

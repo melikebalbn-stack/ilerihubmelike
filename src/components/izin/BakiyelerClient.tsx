@@ -16,6 +16,7 @@ import { cn } from '@/lib/utils'
 type Ozet = {
   kidemYil: number
   kidemAy: number
+  kidemManuel: boolean
   yillikHak: number | null
   kullanilanBuYil: number
   bekleyen: number
@@ -23,7 +24,7 @@ type Ozet = {
   kalan: number
   sonraki: { tarih: string; gun: number; ilk: boolean } | null
 }
-type Satir = { personnelId: string; sicil: string | null; adSoyad: string; departman: string | null; yaka: string; acilisVar: boolean; ozet: Ozet }
+type Satir = { personnelId: string; sicil: string | null; adSoyad: string; departman: string | null; yaka: string; acilisVar: boolean; kidemOverride: string | null; ozet: Ozet }
 type Veri = {
   bugun: string
   gecisTarihi: string | null
@@ -51,7 +52,7 @@ async function istek<T = Record<string, unknown>>(url: string, init?: RequestIni
   }
 }
 
-export function BakiyelerClient({ canBakiyeAdmin }: { canBakiyeAdmin: boolean }) {
+export function BakiyelerClient({ canBakiyeAdmin, canKidem }: { canBakiyeAdmin: boolean; canKidem: boolean }) {
   const [durum, setDurum] = useState<'AKTIF' | 'AYRILAN'>('AKTIF')
   const [departmentId, setDepartmentId] = useState('TUMU')
   const [arama, setArama] = useState('')
@@ -183,7 +184,10 @@ export function BakiyelerClient({ canBakiyeAdmin }: { canBakiyeAdmin: boolean })
                   <td className="px-3 py-2.5 font-medium">{s.adSoyad}</td>
                   <td className="px-3 py-2.5 text-slate-600">{s.departman ?? '—'}</td>
                   <td className="px-3 py-2.5 text-slate-600">{YAKA[s.yaka] ?? s.yaka}</td>
-                  <td className="whitespace-nowrap px-3 py-2.5 font-mono text-xs">{z.kidemYil >= 1 ? `${z.kidemYil} yıl` : `${z.kidemAy} ay`}</td>
+                  <td className="whitespace-nowrap px-3 py-2.5 font-mono text-xs" title={z.kidemManuel ? 'Kıdem başlangıcı İV tarafından elle düzeltildi' : undefined}>
+                    {z.kidemYil >= 1 ? `${z.kidemYil} yıl` : `${z.kidemAy} ay`}
+                    {z.kidemManuel && <span className="ml-1 text-slate-400">·düz.</span>}
+                  </td>
                   <td className="px-3 py-2.5 text-right font-mono text-xs">{z.yillikHak ?? '—'}</td>
                   <td className="px-3 py-2.5 text-right font-mono text-xs">{gunFmt(z.kullanilanBuYil)}</td>
                   <td className={cn('px-3 py-2.5 text-right font-mono text-xs', z.bekleyen > 0 && 'font-medium text-amber-700')}>{gunFmt(z.bekleyen)}</td>
@@ -222,7 +226,14 @@ export function BakiyelerClient({ canBakiyeAdmin }: { canBakiyeAdmin: boolean })
         </table>
       </div>
 
-      <HareketlerDialog personnelId={hareketId} kapat={() => setHareketId(null)} canBakiyeAdmin={canBakiyeAdmin} degisti={yukle} />
+      <HareketlerDialog
+        personnelId={hareketId}
+        kidemOverride={veri?.satirlar.find((s) => s.personnelId === hareketId)?.kidemOverride ?? null}
+        kapat={() => setHareketId(null)}
+        canBakiyeAdmin={canBakiyeAdmin}
+        canKidem={canKidem}
+        degisti={yukle}
+      />
     </div>
   )
 }
@@ -243,13 +254,17 @@ function OzetKart({ ikon, baslik, deger, ton, alt }: { ikon: React.ReactNode; ba
 
 // ── Hareketler (defter) + düzeltme ───────────────────────────────────────────
 
-function HareketlerDialog({ personnelId, kapat, canBakiyeAdmin, degisti }: { personnelId: string | null; kapat: () => void; canBakiyeAdmin: boolean; degisti: () => void }) {
+function HareketlerDialog({ personnelId, kidemOverride, kapat, canBakiyeAdmin, canKidem, degisti }: { personnelId: string | null; kidemOverride: string | null; kapat: () => void; canBakiyeAdmin: boolean; canKidem: boolean; degisti: () => void }) {
   const [v, setV] = useState<Hareketler | null>(null)
   const [hata, setHata] = useState<string | null>(null)
   const [gun, setGun] = useState('')
   const [gerekce, setGerekce] = useState('')
   const [formHata, setFormHata] = useState<string | null>(null)
   const [kaydediliyor, setKaydediliyor] = useState(false)
+  const [kidemTarih, setKidemTarih] = useState('')
+  const [kidemGerekce, setKidemGerekce] = useState('')
+  const [kidemHata, setKidemHata] = useState<string | null>(null)
+  const [kidemKaydediliyor, setKidemKaydediliyor] = useState(false)
 
   const yukle = useCallback(async () => {
     if (!personnelId) return
@@ -259,8 +274,9 @@ function HareketlerDialog({ personnelId, kapat, canBakiyeAdmin, degisti }: { per
   }, [personnelId])
   useEffect(() => {
     setV(null); setHata(null); setGun(''); setGerekce(''); setFormHata(null)
+    setKidemTarih(kidemOverride ?? ''); setKidemGerekce(''); setKidemHata(null)
     void yukle()
-  }, [yukle])
+  }, [yukle, kidemOverride])
 
   const kaydet = async () => {
     if (!personnelId) return
@@ -276,6 +292,22 @@ function HareketlerDialog({ personnelId, kapat, canBakiyeAdmin, degisti }: { per
     setGun(''); setGerekce('')
     await yukle()
     degisti()
+  }
+
+  const kaydetKidem = async () => {
+    if (!personnelId) return
+    setKidemHata(null)
+    setKidemKaydediliyor(true)
+    const { ok, veri } = await istek(`/api/izin/bakiyeler/${personnelId}/kidem`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tarih: kidemTarih, gerekce: kidemGerekce }),
+    })
+    setKidemKaydediliyor(false)
+    if (!ok) return setKidemHata(veri.error ?? 'Kaydedilemedi')
+    setKidemGerekce('')
+    degisti()
+    kapat()
   }
 
   const son = v?.hareketler.at(-1)?.bakiye ?? 0
@@ -334,6 +366,18 @@ function HareketlerDialog({ personnelId, kapat, canBakiyeAdmin, degisti }: { per
                   <Textarea value={gerekce} onChange={(e) => setGerekce(e.target.value)} placeholder="Gerekçe (zorunlu)" rows={1} className="min-h-[40px] flex-1 bg-white" aria-label="Gerekçe" />
                 </div>
                 {formHata && <p className="text-sm text-amber-800">{formHata}</p>}
+              </div>
+            )}
+            {canKidem && v.personel.aktif && (
+              <div className="space-y-2 rounded-md border border-slate-200 bg-slate-50 p-3">
+                <div className="text-xs font-medium text-slate-600">Kıdem başlangıcı — İV düzeltmesi (yalnız gösterim; yıllık izin hakkını etkilemez)</div>
+                <div className="flex flex-wrap items-start gap-2">
+                  <Input type="date" value={kidemTarih} onChange={(e) => setKidemTarih(e.target.value)} className="w-40 bg-white font-mono" aria-label="Kıdem başlangıcı" />
+                  <Textarea value={kidemGerekce} onChange={(e) => setKidemGerekce(e.target.value)} placeholder="Gerekçe (zorunlu)" rows={1} className="min-h-[40px] flex-1 bg-white" aria-label="Kıdem gerekçesi" />
+                  <Button size="sm" onClick={kaydetKidem} disabled={kidemKaydediliyor || kidemGerekce.trim().length < 5}>Kaydet</Button>
+                </div>
+                <p className="text-xs text-slate-400">Boş bırakıp kaydedersen otomatiğe (en eski istihdam dönemi) döner.</p>
+                {kidemHata && <p className="text-sm text-amber-800">{kidemHata}</p>}
               </div>
             )}
           </div>

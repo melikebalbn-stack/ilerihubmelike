@@ -24,7 +24,7 @@ export default async function IzinBakiyelerPage() {
           Bakiyeler
         </h1>
       </div>
-      <BakiyelerClient canBakiyeAdmin={canBakiyeAdmin} />
+      <BakiyelerClient canBakiyeAdmin={canBakiyeAdmin} canKidem={true} />
     </div>
   )
 }

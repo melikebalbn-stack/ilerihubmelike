@@ -46,6 +46,8 @@ export interface BakiyeSatiri {
   yaka: string
   ozet: KisiBakiyeOzeti
   acilisVar: boolean
+  /** İV override (Personnel.kidemBaslangici); null = otomatik (en eski dönem) */
+  kidemOverride: string | null
 }
 
 async function bakiyeHesapla(f: BakiyeFiltre) {
@@ -62,7 +64,7 @@ async function bakiyeHesapla(f: BakiyeFiltre) {
     },
     orderBy: [{ adSoyad: 'asc' }],
     select: {
-      id: true, sicilNo: true, adSoyad: true, yakaRengi: true, aktif: true, iseGirisTarihi: true, bolum: true,
+      id: true, sicilNo: true, adSoyad: true, yakaRengi: true, aktif: true, iseGirisTarihi: true, kidemBaslangici: true, bolum: true,
       department: { select: { name: true } },
       employmentPeriods: { select: { girisTarihi: true, cikisTarihi: true } },
     },
@@ -92,11 +94,13 @@ async function bakiyeHesapla(f: BakiyeFiltre) {
     departman: p.department?.name ?? p.bolum ?? null,
     yaka: p.yakaRengi,
     acilisVar: acilisVar.has(p.id),
+    kidemOverride: g(p.kidemBaslangici),
     ozet: kisiBakiyeOzeti({
       defter: defterBy.get(p.id) ?? [],
       bekleyenGunler: bekBy.get(p.id) ?? [],
       iseGirisTarihi: g(p.iseGirisTarihi)!,
       donemler: p.employmentPeriods.map((d) => ({ giris: g(d.girisTarihi)!, cikis: g(d.cikisTarihi) })),
+      kidemOverride: g(p.kidemBaslangici),
       dogumTarihi: dogum.get(p.id) ?? null,
       aktif: p.aktif,
       bugun,
@@ -211,6 +215,36 @@ export async function duzeltmeYap(personnelId: string, b: Record<string, unknown
     await logAuditEvent({ tx, action: 'IZIN_BAKIYE_DUZELTILDI', actorId: aktorId, targetType: 'IZIN_BAKIYE', targetId: personnelId, details: { sicil: p.sicilNo, gun: n, gerekce, hareketId: h.id } })
     return h
   })
+}
+
+/**
+ * Kıdem başlangıcı override (İV): Personnel.kidemBaslangici set/temizle. Yalnız GÖSTERİM kıdemini
+ * etkiler; yıllık izin hak edişi daima son işe giriş tarihinden. tarih boş → otomatiğe (en eski dönem)
+ * döner. Gerekçe zorunlu; denetime yazılır.
+ */
+export async function kidemBaslangiciKaydet(personnelId: string, b: Record<string, unknown>, aktorId: string) {
+  const ham = typeof b.tarih === 'string' ? b.tarih.trim() : ''
+  const gerekce = typeof b.gerekce === 'string' ? b.gerekce.trim() : ''
+  if (gerekce.length < 5) throw new IzinGirdiHatasi('Gerekçe zorunlu (en az 5 karakter)')
+  if (gerekce.length > 500) throw new IzinGirdiHatasi('Gerekçe en fazla 500 karakter')
+  const bugun = bugunStr()
+  let tarih: Date | null = null
+  if (ham) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(ham)) throw new IzinGirdiHatasi('Tarih YYYY-AA-GG olmalı')
+    if (ham > bugun) throw new IzinGirdiHatasi('Kıdem başlangıcı bugünden ileri olamaz')
+    if (ham < '1950-01-01') throw new IzinGirdiHatasi('Tarih 1950 sonrası olmalı')
+    tarih = new Date(`${ham}T00:00:00Z`)
+  }
+  const p = await prisma.personnel.findUnique({ where: { id: personnelId }, select: { sicilNo: true, kidemBaslangici: true } })
+  if (!p) throw new IzinGirdiHatasi('Personel bulunamadı')
+  await prisma.$transaction(async (tx) => {
+    await tx.personnel.update({ where: { id: personnelId }, data: { kidemBaslangici: tarih } })
+    await logAuditEvent({
+      tx, action: 'IZIN_KIDEM_DUZELTILDI', actorId: aktorId, targetType: 'PERSONNEL', targetId: personnelId,
+      details: { sicil: p.sicilNo, eski: g(p.kidemBaslangici), yeni: ham || null, gerekce },
+    })
+  })
+  return { kidemBaslangici: ham || null }
 }
 
 // ── Türler ───────────────────────────────────────────────────────────────────

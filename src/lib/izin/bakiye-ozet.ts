@@ -19,14 +19,18 @@ export interface KisiBakiyeGirdisi {
   bekleyenGunler: number[]
   iseGirisTarihi: string
   donemler: CalismaDonemi[]
+  /** İV elle düzeltmesi (Personnel.kidemBaslangici); doluysa GÖSTERİM kıdemi bundan hesaplanır. */
+  kidemOverride?: string | null
   dogumTarihi: string | null
   aktif: boolean
   bugun: string
 }
 
 export interface KisiBakiyeOzeti {
-  /** GÖSTERİM kıdeminin başlangıcı = topluluğa giriş (ilk dönem) */
+  /** GÖSTERİM kıdeminin başlangıcı = İV override varsa o, yoksa topluluğa giriş (ilk dönem) */
   kidemBaslangici: string
+  /** GÖSTERİM kıdemi İV tarafından elle düzeltilmiş mi (override dolu mu) */
+  kidemManuel: boolean
   /** Hak edişin başlangıcı = SON işe giriş */
   hakEdisBaslangici: string
   kidemYil: number
@@ -56,7 +60,8 @@ export function kisiBakiyeOzeti(g: KisiBakiyeGirdisi): KisiBakiyeOzeti {
   // İV 28.09: hak ediş SON girişten; ekrandaki kıdem topluluğa girişten (ilk dönem).
   const bas = g.iseGirisTarihi
   const { yil } = kidemSuresi(bas, g.bugun)
-  const gosterim = toplulukGirisi(g.donemler, g.iseGirisTarihi)
+  // Gösterim kıdemi: İV override varsa o, yoksa en eski istihdam dönemi (topluluğa giriş).
+  const gosterim = g.kidemOverride || toplulukGirisi(g.donemler, g.iseGirisTarihi)
   const kidemG = kidemSuresi(gosterim, g.bugun)
   const yas = (t: string) => (g.dogumTarihi ? yasHesapla(g.dogumTarihi, t) : null)
 
@@ -76,6 +81,7 @@ export function kisiBakiyeOzeti(g: KisiBakiyeGirdisi): KisiBakiyeOzeti {
 
   return {
     kidemBaslangici: gosterim,
+    kidemManuel: !!g.kidemOverride,
     hakEdisBaslangici: bas,
     kidemYil: kidemG.yil,
     kidemAy: kidemG.ay,

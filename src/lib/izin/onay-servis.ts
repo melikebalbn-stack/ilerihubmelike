@@ -101,10 +101,11 @@ export async function onayDetay(ctx: Baglam, id: string) {
 
   const p = await prisma.personnel.findUniqueOrThrow({
     where: { id: t.personnelId },
-    select: { iseGirisTarihi: true, employmentPeriods: { select: { girisTarihi: true, cikisTarihi: true } } },
+    select: { iseGirisTarihi: true, kidemBaslangici: true, employmentPeriods: { select: { girisTarihi: true, cikisTarihi: true } } },
   })
-  // Gösterim kıdemi: topluluğa giriş (ilk dönem) — İV 28.09
-  const bas = toplulukGirisi(p.employmentPeriods.map((d) => ({ giris: g(d.girisTarihi)!, cikis: g(d.cikisTarihi) })), g(p.iseGirisTarihi)!)
+  // Gösterim kıdemi: İV override (kidemBaslangici) varsa o, yoksa topluluğa giriş (en eski dönem).
+  // Hak ediş bundan bağımsız; daima son işe giriş tarihinden.
+  const bas = g(p.kidemBaslangici) || toplulukGirisi(p.employmentPeriods.map((d) => ({ giris: g(d.girisTarihi)!, cikis: g(d.cikisTarihi) })), g(p.iseGirisTarihi)!)
   const kidem = kidemSuresi(bas, bugunStr())
   const kalem = onayKalemi(await kalemGirdisi(t), ivGorunum)
 

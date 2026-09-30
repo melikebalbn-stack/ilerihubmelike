@@ -9416,6 +9416,9 @@ model Personnel {
 
   // İstihdam
   iseGirisTarihi DateTime @db.Date
+  // İzin: İV'nin elle düzeltebildiği KIDEM başlangıcı (yalnız gösterim). Boşsa en eski istihdam
+  // dönemi (topluluğa giriş) kullanılır. Yıllık izin HAK EDİŞİNİ etkilemez (o daima son işe giriş).
+  kidemBaslangici DateTime? @db.Date
   gorev          String
   bolumDetay     String?
   bolum          String

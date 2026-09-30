@@ -24,6 +24,26 @@ describe('kişi bakiye özeti (Bakiyeler ekranı)', () => {
     expect(o.sonraki).toEqual({ tarih: '2027-06-16', gun: 14, ilk: true })
   })
 
+  it('İV kıdem override: gösterim override tarihinden, hak ediş yine son işe girişten', () => {
+    const o = kisiBakiyeOzeti({
+      ...temel, defter: [], iseGirisTarihi: '2026-08-03',
+      donemler: [{ giris: '1998-08-03', cikis: '1998-11-03' }], kidemOverride: '2026-08-03', bugun: '2026-10-01',
+    })
+    expect(o.kidemManuel).toBe(true)
+    expect(o.kidemYil).toBe(0) // override 2026 → 28 yıl DEĞİL
+    expect(o.kidemBaslangici).toBe('2026-08-03')
+    expect(o.sonraki?.tarih).toBe('2027-08-03') // hak ediş son işe girişten, override'dan bağımsız
+  })
+
+  it('override yoksa gösterim kıdemi en eski istihdam döneminden (topluluk)', () => {
+    const o = kisiBakiyeOzeti({
+      ...temel, defter: [], iseGirisTarihi: '2026-08-03',
+      donemler: [{ giris: '1998-08-03', cikis: '1998-11-03' }], bugun: '2026-10-01',
+    })
+    expect(o.kidemManuel).toBe(false)
+    expect(o.kidemYil).toBe(28)
+  })
+
   it('kalan = bakiye − bekleyen; kullanılan yalnız bu yıl (iade düşülmüş); sonraki yıldönümü 6. yıl → 20', () => {
     const o = kisiBakiyeOzeti({
       ...temel,

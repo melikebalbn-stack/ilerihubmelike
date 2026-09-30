@@ -172,6 +172,25 @@ const requestStatusColors: Record<string, string> = {
 
 type OnaySatiri = NonNullable<PersonnelRequest["approvals"]>[number]
 
+/** Onay zincirindeki kademe adları — liste ve detay aynı etiketi kullanır. */
+const KADEME_ETIKETLERI: Record<string, string> = {
+  BOLUM_MUDURU: "Bölüm Müdürü",
+  DEPUTY_GM: "Genel Müdür Yardımcısı",
+  GM: "Genel Müdür",
+  HR_MANAGER: "İK Müdürü",
+}
+
+/**
+ * Şu an kimde beklediği — zincirin karar verilmemiş İLK satırı.
+ * Onaycı adı çözülemezse kademe adına düşer (snapshot `role` alanı da boş
+ * olabilir). Zincir hiç kurulmamışsa null döner.
+ */
+function bekleyenOnayci(approvals: OnaySatiri[] | undefined): string | null {
+  const siradaki = approvals?.find((a) => a.decision === null)
+  if (!siradaki) return null
+  return siradaki.approver?.name || KADEME_ETIKETLERI[siradaki.kademe] || siradaki.role || null
+}
+
 /**
  * "Sizin Kararınız" sütunu — giriş yapan kişinin O TALEPTEKİ kendi kararı.
  * Talebin genel durumu (Durum sütunu) ile karıştırılmamalı: zincirde üç kademe
@@ -625,6 +644,11 @@ export function PersonelTalepPaneli() {
                       <Badge className={requestStatusColors[req.status]}>
                         {requestStatusLabels[req.status]}
                       </Badge>
+                      {req.status === "PENDING" && (
+                        <div className="text-[11px] text-muted-foreground mt-0.5">
+                          {bekleyenOnayci(req.approvals) ?? "onaycı atanmamış"}
+                        </div>
+                      )}
                     </TableCell>
                     <TableCell>
                       {(() => {
@@ -1118,12 +1142,7 @@ export function PersonelTalepPaneli() {
                       {/* Atlanan adımlar: talep sahibi o adımın onaycısı olduğu için
                           adım hiç oluşturulmadı (kanonik 4 kademeden eksik olanlar). */}
                       {(() => {
-                        const kademeLabels: Record<string, string> = {
-                          BOLUM_MUDURU: "Bölüm Müdürü",
-                          DEPUTY_GM: "Genel Müdür Yardımcısı",
-                          GM: "Genel Müdür",
-                          HR_MANAGER: "İK Müdürü",
-                        }
+                        const kademeLabels = KADEME_ETIKETLERI
                         const varOlan = new Set(selectedRequest.approvals?.map((a) => a.kademe))
                         return Object.keys(kademeLabels)
                           .filter((k) => !varOlan.has(k))

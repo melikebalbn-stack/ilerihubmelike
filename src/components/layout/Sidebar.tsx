@@ -219,7 +219,7 @@ const formsMenuItems = [
   { name: "IT Destek Talebi", icon: Headphones, href: "/it-support", roles: ["*"], subgroup: "genel" as FormAltGrup },
   { name: "Ziyaret Raporları", icon: FileText, href: "/forms/visit-reports", roles: ["*"], subgroup: "genel" as FormAltGrup },
   { name: "Toplantı Raporu", icon: Calendar, href: "/meetings", roles: ["*"], subgroup: "genel" as FormAltGrup },
-  { name: "Proje Takip", icon: ClipboardList, href: "/proje-takip", roles: ["*"], subgroup: "genel" as FormAltGrup },
+  { name: "Proje Takip", icon: ClipboardList, href: "/proje-takip", roles: ["*"], subgroup: "genel" as FormAltGrup, modul: "proje-takip" },
   { name: "Mesai Formu", icon: Clock, href: "/forms/overtime", roles: ["*"], subgroup: "uretim" as FormAltGrup },
   // Mesai Performansı — mesai formunun raporu, aynı kitle. Görünürlük AYNEN
   // "herkes" (roles: ["*"]): sunucu kapısı `overtime.report` izni VEYA omurga
@@ -303,28 +303,28 @@ const strategicHrMenuItems = [
   { name: "Performans Yönetimi", icon: Target, href: "/strategic-hr/performance", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"] },
   { name: "İşe Alım", icon: Briefcase, href: "/strategic-hr/recruitment", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"], permission: "recruitment.view" },
   { name: "Envanter", icon: Boxes, href: "/envanter", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"], permission: "envanter.view" },
-  { name: "Servis Yönetimi", icon: Truck, href: "/servis-yonetimi", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"], permission: "servis.view", subgroup: "servis" as StrategicHrAltGrup },
+  { name: "Servis Yönetimi", icon: Truck, href: "/servis-yonetimi", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"], permission: "servis.view", subgroup: "servis" as StrategicHrAltGrup, modul: "servis-yonetimi" },
   // FAZ 1B-EK Madde 31 — "Bu Ay Ne Değişti?" özet ekranı. Servis Yönetimi
   // ile AYNI permission (servis.view) VE aynı "servis" alt grubu — Stratejik
   // İK açıldığında ikisi birlikte "Servis" başlığı altında görünür (bkz.
   // strategicHrBySubgroup).
-  { name: "Servis: Bu Ay Ne Değişti?", icon: Truck, href: "/servis-yonetimi/bu-ay-ne-degisti", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"], permission: "servis.view", subgroup: "servis" as StrategicHrAltGrup },
+  { name: "Servis: Bu Ay Ne Değişti?", icon: Truck, href: "/servis-yonetimi/bu-ay-ne-degisti", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"], permission: "servis.view", subgroup: "servis" as StrategicHrAltGrup, modul: "servis-yonetimi" },
   // MASTER madde 43 — Veri Kalite Merkezi. Servis Yönetimi ile AYNI
   // permission (servis.view) ve aynı "servis" alt grubu; üçü birlikte
   // "Servis" başlığı altında görünür (bkz. strategicHrBySubgroup).
-  { name: "Veri Kalite Merkezi", icon: ShieldAlert, href: "/servis-yonetimi/veri-kalite", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"], permission: "servis.view", subgroup: "servis" as StrategicHrAltGrup },
+  { name: "Veri Kalite Merkezi", icon: ShieldAlert, href: "/servis-yonetimi/veri-kalite", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"], permission: "servis.view", subgroup: "servis" as StrategicHrAltGrup, modul: "servis-yonetimi" },
   // MASTER madde 46 — şikâyet listesi. Servis Yönetimi/Bu Ay Ne Değişti/Veri
   // Kalite Merkezi ile aynı "servis" alt grubu; izin farklı (servis.sikayet.view).
-  { name: "Servis Şikâyetleri", icon: MessageSquareWarning, href: "/servis-yonetimi/sikayet", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"], permission: "servis.sikayet.view", subgroup: "servis" as StrategicHrAltGrup },
+  { name: "Servis Şikâyetleri", icon: MessageSquareWarning, href: "/servis-yonetimi/sikayet", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"], permission: "servis.sikayet.view", subgroup: "servis" as StrategicHrAltGrup, modul: "servis-yonetimi" },
   // MASTER madde 29 — Operasyonel Servis Listesi. Diğer dört servis öğesiyle
   // aynı "servis" alt grubu.
-  { name: "Operasyonel Servis Listesi", icon: ListChecks, href: "/servis-yonetimi/operasyonel-servis-listesi", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"], permission: "servis.view", subgroup: "servis" as StrategicHrAltGrup },
+  { name: "Operasyonel Servis Listesi", icon: ListChecks, href: "/servis-yonetimi/operasyonel-servis-listesi", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"], permission: "servis.view", subgroup: "servis" as StrategicHrAltGrup, modul: "servis-yonetimi" },
   // MASTER madde 49 — Acil Durum Servis Listesi. Diğer beş servis öğesiyle
   // aynı "servis" alt grubu.
   // 🔴 permissionsAll: sayfa/API guard'ı requireAllPermissions (AND). `permission`
   // dizisi OR olduğu için burada KULLANILAMAZ: servis.view'i olup
   // servis.kvkk.view'i olmayan kullanıcı menüde görür, sayfada 403 yerdi.
-  { name: "Acil Durum Servis Listesi", icon: Siren, href: "/servis-yonetimi/acil-durum-listesi", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"], permissionsAll: ["servis.view", "servis.kvkk.view"], subgroup: "servis" as StrategicHrAltGrup },
+  { name: "Acil Durum Servis Listesi", icon: Siren, href: "/servis-yonetimi/acil-durum-listesi", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"], permissionsAll: ["servis.view", "servis.kvkk.view"], subgroup: "servis" as StrategicHrAltGrup, modul: "servis-yonetimi" },
   { name: "Organizasyon Şeması", icon: Network, href: "/strategic-hr/org-chart", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"] },
   // VIEW gate = YILLIK_TAKVIM_VIEW_PERMISSIONS (yilliktakvim.view | yilliktakvim.admin, OR).
   // admin eklendi — yalnız admin izinli kullanıcı sayfayı açabildiği hâlde menüde göremiyordu.
@@ -356,13 +356,13 @@ const pdksMenuItems = [
 // İzin türleri, Açılış içe aktarımı (izin.admin; gerçek aktarım sayfada izin.bakiye.admin).
 // Faz 3: Onay Bekleyenler (İV kademesi; ayar kapalıyken de İV deneyebilsin). Faz 5: Ekip Takvimi —
 // İV burada (izin.admin); yönetici SUNUCU bayrağıyla (izinBayrak.takvim, izin_talep_acik açıkken).
-const izinTakvimItem = { name: "Ekip Takvimi", icon: CalendarRange, href: "/izin/takvim", roles: [] as string[], permission: ["izin.admin"] }
+const izinTakvimItem = { name: "Ekip Takvimi", icon: CalendarRange, href: "/izin/takvim", roles: [] as string[], permission: ["izin.admin"], modul: "izin" }
 const izinMenuItems = [
-  { name: "Onay Bekleyenler", icon: ClipboardCheck, href: "/izin/onay", roles: [] as string[], permission: ["izin.admin"] },
+  { name: "Onay Bekleyenler", icon: ClipboardCheck, href: "/izin/onay", roles: [] as string[], permission: ["izin.admin"], modul: "izin" },
   izinTakvimItem,
-  { name: "Bakiyeler", icon: Wallet, href: "/izin/yonetim", roles: [] as string[], permission: ["izin.admin", "izin.bakiye.admin"] },
-  { name: "İzin Türleri", icon: ListChecks, href: "/izin/yonetim/turler", roles: [] as string[], permission: ["izin.admin", "izin.bakiye.admin"] },
-  { name: "Açılış İçe Aktarım", icon: FileText, href: "/izin/yonetim/ice-aktarim", roles: [] as string[], permission: ["izin.admin", "izin.bakiye.admin"] },
+  { name: "Bakiyeler", icon: Wallet, href: "/izin/yonetim", roles: [] as string[], permission: ["izin.admin", "izin.bakiye.admin"], modul: "izin" },
+  { name: "İzin Türleri", icon: ListChecks, href: "/izin/yonetim/turler", roles: [] as string[], permission: ["izin.admin", "izin.bakiye.admin"], modul: "izin" },
+  { name: "Açılış İçe Aktarım", icon: FileText, href: "/izin/yonetim/ice-aktarim", roles: [] as string[], permission: ["izin.admin", "izin.bakiye.admin"], modul: "izin" },
 ]
 
 // Personel yönetimi öğeleri — hepsi canSeeIk kapısıyla gösterilir. Önceden JSX
@@ -477,7 +477,7 @@ const sistemGelistirmeMenuItems = [
   { name: "Zimmet Teslim Formu", icon: Laptop, href: "/zimmet-formu/liste", roles: [] as string[], permission: "zimmet-formu.view" },
   // Fatura Takip — Finans grubundan buraya taşındı (Melih kararı). Görünürlük rol+departman
   // (API guard canAccessFaturaTakip ile hizalı: ADMIN/SUPER_ADMIN VEYA Sistem Geliştirme).
-  { name: "Fatura Takip", icon: Receipt, href: "/sistem-gelistirme/faturalar", roles: ["ADMIN", "SUPER_ADMIN"], departments: ["Sistem Geliştirme"] },
+  { name: "Fatura Takip", icon: Receipt, href: "/sistem-gelistirme/faturalar", roles: ["ADMIN", "SUPER_ADMIN"], departments: ["Sistem Geliştirme"], modul: "faturalar" },
 ]
 
 // Entegrasyonlar (Syteline → IFS malzeme senkronu). Görünürlük permission ile (IPRO deseni).
@@ -568,6 +568,10 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   // iv (kuyruk ekranı), bekleyen (kuyruk başlığındaki sayı).
   const [bolumTalepBayrak, setBolumTalepBayrak] = useState({ talepAcabilir: false, iv: false, bekleyen: 0 })
   const [kpiGorunur, setKpiGorunur] = useState(false)
+  // Modül yayın durumu — kayıttaki modüllerin (kayit.ts) bu kullanıcıya görünüp
+  // görünmediği. SUNUCUDAN gelir. Bayrak gelene kadar kapı AÇIK sayılır
+  // (bkz. modulKapisiAcikMi — gerekçe orada). Kayıtta OLMAYAN modül hiç süzülmez.
+  const [modulGorunur, setModulGorunur] = useState<Record<string, boolean>>({})
   const [ifsRaporGorunur, setIfsRaporGorunur] = useState(false)
   const [denemeGorunur, setDenemeGorunur] = useState(false)
   // IV-FR-27 menü başlığı sunucudan gelir: İV → "Deneme Değerlendirme", zincir üyesi → "Deneme Formlarım".
@@ -787,6 +791,19 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
       .catch(() => {})
   }, [session])
 
+  // Modül yayın durumu — TEK istek, kayıttaki tüm modüller için.
+  // GİZLİ/PİLOT modüller menüden düşer (rota guard'ı ve cron kapısı ayrıca çalışır).
+  useEffect(() => {
+    if (!session?.user) return
+    fetch('/api/modul-durum')
+      .then(async (r) => {
+        if (!r.ok) return
+        const d = await r.json()
+        setModulGorunur((d?.gorunur ?? {}) as Record<string, boolean>)
+      })
+      .catch(() => {})
+  }, [session])
+
   // Kullanıcı rolüne göre menü filtreleme
   const userRole = session?.user?.role || 'USER'
   const userDepartment = session?.user?.department || ''
@@ -822,12 +839,32 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     return undefined
   }
 
+  // Modül yayın kapısı — TEK uygulama (iki süzgeç de bunu çağırır).
+  // item.modul yoksa kapı yok (mevcut modüllerin davranışı değişmez).
+  //
+  // Bayrak HENÜZ GELMEDİYSE öğe GÖSTERİLİR (fail-open). Bilerek:
+  //   - fail-closed olsaydı canlıda kullanılan modüller (izin, servis) her sayfa
+  //     yüklemesinde ~200 ms geç gelirdi — mevcut kullanıcı için görünür gerileme.
+  //   - menü görünürlüğü bu dosyada kozmetiktir; asıl zorlama rota guard'ı
+  //     (modulGuard → 404) ve cron kapısıdır (modulAcikMi). Gizli modülün menü
+  //     kaleminin bir an görünmesi erişim vermez.
+  // Sır olması gereken bir modül için ek olarak `hidden: true` kullanılır:
+  // o statiktir, ilk render'da da görünmez.
+  const modulKapisiAcikMi = (item: object): boolean => {
+    const anahtar = (item as { modul?: string }).modul
+    if (!anahtar) return true
+    return modulGorunur[anahtar] !== false
+  }
+
   const filterItems = (items: typeof mainMenuItems) => items.filter(item => {
     // `hidden: true` — menüden GİZLİ kalem. Her şeyden önce elenir (permission
     // dahil): sayfa/route/izin dokunulmadan yalnız menü girişi kapatılır.
     // searchableItems de bu süzgeçten geçen listelerden beslendiği için
     // gizli kalem aramada da ÇIKMAZ.
     if ((item as { hidden?: boolean }).hidden) return false
+
+    // Modül yayın kapısı — izinden ÖNCE. Yetkisi olsa da modül yayında değilse görmez.
+    if (!modulKapisiAcikMi(item)) return false
 
     // Permission tabanlı erişim: item'da `permission`/`permissionsAll` varsa
     // TEK belirleyici odur (rol/departman/e-posta clause'ları değerlendirilmez).
@@ -858,6 +895,11 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   // İnsan Varlıkları departmanı veya yetkili roller tam erişim
   // Departman müdürleri (DEPT_HEAD) de erişebilir (API'de departman filtresi uygulanacak)
   const filterStrategicHrItems = (items: typeof strategicHrMenuItems) => items.filter(item => {
+    // Modül yayın kapısı — filterItems'takiyle AYNI kural (modulKapisiAcikMi).
+    // Servis Yönetimi bu listede olduğu için burada da bakılmalı; yalnız
+    // filterItems'a eklenseydi servis kalemleri kapıyı hiç görmezdi.
+    if (!modulKapisiAcikMi(item)) return false
+
     // Permission tabanlı erişim: item'da `permission`/`permissionsAll` varsa
     // TEK belirleyici odur (rol/departman clause'ları değerlendirilmez) —
     // filterItems'takiyle AYNI karar (menuIzinKarari). RBAC permission'ı olan
@@ -978,8 +1020,8 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const avansKendimItem = { name: "Avans Talebim", icon: Wallet, href: "/avans-formu/kendi", roles: ["*"], subgroup: "iv" as FormAltGrup }
   const avansSorumluItem = { name: "Avans Formu (Ekibim)", icon: Wallet, href: "/avans-formu", roles: ["*"], subgroup: "iv" as FormAltGrup }
   const gecislerimItem = { name: "Geçişlerim", icon: ScanLine, href: "/pdks/gecislerim", roles: ["*"], subgroup: "iv" as FormAltGrup }
-  const izinTalebimItem = { name: "İzin Talebim", icon: CalendarDays, href: "/izin/talebim", roles: ["*"], subgroup: "iv" as FormAltGrup }
-  const izinOnaylarimItem = { name: "İzin Onaylarım", icon: ClipboardCheck, href: "/izin/onay", roles: ["*"], subgroup: "iv" as FormAltGrup }
+  const izinTalebimItem = { name: "İzin Talebim", icon: CalendarDays, href: "/izin/talebim", roles: ["*"], subgroup: "iv" as FormAltGrup, modul: "izin" }
+  const izinOnaylarimItem = { name: "İzin Onaylarım", icon: ClipboardCheck, href: "/izin/onay", roles: ["*"], subgroup: "iv" as FormAltGrup, modul: "izin" }
   const filteredFormsItems = [
     ...filterItems(formsMenuItems),
     ...(kadroTalepAcabilir ? [kadroTalepItem] : []),

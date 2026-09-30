@@ -30,7 +30,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ no:
     await logDepoHareket({
       olay: ayni ? 'SAYIM_AYNI' : 'SAYIM_YAZ', userId, kullaniciAd: session.user.name ?? 'Operatör',
       partNo: s.partNo, lotBatchNo: s.lotBatchNo !== '*' ? s.lotBatchNo : null, miktar: s.sayilan,
-      kaynakLok: s.locationNo, orderNo: no, lineItemNo: s.seq, detay: { fark: s.fark },
+      kaynakLok: s.locationNo, orderNo: no, lineItemNo: s.seq, detay: { fark: s.fark, onceki: s.onceki },
     })
     return NextResponse.json({ ok: true, sonuc: { seq: s.seq, sayilan: s.sayilan, fark: s.fark } })
   } catch (e) {

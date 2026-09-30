@@ -637,6 +637,25 @@ async function getSingleUtilUye(
   return { relPath: id.replace(mainRoot(), ''), etag }
 }
 
+/** Satırın güncel çıkış durumu (geri alma kontrolü). Satır yoksa null. */
+export async function getSatirCikis(s: SatirAnahtar): Promise<{ qtyIssued: number; durum: string } | null> {
+  const r = await mainGet<{ QtyIssued?: number; Objstate?: string }>(`${allocEntityOf(s)}?$select=QtyIssued,Objstate`)
+  return r.status === 200 ? { qtyIssued: num(r.body?.QtyIssued), durum: str(r.body?.Objstate) } : null
+}
+
+/**
+ * Unbound UnissueMaterial — satırın ÇIKILAN MİKTARININ TAMAMINI `locationNo`'ya iade eder (miktar parametresi YOK;
+ * lot korunur, satır Released'a döner — IFS test 30.09, SO 241). Çağıran, çıkılan = iade edilecek olduğunu doğrular.
+ */
+export async function unissueSatir(s: SatirAnahtar, locationNo: string): Promise<{ ok: boolean; error?: string }> {
+  const selection = `LINE_ITEM_NO=${s.lineItemNo}^ORDER_NO=${s.orderNo}^RELEASE_NO=${s.releaseNo}^SEQUENCE_NO=${s.sequenceNo}^;`
+  const res = await mainPost('ShopOrderHandling.svc/UnissueMaterial', { Selection: selection, LocationNo: locationNo })
+  if (res.status < 200 || res.status >= 300) {
+    return { ok: false, error: `İade HTTP ${res.status}: ${res.text.slice(0, 600)}` }
+  }
+  return { ok: true }
+}
+
 /**
  * Manuel/sapma rezervasyonu — belirli stok satırına (kimlik) `qtyReserved` kadar rezerve.
  * Bound ModifySingle action'ı (EL-6c-test v2, HTTP 204 kanıtlı):

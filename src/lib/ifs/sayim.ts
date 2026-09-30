@@ -182,6 +182,8 @@ async function satirOku(no: string, seq: number): Promise<RawSatir> {
 // ── Yazma ────────────────────────────────────────────────────────────────────
 
 export interface YazmaSonucu {
+  /** Yazmadan önceki QtyCount1 (null = sayılmamıştı) — geri alma için loglanır. */
+  onceki: number | null
   seq: number
   partNo: string
   locationNo: string
@@ -190,7 +192,8 @@ export interface YazmaSonucu {
   fark: FarkDurumu | null
 }
 
-const sonucOf = (r: RawSatir): YazmaSonucu => ({
+const sonucOf = (r: RawSatir, onceki: RawSatir): YazmaSonucu => ({
+  onceki: numOrNull(onceki.QtyCount1),
   seq: num(r.Seq),
   partNo: str(r.PartNo),
   locationNo: str(r.LocationNo),
@@ -209,7 +212,7 @@ export async function sayilanYaz(no: string, seq: number, miktar: number): Promi
   if (son.QtyCount1 == null || Math.abs(num(son.QtyCount1) - miktar) > EPS) {
     throw new Error(`Sayılan miktar IFS'e yazılamadı (beklenen ${miktar}, okunan ${son.QtyCount1 ?? 'boş'})`)
   }
-  return sonucOf(son)
+  return sonucOf(son, once)
 }
 
 /** YOL A: sistemdeki miktarla aynı say (yalnız dondurulmuş raporda). Sonra doğrular. */
@@ -226,5 +229,5 @@ export async function sistemleAyni(no: string, seq: number): Promise<YazmaSonucu
   if (son.QtyCount1 == null || Math.abs(num(son.QtyCount1) - num(son.QtyOnhand)) > EPS) {
     throw new Error('Farksız sayım IFS\'e yazılamadı')
   }
-  return sonucOf(son)
+  return sonucOf(son, once)
 }

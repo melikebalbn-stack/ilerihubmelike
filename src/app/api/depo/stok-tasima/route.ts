@@ -96,7 +96,8 @@ export async function POST(request: Request) {
       miktar,
       kaynakLok: kimlik.locationNo,
       hedefLok: hedefLocationNo,
-      detay: { yol: sonuc.yol },
+      // kimlik: geri alma (Son İşlemlerim) hedefteki satırı tam anahtarla bulur.
+      detay: { yol: sonuc.yol, kimlik },
     })
 
     return NextResponse.json({ ok: true, yol: sonuc.yol })

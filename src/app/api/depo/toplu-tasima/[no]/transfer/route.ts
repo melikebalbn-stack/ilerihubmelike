@@ -31,6 +31,9 @@ export async function POST(_request: Request, { params }: { params: Promise<{ no
         kaynakLok: s.locationNo,
         hedefLok: once?.varisLok ?? null,
         orderNo: String(no),
+        // Fiş satırı tam kimliği — geri almada hedefteki satırı bulmak için.
+        detay: { stok: { partNo: s.partNo, locationNo: s.locationNo, lotBatchNo: s.lotBatchNo, serialNo: s.serialNo, engChgLevel: s.engChgLevel,
+          waivDevRejNo: s.waivDevRejNo, configurationId: s.configurationId, activitySeq: s.activitySeq, handlingUnitId: s.handlingUnitId } },
       })
     }
     return NextResponse.json({ ok: true, durum: sonuc.durum })

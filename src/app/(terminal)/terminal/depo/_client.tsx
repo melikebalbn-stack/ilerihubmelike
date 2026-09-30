@@ -12,6 +12,7 @@ import {
   ClipboardCheck,
   ClipboardList,
   HelpCircle,
+  History,
   PackageMinus,
   PackageSearch,
   Send,
@@ -45,6 +46,7 @@ const KARTLAR: DepoKart[] = [
   { label: 'Sevkiyat', alt: 'Sevkiyat toplama: okut, bitir', Icon: Truck, href: '/terminal/depo/sevkiyat' },
   { label: 'Malzeme Talebi', alt: 'Sarf çıkışı: talep, rezerv, tüket', Icon: PackageMinus, href: '/terminal/depo/malzeme-talebi' },
   { label: 'Sayım', alt: 'Sayım raporu: lokasyon, okut, say', Icon: ClipboardCheck, href: '/terminal/depo/sayim' },
+  { label: 'Son İşlemlerim', alt: 'Son 12 saat · hatalı işlemi geri al', Icon: History, href: '/terminal/depo/son-islemler' },
 ]
 
 export function DepoMenuClient({ operatorName }: Props) {

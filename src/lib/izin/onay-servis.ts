@@ -6,7 +6,6 @@ import { kullanimHareketi } from './bakiye'
 import { kidemSuresi } from './bakiye-ozet'
 import { ekipIzinGunu, onayKalemi, type OnayKalemiGirdi } from './gorunum'
 import { IzinGirdiHatasi, gunEkle, izinGunleri } from './gun-sayimi'
-import { toplulukGirisi } from './hak-edis'
 import * as mail from './mail'
 import {
   ATLAMA_METNI, bakiyeEtkisi, fmt, kararDogrula, mazeretDonemi, onayYetkisi, saatFmt, saatKotasi, saatlikHesapla, talepHesapla, type Kademe,
@@ -101,11 +100,10 @@ export async function onayDetay(ctx: Baglam, id: string) {
 
   const p = await prisma.personnel.findUniqueOrThrow({
     where: { id: t.personnelId },
-    select: { iseGirisTarihi: true, employmentPeriods: { select: { girisTarihi: true, cikisTarihi: true } } },
+    select: { iseGirisTarihi: true },
   })
-  // Gösterim kıdemi: topluluğa giriş (ilk dönem) — İV 28.09
-  const bas = toplulukGirisi(p.employmentPeriods.map((d) => ({ giris: g(d.girisTarihi)!, cikis: g(d.cikisTarihi) })), g(p.iseGirisTarihi)!)
-  const kidem = kidemSuresi(bas, bugunStr())
+  // Gösterim kıdemi: SON işe giriş (yıllık izin son işe girişten hesaplanır; kıdem gösterimi de tutarlı)
+  const kidem = kidemSuresi(g(p.iseGirisTarihi)!, bugunStr())
   const kalem = onayKalemi(await kalemGirdisi(t), ivGorunum)
 
   let bakiye: { once: number; sonra: number; yeterli: boolean } | null = null

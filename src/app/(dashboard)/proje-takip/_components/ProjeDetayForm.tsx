@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,20 +21,11 @@ import {
   type ProjeFiyatAlani,
 } from "@/lib/proje-takip/can-see-fiyat";
 import type { ProjeTakip } from "@/generated/prisma";
+import { MusteriAramaInput } from "./MusteriAramaInput";
 
 const ANA_RENK = "#1B4F72";
 
 type FormState = Partial<Record<keyof ProjeDetayValues, string>>;
-
-// /api/proje-takip/musteri-kontrol cevabı (ifs-musteri.ts server-only olduğu için
-// tip burada ayrıca tanımlı). KONTROL_EDILEMEDI = IFS'e ulaşılamadı, "yok" DEĞİL.
-type IfsMusteri = { customerId: string; name: string };
-type MusteriKontrol =
-  | { durum: "BOS" }
-  | { durum: "KONTROL" }
-  | { durum: "VAR"; eslesenler: IfsMusteri[] }
-  | { durum: "YOK"; benzerler: IfsMusteri[] }
-  | { durum: "KONTROL_EDILEMEDI" };
 
 // canSeeFiyat false ise sayfa fiyat alanlarını objeden çıkarıp gönderiyor.
 type ProjeDetayProje = Omit<ProjeTakip, ProjeFiyatAlani> &
@@ -128,71 +119,10 @@ export function ProjeDetayForm({
   const [bildirimSonuc, setBildirimSonuc] = useState<string | null>(null);
   const [tamamlaniyor, setTamamlaniyor] = useState(false);
   const [muhendislikDurumu, setMuhendislikDurumu] = useState(proje?.muhendislikDoldurmaDurumu ?? "BEKLIYOR");
-  const [musteriKontrol, setMusteriKontrol] = useState<MusteriKontrol>({ durum: "BOS" });
-  const sonKontrolEdilen = useRef("");
-  const [satisaBildiriliyor, setSatisaBildiriliyor] = useState(false);
-  const [satisaBildirildi, setSatisaBildirildi] = useState(false);
-  const [satisaBildirHata, setSatisaBildirHata] = useState<string | null>(null);
 
   function alanGuncelle(key: keyof ProjeDetayValues, value: string) {
     setValues((v) => ({ ...v, [key]: value }));
     setKaydedildi(false);
-  }
-
-  function musteriKontrolSifirla() {
-    sonKontrolEdilen.current = "";
-    setMusteriKontrol({ durum: "BOS" });
-    setSatisaBildirildi(false);
-    setSatisaBildirHata(null);
-  }
-
-  // Yeni Proje: Müşteri Firma alanından çıkılınca IFS'te var mı kontrol edilir.
-  // Değer ad ya da CustomerId olabilir (sunucu önce kodda tam eşleşme dener).
-  async function musteriKontrolEt() {
-    const deger = (values.musteriFirma ?? "").trim();
-    if (!deger) {
-      musteriKontrolSifirla();
-      return;
-    }
-    if (deger === sonKontrolEdilen.current) return;
-    sonKontrolEdilen.current = deger;
-    setMusteriKontrol({ durum: "KONTROL" });
-    setSatisaBildirildi(false);
-    setSatisaBildirHata(null);
-
-    let sonuc: MusteriKontrol;
-    try {
-      const res = await fetch(`/api/proje-takip/musteri-kontrol?ad=${encodeURIComponent(deger)}`);
-      const data = await res.json();
-      sonuc = res.ok && (data?.durum === "VAR" || data?.durum === "YOK")
-        ? data
-        : { durum: "KONTROL_EDILEMEDI" };
-    } catch {
-      sonuc = { durum: "KONTROL_EDILEMEDI" };
-    }
-    // Cevap gelene kadar alan değiştiyse eski sonucu gösterme.
-    if (sonKontrolEdilen.current === deger) setMusteriKontrol(sonuc);
-  }
-
-  async function satisaBildir() {
-    const musteriFirma = sonKontrolEdilen.current;
-    if (!musteriFirma) return;
-    setSatisaBildirHata(null);
-    setSatisaBildiriliyor(true);
-    try {
-      const res = await fetch("/api/proje-takip/musteri-bildir", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ musteriFirma }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error ?? "Bildirim gönderilemedi");
-      setSatisaBildirildi(true);
-    } catch (e) {
-      setSatisaBildirHata(e instanceof Error ? e.message : "Bilinmeyen hata");
-    } finally {
-      setSatisaBildiriliyor(false);
-    }
   }
 
   async function kaydet() {
@@ -330,56 +260,17 @@ export function ProjeDetayForm({
           <CardContent className="space-y-4">
             <div>
               <label className="text-sm font-medium">Müşteri Firma</label>
-              <Input
+              <MusteriAramaInput
                 value={values.musteriFirma ?? ""}
-                onChange={(e) => {
-                  alanGuncelle("musteriFirma", e.target.value);
-                  if (yeniMi) musteriKontrolSifirla();
+                onChange={(metin) => alanGuncelle("musteriFirma", metin)}
+                onSec={(m) => {
+                  // IFS'ten seçim: ad Müşteri Firma'ya, CustomerId Müşteri Kodu'na.
+                  // Müşteri Kodu sonra elle de değiştirilebilir (salt-okunur değil).
+                  alanGuncelle("musteriFirma", m.name);
+                  alanGuncelle("musteriKod", m.customerId);
                 }}
-                onBlur={yeniMi ? musteriKontrolEt : undefined}
               />
               {hatalar.musteriFirma && <p className="text-sm text-red-500">{hatalar.musteriFirma}</p>}
-              {yeniMi && musteriKontrol.durum === "KONTROL" && (
-                <p className="text-xs text-muted-foreground mt-1">IFS'te kontrol ediliyor...</p>
-              )}
-              {yeniMi && musteriKontrol.durum === "VAR" && (
-                <p className="text-xs text-emerald-600 mt-1">
-                  ✓ IFS'te kayıtlı: {musteriKontrol.eslesenler.map((m) => `${m.customerId} — ${m.name}`).join(", ")}
-                </p>
-              )}
-              {yeniMi && musteriKontrol.durum === "KONTROL_EDILEMEDI" && (
-                <p className="text-xs text-muted-foreground mt-1">IFS müşteri kontrolü şu an yapılamadı.</p>
-              )}
-              {yeniMi && musteriKontrol.durum === "YOK" && (
-                <div className="mt-2 space-y-2 rounded-md border border-amber-200 bg-amber-50 p-3">
-                  <p className="text-xs text-amber-700">Bu müşteri IFS'te birebir eşleşmedi.</p>
-                  {musteriKontrol.benzerler.length > 0 && (
-                    <div>
-                      <p className="text-xs font-medium">Benzer IFS kayıtları:</p>
-                      <ul className="text-xs text-muted-foreground list-disc pl-4">
-                        {musteriKontrol.benzerler.map((m) => (
-                          <li key={m.customerId}>{m.customerId} — {m.name}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                  <div className="flex items-center gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={satisaBildir}
-                      disabled={satisaBildiriliyor || satisaBildirildi}
-                    >
-                      {satisaBildiriliyor ? "Gönderiliyor..." : satisaBildirildi ? "Bildirildi" : "Satışa Bildir"}
-                    </Button>
-                    {satisaBildirildi && (
-                      <span className="text-xs text-emerald-600">IFS'te müşteri açılması için bildirim gönderildi.</span>
-                    )}
-                    {satisaBildirHata && <span className="text-xs text-red-500">{satisaBildirHata}</span>}
-                  </div>
-                </div>
-              )}
             </div>
             <div>
               <label className="text-sm font-medium">Müşteri Yetkilisi</label>

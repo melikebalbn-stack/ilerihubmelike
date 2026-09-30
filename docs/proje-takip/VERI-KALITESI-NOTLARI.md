@@ -37,6 +37,7 @@ Hub'da aynı firma farklı yazılmış (`AGCO-VALTRA`, `Agco Valtra`, `AGCO VALT
 gidermez**.
 
 **Uygulanan:** `musteriAdiNormalize()` (`src/lib/proje-takip/ifs-musteri.ts`) =
-normalizeTr + noktalama/tire → boşluk + çoklu boşluk → tek. Birebir eşleşmezse
-"benzer kayıtlar" gösterilir, eşdeğer sayılmaz; karar kullanıcıda. Şirket türü
-ekleri (A.Ş., GmbH) tahminle silinmez.
+normalizeTr + noktalama/tire → boşluk + çoklu boşluk → tek. Müşteri Firma alanı
+bununla IFS'te canlı arama yapar (`musteriAraCanli`, ad veya CustomerId içeren
+en fazla 8 öneri); kullanıcı listeden seçer, otomatik "eşdeğer say" kararı yok.
+Şirket türü ekleri (A.Ş., GmbH) tahminle silinmez.

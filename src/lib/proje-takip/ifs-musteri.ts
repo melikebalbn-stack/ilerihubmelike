@@ -5,7 +5,7 @@ import { IfsHttpError } from '@/lib/ifs/client'
 import { normalizeTr } from '@/lib/normalize-tr'
 
 /**
- * IFS müşteri ana kaydı OKUYUCU (Proje Takip — Yeni Proje müşteri kontrolü). SERVER-ONLY.
+ * IFS müşteri ana kaydı OKUYUCU (Proje Takip — Müşteri Firma canlı araması). SERVER-ONLY.
  * Salt okuma — IFS'e yazma YOK.
  *
  * Desen src/lib/ifs/part-sync.ts ile aynı: mainRoot() + getIfsAccessToken(), hata →
@@ -21,17 +21,11 @@ export interface IfsMusteri {
   name: string
 }
 
-export type MusteriKontrolSonucu =
-  | { durum: 'VAR'; eslesme: 'KOD' | 'AD'; eslesenler: IfsMusteri[] }
-  | { durum: 'YOK'; benzerler: IfsMusteri[] }
-
 /** config.baseUrl (.../int/.../ShopFloorService.svc) → ana gateway projeksiyon kökü (.../main/.../v1/). */
 function mainRoot(): string {
   const { baseUrl } = getIfsConfig()
   return baseUrl.replace(/[A-Za-z]+\.svc$/, '').replace('/int/', '/main/')
 }
-
-const esc = (v: string) => v.replace(/'/g, "''")
 
 async function ifsFetch(path: string): Promise<unknown> {
   const token = await getIfsAccessToken()
@@ -108,51 +102,32 @@ export function musteriAdiNormalize(ad: string): string {
   return normalizeTr(ad).replace(/[^\p{L}\p{N}]+/gu, ' ').trim()
 }
 
-const BENZER_LIMIT = 10
-
-/** CustomerId TAM eşleşme ($filter eq) — cache'siz, tek kayıt. Yoksa null. */
-async function musteriKoduGetir(kod: string): Promise<IfsMusteri | null> {
-  const filtre = encodeURIComponent(`CustomerId eq '${esc(kod)}'`)
-  const body = (await ifsFetch(
-    `CustomerHandling.svc/CustomerInfoSet?$filter=${filtre}&$select=CustomerId,Name&$top=1`,
-  )) as { value?: Array<{ CustomerId?: unknown; Name?: unknown }> }
-  const r = Array.isArray(body?.value) ? body.value[0] : undefined
-  return r && typeof r.CustomerId === 'string' && typeof r.Name === 'string'
-    ? { customerId: r.CustomerId, name: r.Name }
-    : null
-}
+const CANLI_LIMIT = 8
 
 /**
- * Tek kutuya girilen değer müşteri KODU (CustomerId, ör. "MS00104") ya da ADI olabilir.
- * Kod formatı varsayılmaz — sıra sabit:
- *   1) CustomerId'de TAM eşleşme (büyük/küçük harf duyarsız) → VAR (eslesme: KOD), isim eşleştirmesine geçilmez.
- *   2) Yoksa ad: birebir (normalize edilmiş) eşleşme → VAR (eslesme: AD).
- *   3) Yoksa → YOK + benzerler: girilen adın TÜM kelimelerini içeren IFS kayıtları
- *      (kullanıcıya gösterilir; "eşdeğer" sayılmaz, karar kullanıcıda).
+ * Canlı arama (Müşteri Firma autocomplete): metni İÇEREN müşteriler — ad (normalize)
+ * veya CustomerId (büyük/küçük harf duyarsız). En fazla 8; başı eşleşenler önce.
+ *
+ * NEDEN IFS $filter contains() DEĞİL: bu repo'da IFS'e karşı yalnız startswith()
+ * kanıtlı; contains()/tolower() desteği doğrulanmadı. Sunucu tarafı contains ayrıca
+ * harf/Türkçe karakter duyarlı olurdu ("türk" → "TURK TRAKTOR" bulunmazdı). Bu yüzden
+ * musteriListesi()'nin 10 dk cache'li listesinde yerel filtre — IFS'e ek sorgu yok.
  */
-export async function musteriAra(deger: string): Promise<MusteriKontrolSonucu> {
-  const temiz = deger.trim()
-  if (!temiz) return { durum: 'YOK', benzerler: [] }
-
-  // CustomerId büyük harfli (ör. "MS00104") — "ms00104" de eşleşsin diye büyütülür.
+export async function musteriAraCanli(metin: string): Promise<IfsMusteri[]> {
+  const hedef = musteriAdiNormalize(metin)
+  if (!hedef) return []
   // Locale'siz toUpperCase() bilinçli: tr-TR "i"yi "İ" yapar, kodu bozar.
-  // (IFS $filter tolower() desteği doğrulanmadığı için sunucu tarafında yapılmıyor.)
-  const kodla = await musteriKoduGetir(temiz.toUpperCase())
-  if (kodla) return { durum: 'VAR', eslesme: 'KOD', eslesenler: [kodla] }
-
-  const hedef = musteriAdiNormalize(temiz)
-  if (!hedef) return { durum: 'YOK', benzerler: [] }
+  const kodHedef = metin.trim().toUpperCase()
 
   const liste = await musteriListesi()
-  const eslesenler = liste.filter((m) => musteriAdiNormalize(m.name) === hedef)
-  if (eslesenler.length > 0) return { durum: 'VAR', eslesme: 'AD', eslesenler }
-
-  const kelimeler = hedef.split(' ')
-  const benzerler = liste
-    .filter((m) => {
-      const adKelimeleri = new Set(musteriAdiNormalize(m.name).split(' '))
-      return kelimeler.every((k) => adKelimeleri.has(k))
-    })
-    .slice(0, BENZER_LIMIT)
-  return { durum: 'YOK', benzerler }
+  const basta: IfsMusteri[] = []
+  const icinde: IfsMusteri[] = []
+  for (const m of liste) {
+    const ad = musteriAdiNormalize(m.name)
+    const kod = m.customerId.toUpperCase()
+    if (ad.startsWith(hedef) || kod.startsWith(kodHedef)) basta.push(m)
+    else if (ad.includes(hedef) || kod.includes(kodHedef)) icinde.push(m)
+    if (basta.length >= CANLI_LIMIT) break
+  }
+  return [...basta, ...icinde].slice(0, CANLI_LIMIT)
 }

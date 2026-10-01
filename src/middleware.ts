@@ -78,7 +78,7 @@ export async function middleware(req: NextRequest) {
         // İnsan Varlıkları / İdari İşler de erişir (01.10.2026) — sayfa içinde
         // yalnız kendilerine açılan altı bölümü görürler. Kural tek kaynakta:
         // lib/auth/ayarlar-erisim.ts · isAyarlarBolumu.
-        if (isAyarlarBolumu((token?.department as string) || '', (token?.ou as string) || '')) {
+        if (isAyarlarBolumu((token?.department as string) || '', (token?.ou as string) || '', token?.personelBolum as string | null)) {
           continue;
         }
       }

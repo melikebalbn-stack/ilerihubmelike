@@ -29,11 +29,11 @@ export async function POST(request: NextRequest) {
     // YETKI: kurul üyeliği TÜM önerileri görme yetkisi verir — herkes kendini ekleyememeli.
     // Kontrol, AYNI MODÜLDEKİ mevcut desenle birebir (suggestions/categories/route.ts):
     // rol ∈ {SUPER_ADMIN, ADMIN, HR_MANAGER}. Yeni permission anahtarı türetilmedi.
-    const { user, error } = await requireUser()
+    const { session, user, error } = await requireUser()
     if (error) return error
     // 01.10.2026: İnsan Varlıkları / İdari İşler bölümleri de yönetebilir
     // (Ayarlar > Öneri Sistemi onlara açıldı). Tek kaynak: ayarlar-erisim.ts.
-    const ofisBolumu = isAyarlarBolumu(user.department, (user as { ou?: string | null }).ou)
+    const ofisBolumu = isAyarlarBolumu(user.department, (user as { ou?: string | null }).ou, session.user.personelBolum)
     if (!ofisBolumu && !['SUPER_ADMIN', 'ADMIN', 'HR_MANAGER'].includes(user.role || 'EMPLOYEE')) {
       return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
     }
@@ -91,11 +91,11 @@ export async function DELETE(request: NextRequest) {
   try {
     // Üye ÇIKARMA da üye ekleme kadar hassas (kurul görünürlüğünü değiştirir) —
     // POST ile AYNI kapı.
-    const { user, error } = await requireUser()
+    const { session, user, error } = await requireUser()
     if (error) return error
     // 01.10.2026: İnsan Varlıkları / İdari İşler bölümleri de yönetebilir
     // (Ayarlar > Öneri Sistemi onlara açıldı). Tek kaynak: ayarlar-erisim.ts.
-    const ofisBolumu = isAyarlarBolumu(user.department, (user as { ou?: string | null }).ou)
+    const ofisBolumu = isAyarlarBolumu(user.department, (user as { ou?: string | null }).ou, session.user.personelBolum)
     if (!ofisBolumu && !['SUPER_ADMIN', 'ADMIN', 'HR_MANAGER'].includes(user.role || 'EMPLOYEE')) {
       return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
     }

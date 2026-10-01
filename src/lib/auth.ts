@@ -96,6 +96,12 @@ declare module 'next-auth' {
       managerEmail: string | null;
       /** PR-Y2: Aktif rollerden gelen permission key'leri (login + token refresh'te yüklenir) */
       permissions?: string[];
+      /**
+       * Personnel.departmentId FK'sinden çözülen bölüm ADI. `department` alanı
+       * AD'den gelen serbest metindir ve BOŞ olabilir (01.10.2026: İdari İşler
+       * sorumlusunda boştu) — bölüm tabanlı kapılar önce bunu okur.
+       */
+      personelBolum?: string | null;
     };
   }
   interface User {
@@ -123,6 +129,8 @@ declare module 'next-auth/jwt' {
     managerEmail: string | null;
     /** PR-Y2.1: gerçek User.id (cuid). LDAP DN değil — permission lookup'ları bunu kullanır. */
     id?: string;
+    /** Personnel FK'sinden çözülen bölüm adı (bkz. Session.user.personelBolum). */
+    personelBolum?: string | null;
     /** PR-Y2.1: Provider'ın orijinal kimliği (LDAP DN, AD sub vs.) — audit/debug için. */
     providerSub?: string | null;
     /** PR-Y2: yetki yükleme cache'i (5 dakikada bir yenilenir) */
@@ -675,6 +683,9 @@ export const authOptions: NextAuthOptions = {
               where: { email: (token.email as string).toLowerCase() },
               select: {
                 id: true,
+                // Bölüm tabanlı kapılar için FK'dan çözülen bölüm adı. İzinlerle
+                // AYNI sorguda geliyor — ek round-trip yok, 5 dakikada tazeleniyor.
+                personnel: { select: { department: { select: { name: true } } } },
                 userRoles: {
                   where: { OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] },
                   select: {
@@ -698,6 +709,7 @@ export const authOptions: NextAuthOptions = {
                 for (const rp of ur.role.rolePermissions) keys.add(rp.permission.key);
               }
               token.permissions = [...keys];
+              token.personelBolum = dbUser.personnel?.department?.name ?? null;
               token.permissionsLoadedAt = now;
             }
           } else {
@@ -757,6 +769,7 @@ export const authOptions: NextAuthOptions = {
         }
         // PR-Y2: JWT'deki permissions'ı session'a aktar
         session.user.permissions = token.permissions ?? [];
+        session.user.personelBolum = token.personelBolum ?? null;
       }
       return session;
     },

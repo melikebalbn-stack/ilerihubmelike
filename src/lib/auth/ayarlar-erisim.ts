@@ -35,11 +35,20 @@ export function ayarlarBolumMetniMi(metin: string | null | undefined): boolean {
   return s.includes('insan varl') || s.includes('idari is')
 }
 
-/** User.department ya da ou'dan biri İV/İdari İşler mi. */
+/**
+ * Kullanıcı İV/İdari İşler'de mi.
+ *
+ * `personelBolum` (Personnel.departmentId FK'sinden çözülür, oturuma yazılır)
+ * ÖNCE bakılır: `department`/`ou` AD'den gelen serbest metindir ve boş olabilir
+ * — 01.10.2026'da İdari İşler sorumlusunun `User.department` alanı boştu, FK ise
+ * doğruydu. FK yoksa eski metin eşleşmesine düşülür.
+ */
 export function isAyarlarBolumu(
   department: string | null | undefined,
   ou: string | null | undefined,
+  personelBolum?: string | null,
 ): boolean {
+  if (personelBolum) return ayarlarBolumMetniMi(personelBolum)
   return ayarlarBolumMetniMi(department) || ayarlarBolumMetniMi(ou)
 }
 
@@ -51,6 +60,7 @@ export function canAccessAyarlar(
   role: string | null | undefined,
   department: string | null | undefined,
   ou: string | null | undefined,
+  personelBolum?: string | null,
 ): boolean {
-  return canAccessKalite(role, department, ou) || isAyarlarBolumu(department, ou)
+  return canAccessKalite(role, department, ou) || isAyarlarBolumu(department, ou, personelBolum)
 }

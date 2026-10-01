@@ -54,7 +54,7 @@ export async function PUT(request: NextRequest) {
 
     // 01.10.2026: İnsan Varlıkları / İdari İşler de pozisyon ataması yapabilir.
     // Bu uç yalnız ONAYCI ATAMASIDIR — mesai formu verisine erişim açmaz.
-    const ofisBolumu = isAyarlarBolumu(user?.department, session.user.ou)
+    const ofisBolumu = isAyarlarBolumu(user?.department, session.user.ou, session.user.personelBolum)
     if (!user || (!ofisBolumu && !['SUPER_ADMIN', 'ADMIN'].includes(user.role))) {
       return apiError('Bu işlem için yetkiniz yok', 403)
     }

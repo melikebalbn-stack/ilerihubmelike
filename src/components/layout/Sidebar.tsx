@@ -893,7 +893,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     // dalda: yukarıdaki `departments` eşleşmesi düz toLowerCase() yaptığı için
     // "İDARİ İŞLER" Türkçe "İ" yüzünden tutmuyor. Kural tek kaynakta
     // (ayarlar-erisim.ts) ve layout/middleware ile aynı.
-    if ((item as { href?: string }).href === '/settings' && isAyarlarBolumu(userDepartment, userOu)) return true
+    if ((item as { href?: string }).href === '/settings' && isAyarlarBolumu(userDepartment, userOu, session?.user?.personelBolum)) return true
 
     return false
   })

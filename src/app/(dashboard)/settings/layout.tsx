@@ -18,7 +18,7 @@ export default async function SettingsLayout({
   const { session, error } = await requireUser()
   if (error) redirect('/login') // oturumsuz → /login (401 döndürülmez)
 
-  if (!canAccessAyarlar(session.user.role, session.user.department, session.user.ou)) {
+  if (!canAccessAyarlar(session.user.role, session.user.department, session.user.ou, session.user.personelBolum)) {
     return <YetkisizErisim />
   }
 

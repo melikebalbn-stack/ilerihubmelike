@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
     // Ayarlar > Mesai Formu Yetkilendirme onlara açıldı. KAPSAM SINIRI: bu uç
     // yalnız "kim mesai formu açabilir" listesidir; 16.09.2026'da daraltılan
     // form GÖRME/ONAYLAMA kapsamı (overtime.report.all) aynen durur.
-    const ofisBolumu = isAyarlarBolumu(session.user.department, session.user.ou)
+    const ofisBolumu = isAyarlarBolumu(session.user.department, session.user.ou, session.user.personelBolum)
     if (!ofisBolumu && !session.user.permissions?.includes('overtime.report.all')) {
       return apiError('Bu işlem için yetkiniz yok', 403)
     }
@@ -102,7 +102,7 @@ export async function POST(request: NextRequest) {
     // Ayarlar > Mesai Formu Yetkilendirme onlara açıldı. KAPSAM SINIRI: bu uç
     // yalnız "kim mesai formu açabilir" listesidir; 16.09.2026'da daraltılan
     // form GÖRME/ONAYLAMA kapsamı (overtime.report.all) aynen durur.
-    const ofisBolumu = isAyarlarBolumu(session.user.department, session.user.ou)
+    const ofisBolumu = isAyarlarBolumu(session.user.department, session.user.ou, session.user.personelBolum)
     if (!ofisBolumu && !session.user.permissions?.includes('overtime.report.all')) {
       return apiError('Bu işlem için yetkiniz yok', 403)
     }
@@ -170,7 +170,7 @@ export async function DELETE(request: NextRequest) {
     // Ayarlar > Mesai Formu Yetkilendirme onlara açıldı. KAPSAM SINIRI: bu uç
     // yalnız "kim mesai formu açabilir" listesidir; 16.09.2026'da daraltılan
     // form GÖRME/ONAYLAMA kapsamı (overtime.report.all) aynen durur.
-    const ofisBolumu = isAyarlarBolumu(session.user.department, session.user.ou)
+    const ofisBolumu = isAyarlarBolumu(session.user.department, session.user.ou, session.user.personelBolum)
     if (!ofisBolumu && !session.user.permissions?.includes('overtime.report.all')) {
       return apiError('Bu işlem için yetkiniz yok', 403)
     }

@@ -96,6 +96,7 @@ export default function SettingsPage() {
   const isOfisBolumu = isAyarlarBolumu(
     (session?.user as any)?.department,
     (session?.user as any)?.ou,
+    (session?.user as any)?.personelBolum,
   )
   const isOfisKullanicisi = !isAdmin && !isKaliteUser && isOfisBolumu
   // Menü yönetimi: HR/Admin rolü VEYA İV/İdari İşler bölümü (server canManageMenu

@@ -51,3 +51,22 @@ describe('canAccessAyarlar', () => {
     expect(canAccessAyarlar('DEPT_HEAD', 'Satınalma Müdürlüğü', null)).toBe(false)
   })
 })
+
+describe('FK öncelikli bölüm (personelBolum)', () => {
+  it('User.department boş olsa da FK bölümü karar verir', () => {
+    // 01.10.2026 ölçümü: ILR-01118 (İdari İşler Sorumlusu) User.department BOŞ,
+    // Personnel FK'sı "İdari İşler". Metin yolu yetmiyor, FK yolu yetiyor.
+    expect(isAyarlarBolumu('', null)).toBe(false)
+    expect(isAyarlarBolumu('', null, 'İdari İşler')).toBe(true)
+    expect(canAccessAyarlar('EMPLOYEE', '', null, 'İdari İşler')).toBe(true)
+  })
+
+  it('FK doluysa AD metni DİKKATE ALINMAZ — eski metin yetkiyi geri getiremez', () => {
+    expect(isAyarlarBolumu('İdari İşler', null, 'Kaynakhane')).toBe(false)
+  })
+
+  it('FK yoksa eski metin yoluna düşer', () => {
+    expect(isAyarlarBolumu('İDARİ İŞLER', null, null)).toBe(true)
+    expect(isAyarlarBolumu('Kaynakhane', null, undefined)).toBe(false)
+  })
+})

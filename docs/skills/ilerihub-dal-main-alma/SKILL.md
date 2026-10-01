@@ -5,7 +5,11 @@ description: YALNIZ sunucu (rokunet) oturumu için — bir geliştirici dalını
 
 # ILERIHub — Geliştirici Dalını Main'e Alma
 
-Claude Code (sunucu, rokunet) önce **salt okunur denetim** yapar, sonra Melih'e komut bloğu verir; push'u Melih çalıştırır. Korumasız yeni yüzey varsa komut bloğu VERİLMEZ.
+Geliştirici kendi dalını bu skill'e göre denetler ve main'e push'u kendisi yapar. Korumasız yeni yüzey varsa push YAPILMAZ.
+- `prisma/` altında şema veya migration değişikliği varsa adımlar DURUR; Melih'e yazılır, main'e alma Melih'in `ilerihub-prod-migration` akışındadır.
+- Herhangi bir adım kırmızıysa (tsc, test, yetki katmanı) main'e alma YOK; dur ve raporla.
+- Main'e almalar SIRAYLA yapılır: biri girdikten sonra sıradaki dal yeni main'e rebase edilir.
+- Her main push'unun commit/push mesajına denetim satırı eklenir: `dal | SHA | tsc | test | yetki katmanları OK`.
 
 ## a) Dal doğrulama
 - SHA, merge-base, `HEAD..origin/main` sayısı, commit sayısı, dosya listesi (A/M, +/−).

@@ -9,7 +9,9 @@ Bu skill sandbox'ta çalışan geliştiricinin kod asistanı içindir. Amaç: da
 
 ## 1. Çalışma düzeni
 - Ana repo dev server'a ayrılır, **dal değiştirmez**.
-- Her aktif iş kendi worktree'sinde: `git worktree add ../wt-<is> origin/main -b dev/<ad>/<is>`; `node_modules` ve `.env` ana repoya symlink.
+- Her aktif iş kendi worktree'sinde: `git worktree add ../wt-<is> origin/main -b dev/<ad>/<is>`.
+- `node_modules` her worktree'de kendisinindir: worktree kökünde `npm ci` (≈35 sn). Main'e alma ve tam takım doğrulaması kendi `node_modules`'ı ile yapılır; ana repoya symlink yalnız hızlı tek-dosya denemesi içindir.
+- `.env` ana repodaki `.env`'e symlink kalır (`ln -s <ana-repo>/.env .env`). Vitest bu dosyayı `process.env`'e yüklemez: DB'ye bağlanan testler (`--project integration`: ipro, ldap-sync-debounce) için önce `set -a; . ./.env; set +a` ve `current_database()` kontrolü gerekir. Ölçüm (2026-10-01, kendi `node_modules` + symlink `.env`): scripts/ipro unit testleri (92) yeşil; integration projesi kırmızı — export'suz `SASL: client password must be a string`, export'lu `table public.ipro_mola_tanim does not exist` (dev DB main'in migration'larından geride). Kırmızının nedeni symlink değil DB'dir; `migrate status` ile geride sayısını ölç, sandbox gerideyse §5'teki yola git (yedek → `migrate deploy`, yalnız sandbox).
 - `src/generated` symlink YAPILMAZ: her worktree kendi dizininde tutar ve orada `prisma generate` çalıştırır. Paylaşılırsa worktree'deki generate ana repodaki dev server'ın client'ını ezer ve farklı şemalı dallarda sahte test sonucu üretir.
 - Dal adı `dev/<ad>/` ile başlar ve işi anlatır. **Her iş için main'den taze dal.** Bir günden uzun yaşayan dal her gün rebase edilir.
 - Meta-iş (CI, lint, başka modül bulguları) yapma; tek satır not düş, Melih isterse açılır.

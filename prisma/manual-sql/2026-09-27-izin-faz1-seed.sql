@@ -12,6 +12,6 @@ INSERT INTO izin_turu (id, kod, ad, yasal, bakiyeli, "sabitGun", "gunSayimi", uc
   ('izint_evlat_edinme', 'EVLAT_EDINME', 'Evlat edinme izni',    true, false, 3,    'IS_GUNU',     true,  false, 'YONETICI_IV', false, false, 'İzinli',  NULL,                          true, 40, now()),
   ('izint_babalik',      'BABALIK',      'Babalık izni',         true, false, 10,   'IS_GUNU',     true,  false, 'YONETICI_IV', false, false, 'İzinli',  'DOGUM_TARIHI_GTE:2026-05-01', true, 50, now()),
   ('izint_analik',       'ANALIK',       'Analık izni (24 hafta)', true, false, 168, 'TAKVIM_GUNU', false, false, 'YONETICI_IV', false, false, 'İzinli',  NULL,                          true, 60, now()),
-  ('izint_rapor',        'RAPOR',        'Rapor',                true, false, NULL, 'IS_GUNU',     false, false, 'YALNIZ_IV',   true,  true,  'Raporlu', NULL,                          true, 70, now()),
+  ('izint_rapor',        'RAPOR',        'Rapor',                true, false, NULL, 'IS_GUNU',     false, false, 'YALNIZ_IV',   false, true,  'Raporlu', NULL,                          true, 70, now()),
   ('izint_ucretsiz',     'UCRETSIZ',     'Ücretsiz izin',        true, false, NULL, 'IS_GUNU',     false, true,  'YONETICI_IV', false, false, 'İzinli',  NULL,                          true, 80, now())
 ON CONFLICT (kod) DO NOTHING;

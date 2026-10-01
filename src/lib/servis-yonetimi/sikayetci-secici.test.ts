@@ -52,3 +52,76 @@ describe('sikayetciAra', () => {
     expect(findMany.mock.calls[0][0].take).toBe(20)
   })
 })
+
+// ---------------------------------------------------------------------------
+// Gerçek karakterlerle uçtan uca filtre davranışı.
+//
+// Mock findMany, Prisma `where` ağacını GERÇEKTEN uygular (aktif + OR[contains,
+// mode:'insensitive']); böylece test "findMany çağrıldı" değil "filtre sonucu
+// süzdü" der. `mode:'insensitive'` PostgreSQL ILIKE'dır ve Türkçe I/İ/ı için
+// tr kuralıyla çalışmaz: dev DB'de ölçüldü —
+//   'IŞIK' ILIKE 'ışık' = false, 'Şahin' ILIKE 'ŞAHİN' = true (lower('İ') = 'i').
+// Emülasyon bu iki davranışı birebir taklit eder; İ→i için birleşik nokta
+// (U+0307) atılır.
+// ---------------------------------------------------------------------------
+type Kayit = { id: string; adSoyad: string; sicilNo: string | null; bolum: string | null; aktif: boolean }
+type Kosul = { adSoyad?: { contains: string }; sicilNo?: { contains: string } }
+
+const pgKucuk = (s: string) => s.toLocaleLowerCase('en-US').replace(/\u0307/g, '')
+const pgIlike = (deger: string | null, parca: string) => deger !== null && pgKucuk(deger).includes(pgKucuk(parca))
+
+const KAYITLAR: Kayit[] = [
+  { id: 'p-elif', adSoyad: 'Elif Demir', sicilNo: 'S-100', bolum: 'Montaj', aktif: true },
+  { id: 'p-isik', adSoyad: 'IŞIK Kaya', sicilNo: 'S-200', bolum: 'Boya', aktif: true },
+  { id: 'p-sahin', adSoyad: 'Şahin Aydın', sicilNo: 'S-300', bolum: 'Kalite', aktif: true },
+  { id: 'p-pasif', adSoyad: 'Elif Pasif', sicilNo: 'S-400', bolum: 'Montaj', aktif: false },
+]
+
+function filtreleyenPrisma() {
+  const findMany = vi.fn(async (arg: { where: { aktif: boolean; OR: Kosul[] } }) =>
+    KAYITLAR.filter(
+      (k) =>
+        k.aktif === arg.where.aktif &&
+        arg.where.OR.some(
+          (o) =>
+            (o.adSoyad !== undefined && pgIlike(k.adSoyad, o.adSoyad.contains)) ||
+            (o.sicilNo !== undefined && pgIlike(k.sicilNo, o.sicilNo.contains)),
+        ),
+    ).map(({ id, adSoyad, sicilNo, bolum }) => ({ id, adSoyad, sicilNo, bolum })),
+  )
+  return { prisma: { personnel: { findMany } } as unknown as PrismaClient }
+}
+
+describe('sikayetciAra — gerçek Türkçe karakterlerle filtre sonucu', () => {
+  it.each([
+    ['ELİF', 'p-elif'],
+    ['elif', 'p-elif'],
+    ['ışık', 'p-isik'],
+    ['IŞIK', 'p-isik'],
+    ['ŞAHİN', 'p-sahin'],
+    ['şahin', 'p-sahin'],
+    ['s-300', 'p-sahin'],
+    ['S-200', 'p-isik'],
+  ])('"%s" araması yalnız %s kaydını döndürür', async (terim, beklenenId) => {
+    const { prisma } = filtreleyenPrisma()
+    const sonuc = await sikayetciAra(prisma, terim)
+    expect(sonuc.map((s) => s.id)).toEqual([beklenenId])
+  })
+
+  it('"ELİF" araması Elif kaydının adSoyad/sicilNo/bolum alanlarını olduğu gibi döndürür', async () => {
+    const { prisma } = filtreleyenPrisma()
+    expect(await sikayetciAra(prisma, 'ELİF')).toEqual([
+      { id: 'p-elif', adSoyad: 'Elif Demir', sicilNo: 'S-100', bolum: 'Montaj' },
+    ])
+  })
+
+  it('pasif personel hiçbir terimle dönmez (aktif filtresi sonucu süzer)', async () => {
+    const { prisma } = filtreleyenPrisma()
+    expect((await sikayetciAra(prisma, 'pasif')).length).toBe(0)
+  })
+
+  it('eşleşmeyen terim boş dizi döner (hata değil)', async () => {
+    const { prisma } = filtreleyenPrisma()
+    expect(await sikayetciAra(prisma, 'olmayanisim')).toEqual([])
+  })
+})

@@ -31,6 +31,9 @@ export function SikayetciSecici({ value, onChange, zorunlu }: Props) {
   const [sonuclar, setSonuclar] = useState<SikayetciAday[]>([])
   const [acik, setAcik] = useState(false)
   const [yukleniyor, setYukleniyor] = useState(false)
+  // Uç hata verdiyse (403/404/500/ağ) "sonuç yok"tan AYRI bir durum: kullanıcı
+  // yetki/sunucu sorununu "kayıt yok" sanıp aramayı bırakmasın.
+  const [hata, setHata] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
   // Dışarıdan `value` temizlenirse (form reset) yerel seçim de temizlenir.
@@ -49,20 +52,39 @@ export function SikayetciSecici({ value, onChange, zorunlu }: Props) {
   useEffect(() => {
     if (query.trim().length < 2) {
       setSonuclar([])
+      setHata(false)
+      setYukleniyor(false)
       return
     }
+    // Cleanup'ta true olur: sonradan yazılan terimin cevabı, eski isteğin
+    // geç gelen cevabıyla ezilmesin.
+    let iptal = false
     const zamanlayici = setTimeout(async () => {
       setYukleniyor(true)
+      setHata(false)
       try {
         const res = await fetch(
           `/api/servis-yonetimi/sikayet/sikayetci-secici?arama=${encodeURIComponent(query)}`,
         )
-        if (res.ok) setSonuclar(await res.json())
+        if (iptal) return
+        if (res.ok) {
+          setSonuclar(await res.json())
+        } else {
+          setSonuclar([])
+          setHata(true)
+        }
+      } catch {
+        if (iptal) return
+        setSonuclar([])
+        setHata(true)
       } finally {
-        setYukleniyor(false)
+        if (!iptal) setYukleniyor(false)
       }
     }, 300)
-    return () => clearTimeout(zamanlayici)
+    return () => {
+      iptal = true
+      clearTimeout(zamanlayici)
+    }
   }, [query])
 
   return (
@@ -85,7 +107,10 @@ export function SikayetciSecici({ value, onChange, zorunlu }: Props) {
       {acik && !secilen && (
         <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover shadow-lg max-h-56 overflow-y-auto">
           {yukleniyor && <div className="px-3 py-2 text-sm text-muted-foreground">Aranıyor...</div>}
-          {!yukleniyor && query.trim().length >= 2 && sonuclar.length === 0 && (
+          {!yukleniyor && hata && (
+            <div role="alert" className="px-3 py-2 text-sm text-destructive">Arama yapılamadı</div>
+          )}
+          {!yukleniyor && !hata && query.trim().length >= 2 && sonuclar.length === 0 && (
             <div className="px-3 py-2 text-sm text-muted-foreground">Sonuç bulunamadı</div>
           )}
           {!yukleniyor && query.trim().length < 2 && (

@@ -8,6 +8,7 @@ import { useScanner } from '@/lib/depo/use-scanner'
 import { miktarOku, rezerveMesaji } from '@/lib/depo/miktar'
 import type { EtiketKaynak } from '@/lib/depo/etiket-parse'
 import { TERMINAL_ACCENT } from '../../_shared'
+import { EtiketYazdirButton } from '../_etiket-yazdir'
 import type { Fis, FisOzet, FisSatir, TasimaStokSatiri } from '@/lib/ifs/toplu-tasima'
 import type { StokBilgisiSatir } from '@/lib/ifs/stok-bilgisi'
 
@@ -15,6 +16,7 @@ type Sekme = 'FIS' | 'SATIRLAR' | 'OZET'
 // Okutma ALAN BAZLI — değer o an beklenen alana gider.
 type Alan = 'FIS_NO' | 'HEDEF_LOK' | 'LOKASYON' | 'MALZEME' | null
 type Eksik = { partNo: string; locationNo: string; lotBatchNo: string; gerekli: number; mevcut: number }
+type Kalem = { partNo: string; partAdi: string; miktar: number; birim: string; lot: string; kaynakLok: string; hedefLok: string }
 
 const fmt = (n: number) => n.toLocaleString('tr-TR', { maximumFractionDigits: 3 })
 const tire = (v: string) => (!v || v === '*' ? '—' : v)
@@ -40,7 +42,7 @@ export function TopluTasimaClient() {
   const [miktar, setMiktar] = useState('')
   const [onay, setOnay] = useState<'TRANSFER' | 'IPTAL' | null>(null)
   const [eksikler, setEksikler] = useState<Eksik[] | null>(null)
-  const [ozet, setOzet] = useState<{ no: number; durum: string; kalem: number; hedef: string } | null>(null)
+  const [ozet, setOzet] = useState<{ no: number; durum: string; kalem: number; hedef: string; kalemler: Kalem[] } | null>(null)
 
   const [loading, setLoading] = useState(false)
   const [manualOpen, setManualOpen] = useState(false)
@@ -161,7 +163,7 @@ export function TopluTasimaClient() {
     setOnay(null)
     const d = await api(`/api/depo/toplu-tasima/${fis.no}/${tur === 'TRANSFER' ? 'transfer' : 'iptal'}`, { method: 'POST' })
     if (!d) return
-    setOzet({ no: fis.no, durum: String(d.durum ?? ''), kalem: fis.satirlar.length, hedef: fis.varisLok })
+    setOzet({ no: fis.no, durum: String(d.durum ?? ''), kalem: fis.satirlar.length, hedef: fis.varisLok, kalemler: (d.kalemler ?? []) as Kalem[] })
     setFisler(null)
     setSekme('OZET')
   }
@@ -375,6 +377,32 @@ export function TopluTasimaClient() {
           <div className="text-sm text-muted-foreground">Fiş {ozet.no}</div>
           <div className="text-2xl font-bold" style={{ color: ozet.durum === 'TransferEdildi' ? TERMINAL_ACCENT : undefined }}>{ozet.durum === 'TransferEdildi' ? 'Transfer edildi' : ozet.durum === 'IptalEdildi' ? 'İptal edildi' : ozet.durum}</div>
           {ozet.durum === 'TransferEdildi' && <div className="text-sm">{ozet.kalem} kalem → {ozet.hedef}</div>}
+          {ozet.durum === 'TransferEdildi' && ozet.kalemler.length > 0 && (
+            <div className="flex w-full flex-col gap-2 text-left">
+              {ozet.kalemler.map((k, i) => (
+                <div key={i} className="flex flex-col gap-2 rounded-xl border p-3">
+                  <div className="min-w-0">
+                    <div className="font-semibold">{k.partNo} <span className="text-xs font-normal text-muted-foreground">· {fmt(k.miktar)} {k.birim}{k.lot ? ` · lot ${k.lot}` : ''}</span></div>
+                    {k.partAdi && <div className="truncate text-xs text-muted-foreground">{k.partAdi}</div>}
+                    <div className="text-xs text-muted-foreground">{k.kaynakLok} → {k.hedefLok}</div>
+                  </div>
+                  <EtiketYazdirButton
+                    payload={{
+                      stokKodu: k.partNo,
+                      stokAdi: k.partAdi,
+                      miktar: k.miktar,
+                      birim: k.birim,
+                      lot: k.lot || undefined,
+                      girisTarihi: new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Istanbul' }).format(new Date()), // TR tarihi (yyyy-MM-dd)
+                      kaynakBilgi: `Toplu Tasima · Fis ${ozet.no} · ${k.kaynakLok} → ${k.hedefLok}`,
+                      lokasyon: k.hedefLok,
+                      kaynakModul: 'Depo El Terminali / Toplu Tasima',
+                    }}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
           <div className="grid w-full grid-cols-2 gap-2">
             <button type="button" onClick={() => { setOzet(null); setFis(null); setSekme('FIS') }} className="h-11 rounded-xl border text-sm font-semibold">Fişlere dön</button>
             <button type="button" onClick={() => { setOzet(null); setFis(null); setYeniMod(true); setSekme('FIS') }} className="h-11 rounded-xl text-sm font-semibold text-white" style={{ background: TERMINAL_ACCENT }}>Yeni fiş</button>

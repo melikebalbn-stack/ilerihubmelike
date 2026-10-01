@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/auth/require-permission'
 import { logDepoHareket } from '@/lib/depo/hareket-log'
 import { fisGetir, transferEt } from '@/lib/ifs/toplu-tasima'
+import { getStokBilgisi } from '@/lib/ifs/stok-bilgisi'
 import { GUARD, fisNo, hata } from '../../_ortak'
 
 export const runtime = 'nodejs'
@@ -36,7 +37,28 @@ export async function POST(_request: Request, { params }: { params: Promise<{ no
           waivDevRejNo: s.waivDevRejNo, configurationId: s.configurationId, activitySeq: s.activitySeq, handlingUnitId: s.handlingUnitId } },
       })
     }
-    return NextResponse.json({ ok: true, durum: sonuc.durum })
+    // Transfer özeti ekranındaki "Etiket Yazdır" için kalemler. Birim fiş satırında yok → hedefteki stoktan
+    // (yalnız okuma; bulunamazsa boş kalır, etiketi bloklamaz).
+    const hedef = once?.varisLok ?? ''
+    const birimler = new Map<string, string>()
+    await Promise.all(
+      [...new Set((once?.satirlar ?? []).map((s) => s.partNo))].map(async (partNo) => {
+        try {
+          const r = await getStokBilgisi({ locationNo: hedef, partNoEq: partNo })
+          birimler.set(partNo, r.satirlar[0]?.birim ?? '')
+        } catch { /* birim bilinmiyor */ }
+      }),
+    )
+    const kalemler = (once?.satirlar ?? []).map((s) => ({
+      partNo: s.partNo,
+      partAdi: s.partAdi,
+      miktar: s.miktar,
+      birim: birimler.get(s.partNo) ?? '',
+      lot: s.lotBatchNo && s.lotBatchNo !== '*' ? s.lotBatchNo : '',
+      kaynakLok: s.locationNo,
+      hedefLok: hedef,
+    }))
+    return NextResponse.json({ ok: true, durum: sonuc.durum, kalemler })
   } catch (e) {
     return hata(e)
   }

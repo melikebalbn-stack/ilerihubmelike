@@ -7,9 +7,19 @@ import { NextRequest } from 'next/server'
  *  · Faaliyetler id bazında senkron: id'li satır güncellenir (paraf/sonuç/gerçekleşen
  *    tarihe dokunulmaz), id'siz oluşturulur, eksik satır paraflı değilse silinir,
  *    paraflıysa 400; başka FİF'e ait / tekrarlanan id 400.
+ *
+ * Paket 3 ile hizalandı (veri kaybı assertion'ları AYNEN korunur):
+ *  · PUT, form key'i yenilensin diye updatedAt'i AÇIKÇA yazar → expect.any(Date).
+ *  · Onaylayan alanları (sorumlu/yayınlayan onaylayan) payload'dan YAZILMAZ —
+ *    sunucu bölümden çözer.
+ *  · ilkHedefTarih: hedef tarih İLK dolduğunda sunucu yazar; sonra değişmez.
+ *  · Düzenleme kapısı fifDuzenleyebilirMi (görme: fifKapsamindaMi).
  */
 
-type Satir = { id: string; fifId: string; parafUserId: string | null }
+type Satir = {
+  id: string; fifId: string; parafUserId: string | null
+  hedefTarih?: Date | null; ilkHedefTarih?: Date | null
+}
 
 const fifFindUnique = vi.fn()
 const transaction = vi.fn()
@@ -25,6 +35,7 @@ vi.mock('@/lib/auth/require-session', () => ({
 }))
 vi.mock('@/lib/quality/fif-access', () => ({
   fifKapsamindaMi: async () => true,
+  fifDuzenleyebilirMi: async () => true,
   canManageFif: () => false,
 }))
 vi.mock('@/lib/prisma', () => ({
@@ -62,7 +73,7 @@ beforeEach(() => {
     sorumluBolumId: 'd1', yayinlayanBolumId: null, yayilimVarMi: false, yayilimAciklama: null,
   })
   transaction.mockImplementation(async (cb: (t: typeof tx) => unknown) => cb(tx))
-  faaliyetFindMany.mockImplementation(async () => satirlar.map(({ id, parafUserId }) => ({ id, parafUserId })))
+  faaliyetFindMany.mockImplementation(async () => satirlar.map((s) => ({ ...s })))
   fifFindUniqueTx.mockResolvedValue({ id: 'fif1' })
 })
 
@@ -71,7 +82,7 @@ describe('FİF PUT — kısmi başlık güncellemesi', () => {
     const r = await PUT(istek({ uygunsuzlukTanimi: 'Yeni tespit' }), ctx)
     expect(r.status).toBe(200)
     expect(fifUpdate).toHaveBeenCalledTimes(1)
-    expect(fifUpdate.mock.calls[0][0].data).toEqual({ uygunsuzlukTanimi: 'Yeni tespit' })
+    expect(fifUpdate.mock.calls[0][0].data).toEqual({ uygunsuzlukTanimi: 'Yeni tespit', updatedAt: expect.any(Date) })
   })
 
   it('sistem alanları payload\'dan hiç yazılmaz (durum, kayitNo, kssUserId, hazirlayanUserId, kapatmaTarihi)', async () => {
@@ -80,14 +91,25 @@ describe('FİF PUT — kısmi başlık güncellemesi', () => {
       standartMadde: '8.7',
     }), ctx)
     expect(r.status).toBe(200)
-    expect(fifUpdate.mock.calls[0][0].data).toEqual({ standartMadde: '8.7' })
+    expect(fifUpdate.mock.calls[0][0].data).toEqual({ standartMadde: '8.7', updatedAt: expect.any(Date) })
   })
 
   it('formun gönderdiği alanlar eskisi gibi yazılır (açık null dahil)', async () => {
-    await PUT(istek({ tur: 'ONLEYICI', izlemeSorumlusuUserId: null, sorumluOnaylayanUserId: 'm1', kysDegisikligi: false }), ctx)
+    await PUT(istek({ tur: 'ONLEYICI', izlemeSorumlusuUserId: null, kysDegisikligi: false }), ctx)
     expect(fifUpdate.mock.calls[0][0].data).toEqual({
-      tur: 'ONLEYICI', izlemeSorumlusuUserId: null, sorumluOnaylayanUserId: 'm1', kysDegisikligi: false,
+      tur: 'ONLEYICI', izlemeSorumlusuUserId: null, kysDegisikligi: false, updatedAt: expect.any(Date),
     })
+  })
+
+  it('Paket 3: onaylayan alanları payload\'dan YAZILMAZ (sunucu bölümden çözer)', async () => {
+    const r = await PUT(istek({
+      sorumluOnaylayanUserId: 'saldirgan1', yayinlayanOnaylayanUserId: 'saldirgan2', standartMadde: '8.7',
+    }), ctx)
+    expect(r.status).toBe(200)
+    const data = fifUpdate.mock.calls[0][0].data
+    expect(data).toEqual({ standartMadde: '8.7', updatedAt: expect.any(Date) })
+    expect('sorumluOnaylayanUserId' in data).toBe(false)
+    expect('yayinlayanOnaylayanUserId' in data).toBe(false)
   })
 
   it('faaliyetler gönderilmezse satırlara hiç dokunulmaz', async () => {
@@ -117,13 +139,24 @@ describe('FİF PUT — faaliyet senkronu (sil-yeniden-yaz YOK)', () => {
 
     expect(faaliyetUpdate).toHaveBeenCalledTimes(2)
     const f1 = faaliyetUpdate.mock.calls.find((c) => c[0].where.id === 'f1')![0].data
-    expect(f1).toEqual({ sira: 1, aciklama: 'Paraflı satır', aksiyonTuru: 'KALICI', hedefTarih: new Date('2026-10-01') })
+    // Paket 3: hedef ilk kez doluyor → ilkHedefTarih de yazılır (aşağıda ayrıca test edilir).
+    expect(f1).toEqual({
+      sira: 1, aciklama: 'Paraflı satır', aksiyonTuru: 'KALICI',
+      hedefTarih: new Date('2026-10-01'), ilkHedefTarih: new Date('2026-10-01'),
+    })
     for (const k of ['parafUserId', 'parafTarihi', 'sonuc', 'gerceklesenTarih']) expect(k in f1).toBe(false)
     const f2 = faaliyetUpdate.mock.calls.find((c) => c[0].where.id === 'f2')![0].data
     expect(f2).toEqual({ sira: 2, aciklama: 'İkinci' }) // hedef/tür gönderilmedi → dokunulmaz
 
     expect(faaliyetCreate).toHaveBeenCalledTimes(1)
-    expect(faaliyetCreate.mock.calls[0][0].data).toEqual({ fifId: 'fif1', sira: 3, aciklama: 'Yeni satır', hedefTarih: new Date('2026-11-01') })
+    // Paket 3: yeni satırda paraf/sonuç/gerçekleşen YOK; ilk hedef = hedef; sorumlu/tür açıkça null.
+    expect(faaliyetCreate.mock.calls[0][0].data).toEqual({
+      fifId: 'fif1', sira: 3, aciklama: 'Yeni satır', aksiyonTuru: null,
+      hedefTarih: new Date('2026-11-01'), ilkHedefTarih: new Date('2026-11-01'), sorumluUserId: null,
+    })
+    for (const k of ['parafUserId', 'parafTarihi', 'sonuc', 'gerceklesenTarih']) {
+      expect(k in faaliyetCreate.mock.calls[0][0].data).toBe(false)
+    }
   })
 
   it('payload\'da olmayan satır PARAFLIYSA 400 ve hiçbir satır yazılmaz', async () => {
@@ -159,5 +192,45 @@ describe('FİF PUT — faaliyet senkronu (sil-yeniden-yaz YOK)', () => {
     const r = await PUT(istek({ faaliyetler: [] }), ctx)
     expect(r.status).toBe(200)
     expect(faaliyetDeleteMany.mock.calls[0][0]).toEqual({ where: { fifId: 'fif1', id: { in: ['f2', 'f3'] } } })
+  })
+})
+
+describe('FİF PUT — Paket 3: ilkHedefTarih ilk dolumda yazılır, sonra değişmez', () => {
+  // TASLAK: FAALIYET'teki dolu hedef tarih kilidi devreye girmesin (o ayrı kural).
+  beforeEach(() => {
+    fifFindUnique.mockResolvedValue({
+      id: 'fif1', durum: 'TASLAK', createdById: 'u1', hazirlayanUserId: 'u1',
+      sorumluBolumId: 'd1', yayinlayanBolumId: null, yayilimVarMi: false, yayilimAciklama: null,
+    })
+  })
+
+  it('hedef tarih boşken ilk kez dolunca ilkHedefTarih = hedef', async () => {
+    satirlar = [{ id: 'f1', fifId: 'fif1', parafUserId: null, hedefTarih: null, ilkHedefTarih: null }]
+    const r = await PUT(istek({ faaliyetler: [{ id: 'f1', sira: 1, aciklama: 'a', hedefTarih: '2026-10-01' }] }), ctx)
+    expect(r.status).toBe(200)
+    expect(faaliyetUpdate.mock.calls[0][0].data).toEqual({
+      sira: 1, aciklama: 'a', hedefTarih: new Date('2026-10-01'), ilkHedefTarih: new Date('2026-10-01'),
+    })
+  })
+
+  it('ilkHedefTarih doluysa hedef değişse de ilkHedefTarih YAZILMAZ', async () => {
+    satirlar = [{
+      id: 'f1', fifId: 'fif1', parafUserId: null,
+      hedefTarih: new Date('2026-10-01'), ilkHedefTarih: new Date('2026-10-01'),
+    }]
+    const r = await PUT(istek({ faaliyetler: [{ id: 'f1', sira: 1, aciklama: 'a', hedefTarih: '2026-11-15' }] }), ctx)
+    expect(r.status).toBe(200)
+    const data = faaliyetUpdate.mock.calls[0][0].data
+    expect(data).toEqual({ sira: 1, aciklama: 'a', hedefTarih: new Date('2026-11-15') })
+    expect('ilkHedefTarih' in data).toBe(false)
+  })
+
+  it('istemci ilkHedefTarih gönderse de yazılmaz (şemada yok)', async () => {
+    satirlar = [{
+      id: 'f1', fifId: 'fif1', parafUserId: null,
+      hedefTarih: new Date('2026-10-01'), ilkHedefTarih: new Date('2026-10-01'),
+    }]
+    await PUT(istek({ faaliyetler: [{ id: 'f1', sira: 1, aciklama: 'a', ilkHedefTarih: '2020-01-01' }] }), ctx)
+    expect('ilkHedefTarih' in faaliyetUpdate.mock.calls[0][0].data).toBe(false)
   })
 })

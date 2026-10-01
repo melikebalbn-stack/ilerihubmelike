@@ -58,8 +58,23 @@ export interface TalepSatir extends SatirAnahtar {
   birim: string
   rezerve: number
   cikis: number
+  /** Henüz rezerve/çıkış yapılmamış istenen miktar = QtyDue − rezerve − çıkış (kapalı satırda 0). */
+  kalan: number
   durum: string
   rezervler: TalepRezerv[]
+}
+
+export interface TalepOzet {
+  orderNo: string
+  durum: string
+  termin: string
+  varisYeri: string
+  not: string
+  kalemSayisi: number
+  /** Kalanı (rezerve edilecek miktarı) olan satır sayısı. */
+  acikKalem: number
+  /** Rezervi olup henüz tüketilmemiş satır sayısı. */
+  rezerveKalem: number
 }
 
 export interface TalepDetay {
@@ -212,8 +227,10 @@ export async function talepGetir(orderNo: string): Promise<TalepDetay | null> {
     olusturan: str(b.body.CreatedByUserId),
     satirlar: (satirlar.value ?? []).map((r) => {
       const anahtar = { lineNo: str(r.LineNo), releaseNo: str(r.ReleaseNo), lineItemNo: num(r.LineItemNo) }
+      const kapali = str(r.StatusCode) === 'Closed'
       return {
         ...anahtar,
+        kalan: kapali ? 0 : Math.max(0, num(r.QtyDue) - num(r.QtyAssigned) - num(r.QtyShipped)),
         partNo: str(r.PartNo),
         partAdi: str(r.PartDescription),
         miktar: num(r.QtyDue),
@@ -236,6 +253,51 @@ export async function talepGetir(orderNo: string): Promise<TalepDetay | null> {
       }
     }),
   }
+}
+
+/**
+ * Terminal listesi: bu sitenin kapanmamış dahili talepleri (IFS'te planlamanın açtıkları dahil) — kalanı ya da
+ * tüketilecek rezervi olanlar, terminine göre. Başlık durumu OData filtresinde değil (enum tipi adı belirsiz),
+ * okunduktan sonra eleniyor; satırlar talep başına okunur (en fazla LISTE_UST talep, 8'erli paralel).
+ */
+const LISTE_UST = 40
+export async function bekleyenTalepler(): Promise<TalepOzet[]> {
+  const { contract } = getIfsConfig()
+  const b = await zorunlu<{ value?: RawBaslik[] }>(
+    'Talepler',
+    'GET',
+    `${P}MaterialRequisitionSet?$filter=${encodeURIComponent(`Contract eq '${esc(contract)}' and OrderClass eq ${INT}`)}` +
+      `&$select=OrderNo,StatusCode,DueDate,InternalDestination,NoteText&$orderby=DueDate desc&$top=300`,
+  )
+  const acik = (b.value ?? []).filter((r) => str(r.StatusCode) !== 'Closed' && str(r.OrderNo)).slice(0, LISTE_UST)
+  const sonuc: TalepOzet[] = []
+  for (let i = 0; i < acik.length; i += 8) {
+    const parca = await Promise.all(
+      acik.slice(i, i + 8).map(async (r) => {
+        const no = str(r.OrderNo)
+        const s = await zorunlu<{ value?: RawSatir[] }>(
+          'Talep satırları',
+          'GET',
+          `${P}${baslikYolu(no)}/MaterialRequisitionLinesArray?$select=PartNo,QtyDue,QtyAssigned,QtyShipped,StatusCode&$top=200`,
+        )
+        const satirlar = (s.value ?? []).filter((x) => str(x.StatusCode) !== 'Closed')
+        return {
+          orderNo: no,
+          durum: str(r.StatusCode),
+          termin: str(r.DueDate),
+          varisYeri: str(r.InternalDestination),
+          not: str(r.NoteText),
+          kalemSayisi: (s.value ?? []).length,
+          acikKalem: satirlar.filter((x) => num(x.QtyDue) - num(x.QtyAssigned) - num(x.QtyShipped) > 0).length,
+          rezerveKalem: satirlar.filter((x) => num(x.QtyAssigned) > 0).length,
+        }
+      }),
+    )
+    sonuc.push(...parca)
+  }
+  return sonuc
+    .filter((t) => t.acikKalem > 0 || t.rezerveKalem > 0)
+    .sort((a, b) => (a.termin || '9999').localeCompare(b.termin || '9999'))
 }
 
 /** Dahili müşteriler (Active) + dahili varış yerleri (Contract, Active). */
@@ -382,6 +444,45 @@ export async function satirEkleVeRezerve(orderNo: string, kimlik: StokKimligi, m
     throw new Error(`Rezerv başarısız, satır geri alındı: ${rezervHata}`)
   }
   return satir
+}
+
+/**
+ * Talepteki MEVCUT satıra (IFS'te planlamanın açtığı) okutulan stoktan rezerv — yeni satır AÇILMAZ.
+ * Okutulan parça satırın parçası olmalı; miktar satırın kalanını aşamaz.
+ */
+export async function satirRezerve(orderNo: string, satir: SatirAnahtar, kimlik: StokKimligi, miktar: number): Promise<TalepSatir> {
+  if (!(miktar > 0)) throw new Error('Miktar sıfırdan büyük olmalı')
+  const talep = await talepGetir(orderNo)
+  if (!talep) throw new Error(`Talep bulunamadı: ${orderNo}`)
+  if (talep.durum === 'Closed') throw new Error(`Talep kapalı: ${orderNo}`)
+  const s = talep.satirlar.find((x) => x.lineNo === satir.lineNo && x.releaseNo === satir.releaseNo && x.lineItemNo === num(satir.lineItemNo))
+  if (!s) throw new Error(`Talep satırı bulunamadı: ${satir.lineNo}/${satir.releaseNo}`)
+  if (s.durum === 'Closed') throw new Error(`Talep satırı kapalı: ${s.partNo}`)
+  if (s.partNo !== kimlik.partNo) throw new Error(`Okutulan malzeme ${s.partNo} değil (${kimlik.partNo})`)
+  if (miktar > s.kalan + 1e-9) throw new Error(`Talepte kalan ${s.kalan} ${s.birim} — fazlası rezerve edilemez`)
+  await manuelRezerv(orderNo, satir, kimlik, miktar)
+  return s
+}
+
+/** Mevcut satırdaki tek bir stok rezervini (kısmen ya da tamamen) geri alır; satır silinmez. */
+export async function rezervGeriAl(orderNo: string, satir: SatirAnahtar, kimlik: StokKimligi, miktar: number): Promise<void> {
+  if (!(miktar > 0)) throw new Error('Miktar sıfırdan büyük olmalı')
+  await manuelRezerv(orderNo, satir, kimlik, -miktar)
+}
+
+/** Satırın tüm rezervlerini geri alır, satırı SİLMEZ (talep satırı planlamanındır). Çıkışı yapılmış satırda olmaz. */
+export async function satirRezervleriniKaldir(orderNo: string, satir: SatirAnahtar): Promise<{ partNo: string; geriAlinan: TalepRezerv[] }> {
+  const talep = await talepGetir(orderNo)
+  if (!talep) throw new Error(`Talep bulunamadı: ${orderNo}`)
+  const s = talep.satirlar.find((x) => x.lineNo === satir.lineNo && x.releaseNo === satir.releaseNo && x.lineItemNo === num(satir.lineItemNo))
+  if (!s) throw new Error(`Satır bulunamadı: ${satir.lineNo}/${satir.releaseNo}`)
+  if (s.cikis > 0) throw new Error('Bu satırdan çıkış yapılmış — rezerv kaldırılamaz')
+  const geriAlinan = s.rezervler.filter((x) => x.rezerve > 0)
+  if (!geriAlinan.length) throw new Error('Bu satırda rezerv yok')
+  for (const r of geriAlinan) {
+    await manuelRezerv(orderNo, satir, { ...r, partNo: s.partNo }, -r.rezerve)
+  }
+  return { partNo: s.partNo, geriAlinan }
 }
 
 /** Satırı çıkar: tüm rezervlerini negatif miktarla geri al, sonra satırı sil. Çıkışı yapılmış satır çıkarılamaz. */

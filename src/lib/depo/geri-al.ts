@@ -5,7 +5,7 @@ import { getRaftakiStok, moveStok, type StokKimlik } from '@/lib/ifs/depo-stok'
 import { iptalEt as topluIptal, satirSil as topluSatirSil, type TasimaStokSatiri } from '@/lib/ifs/toplu-tasima'
 import { paleteEkle, palettenCikar, paletDegistir, paletTasi, type HuStokSatiri } from '@/lib/ifs/tasima-birimi'
 import { stokKaldir, talepGetir as transferTalepGetir } from '@/lib/ifs/transfer-talebi'
-import { satirCikar as mtSatirCikar } from '@/lib/ifs/malzeme-talebi'
+import { rezervGeriAl as mtRezervGeriAl, satirCikar as mtSatirCikar, type StokKimligi as MtStokKimligi } from '@/lib/ifs/malzeme-talebi'
 import { sevkiyatGetir, toplamaGeriAl } from '@/lib/ifs/sevkiyat'
 import { geriAlindiDus, okutmaSil } from '@/lib/depo/sevkiyat-okutma'
 import { getSatirCikis, unissueSatir } from '@/lib/ifs/tuketim'
@@ -34,7 +34,7 @@ const ALINAMAZ: Record<string, string> = {
   HU_ETIKET: 'Etiket basımı geri alınamaz',
   HU_OLUSTUR: 'Palet silinemez — boş palet IFS\'te kalır',
   MALZEME_TALEBI_OLUSTUR: 'Talep silinemez — ofis kapatır',
-  MALZEME_TALEBI_CIKAR: 'Yeniden ekleyin (Malzeme Talebi ekranı)',
+  MALZEME_TALEBI_CIKAR: 'Yeniden rezerve edin (Malzeme Talebi ekranı)',
   MALZEME_TALEBI_TUKET: 'Tüketim terminalden geri alınamaz — ofise bildirin',
   TOPLU_TASIMA_SIL: 'Satırı yeniden ekleyin (Toplu Taşıma ekranı)',
   TOPLU_TASIMA_IPTAL: 'İptal edilen fiş geri açılamaz',
@@ -187,6 +187,11 @@ async function tersIslem(l: LogSatiri): Promise<string> {
       return `Talep ${no}: ${l.partNo} · ${miktar} bağlaması kaldırıldı`
     }
     case 'MALZEME_TALEBI_REZERV': {
+      if (d.mevcutSatir === true) {
+        // Planlamanın açtığı satır: satır kalır, yalnız bu rezerv geri alınır.
+        await mtRezervGeriAl(l.orderNo!, { lineNo: String(d.lineNo), releaseNo: l.releaseNo!, lineItemNo: num(l.lineItemNo) }, d.stok as MtStokKimligi, miktar)
+        return `Talep ${l.orderNo}: ${l.partNo} · ${miktar} rezervi geri alındı`
+      }
       await mtSatirCikar(l.orderNo!, { lineNo: String(d.lineNo), releaseNo: l.releaseNo!, lineItemNo: num(l.lineItemNo) })
       return `Talep ${l.orderNo}: ${l.partNo} satırı çıkarıldı (rezerv geri alındı)`
     }

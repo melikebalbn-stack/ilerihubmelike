@@ -6,7 +6,8 @@ import { getStokBilgisi, okutVeGetir } from '@/lib/ifs/stok-bilgisi'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-// GET /api/depo/malzeme-talebi/stok?lokasyon=X[&okut=Y&kaynak=okutma|elle]
+// GET /api/depo/malzeme-talebi/stok?lokasyon=X[&okut=Y&kaynak=okutma|elle][&partNo=Z]
+//   partNo verilirse yalnız o parça (talep satırının malzemesi); başka parça okutulursa baskaParca=true.
 //   okut yok → lokasyonun stok satırı sayısı (lokasyon doğrulama)
 //   okut var → lokasyonda okutulan barkod / stok no'ya uyan TAM stok satırları (Stok Bilgisi çözücüsü).
 // SADECE OKUMA.
@@ -16,19 +17,22 @@ export async function GET(request: Request) {
   const sp = new URL(request.url).searchParams
   const lokasyon = sp.get('lokasyon')?.trim()
   const okut = sp.get('okut')?.trim()
+  const partNo = sp.get('partNo')?.trim()
   if (!lokasyon) return NextResponse.json({ ok: false, error: 'Lokasyon gerekli' }, { status: 400 })
   try {
     if (!okut) {
       // Lokasyon doğrulama + barkodsuz seçim listesi (kullanılabilir > 0 satırlar).
-      const r = await getStokBilgisi({ locationNo: lokasyon })
+      const r = await getStokBilgisi({ locationNo: lokasyon, ...(partNo ? { partNoEq: partNo } : {}) })
       return NextResponse.json({ ok: true, lokasyon, toplam: r.toplam, satirlar: r.satirlar.filter((s) => s.kullanilabilir > 0) })
     }
     const kaynak = sp.get('kaynak') === 'elle' ? 'elle' : 'okutma'
     const r = await okutVeGetir(okut, kaynak, { locationNo: lokasyon })
     if (r.cozum?.tip === 'palet') return NextResponse.json({ ok: false, error: PALET_UYARISI }, { status: 400 })
     // Lokasyon filtresi zaten sabit; "lokasyon" çözümü okutulan değerin parça/barkod olmadığını gösterir.
-    const satirlar = r.cozum && r.cozum.tip !== 'lokasyon' ? r.satirlar : []
-    return NextResponse.json({ ok: true, lokasyon, toplam: satirlar.length, satirlar, cozum: r.cozum ?? null })
+    let satirlar = r.cozum && r.cozum.tip !== 'lokasyon' ? r.satirlar : []
+    const tumu = satirlar.length
+    if (partNo) satirlar = satirlar.filter((s) => s.partNo === partNo)
+    return NextResponse.json({ ok: true, lokasyon, toplam: satirlar.length, satirlar, cozum: r.cozum ?? null, baskaParca: tumu > 0 && satirlar.length === 0 })
   } catch (e) {
     return NextResponse.json({ ok: false, error: e instanceof Error ? e.message : 'IFS verisi alınamadı' }, { status: 502 })
   }

@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { ondalikUygun } from '@/lib/depo/miktar'
 import { requirePermission } from '@/lib/auth/require-permission'
 import { logDepoHareket } from '@/lib/depo/hareket-log'
-import { satirCikar, satirEkleVeRezerve } from '@/lib/ifs/malzeme-talebi'
+import { satirEkleVeRezerve, satirRezerve, satirRezervleriniKaldir } from '@/lib/ifs/malzeme-talebi'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -24,9 +24,12 @@ const EkleSchema = z.object({
     handlingUnitId: z.number(),
   }),
   miktar: z.number().positive().refine(ondalikUygun),
+  /** Verilirse talepteki MEVCUT satıra rezerv (yeni satır açılmaz). Yoksa satırsız talepte yeni satır + rezerv. */
+  satir: z.object({ lineNo: z.string().min(1), releaseNo: z.string().min(1), lineItemNo: z.number() }).optional(),
 })
 
-// POST /api/depo/malzeme-talebi/{orderNo}/satir { stok, miktar } → satır ekle + okutulan stoktan rezerv. IFS'e YAZAR.
+// POST /api/depo/malzeme-talebi/{orderNo}/satir { stok, miktar, satir? } → satir varsa o talep satırına rezerv;
+// yoksa satır ekle + rezerv. IFS'e YAZAR.
 export async function POST(request: Request, { params }: { params: Promise<{ orderNo: string }> }) {
   const { session, userId, error } = await requirePermission(GUARD)
   if (error) return error
@@ -34,9 +37,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ ord
   const orderNo = decodeURIComponent(ham).trim()
   const parsed = EkleSchema.safeParse(await request.json().catch(() => null))
   if (!parsed.success) return NextResponse.json({ ok: false, error: 'Geçersiz stok satırı / miktar' }, { status: 400 })
-  const { stok, miktar } = parsed.data
+  const { stok, miktar, satir: mevcut } = parsed.data
   try {
-    const satir = await satirEkleVeRezerve(orderNo, stok, miktar)
+    const satir = mevcut ? (await satirRezerve(orderNo, mevcut, stok, miktar), mevcut) : await satirEkleVeRezerve(orderNo, stok, miktar)
     await logDepoHareket({
       olay: 'MALZEME_TALEBI_REZERV',
       userId,
@@ -48,7 +51,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ ord
       orderNo,
       releaseNo: satir.releaseNo,
       lineItemNo: satir.lineItemNo,
-      detay: { lineNo: satir.lineNo, stok },
+      // mevcutSatir: geri almada satır silinmez, yalnız bu rezerv geri alınır.
+      detay: { lineNo: satir.lineNo, stok, mevcutSatir: !!mevcut },
     })
     return NextResponse.json({ ok: true, satir })
   } catch (e) {
@@ -56,7 +60,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ ord
   }
 }
 
-// DELETE /api/depo/malzeme-talebi/{orderNo}/satir?lineNo=&releaseNo=&lineItemNo= → rezervi geri al + satırı sil. IFS'e YAZAR.
+// DELETE /api/depo/malzeme-talebi/{orderNo}/satir?lineNo=&releaseNo=&lineItemNo= → satırın rezervlerini geri al
+// (satır SİLİNMEZ — talep satırı planlamanındır, kalan yeniden rezerve edilebilir). IFS'e YAZAR.
 export async function DELETE(request: Request, { params }: { params: Promise<{ orderNo: string }> }) {
   const { session, userId, error } = await requirePermission(GUARD)
   if (error) return error
@@ -70,7 +75,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ o
     return NextResponse.json({ ok: false, error: 'Satır anahtarı eksik' }, { status: 400 })
   }
   try {
-    const { partNo, geriAlinan } = await satirCikar(orderNo, { lineNo, releaseNo, lineItemNo })
+    const { partNo, geriAlinan } = await satirRezervleriniKaldir(orderNo, { lineNo, releaseNo, lineItemNo })
     await logDepoHareket({
       olay: 'MALZEME_TALEBI_CIKAR',
       userId,

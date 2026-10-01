@@ -144,9 +144,10 @@ export const MODULLER: ModulYardim[] = [
     baslik: 'Malzeme Talebi (Sarf)',
     neZaman: 'Eldiven, yağ, conta gibi sarf malzemeyi bir birime verdiğin zaman.',
     adimlar: [
-      'Talep numarasını okut ya da hangi birim için olduğunu seçip "Yeni Talep" aç.',
-      'Rafı ve malzemeyi okut, miktarı gir, EKLE.',
-      'Yanlış eklediysen "Çıkar".',
+      'Bekleyen taleplerden birini seç ya da talep numarasını okut.',
+      'Talepteki malzemeye dokun; istenen ve kalan miktarı görürsün.',
+      'Rafı okut ya da "Stokta" satırına dokun; yalnız o malzeme gelir. Raf boşsa kırmızı "STOKTA YOK" çıkar.',
+      'Miktarı kontrol et, EKLE. Yanlışsa "Rezervi kaldır".',
       'TÜKET\'e bas; malzeme stoktan düşer.',
     ],
     dikkat: 'TÜKET\'e bastıktan sonra geri alınamaz; miktarı kontrol et.',

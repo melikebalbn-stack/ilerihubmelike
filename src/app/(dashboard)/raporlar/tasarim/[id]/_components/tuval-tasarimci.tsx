@@ -26,7 +26,8 @@ import { DateField } from '@/components/ui/date-field'
 import {
   AlignCenter, AlignCenterHorizontal, AlignCenterVertical, AlignEndHorizontal, AlignEndVertical,
   AlignHorizontalSpaceAround, AlignLeft, AlignRight, AlignStartHorizontal, AlignStartVertical,
-  AlignVerticalSpaceAround, FileText, Loader2, Maximize2, MoveHorizontal, MoveVertical, Play, Plus, Save, Trash2, Upload,
+  AlignVerticalSpaceAround, FileText, Loader2, Maximize2, MoveHorizontal, MoveVertical,
+  PanelRightClose, PanelRightOpen, Play, Plus, Save, Trash2, Upload,
 } from 'lucide-react'
 import { tuvalRender } from '@/lib/rapor/tuval-render'
 import { tuvalDogrula } from '@/lib/rapor/sablon-dogrula'
@@ -52,6 +53,8 @@ const FN_AD: Record<string, string> = { topla: 'Toplam', ortalama: 'Ortalama', s
 const BANT_SIRASI: TuvalBantId[] = ['rb', 'sb', 'gb', 'dt', 'gs', 'rs', 'sa']
 const TIP_ADI: Record<TuvalOge['tip'], string> = { metin: 'Metin', alan: 'Alan', toplam: 'Toplam alanı', gorsel: 'Görsel', cizgi: 'Çizgi', kutu: 'Kutu', tablo: 'Tablo', grafik: 'Grafik' }
 const YAZILI: TuvalOge['tip'][] = ['metin', 'alan', 'toplam']
+/** Sağ panelin açık/kapalı tercihi (tarayıcı başına). */
+const SAG_PANEL_ANAHTAR = 'rapor.tuval.sagPanel'
 /** Hazır renk paleti (kurumsal + durum renkleri). */
 const PALET: [string, string][] = [['#0F172A', 'Siyah'], [NAVY, 'Lacivert'], ['#64748B', 'Gri'], ['#DC2626', 'Kırmızı'], ['#15803D', 'Yeşil'], ['#EA580C', 'Turuncu']]
 
@@ -97,6 +100,21 @@ export default function TuvalTasarimci({ sablon, icerik, alanlar, tuval: ilkTuva
   const [hatalar, setHatalar] = useState<string[]>([])
   const [kayitHata, setKayitHata] = useState<CevrilmisHata | null>(null)
   const [yukleniyor, setYukleniyor] = useState(false)
+  /**
+   * Sağ panel açık mı. A4 yatayda tuval 950px — 300px'lik panelle birlikte ekrana sığmıyor,
+   * bu yüzden katlanabilir. Tercih tarayıcıda saklanır (sunucuda render ederken varsayılan açık;
+   * localStorage okuması effect'te, aksi halde hidrasyon uyuşmazlığı olur).
+   */
+  const [sagAcik, setSagAcik] = useState(true)
+  useEffect(() => {
+    try { if (localStorage.getItem(SAG_PANEL_ANAHTAR) === '0') setSagAcik(false) } catch { /* özel sekme */ }
+  }, [])
+  const sagPaneliDegistir = useCallback(() => {
+    setSagAcik((a) => {
+      try { localStorage.setItem(SAG_PANEL_ANAHTAR, a ? '0' : '1') } catch { /* özel sekme */ }
+      return !a
+    })
+  }, [])
   const sayacRef = useRef(1)
   const dosyaRef = useRef<HTMLInputElement>(null)
 
@@ -523,7 +541,7 @@ export default function TuvalTasarimci({ sablon, icerik, alanlar, tuval: ilkTuva
         </div>
       )}
 
-      <div className="grid gap-3 xl:grid-cols-[220px_1fr_300px]">
+      <div className={`grid gap-3 ${sagAcik ? 'xl:grid-cols-[220px_1fr_300px]' : 'xl:grid-cols-[220px_1fr_2.5rem]'}`}>
         {/* SOL — alan paleti */}
         <aside className="bg-white border rounded-lg p-3 max-h-[calc(100vh-10rem)] overflow-auto">
           <h4 className="m-0 mb-1.5 text-[11px] font-semibold text-slate-500 tracking-wide">ALANLAR · {sablon.veriSetiAd}</h4>
@@ -634,8 +652,26 @@ export default function TuvalTasarimci({ sablon, icerik, alanlar, tuval: ilkTuva
           </p>
         </main>
 
-        {/* SAĞ — özellikler */}
+        {/* SAĞ — özellikler (katlanabilir: A4 yatayda tuvale yer açmak için) */}
+        {!sagAcik ? (
+          <aside className="bg-white border rounded-lg p-1 flex xl:flex-col items-center justify-start gap-2">
+            <button
+              type="button" onClick={sagPaneliDegistir} title="Ayarlar panelini aç"
+              className="flex xl:flex-col items-center gap-1.5 rounded px-2 py-2 text-[11px] font-semibold tracking-wide text-slate-500 hover:bg-slate-100"
+            >
+              <PanelRightOpen className="h-4 w-4 shrink-0" />
+              <span className="xl:[writing-mode:vertical-rl] xl:rotate-180">{secili || coklu ? 'ÖZELLİKLER' : 'SAYFA AYARLARI'}</span>
+              {(secili || coklu) && <span className="h-1.5 w-1.5 rounded-full bg-[#2AA5C7] shrink-0" title="Seçili öğe var" />}
+            </button>
+          </aside>
+        ) : (
         <aside className="bg-white border rounded-lg p-3 max-h-[calc(100vh-10rem)] overflow-auto text-sm">
+          <button
+            type="button" onClick={sagPaneliDegistir} title="Ayarlar panelini kapat"
+            className="float-right -mt-1 -mr-1 rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+          >
+            <PanelRightClose className="h-4 w-4" />
+          </button>
           {coklu ? (
             <>
               <h4 className="m-0 mb-2 text-[11px] font-semibold text-slate-500 tracking-wide">{secililer.length} ÖĞE SEÇİLİ</h4>
@@ -878,6 +914,7 @@ export default function TuvalTasarimci({ sablon, icerik, alanlar, tuval: ilkTuva
             </>
           )}
         </aside>
+        )}
       </div>
 
       {/* Önizleme */}

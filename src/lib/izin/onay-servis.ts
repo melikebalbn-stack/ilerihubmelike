@@ -61,13 +61,15 @@ export async function onayListesi(ctx: Baglam, sekme: 'bekleyen' | 'karar') {
   if (sekme === 'bekleyen') {
     const [yonetici, iv] = await Promise.all([
       prisma.izinTalep.findMany({
-        where: { durum: 'BEKLIYOR_YONETICI', OR: [{ onayci1Id: ctx.userId }, { onayci2Id: ctx.userId }, { onayci3Id: ctx.userId }], ...kendisiHaric },
+        // İV tüm yönetici-aşaması talepleri de görür (belge görüntüleme — her aşamada); yönetici yalnız kendi onaycısı olduklarını.
+        where: { durum: 'BEKLIYOR_YONETICI', ...(ctx.ivMi ? {} : { OR: [{ onayci1Id: ctx.userId }, { onayci2Id: ctx.userId }, { onayci3Id: ctx.userId }] }), ...kendisiHaric },
         orderBy: { createdAt: 'asc' }, take: 200, select: TALEP_SEC,
       }),
       ctx.ivMi ? prisma.izinTalep.findMany({ where: { durum: 'BEKLIYOR_IV', ...kendisiHaric }, orderBy: { createdAt: 'asc' }, take: 200, select: TALEP_SEC }) : [],
     ])
     const kalemler = [
-      ...(await Promise.all(yonetici.map(async (t) => ({ ...onayKalemi(await kalemGirdisi(t), false), kademe: 'YONETICI' as Kademe })))),
+      // yönetici-aşaması kalemler: İV görünümünde tür + belge açık (iv=ctx.ivMi), yöneticide kapalı.
+      ...(await Promise.all(yonetici.map(async (t) => ({ ...onayKalemi(await kalemGirdisi(t), ctx.ivMi), kademe: 'YONETICI' as Kademe })))),
       ...(await Promise.all(iv.map(async (t) => ({ ...onayKalemi(await kalemGirdisi(t), true), kademe: 'IV' as Kademe })))),
     ]
     return { kalemler, ivMi: ctx.ivMi }
@@ -120,7 +122,8 @@ export async function onayDetay(ctx: Baglam, id: string) {
     kidem: kidem.yil >= 1 ? `${kidem.yil} yıl` : `${kidem.ay} ay`,
     kademe: 'kademe' in yetki ? yetki.kademe : null,
     islemYapabilir: 'kademe' in yetki,
-    engel: 'hata' in yetki ? yetki.hata : null,
+    // İV yalnızca görüntülüyorsa (onaycısı değil) engel mesajı gösterme — belge/detay görünür, işlem butonu çıkmaz.
+    engel: 'hata' in yetki ? (ctx.ivMi ? null : yetki.hata) : null,
     bakiye,
     onayAdimlari: t.onaylar.map((o) => ({ kademe: o.kademe, karar: o.karar, zaman: o.createdAt.toISOString(), gerekce: o.karar === 'ATLANDI' ? o.gerekce : null })),
     ekipTablosu: await ekipTablosu(t.personnelId, t.personnel.adSoyad, g(t.baslangic)!, g(t.bitis)!, t),

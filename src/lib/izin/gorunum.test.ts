@@ -77,7 +77,9 @@ describe('izin API rota taraması', () => {
     const oku = (m: string) => fs.readFileSync(path.join(KOK, 'src/lib/izin', `${m}.ts`), 'utf8')
     const onay = oku('onay-servis')
     // Onay listesi/detayındaki her kalem onayKalemi'nden geçer; ekip tablosu ekipIzinGunu'ndan
-    expect(onay).toMatch(/onayKalemi\(await kalemGirdisi\(t\), false\)/) // yönetici kademesi = kapalı şekil
+    // Yönetici-aşaması kalemin açıklığı YALNIZ ctx.ivMi'ye bağlı: İV değilse (gerçek yönetici) kapalı şekil, tür/belge sızmaz.
+    expect(onay).toMatch(/onayKalemi\(await kalemGirdisi\(t\), ctx\.ivMi\)/)
+    expect(onay).not.toMatch(/onayKalemi\(await kalemGirdisi\(t\), true\)[^\n]*YONETICI/) // yönetici kademesi hiçbir zaman koşulsuz açık değil
     expect(onay).toMatch(/ekipIzinGunu\(/)
     expect(onay).not.toMatch(/turAd:\s*t\.tur\.ad[^\n]*\n[^\n]*return/) // tür yalnız kalemGirdisi → onayKalemi
     const talep = oku('talep-servis')

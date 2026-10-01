@@ -7,6 +7,7 @@ import type { NextRequest } from 'next/server';
 import { getToken } from 'next-auth/jwt';
 import { normalizeDept } from '@/lib/auth/personnel-access';
 import { isInsanVarliklari } from '@/lib/auth/personnel-access';
+import { isAyarlarBolumu } from '@/lib/auth/ayarlar-erisim';
 
 function publicBase(req: NextRequest) {
   // nginx `Host $host` set ediyor → host header = public host (hub.ilerigroup.com).
@@ -73,6 +74,12 @@ export async function middleware(req: NextRequest) {
                          ou.includes('kalite') || ou.includes('laboratuvar');
         if (isKalite) {
           continue; // Kalite departmanı erişebilir
+        }
+        // İnsan Varlıkları / İdari İşler de erişir (01.10.2026) — sayfa içinde
+        // yalnız kendilerine açılan altı bölümü görürler. Kural tek kaynakta:
+        // lib/auth/ayarlar-erisim.ts · isAyarlarBolumu.
+        if (isAyarlarBolumu((token?.department as string) || '', (token?.ou as string) || '')) {
+          continue;
         }
       }
 

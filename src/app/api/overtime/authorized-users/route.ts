@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { apiSuccess, apiError, apiBadRequest } from '@/lib/api-response'
 import { requireUser } from '@/lib/auth/require-user'
 import { resolveAllowedDepts } from '@/lib/overtime-performance'
+import { isAyarlarBolumu } from '@/lib/auth/ayarlar-erisim'
 
 /**
  * GET: Yetkili kullanıcıları listele veya mevcut kullanıcının yetkisini kontrol et
@@ -33,7 +34,12 @@ export async function GET(request: NextRequest) {
     }
 
     // Admin kontrolü (liste görüntüleme)
-    if (!session.user.permissions?.includes('overtime.report.all')) {
+    // 01.10.2026: İnsan Varlıkları / İdari İşler de bu LİSTEYİ yönetebilir —
+    // Ayarlar > Mesai Formu Yetkilendirme onlara açıldı. KAPSAM SINIRI: bu uç
+    // yalnız "kim mesai formu açabilir" listesidir; 16.09.2026'da daraltılan
+    // form GÖRME/ONAYLAMA kapsamı (overtime.report.all) aynen durur.
+    const ofisBolumu = isAyarlarBolumu(session.user.department, session.user.ou)
+    if (!ofisBolumu && !session.user.permissions?.includes('overtime.report.all')) {
       return apiError('Bu işlem için yetkiniz yok', 403)
     }
 
@@ -92,7 +98,12 @@ export async function POST(request: NextRequest) {
     // PR-Y2.5-overtime: requireUser — admin role check
     const { session, user, error } = await requireUser()
     if (error) return error
-    if (!session.user.permissions?.includes('overtime.report.all')) {
+    // 01.10.2026: İnsan Varlıkları / İdari İşler de bu LİSTEYİ yönetebilir —
+    // Ayarlar > Mesai Formu Yetkilendirme onlara açıldı. KAPSAM SINIRI: bu uç
+    // yalnız "kim mesai formu açabilir" listesidir; 16.09.2026'da daraltılan
+    // form GÖRME/ONAYLAMA kapsamı (overtime.report.all) aynen durur.
+    const ofisBolumu = isAyarlarBolumu(session.user.department, session.user.ou)
+    if (!ofisBolumu && !session.user.permissions?.includes('overtime.report.all')) {
       return apiError('Bu işlem için yetkiniz yok', 403)
     }
 
@@ -155,7 +166,12 @@ export async function DELETE(request: NextRequest) {
     // PR-Y2.5-overtime: requireUser — admin role check
     const { session, user, error } = await requireUser()
     if (error) return error
-    if (!session.user.permissions?.includes('overtime.report.all')) {
+    // 01.10.2026: İnsan Varlıkları / İdari İşler de bu LİSTEYİ yönetebilir —
+    // Ayarlar > Mesai Formu Yetkilendirme onlara açıldı. KAPSAM SINIRI: bu uç
+    // yalnız "kim mesai formu açabilir" listesidir; 16.09.2026'da daraltılan
+    // form GÖRME/ONAYLAMA kapsamı (overtime.report.all) aynen durur.
+    const ofisBolumu = isAyarlarBolumu(session.user.department, session.user.ou)
+    if (!ofisBolumu && !session.user.permissions?.includes('overtime.report.all')) {
       return apiError('Bu işlem için yetkiniz yok', 403)
     }
 

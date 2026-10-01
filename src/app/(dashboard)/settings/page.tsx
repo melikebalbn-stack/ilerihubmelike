@@ -19,6 +19,7 @@ import { useSession } from "next-auth/react"
 import { toast } from "sonner"
 import { NotificationToggle } from "@/components/pwa/notification-permission"
 import { CollapsibleSection } from "@/components/settings/CollapsibleSection"
+import { isAyarlarBolumu } from "@/lib/auth/ayarlar-erisim"
 import {
   DashboardSettingsPanel,
   AnnouncementSettingsPanel,
@@ -84,15 +85,22 @@ export default function SettingsPage() {
   const isAdmin = ['ADMIN', 'SUPER_ADMIN'].includes(userRole)
   // KPI-AYAR: KPI paneli yalnız kpi.manage yetkisi olanlara görünür
   const canManageKpi = ((session?.user as any)?.permissions ?? []).includes('kpi.manage')
-  // Menü yönetimi: HR/Admin rolü VEYA İnsan Varlıkları bölümü (server canManageMenu ile aynı; API zaten 403 çift emniyet)
-  const canManageMenu =
-    ['HR_MANAGER', 'ADMIN', 'SUPER_ADMIN'].includes(userRole) ||
-    userDepartment.normalize('NFD').replace(/[̀-ͯ]/g, '').includes('insan varl')
   const isKaliteUser = !isAdmin && (
     userRole === 'QUALITY_MANAGER' ||
     userDepartment.includes('kalite') || userDepartment.includes('laboratuvar') ||
     userOu.includes('kalite') || userOu.includes('laboratuvar')
   )
+  // İnsan Varlıkları / İdari İşler (01.10.2026): Ayarlar'a girerler ama yalnız
+  // kendilerine açılan altı bölümü görürler. Kural tek kaynakta — ayarlar-erisim.ts;
+  // sunucu tarafı guard'lar da (layout, middleware, API uçları) aynı kuralı uygular.
+  const isOfisBolumu = isAyarlarBolumu(
+    (session?.user as any)?.department,
+    (session?.user as any)?.ou,
+  )
+  const isOfisKullanicisi = !isAdmin && !isKaliteUser && isOfisBolumu
+  // Menü yönetimi: HR/Admin rolü VEYA İV/İdari İşler bölümü (server canManageMenu
+  // ile aynı; API zaten 403 ile çift emniyet)
+  const canManageMenu = ['HR_MANAGER', 'ADMIN', 'SUPER_ADMIN'].includes(userRole) || isOfisBolumu
 
   // Data states
   const [locations, setLocations] = useState<Location[]>([])
@@ -1111,8 +1119,11 @@ export default function SettingsPage() {
         </>
       )}
 
-      {!isKaliteUser && <>
+      {/* ADMIN bloğu + İV/İdari İşler'e açılan altı bölüm. Yalnız admin'e ait
+          olanlar içeride tek tek {isAdmin && (...)} ile sarılı. */}
+      {(isAdmin || isOfisKullanicisi) && <>
       {/* Dashboard Ayarları */}
+      {isAdmin && (
       <CollapsibleSection
         title="Dashboard Ayarları"
         description="Sistem durumu ve genel ayarlar"
@@ -1130,6 +1141,7 @@ export default function SettingsPage() {
           onSaveSystemNotice={handleSaveSystemNotice}
         />
       </CollapsibleSection>
+      )}
 
       {/* Yemek Menüsü — yalnız yetkili (rol HR/Admin VEYA İnsan Varlıkları bölümü) */}
       {canManageMenu && (
@@ -1171,6 +1183,7 @@ export default function SettingsPage() {
       </CollapsibleSection>
 
       {/* IT Ticket Ayarları */}
+      {isAdmin && (
       <CollapsibleSection
         title="IT Ticket Ayarları"
         description="IT destek talep kategorileri ve ayarları"
@@ -1201,8 +1214,10 @@ export default function SettingsPage() {
           onSetTeamLead={handleSetTeamLead}
         />
       </CollapsibleSection>
+      )}
 
       {/* Kalibrasyon Ayarları */}
+      {isAdmin && (
       <CollapsibleSection
         title="Kalibrasyon Ayarları"
         description="Kalibrasyon modülü için gerekli tanımlamalar"
@@ -1252,6 +1267,7 @@ export default function SettingsPage() {
           onDeleteItem={handleDelete}
         />
       </CollapsibleSection>
+      )}
 
       {/* Öneri Sistemi Ayarları */}
       <CollapsibleSection
@@ -1275,6 +1291,7 @@ export default function SettingsPage() {
       </CollapsibleSection>
 
       {/* Planlı Görevler Ayarları */}
+      {isAdmin && (
       <CollapsibleSection
         title="Planlı Görevler Ayarları"
         description="Planlı görevler modülü için kategori tanımlamaları"
@@ -1300,6 +1317,7 @@ export default function SettingsPage() {
           onDeleteEmail={handleDeleteTaskNotificationEmail}
         />
       </CollapsibleSection>
+      )}
 
       {/* KPI-AYAR: yalnız kpi.manage yetkisi olanlara görünür */}
       {canManageKpi && (
@@ -1524,6 +1542,7 @@ export default function SettingsPage() {
       </CollapsibleSection>
 
       {/* Yangın Güvenliği Ayarları */}
+      {isAdmin && (
       <CollapsibleSection
         title="Yangın Güvenliği Ayarları"
         description="Yangın güvenliği modülü için gerekli tanımlamalar"
@@ -1538,8 +1557,10 @@ export default function SettingsPage() {
           <p className="text-sm">Bu bölümde ekipman tipleri, kontrol periyotları vb. ayarlar yer alacak</p>
         </div>
       </CollapsibleSection>
+      )}
 
       {/* E-Posta Ayarları */}
+      {isAdmin && (
       <CollapsibleSection
         title="E-Posta Ayarları"
         description="SMTP yapılandırması ve bildirim ayarları"
@@ -1553,8 +1574,10 @@ export default function SettingsPage() {
           onSendTestEmail={handleSendTestEmail}
         />
       </CollapsibleSection>
+      )}
 
       {/* Active Directory Senkronizasyonu */}
+      {isAdmin && (
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -1645,6 +1668,7 @@ export default function SettingsPage() {
           </div>
         </CardContent>
       </Card>
+      )}
       </>}
 
       {/* Add Dialog */}

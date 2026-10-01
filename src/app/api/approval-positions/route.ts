@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { isAyarlarBolumu } from '@/lib/auth/ayarlar-erisim'
 import { apiSuccess, apiError, apiUnauthorized, apiBadRequest } from '@/lib/api-response'
 
 /**
@@ -51,7 +52,10 @@ export async function PUT(request: NextRequest) {
       where: { email: session.user.email },
     })
 
-    if (!user || !['SUPER_ADMIN', 'ADMIN'].includes(user.role)) {
+    // 01.10.2026: İnsan Varlıkları / İdari İşler de pozisyon ataması yapabilir.
+    // Bu uç yalnız ONAYCI ATAMASIDIR — mesai formu verisine erişim açmaz.
+    const ofisBolumu = isAyarlarBolumu(user?.department, session.user.ou)
+    if (!user || (!ofisBolumu && !['SUPER_ADMIN', 'ADMIN'].includes(user.role))) {
       return apiError('Bu işlem için yetkiniz yok', 403)
     }
 

@@ -7,6 +7,7 @@ import { useSession, signOut } from "next-auth/react"
 import { cn } from "@/lib/utils"
 import { canAccessPersonnel } from "@/lib/auth/personnel-access"
 import { canAccessKalite } from "@/lib/auth/kalite-access"
+import { isAyarlarBolumu } from "@/lib/auth/ayarlar-erisim"
 import { normalizeTr } from "@/lib/normalize-tr"
 import {
   Home,
@@ -887,6 +888,12 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     if (itemDepartments.length > 0 && itemDepartments.some(dept =>
       userDepartment.toLowerCase().includes(dept.toLowerCase())
     )) return true
+
+    // Ayarlar — İnsan Varlıkları / İdari İşler de görür (01.10.2026). Ayrı
+    // dalda: yukarıdaki `departments` eşleşmesi düz toLowerCase() yaptığı için
+    // "İDARİ İŞLER" Türkçe "İ" yüzünden tutmuyor. Kural tek kaynakta
+    // (ayarlar-erisim.ts) ve layout/middleware ile aynı.
+    if ((item as { href?: string }).href === '/settings' && isAyarlarBolumu(userDepartment, userOu)) return true
 
     return false
   })

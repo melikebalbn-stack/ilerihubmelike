@@ -4,6 +4,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { isInsanVarliklari } from '@/lib/auth/personnel-access'
+import { isAyarlarBolumu } from '@/lib/auth/ayarlar-erisim'
 import { ustDepartmanBul, type KutuDugumu } from '@/lib/org/ust-departman'
 
 export const dynamic = 'force-dynamic'
@@ -12,7 +13,9 @@ const ALLOWED_ROLES = ['ADMIN', 'HR_MANAGER', 'SUPER_ADMIN']
 
 function hasAccess(role: string, department?: string | null): boolean {
   if (ALLOWED_ROLES.includes(role)) return true
-  return isInsanVarliklari(department)
+  // 01.10.2026: İdari İşler de İV Ayarları ekranını kullanabilir (Ayarlar'da
+  // o bölüm onlara açıldı). Tek kaynak: lib/auth/ayarlar-erisim.ts.
+  return isInsanVarliklari(department) || isAyarlarBolumu(department, null)
 }
 
 export async function GET(request: NextRequest) {

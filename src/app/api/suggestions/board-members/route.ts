@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireSession } from '@/lib/auth/require-session'
 import { requireUser } from '@/lib/auth/require-user'
+import { isAyarlarBolumu } from '@/lib/auth/ayarlar-erisim'
 
 // GET - Öneri Kurulu üyelerini listele
 export async function GET() {
@@ -30,7 +31,10 @@ export async function POST(request: NextRequest) {
     // rol ∈ {SUPER_ADMIN, ADMIN, HR_MANAGER}. Yeni permission anahtarı türetilmedi.
     const { user, error } = await requireUser()
     if (error) return error
-    if (!['SUPER_ADMIN', 'ADMIN', 'HR_MANAGER'].includes(user.role || 'EMPLOYEE')) {
+    // 01.10.2026: İnsan Varlıkları / İdari İşler bölümleri de yönetebilir
+    // (Ayarlar > Öneri Sistemi onlara açıldı). Tek kaynak: ayarlar-erisim.ts.
+    const ofisBolumu = isAyarlarBolumu(user.department, (user as { ou?: string | null }).ou)
+    if (!ofisBolumu && !['SUPER_ADMIN', 'ADMIN', 'HR_MANAGER'].includes(user.role || 'EMPLOYEE')) {
       return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
     }
 
@@ -89,7 +93,10 @@ export async function DELETE(request: NextRequest) {
     // POST ile AYNI kapı.
     const { user, error } = await requireUser()
     if (error) return error
-    if (!['SUPER_ADMIN', 'ADMIN', 'HR_MANAGER'].includes(user.role || 'EMPLOYEE')) {
+    // 01.10.2026: İnsan Varlıkları / İdari İşler bölümleri de yönetebilir
+    // (Ayarlar > Öneri Sistemi onlara açıldı). Tek kaynak: ayarlar-erisim.ts.
+    const ofisBolumu = isAyarlarBolumu(user.department, (user as { ou?: string | null }).ou)
+    if (!ofisBolumu && !['SUPER_ADMIN', 'ADMIN', 'HR_MANAGER'].includes(user.role || 'EMPLOYEE')) {
       return NextResponse.json({ error: 'Bu işlem için yetkiniz yok' }, { status: 403 })
     }
 

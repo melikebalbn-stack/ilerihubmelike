@@ -10,7 +10,7 @@ import { cn } from '@/lib/utils'
 type Kalem = {
   id: string; personnelId: string; personelAd: string; sicil: string | null; bolum: string | null; durum: string
   baslangic: string; bitis: string; baslangicYarim: string | null; bitisYarim: string | null; gunSayisi: number; olusturma: string
-  sahipsiz: boolean; ekipCakisma: number; talepEden: string | null; etiket: 'İzin'; kademe: 'YONETICI' | 'IV'
+  sahipsiz: boolean; ekipCakisma: number; talepEden: string | null; etiket: 'İzin'; kademe: 'YONETICI' | 'IV'; kendi?: boolean
   dakika: number | null; baslangicSaat: string | null; bitisSaat: string | null
   iv?: { turAd: string; not: string | null; belgeler: { id: string; ad: string; mime: string; boyut: number }[] }
   kararim?: { karar: string; not: string | null; zaman: string }
@@ -114,7 +114,8 @@ export function OnayClient({ ivMi, ilkSekme }: { ivMi: boolean; ilkSekme: 'bekle
                 </div>
                 <div className="flex flex-wrap gap-1.5 text-xs">
                   {k.kademe === 'IV' && <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-slate-600">İV kademesi</span>}
-                  {k.kademe === 'YONETICI' && ivMi && <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-slate-500">Yönetici onayında · görüntüleme</span>}
+                  {k.kademe === 'YONETICI' && ivMi && !k.kendi && <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-slate-500">Yönetici onayında · görüntüleme</span>}
+                  {k.kendi && <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-slate-500">Kendi talebiniz · görüntüleme</span>}
                   {k.sahipsiz && <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-amber-800">Sahipsiz — yönetici çözülemedi</span>}
                   {k.kararim && <span className={cn('rounded-full border px-2 py-0.5', k.kararim.karar === 'ONAY' ? 'border-blue-200 bg-blue-50 text-blue-800' : 'border-slate-200 bg-slate-100 text-slate-600')}>{k.kararim.karar === 'ONAY' ? 'Onayladınız' : 'Reddettiniz'}</span>}
                 </div>

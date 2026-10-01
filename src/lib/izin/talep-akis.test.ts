@@ -257,7 +257,9 @@ describe('onay kuralları', () => {
   it('kendi talebini onaylama YOK — İV kendi talebini İV kademesinde onaylayamaz', async () => {
     db.t.izinTalep.push({ id: 'k1', personnelId: 'p-iv', turId: 't-EVLILIK', durum: 'BEKLIYOR_IV', baslangic: d('2026-11-02'), bitis: d('2026-11-04'), baslangicYarim: null, bitisYarim: null, gunSayisi: 3, onayci1Id: null, onayci2Id: null, onayci3Id: null, talepEdenId: 'u-iv', createdAt: new Date() })
     await expect(kararVer(IV, 'k1', { karar: 'ONAY' })).rejects.toThrow('Kendi izin talebinizi onaylayamazsınız')
-    expect((await onayListesi(IV, 'bekleyen')).kalemler.map((k) => k.id)).not.toContain('k1')
+    // İV kendi talebini onay ekranında GÖRÜR (belge görüntüleme), "kendi talebiniz" işaretiyle — ama onaylayamaz (yukarıda reddedildi).
+    const kendiKalem = (await onayListesi(IV, 'bekleyen')).kalemler.find((k) => k.id === 'k1')
+    expect(kendiKalem?.kendi).toBe(true)
   })
   it('red gerekçesi zorunlu; gerekçeyle red çalışana gerekçeli mail', async () => {
     const { id } = await talepOlustur(CALISAN, { turId: 't-EVLILIK', baslangic: '2026-11-02', bitis: '2026-11-04' })

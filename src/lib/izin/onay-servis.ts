@@ -57,7 +57,9 @@ async function kalemGirdisi(t: NonNullable<TalepSatiri>): Promise<OnayKalemiGird
 // ── Liste ────────────────────────────────────────────────────────────────────
 
 export async function onayListesi(ctx: Baglam, sekme: 'bekleyen' | 'karar') {
-  const kendisiHaric = ctx.personnelId ? { personnelId: { not: ctx.personnelId } } : {}
+  // Yönetici kendi talebini onay ekranında görmez (kendisiHaric). İV ise her talebi (kendi talebi dahil)
+  // GÖRÜNTÜLER — belge erişimi için; kendini onaylama onayYetkisi'nde yine engelli.
+  const kendisiHaric = ctx.personnelId && !ctx.ivMi ? { personnelId: { not: ctx.personnelId } } : {}
   if (sekme === 'bekleyen') {
     const [yonetici, iv] = await Promise.all([
       prisma.izinTalep.findMany({
@@ -69,8 +71,8 @@ export async function onayListesi(ctx: Baglam, sekme: 'bekleyen' | 'karar') {
     ])
     const kalemler = [
       // yönetici-aşaması kalemler: İV görünümünde tür + belge açık (iv=ctx.ivMi), yöneticide kapalı.
-      ...(await Promise.all(yonetici.map(async (t) => ({ ...onayKalemi(await kalemGirdisi(t), ctx.ivMi), kademe: 'YONETICI' as Kademe })))),
-      ...(await Promise.all(iv.map(async (t) => ({ ...onayKalemi(await kalemGirdisi(t), true), kademe: 'IV' as Kademe })))),
+      ...(await Promise.all(yonetici.map(async (t) => ({ ...onayKalemi(await kalemGirdisi(t), ctx.ivMi), kademe: 'YONETICI' as Kademe, kendi: t.personnelId === ctx.personnelId })))),
+      ...(await Promise.all(iv.map(async (t) => ({ ...onayKalemi(await kalemGirdisi(t), true), kademe: 'IV' as Kademe, kendi: t.personnelId === ctx.personnelId })))),
     ]
     return { kalemler, ivMi: ctx.ivMi }
   }

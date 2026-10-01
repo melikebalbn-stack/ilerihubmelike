@@ -18,6 +18,7 @@ type Talep = {
   id: string; tur: string; baslangic: string; bitis: string; baslangicYarim: string | null; bitisYarim: string | null
   gun: number; durum: string; durumMetni: string; adim: string; geriCekilebilir: boolean
   baslangicSaat: string | null; bitisSaat: string | null; dakika: number | null; belgeSayisi: number
+  belgeler?: { id: string; ad: string }[]
 }
 type Veri =
   | { bagli: false }
@@ -462,6 +463,14 @@ function Taleplerim({ talepler, degisti }: { talepler: Talep[]; degisti: () => v
             <span>{t.dakika ? `${saatFmt(t.dakika)} sa` : `${gunFmt(t.gun)} gün`}</span>
           </div>
           <div className="text-xs text-slate-500">{t.adim}</div>
+          {t.belgeler && t.belgeler.length > 0 && (
+            <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs">
+              <span className="text-slate-500">Belgeler:</span>
+              {t.belgeler.map((b) => (
+                <a key={b.id} href={`/api/izin/belge/${b.id}`} target="_blank" rel="noopener noreferrer" className="font-medium text-[#1B4F72] hover:underline">{b.ad}</a>
+              ))}
+            </div>
+          )}
           {t.geriCekilebilir && (
             <Button variant="outline" size="sm" onClick={() => geriCek(t.id)} disabled={calisan === t.id}>Talebi geri çek</Button>
           )}

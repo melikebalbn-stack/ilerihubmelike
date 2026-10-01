@@ -272,6 +272,7 @@ export async function izinlerim(ctx: Baglam, personnelId?: string | null) {
         id: true, baslangic: true, bitis: true, baslangicYarim: true, bitisYarim: true, gunSayisi: true, durum: true, aciklama: true,
         createdAt: true, iptalGerekcesi: true, iptalAt: true, tur: { select: { ad: true } },
         baslangicSaat: true, bitisSaat: true, dakika: true, _count: { select: { belgeler: true } },
+        belgeler: { select: { id: true, orijinalAd: true } },
         onaylar: { orderBy: { createdAt: 'asc' }, select: { kademe: true, karar: true, gerekce: true, createdAt: true } },
       },
     }),
@@ -312,6 +313,8 @@ export async function izinlerim(ctx: Baglam, personnelId?: string | null) {
     talepler: (listeGorur ? talepler : []).map((t) => ({
       id: t.id, tur: t.tur.ad, baslangic: g(t.baslangic), bitis: g(t.bitis), baslangicYarim: t.baslangicYarim, bitisYarim: t.bitisYarim,
       baslangicSaat: t.baslangicSaat, bitisSaat: t.bitisSaat, dakika: t.dakika, belgeSayisi: t._count.belgeler,
+      // Belge linkleri yalnız bu listeyi görenlere (kişinin kendisi + İV; yönetici bu listeyi almaz). Açma yetkisi /api/izin/belge'de.
+      belgeler: t.belgeler.map((b) => ({ id: b.id, ad: b.orijinalAd })),
       gun: Number(t.gunSayisi), durum: t.durum, durumMetni: DURUM_METNI[t.durum] ?? t.durum, adim: adimMetni(t), geriCekilebilir: geriCekilebilirMi(t),
     })),
   }

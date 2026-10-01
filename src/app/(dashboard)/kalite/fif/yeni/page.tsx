@@ -10,8 +10,8 @@ export const dynamic = 'force-dynamic'
  * Yeni FİF formu (FAZ B). ÖNCEDEN: liste sayfasındaki buton anında boş bir
  * TASLAK açıp detaya gidiyordu — vazgeçen her kullanıcı arkada boş kayıt ve
  * HARCANMIŞ kayıt numarası bırakıyordu (prod'da 4 tanesi birikmişti).
- * Artık kayıt YALNIZ "Kaydet"e basılınca (POST /api/kalite/fif) oluşur;
- * numara da o anda üretilir.
+ * Artık kayıt YALNIZ "Kaydet"e basılınca (POST /api/kalite/fif) oluşur.
+ * Paket 3: numara KSS "Kayda Al"da (onayda) verilir.
  */
 export default async function FifYeniPage() {
   const { error } = await requireSession()
@@ -26,7 +26,7 @@ export default async function FifYeniPage() {
         <div>
           <h1 className="text-2xl font-bold text-[#1B4F72]">Yeni FİF</h1>
           <p className="text-sm text-slate-500">
-            Kayıt numarası, Kaydet&apos;e bastığınızda verilir — vazgeçerseniz numara harcanmaz.
+            Kayıt numarası, FİF onaylandığında verilir.
           </p>
         </div>
       </div>

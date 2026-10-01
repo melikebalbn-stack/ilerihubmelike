@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireSession } from '@/lib/auth/require-session'
-import { canManageFif, fifKapsamindaMi } from '@/lib/quality/fif-access'
+import { canManageFif, fifDuzenleyebilirMi } from '@/lib/quality/fif-access'
 import { altKayitDuzenlenebilir } from '@/lib/quality/fif-durum'
 import { FifKokNedenKategori } from '@/generated/prisma'
 import { z } from 'zod'
@@ -27,7 +27,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params
   const fif = await prisma.fif.findUnique({ where: { id }, select: { id: true, createdById: true, hazirlayanUserId: true, sorumluBolumId: true, yayinlayanBolumId: true } })
   if (!fif) return NextResponse.json({ error: 'FİF bulunamadı' }, { status: 404 })
-  if (!(await fifKapsamindaMi(session, fif))) return NextResponse.json({ error: 'kapsam dışı' }, { status: 403 })
+  if (!(await fifDuzenleyebilirMi(session, fif))) return NextResponse.json({ error: 'kapsam dışı' }, { status: 403 })
   const [kokNedenler, besNedenler] = await Promise.all([
     prisma.fifKokNeden.findMany({ where: { fifId: id } }),
     prisma.fifBesNeden.findMany({ where: { fifId: id } }),
@@ -42,7 +42,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   const { id } = await params
   const fif = await prisma.fif.findUnique({ where: { id }, select: { id: true, durum: true, createdById: true, hazirlayanUserId: true, sorumluBolumId: true, yayinlayanBolumId: true } })
   if (!fif) return NextResponse.json({ error: 'FİF bulunamadı' }, { status: 404 })
-  if (!(await fifKapsamindaMi(session, fif))) return NextResponse.json({ error: 'kapsam dışı' }, { status: 403 })
+  if (!(await fifDuzenleyebilirMi(session, fif))) return NextResponse.json({ error: 'kapsam dışı' }, { status: 403 })
   if (!altKayitDuzenlenebilir({ userId, isManage: canManageFif(session) }, fif.durum)) {
     return NextResponse.json({ error: 'Bu durumda düzenleme yapılamaz' }, { status: 409 })
   }

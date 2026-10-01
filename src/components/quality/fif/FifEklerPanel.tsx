@@ -14,7 +14,6 @@ const KOK_KATEGORILER: { key: string; label: string }[] = [
   { key: 'YONETIM', label: 'Yönetim' }, { key: 'EMNIYET', label: 'Emniyet' }, { key: 'GUVENLIK', label: 'Güvenlik' },
 ]
 
-type Faaliyet = { id: string; sira: number; aciklama: string; hedefTarih: string | null; sonuc: string | null; aksiyonTuru: string | null }
 type Etkinlik = { madde: string; planlananTarih: string | null; gerceklesenTarih: string | null; uygun: boolean | null }
 type KokNeden = { kategori: string; aciklama: string }
 type BesNeden = { muhtemelSebep: string; neden1: string | null; neden2: string | null; neden3: string | null; neden4: string | null; neden5: string | null }
@@ -22,14 +21,20 @@ type Ek = { id: string; tip: string; dosyaYolu: string }
 
 const iso = (d: string | null) => (d ? d.slice(0, 10) : '')
 
+/**
+ * Ekler paneli. Paket 3b-2: "Faaliyet Sonuçları (ES)" sekmesi KALKTI — hedef tarih
+ * yalnız satırdaki "Ek Termin İste" (KSS onaylı) ile değişir. FİF geneli "Etkinlik"
+ * sekmesi (Kapatma + Tekrar Etmeme) yalnız ESKİ akıştaki kayıtlarda görünür; yeni
+ * akışta etkinlik satır bazında KSS kontrolüyle yapılır.
+ */
 export function FifEklerPanel({
-  fifId, durum, duzenlenebilir, faaliyetler, etkinlikler, kokNedenler, besNedenler, ekler,
+  fifId, durum, duzenlenebilir, eskiEtkinlikAkisi, etkinlikler, kokNedenler, besNedenler, ekler,
 }: {
-  fifId: string; durum: string; duzenlenebilir: boolean
-  faaliyetler: Faaliyet[]; etkinlikler: Etkinlik[]; kokNedenler: KokNeden[]; besNedenler: BesNeden[]; ekler: Ek[]
+  fifId: string; durum: string; duzenlenebilir: boolean; eskiEtkinlikAkisi: boolean
+  etkinlikler: Etkinlik[]; kokNedenler: KokNeden[]; besNedenler: BesNeden[]; ekler: Ek[]
 }) {
   const router = useRouter()
-  const [sekme, setSekme] = useState<'faaliyet' | 'etkinlik' | 'ek1' | 'ek2'>('etkinlik')
+  const [sekme, setSekme] = useState<'etkinlik' | 'ek1' | 'ek2'>(eskiEtkinlikAkisi ? 'etkinlik' : 'ek1')
   const [hata, setHata] = useState<string | null>(null)
   const [mesgul, setMesgul] = useState(false)
 
@@ -48,24 +53,6 @@ export function FifEklerPanel({
     const r = await fetch(`/api/kalite/fif/${fifId}/etkinlik`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ madde, planlananTarih: e.planlananTarih || null, gerceklesenTarih: e.gerceklesenTarih || null, uygun: e.uygun }),
-    })
-    const d = await r.json().catch(() => ({}))
-    setMesgul(false)
-    if (!r.ok) { setHata(d.error ?? 'Kayıt başarısız'); return }
-    router.refresh()
-  }
-
-  // ── ES (faaliyet sonuçları) ──
-  const [esRow, setEsRow] = useState<Record<string, { sonuc: string; hedefTarih: string; neden: string }>>(
-    Object.fromEntries(faaliyetler.map((f) => [f.id, { sonuc: f.sonuc ?? '', hedefTarih: iso(f.hedefTarih), neden: '' }])),
-  )
-  async function faaliyetKaydet(f: Faaliyet) {
-    const row = esRow[f.id]
-    setMesgul(true); setHata(null)
-    const body: Record<string, unknown> = { sira: f.sira, aciklama: f.aciklama, hedefTarih: row.hedefTarih || null, sonuc: row.sonuc || null }
-    if (row.sonuc === 'ES') body.ekTerminNedeni = row.neden
-    const r = await fetch(`/api/kalite/fif/${fifId}/faaliyet?faaliyetId=${f.id}`, {
-      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
     })
     const d = await r.json().catch(() => ({}))
     setMesgul(false)
@@ -117,15 +104,14 @@ export function FifEklerPanel({
   return (
     <div className="rounded-md border bg-white">
       <div className="flex gap-1 border-b px-2 pt-2 bg-slate-50">
-        {sekmeBtn('etkinlik', 'Etkinlik')}
-        {sekmeBtn('faaliyet', 'Faaliyet Sonuçları (ES)')}
+        {eskiEtkinlikAkisi && sekmeBtn('etkinlik', 'Etkinlik')}
         {sekmeBtn('ek1', 'Ek-1 Kök Neden')}
         {sekmeBtn('ek2', 'Ek-2 Fotoğraf')}
       </div>
       <div className="p-4 space-y-3">
         {hata && <p className="text-sm text-red-600">{hata}</p>}
 
-        {sekme === 'etkinlik' && (
+        {sekme === 'etkinlik' && eskiEtkinlikAkisi && (
           <div className="space-y-4">
             {durum !== 'ETKINLIK' && (
               <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
@@ -153,45 +139,6 @@ export function FifEklerPanel({
                   </div>
                 </div>
                 {!etkRo && <Button size="sm" className="bg-[#1B4F72]" disabled={mesgul} onClick={() => etkKaydet(m)}>Kaydet</Button>}
-              </div>
-            ))}
-          </div>
-        )}
-
-        {sekme === 'faaliyet' && (
-          <div className="space-y-3">
-            {faaliyetler.length === 0 ? <p className="text-xs text-slate-400">Faaliyet yok.</p> : faaliyetler.map((f) => (
-              <div key={f.id} className="border rounded p-3 space-y-2">
-                <div className="text-sm">
-                  #{f.sira} — {f.aciklama}
-                  {f.aksiyonTuru && (
-                    <span className="ml-2 rounded border px-1.5 py-0.5 text-[11px] text-slate-600">
-                      {f.aksiyonTuru === 'ACIL' ? 'Acil' : 'Kalıcı'}
-                    </span>
-                  )}
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                  <div>
-                    <Label className="text-xs">Sonuç</Label>
-                    <Select value={esRow[f.id]?.sonuc || 'none'} disabled={ro}
-                      onValueChange={(v) => setEsRow((p) => ({ ...p, [f.id]: { ...p[f.id], sonuc: v === 'none' ? '' : v } }))}>
-                      <SelectTrigger className="mt-1 h-9"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">—</SelectItem>
-                        <SelectItem value="YT">Yapılamadı (YT)</SelectItem>
-                        <SelectItem value="ES">Ek Süre (ES)</SelectItem>
-                        <SelectItem value="K">Kapandı (K)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  {esRow[f.id]?.sonuc === 'ES' && (
-                    <>
-                      <div><Label className="text-xs">Yeni Hedef Tarih *</Label><Input type="date" className="mt-1 h-9" value={esRow[f.id]?.hedefTarih ?? ''} disabled={ro} onChange={(e) => setEsRow((p) => ({ ...p, [f.id]: { ...p[f.id], hedefTarih: e.target.value } }))} /></div>
-                      <div><Label className="text-xs">Ek Termin Nedeni *</Label><Input className="mt-1 h-9" value={esRow[f.id]?.neden ?? ''} disabled={ro} onChange={(e) => setEsRow((p) => ({ ...p, [f.id]: { ...p[f.id], neden: e.target.value } }))} /></div>
-                    </>
-                  )}
-                </div>
-                {!ro && <Button size="sm" className="bg-[#1B4F72]" disabled={mesgul} onClick={() => faaliyetKaydet(f)}>Kaydet</Button>}
               </div>
             ))}
           </div>

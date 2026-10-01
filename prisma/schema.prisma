@@ -15369,7 +15369,7 @@ enum FifDurum {
   IPTAL
 }
 
-/// Faaliyet satırı sonucu: YT=yapılamadı/termin, ES=erken/süreç, K=kapandı (Rev 3).
+/// Faaliyet satırı sonucu: YT=yapılamadı/termin, ES=Ek Süre, K=kapandı (Rev 3).
 enum FifSonuc {
   YT
   ES
@@ -15407,12 +15407,53 @@ enum FifEkTip {
   SONRA
 }
 
+/// Faaliyet ek termin talebinin kararı (Paket 3). IPTAL: talep beklerken satır
+/// kapatıldı (sistem kapatır, kararNotu "Faaliyet kapatıldı").
+enum FifEkTerminDurum {
+  BEKLIYOR
+  ONAYLANDI
+  REDDEDILDI
+  IPTAL
+}
+
+/// FifGecmis satırının olay türü (Paket 3). Eski satırlarda NULL (= durum geçişi).
+enum FifGecmisOlay {
+  DURUM_DEGISTI
+  FAALIYET_KAPATILDI
+  FAALIYET_YENIDEN_ACILDI
+  EK_TERMIN_TALEP
+  EK_TERMIN_ONAY
+  EK_TERMIN_RED
+  /// Bekleyen talep, satır kapatıldığı için sistemce iptal edildi.
+  EK_TERMIN_IPTAL
+  ETKINLIK_KONTROL
+}
+
+/// FİF kaynağı (denetim/şikâyet/iç tespit vb.) — yönetilebilir liste (Paket 3).
+/// Eski serbest metin Fif.denetlemeAdi geçmiş kayıtlar için korunur.
+model FifKaynak {
+  id          String   @id @default(cuid())
+  ad          String
+  aktif       Boolean  @default(true)
+  sira        Int      @default(0)
+  createdAt   DateTime @default(now())
+  createdById String?
+  fifler      Fif[]
+
+  @@unique([ad], map: "FifKaynak_ad_key")
+}
+
 model Fif {
   id      String   @id @default(cuid())
   /// "FIF-2026-001" — yıl bazlı atomik sayaç (fif-no.ts, advisory lock, tx içinde).
-  kayitNo String   @unique
+  /// Paket 3: KSS "Kayda Al" anında verilir; o ana kadar NULL (unique çoklu NULL'a izin verir).
+  kayitNo String?  @unique
   tur     FifTur
   tarih   DateTime @default(now())
+
+  /// Kaynak (Paket 3) — FifKaynak listesinden. Kaynak silinirse form kalır, alan boşalır.
+  kaynakId String?
+  kaynak   FifKaynak? @relation(fields: [kaynakId], references: [id], onDelete: SetNull)
 
   // Bölümler — DepartmentDefinition FK (omurga). onDelete SetNull: bölüm silinse
   // form kalır, alan boşalır.
@@ -15436,6 +15477,7 @@ model Fif {
   /// KSS'nin kaydı aldığı an (adım 3). Kayıt no zaten oluşturmada verilir.
   kayitTarihi DateTime?
 
+  /// Eski serbest metin kaynak — Paket 3'ten itibaren kaynakId kullanılır; geçmiş kayıtlar için KALIR.
   denetlemeAdi      String?
   uygunsuzlukTanimi String?   @db.Text
   standartMadde     String?
@@ -15472,6 +15514,7 @@ model Fif {
   @@index([durum])
   @@index([sorumluBolumId])
   @@index([tarih])
+  @@index([kaynakId])
 }
 
 model FifFaaliyet {
@@ -15488,7 +15531,44 @@ model FifFaaliyet {
   parafUserId      String?
   parafTarihi      DateTime?
 
+  // ── Paket 3: satır bazlı sorumlu + termin + etkinlik ──
+  /// Faaliyet satırının sorumlusu — düz string (audit deseni, User FK yok).
+  sorumluUserId            String?
+  /// İlk verilen hedef tarih (ek terminlerden önce) — hedefTarih ek terminle değişir.
+  ilkHedefTarih            DateTime?
+  /// Etkinlik kontrol planı: faaliyet kapatma + 3 ay.
+  etkinlikPlanTarihi       DateTime?
+  /// Etkinlik hatırlatması gönderildi işareti (cron dedup).
+  etkinlikHatirlatmaTarihi DateTime?
+  etkinlikKontrolUserId    String?
+  etkinlikKontrolTarihi    DateTime?
+  etkinlikUygun            Boolean?
+
+  ekTerminler FifEkTermin[]
+  gecmis      FifGecmis[]
+
   @@index([fifId])
+  @@index([sorumluUserId])
+  @@index([etkinlikPlanTarihi])
+}
+
+/// Faaliyet ek termin talebi (Paket 3) — talep + karar. Kullanıcı alanları düz string.
+model FifEkTermin {
+  id                String           @id @default(cuid())
+  faaliyetId        String
+  faaliyet          FifFaaliyet      @relation(fields: [faaliyetId], references: [id], onDelete: Cascade)
+  talepEdenUserId   String
+  mevcutHedefTarih  DateTime?
+  istenenHedefTarih DateTime
+  neden             String           @db.Text
+  durum             FifEkTerminDurum @default(BEKLIYOR)
+  kararUserId       String?
+  kararTarihi       DateTime?
+  kararNotu         String?          @db.Text
+  createdAt         DateTime         @default(now())
+
+  @@index([faaliyetId])
+  @@index([durum])
 }
 
 model FifEtkinlik {
@@ -15544,17 +15624,23 @@ model FifEk {
 }
 
 /// FİF durum geçiş günlüğü (Faz 2). Her geçişte bir satır; userId düz string (audit deseni).
+/// Paket 3: faaliyet bazlı olaylar (kapatma, ek termin, etkinlik) faaliyetId + olay taşır.
 model FifGecmis {
-  id        String    @id @default(cuid())
-  fifId     String
-  fif       Fif       @relation(fields: [fifId], references: [id], onDelete: Cascade)
-  eskiDurum FifDurum?
-  yeniDurum FifDurum
-  userId    String?
-  aciklama  String?   @db.Text
-  createdAt DateTime  @default(now())
+  id         String         @id @default(cuid())
+  fifId      String
+  fif        Fif            @relation(fields: [fifId], references: [id], onDelete: Cascade)
+  eskiDurum  FifDurum?
+  yeniDurum  FifDurum
+  userId     String?
+  aciklama   String?        @db.Text
+  createdAt  DateTime       @default(now())
+  /// Faaliyet silinirse günlük kalır, bağ boşalır.
+  faaliyetId String?
+  faaliyet   FifFaaliyet?   @relation(fields: [faaliyetId], references: [id], onDelete: SetNull)
+  olay       FifGecmisOlay?
 
   @@index([fifId])
+  @@index([faaliyetId])
 }
 
 // ═══ Fatura Takip (Finans modülü) — Melike feat/fatura-takip ═══

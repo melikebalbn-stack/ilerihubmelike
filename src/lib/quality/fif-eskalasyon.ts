@@ -13,7 +13,7 @@
  * saatleri/tatiller) FİF eşiği de aynı takvime göre kayar — bilinçli tercih.
  */
 import type { IproTatilTip } from '@/lib/ipro/takvim-util'
-import { isCalismaGunu, type SlaCalismaAyari } from '@/lib/sla/calisma-takvimi'
+import { isCalismaGunu, duvarSaati, duvardanAn, type SlaCalismaAyari } from '@/lib/sla/calisma-takvimi'
 
 /** Seviye eşikleri (iş günü). Sıra ARTAN olmalı. */
 export const FIF_ESKALASYON_ESIKLERI = [5, 10, 15] as const
@@ -46,6 +46,33 @@ export function isGunuSayisi(
   return sayi
 }
 
+/** Kök neden analizi süresi (iş günü) — "Onaya Gönder"den itibaren. */
+export const FIF_KOK_NEDEN_IS_GUNU = 5
+
+/**
+ * Kök neden analizi son günü: baslangic'tan sonraki N'inci İŞ GÜNÜ (baslangic
+ * günü HARİÇ — isGunuSayisi ile aynı sayım, aynı SLA takvimi). Gün İstanbul
+ * saatine göre alınır (gece 00:00–03:00 gönderimi önceki UTC gününe kaymasın).
+ * `gecikti`: şu an son günün İstanbul 23:59'unu geçti mi.
+ */
+export function kokNedenSonTarihi(
+  baslangic: Date,
+  tatilMap: Map<string, IproTatilTip>,
+  ayar: SlaCalismaAyari,
+  simdi: Date,
+  isGunu: number = FIF_KOK_NEDEN_IS_GUNU,
+): { sonGun: Date; gecikti: boolean } {
+  const d = duvarSaati(baslangic)
+  const imlec = new Date(Date.UTC(d.yil, d.ay - 1, d.gun, 12))
+  let sayi = 0
+  for (let i = 0; i < AZAMI_TAKVIM_GUNU && sayi < isGunu; i++) {
+    imlec.setUTCDate(imlec.getUTCDate() + 1)
+    if (isCalismaGunu(imlec, tatilMap, ayar)) sayi++
+  }
+  const gunSonu = duvardanAn(imlec.getUTCFullYear(), imlec.getUTCMonth() + 1, imlec.getUTCDate(), 23, 59)
+  return { sonGun: imlec, gecikti: simdi.getTime() > gunSonu.getTime() }
+}
+
 /**
  * Gecikmeye göre seviye. Eşiğin altındaysa null (eskalasyon YOK).
  * En yüksek aşılan eşik kazanır → gecikme 12 iş günüyse seviye 2'dedir
@@ -59,9 +86,13 @@ export function eskalasyonSeviyesi(gecikmeIsGunu: number): FifEskalasyonSeviyesi
   return seviye
 }
 
-/** Bildirim başlığı — dedup anahtarı da bu (seviye başına tek mail). */
-export function eskalasyonKonusu(kayitNo: string, seviye: FifEskalasyonSeviyesi): string {
-  return `[FİF ${kayitNo}] Eskalasyon ${seviye} — faaliyet gecikmesi`
+/**
+ * Bildirim başlığı — tekrar gönderim (dedup) anahtarı da bu: seviye + gecikmeyi
+ * belirleyen HEDEF TARİH. Ek termin onayıyla hedef değişince anahtar değişir,
+ * yeni hedef de kaçırılırsa seviyeler (1 → 2 → 3) baştan başlar.
+ */
+export function eskalasyonKonusu(fifEtiketi: string, seviye: FifEskalasyonSeviyesi, hedefTarih: string): string {
+  return `[FİF ${fifEtiketi}] Eskalasyon ${seviye} — faaliyet gecikmesi (hedef ${hedefTarih})`
 }
 
 /** Seviye açıklaması (mail gövdesi). */

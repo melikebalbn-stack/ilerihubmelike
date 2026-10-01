@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireSession } from '@/lib/auth/require-session'
-import { fifKapsamindaMi, canManageFif } from '@/lib/quality/fif-access'
-import { fifInput, fifFaaliyetInput, yayilimGecerli } from '@/lib/quality/fif-validators'
+import { fifKapsamindaMi, fifDuzenleyebilirMi, canManageFif } from '@/lib/quality/fif-access'
+import { fifGuncelleInput, yayilimGecerli, type FifGuncelleInput } from '@/lib/quality/fif-validators'
 import { gecisYapabilirMi, hardDeleteEdilebilir } from '@/lib/quality/fif-durum'
-import { FifDurum, FifTur, type Prisma } from '@/generated/prisma'
-import { z } from 'zod'
+import { bolumOnaylayan } from '@/lib/quality/fif-zincir'
+import { fifKaynakDogrula } from '@/lib/quality/fif-kaynak'
+import { faaliyetKapaliMi } from '@/lib/quality/fif-termin'
+import { FifDurum, type Prisma } from '@/generated/prisma'
 
 export const dynamic = 'force-dynamic'
 
@@ -36,28 +38,17 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 }
 
 /**
- * PUT girişi — KISMİ: payload'da gelmeyen alan (undefined) YAZILMAZ (eskiden
- * `?? null` ile siliniyordu). Sistem alanları şemada YOK (zod bilinmeyen anahtarı
- * atar): durum, kayitNo, kssUserId, hazirlayanUserId, kapatmaTarihi.
- * `tur` yeniden tanımlı: zod v4'te `.default()` `.partial()` altında da uygulanır;
- * gönderilmeyen tür DUZELTICI'ye dönmemeli. Faaliyet satırı `id` taşıyabilir.
+ * PUT'ta istemcinin yazabildiği başlık alanları. Sistem alanları (durum, kayitNo,
+ * hazırlayan, KSS, onaylayanlar, kapatmaTarihi) burada YOK — fifGuncelleInput
+ * onları zaten atar; liste ikinci bekçi. Paket 3: kaynakId girdi; eski
+ * denetlemeAdi ve uygulama sorumlusu artık yazılmaz (kolonlar geçmiş için durur).
  */
-const fifGuncelleInput = fifInput
-  .omit({ hazirlayanUserId: true, kapatmaTarihi: true })
-  .partial()
-  .extend({
-    tur: z.nativeEnum(FifTur).optional(),
-    faaliyetler: z.array(fifFaaliyetInput.extend({ id: z.string().min(1).optional() })).optional(),
-  })
-
-/** Formun bugün gönderdiği başlık alanları — yalnız gelenler yazılır. */
-const BASLIK_ALANLARI = [
-  'tur', 'tarih', 'sorumluBolumId', 'yayinlayanBolumId',
-  'izlemeSorumlusuUserId', 'sorumluOnaylayanUserId', 'yayinlayanOnaylayanUserId',
-  'uygulamaSorumlusuUserId', 'takipSorumlusuUserId',
-  'denetlemeAdi', 'uygunsuzlukTanimi', 'standartMadde', 'ekTerminNedeni', 'kokNedenAnalizi',
+const DUZENLENEBILIR_ALANLAR = [
+  'tur', 'tarih', 'sorumluBolumId', 'yayinlayanBolumId', 'kaynakId',
+  'izlemeSorumlusuUserId',
+  'uygunsuzlukTanimi', 'standartMadde', 'kokNedenAnalizi',
   'kysDegisikligi', 'riskFirsatGuncelleme', 'ogrenilenDers', 'yayilimVarMi', 'yayilimAciklama',
-] as const satisfies readonly (keyof z.infer<typeof fifGuncelleInput>)[]
+] as const satisfies readonly (keyof FifGuncelleInput)[]
 
 /** Transaction içinden 4xx döndürmek için (rollback + anlamlı hata). */
 class FifIstekHatasi extends Error {
@@ -66,11 +57,14 @@ class FifIstekHatasi extends Error {
   }
 }
 
+const tarihEsit = (a: Date | null | undefined, b: Date | null | undefined) =>
+  (a ? a.getTime() : null) === (b ? b.getTime() : null)
+
 /**
  * PUT /api/kalite/fif/[id] — güncelle. Auth: kapsam (kendi/hazırlayan/bölüm; manage tümü).
- * KISMİ güncelleme (yukarı bkz.). Faaliyetler id bazında senkronlanır — eski
- * deleteMany + createMany paraf/sonuç/gerçekleşen tarihi siliyordu. Kök neden /
- * 5 neden / etkinlik listeleri eskisi gibi (verilirse) yerinde değiştirilir.
+ * KISMİ güncelleme: payload'da gelmeyen alan DOKUNULMAZ (eskiden `?? null` ile
+ * siliniyordu). Onaylayanlar istemciden alınmaz; bölüm değişirse omurgadan
+ * yeniden çözülür. Faaliyetler id bazında senkronlanır (paraf/sonuç korunur).
  * kayitNo/durum bu uçtan DEĞİŞMEZ. İPTAL için DELETE kullanılır.
  */
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -82,12 +76,12 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     where: { id },
     select: {
       id: true, durum: true, createdById: true, hazirlayanUserId: true, sorumluBolumId: true, yayinlayanBolumId: true,
-      yayilimVarMi: true, yayilimAciklama: true,
+      yayilimVarMi: true, yayilimAciklama: true, kaynakId: true,
     },
   })
   if (!mevcut) return NextResponse.json({ error: 'FİF bulunamadı' }, { status: 404 })
-  if (!(await fifKapsamindaMi(session, mevcut))) {
-    return NextResponse.json({ error: 'Bu FİF kapsamınızda değil' }, { status: 403 })
+  if (!(await fifDuzenleyebilirMi(session, mevcut))) {
+    return NextResponse.json({ error: 'Bu FİF\'i düzenleme yetkiniz yok' }, { status: 403 })
   }
   if (mevcut.durum === FifDurum.IPTAL) {
     return NextResponse.json({ error: 'İptal edilmiş FİF düzenlenemez' }, { status: 409 })
@@ -108,19 +102,48 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   )
   if (!yay.ok) return NextResponse.json({ error: yay.sebep }, { status: 400 })
 
+  // Kaynak: yalnız DEĞİŞİYORSA aktiflik aranır — sonradan pasife alınmış kaynağı
+  // taşıyan eski kayıt, başka alanlarını kaydedebilmeli.
+  if (d.kaynakId && d.kaynakId !== mevcut.kaynakId) {
+    const hata = await fifKaynakDogrula(d.kaynakId)
+    if (hata) return NextResponse.json({ error: hata }, { status: 400 })
+  }
+
   let updated
   try {
     updated = await prisma.$transaction(async (tx) => {
-      const baslik: Prisma.FifUncheckedUpdateInput = {}
-      for (const alan of BASLIK_ALANLARI) {
+      // updatedAt açıkça: yalnız faaliyet satırı değişip başlık alanı gelmese de
+      // form key'i (updatedAt) değişsin — boş data'lı update'e güvenilmez.
+      const baslik: Prisma.FifUncheckedUpdateInput = { updatedAt: new Date() }
+      for (const alan of DUZENLENEBILIR_ALANLAR) {
         if (d[alan] !== undefined) (baslik as Record<string, unknown>)[alan] = d[alan]
+      }
+      // Bölüm değiştiyse onaylayan omurgadan yeniden çözülür (eskiden istemci
+      // gönderiyordu; artık sistem alanı). Çözülemezse boş kalır — "Onaya Gönder"
+      // zincir çözümü fail-closed olarak yakalar.
+      if (d.sorumluBolumId !== undefined && d.sorumluBolumId !== mevcut.sorumluBolumId) {
+        baslik.sorumluOnaylayanUserId = (await bolumOnaylayan(tx, d.sorumluBolumId))?.userId ?? null
+      }
+      if (d.yayinlayanBolumId !== undefined && d.yayinlayanBolumId !== mevcut.yayinlayanBolumId) {
+        baslik.yayinlayanOnaylayanUserId = (await bolumOnaylayan(tx, d.yayinlayanBolumId))?.userId ?? null
       }
       await tx.fif.update({ where: { id }, data: baslik })
 
-      // Faaliyetler id bazında senkron (undefined = dokunma): id'li satırda yalnız
-      // formun alanları; paraf/sonuç/gerçekleşen tarihe DOKUNULMAZ.
+      // Faaliyetler id bazında senkron (undefined = dokunma). deleteMany+createMany
+      // paraf/sonuç/gerçekleşen tarihi siliyordu; artık yalnız düzenlenebilir alanlar yazılır.
+      // Paket 3 kuralları:
+      //  · ilkHedefTarih: hedef tarih İLK dolduğunda sunucu yazar; istemciden alınmaz.
+      //  · FAALIYET'te DOLU hedef tarih formdan değişmez (ek süre akışı değiştirir).
+      //  · Kapalı satır ("Faaliyeti Kapat") formdan düzenlenmez; yalnız sırası kayabilir.
       if (d.faaliyetler) {
-        const mevcutSatirlar = await tx.fifFaaliyet.findMany({ where: { fifId: id }, select: { id: true, parafUserId: true } })
+        const mevcutSatirlar = await tx.fifFaaliyet.findMany({
+          where: { fifId: id },
+          select: {
+            id: true, parafUserId: true, aciklama: true, aksiyonTuru: true, hedefTarih: true, ilkHedefTarih: true,
+            sorumluUserId: true, sonuc: true, gerceklesenTarih: true,
+          },
+        })
+        const mevcutById = new Map(mevcutSatirlar.map((f) => [f.id, f]))
         const mevcutIdler = new Set(mevcutSatirlar.map((f) => f.id))
         const gelenIdler = new Set<string>()
         for (const f of d.faaliyetler) {
@@ -137,13 +160,48 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         }
 
         for (const f of d.faaliyetler) {
-          const alanlar = {
-            sira: f.sira, aciklama: f.aciklama,
-            ...(f.aksiyonTuru !== undefined ? { aksiyonTuru: f.aksiyonTuru } : {}),
-            ...(f.hedefTarih !== undefined ? { hedefTarih: f.hedefTarih } : {}),
+          const m = f.id ? mevcutById.get(f.id) : undefined
+          if (!m) {
+            await tx.fifFaaliyet.create({
+              data: {
+                fifId: id, sira: f.sira, aciklama: f.aciklama,
+                aksiyonTuru: f.aksiyonTuru ?? null,
+                hedefTarih: f.hedefTarih ?? null,
+                ilkHedefTarih: f.hedefTarih ?? null,
+                sorumluUserId: f.sorumluUserId ?? null,
+              },
+            })
+            continue
           }
-          if (f.id) await tx.fifFaaliyet.update({ where: { id: f.id }, data: alanlar })
-          else await tx.fifFaaliyet.create({ data: { fifId: id, ...alanlar } })
+
+          if (faaliyetKapaliMi(m)) {
+            const degisti =
+              f.aciklama !== m.aciklama ||
+              (f.aksiyonTuru !== undefined && f.aksiyonTuru !== m.aksiyonTuru) ||
+              (f.hedefTarih !== undefined && !tarihEsit(f.hedefTarih, m.hedefTarih)) ||
+              (f.sorumluUserId !== undefined && f.sorumluUserId !== m.sorumluUserId)
+            if (degisti) throw new FifIstekHatasi(`Kapatılmış faaliyet (#${f.sira}) düzenlenemez`, 400)
+            await tx.fifFaaliyet.update({ where: { id: m.id }, data: { sira: f.sira } })
+            continue
+          }
+
+          if (
+            mevcut.durum === FifDurum.FAALIYET && m.hedefTarih &&
+            f.hedefTarih !== undefined && !tarihEsit(f.hedefTarih, m.hedefTarih)
+          ) {
+            throw new FifIstekHatasi(`Faaliyet aşamasında dolu hedef tarih (#${f.sira}) formdan değiştirilemez — ek süre kullanın`, 400)
+          }
+          const yeniHedef = f.hedefTarih !== undefined ? f.hedefTarih : m.hedefTarih
+          await tx.fifFaaliyet.update({
+            where: { id: m.id },
+            data: {
+              sira: f.sira, aciklama: f.aciklama,
+              ...(f.aksiyonTuru !== undefined ? { aksiyonTuru: f.aksiyonTuru } : {}),
+              ...(f.hedefTarih !== undefined ? { hedefTarih: f.hedefTarih } : {}),
+              ...(f.sorumluUserId !== undefined ? { sorumluUserId: f.sorumluUserId } : {}),
+              ...(!m.ilkHedefTarih && yeniHedef ? { ilkHedefTarih: yeniHedef } : {}),
+            },
+          })
         }
       }
       if (d.kokNedenler) {
@@ -205,8 +263,8 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     },
   })
   if (!mevcut) return NextResponse.json({ error: 'FİF bulunamadı' }, { status: 404 })
-  if (!(await fifKapsamindaMi(session, mevcut))) {
-    return NextResponse.json({ error: 'Bu FİF kapsamınızda değil' }, { status: 403 })
+  if (!(await fifDuzenleyebilirMi(session, mevcut))) {
+    return NextResponse.json({ error: 'Bu FİF\'i düzenleme yetkiniz yok' }, { status: 403 })
   }
 
   const altKayitVar =
@@ -224,7 +282,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     { userId: session.user.id, isManage: canManageFif(session), sorumluBolumMudurUserId: null },
     { durum: mevcut.durum, createdById: mevcut.createdById, hazirlayanUserId: mevcut.hazirlayanUserId,
       yayinlayanOnaylayanUserId: null, sorumluOnaylayanUserId: null, izlemeSorumlusuUserId: null,
-      takipSorumlusuUserId: null, sorumluBolumId: mevcut.sorumluBolumId, uygunsuzlukTanimi: null, tur: null,
+      sorumluBolumId: mevcut.sorumluBolumId, yayinlayanBolumId: mevcut.yayinlayanBolumId, uygunsuzlukTanimi: null, tur: null,
       faaliyetler: [], etkinlikler: [] },
     FifDurum.IPTAL,
   )

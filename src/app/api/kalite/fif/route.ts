@@ -3,7 +3,8 @@ import { prisma } from '@/lib/prisma'
 import { requireSession } from '@/lib/auth/require-session'
 import { fifWhereForUser } from '@/lib/quality/fif-access'
 import { fifInput, yayilimGecerli } from '@/lib/quality/fif-validators'
-import { generateNextFifNo } from '@/lib/quality/fif-no'
+import { fifKaynakDogrula } from '@/lib/quality/fif-kaynak'
+import { fifEtiket } from '@/lib/quality/fif-durum-etiket'
 import { normalizeTr } from '@/lib/normalize-tr'
 import { FifDurum, Prisma } from '@/generated/prisma'
 
@@ -11,7 +12,8 @@ export const dynamic = 'force-dynamic'
 
 /**
  * GET /api/kalite/fif — liste. Auth: oturum (fif.view = herkes).
- * Filtre: ?durum= · ?q= (kayıt no / sorumlu bölüm adı, normalizeTr).
+ * Filtre: ?durum= · ?q= (kayıt no — numarasızlar "Taslak" — / sorumlu bölüm adı, normalizeTr).
+ * Sıra: createdAt desc (Paket 3: numara onayda verildiği için kayitNo NULL olabilir).
  * Not (Faz 1 açık nokta): kapsam daraltma (kendi/kendi bölümü) YOK — tümü döner.
  */
 export async function GET(request: NextRequest) {
@@ -31,7 +33,7 @@ export async function GET(request: NextRequest) {
   const [rows, total] = await Promise.all([
     prisma.fif.findMany({
       where,
-      orderBy: { kayitNo: 'desc' },
+      orderBy: { createdAt: 'desc' },
       include: {
         sorumluBolum: { select: { id: true, name: true } },
         yayinlayanBolum: { select: { id: true, name: true } },
@@ -47,7 +49,7 @@ export async function GET(request: NextRequest) {
   const filtered = q
     ? rows.filter(
         (r) =>
-          normalizeTr(r.kayitNo).includes(q) ||
+          normalizeTr(fifEtiket(r)).includes(q) ||
           normalizeTr(r.sorumluBolum?.name ?? '').includes(q),
       )
     : rows
@@ -71,8 +73,10 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST /api/kalite/fif — oluştur. Auth: oturum (herkes TASLAK açabilir).
- * `kayitNo` OTOMATİK (yıl bazlı, kayıt ile AYNI transaction) — advisory lock
- * erken bırakılmasın. Durum TASLAK. Kullanıcı/bölüm alanları düz string id.
+ * Paket 3: NUMARA VERİLMEZ (kayitNo NULL) — KSS "Kayda Al"da üretilir; vazgeçilen
+ * taslaklar numara harcamaz. Durum TASLAK. Kullanıcı/bölüm alanları düz string id.
+ * Faaliyet satırında paraf/sonuç/gerçekleşen tarih istemciden ALINMAZ ("Faaliyeti
+ * Kapat" ucu yazar); ilk hedef tarih sunucuda hedef tarihten kopyalanır.
  */
 export async function POST(request: NextRequest) {
   const { userId, error } = await requireSession()
@@ -92,72 +96,66 @@ export async function POST(request: NextRequest) {
   // Yayılım kuralı (Rev 3): "var" işaretlendiyse açıklama zorunlu — TEK KAYNAK validator'da.
   const yay = yayilimGecerli(d.yayilimVarMi, d.yayilimAciklama)
   if (!yay.ok) return NextResponse.json({ error: yay.sebep }, { status: 400 })
+  if (d.kaynakId) {
+    const hata = await fifKaynakDogrula(d.kaynakId)
+    if (hata) return NextResponse.json({ error: hata }, { status: 400 })
+  }
   const tarih = d.tarih ?? new Date()
-  const year = tarih.getFullYear()
 
-  const created = await prisma.$transaction(async (tx) => {
-    const kayitNo = await generateNextFifNo(year, tx)
-    return tx.fif.create({
-      data: {
-        kayitNo,
-        tur: d.tur,
-        tarih,
-        durum: FifDurum.TASLAK,
-        sorumluBolumId: d.sorumluBolumId ?? null,
-        yayinlayanBolumId: d.yayinlayanBolumId ?? null,
-        hazirlayanUserId: d.hazirlayanUserId ?? userId,
-        izlemeSorumlusuUserId: d.izlemeSorumlusuUserId ?? null,
-        sorumluOnaylayanUserId: d.sorumluOnaylayanUserId ?? null,
-        yayinlayanOnaylayanUserId: d.yayinlayanOnaylayanUserId ?? null,
-        uygulamaSorumlusuUserId: d.uygulamaSorumlusuUserId ?? null,
-        takipSorumlusuUserId: d.takipSorumlusuUserId ?? null,
-        denetlemeAdi: d.denetlemeAdi ?? null,
-        uygunsuzlukTanimi: d.uygunsuzlukTanimi ?? null,
-        standartMadde: d.standartMadde ?? null,
-        ekTerminNedeni: d.ekTerminNedeni ?? null,
-        kokNedenAnalizi: d.kokNedenAnalizi ?? null,
-        kapatmaTarihi: d.kapatmaTarihi ?? null,
-        kysDegisikligi: d.kysDegisikligi ?? false,
-        riskFirsatGuncelleme: d.riskFirsatGuncelleme ?? false,
-        ogrenilenDers: d.ogrenilenDers ?? false,
-        yayilimVarMi: d.yayilimVarMi ?? false,
-        yayilimAciklama: d.yayilimAciklama ?? null,
-        createdById: userId,
-        faaliyetler: d.faaliyetler?.length
-          ? { create: d.faaliyetler.map((f) => ({
-              sira: f.sira,
-              aciklama: f.aciklama,
-              aksiyonTuru: f.aksiyonTuru ?? null,
-              hedefTarih: f.hedefTarih ?? null,
-              gerceklesenTarih: f.gerceklesenTarih ?? null,
-              sonuc: f.sonuc ?? null,
-              parafUserId: f.parafUserId ?? null,
-              parafTarihi: f.parafTarihi ?? null,
-            })) }
-          : undefined,
-        kokNedenler: d.kokNedenler?.length
-          ? { create: d.kokNedenler.map((k) => ({ kategori: k.kategori, aciklama: k.aciklama })) }
-          : undefined,
-        besNedenler: d.besNedenler?.length
-          ? { create: d.besNedenler.map((b) => ({
-              muhtemelSebep: b.muhtemelSebep,
-              neden1: b.neden1 ?? null, neden2: b.neden2 ?? null, neden3: b.neden3 ?? null,
-              neden4: b.neden4 ?? null, neden5: b.neden5 ?? null,
-            })) }
-          : undefined,
-        etkinlikler: d.etkinlikler?.length
-          ? { create: d.etkinlikler.map((e) => ({
-              madde: e.madde,
-              planlananTarih: e.planlananTarih ?? null,
-              gerceklesenTarih: e.gerceklesenTarih ?? null,
-              uygun: e.uygun ?? null,
-              onayUserId: e.onayUserId ?? null,
-              onayTarihi: e.onayTarihi ?? null,
-            })) }
-          : undefined,
-      },
-      include: { faaliyetler: { orderBy: { sira: 'asc' } } },
-    })
+  const created = await prisma.fif.create({
+    data: {
+      tur: d.tur,
+      tarih,
+      durum: FifDurum.TASLAK,
+      sorumluBolumId: d.sorumluBolumId ?? null,
+      yayinlayanBolumId: d.yayinlayanBolumId ?? null,
+      hazirlayanUserId: d.hazirlayanUserId ?? userId,
+      izlemeSorumlusuUserId: d.izlemeSorumlusuUserId ?? null,
+      sorumluOnaylayanUserId: d.sorumluOnaylayanUserId ?? null,
+      yayinlayanOnaylayanUserId: d.yayinlayanOnaylayanUserId ?? null,
+      kaynakId: d.kaynakId ?? null,
+      uygunsuzlukTanimi: d.uygunsuzlukTanimi ?? null,
+      standartMadde: d.standartMadde ?? null,
+      kokNedenAnalizi: d.kokNedenAnalizi ?? null,
+      kapatmaTarihi: d.kapatmaTarihi ?? null,
+      kysDegisikligi: d.kysDegisikligi ?? false,
+      riskFirsatGuncelleme: d.riskFirsatGuncelleme ?? false,
+      ogrenilenDers: d.ogrenilenDers ?? false,
+      yayilimVarMi: d.yayilimVarMi ?? false,
+      yayilimAciklama: d.yayilimAciklama ?? null,
+      createdById: userId,
+      faaliyetler: d.faaliyetler?.length
+        ? { create: d.faaliyetler.map((f) => ({
+            sira: f.sira,
+            aciklama: f.aciklama,
+            aksiyonTuru: f.aksiyonTuru ?? null,
+            hedefTarih: f.hedefTarih ?? null,
+            ilkHedefTarih: f.hedefTarih ?? null,
+            sorumluUserId: f.sorumluUserId ?? null,
+          })) }
+        : undefined,
+      kokNedenler: d.kokNedenler?.length
+        ? { create: d.kokNedenler.map((k) => ({ kategori: k.kategori, aciklama: k.aciklama })) }
+        : undefined,
+      besNedenler: d.besNedenler?.length
+        ? { create: d.besNedenler.map((b) => ({
+            muhtemelSebep: b.muhtemelSebep,
+            neden1: b.neden1 ?? null, neden2: b.neden2 ?? null, neden3: b.neden3 ?? null,
+            neden4: b.neden4 ?? null, neden5: b.neden5 ?? null,
+          })) }
+        : undefined,
+      etkinlikler: d.etkinlikler?.length
+        ? { create: d.etkinlikler.map((e) => ({
+            madde: e.madde,
+            planlananTarih: e.planlananTarih ?? null,
+            gerceklesenTarih: e.gerceklesenTarih ?? null,
+            uygun: e.uygun ?? null,
+            onayUserId: e.onayUserId ?? null,
+            onayTarihi: e.onayTarihi ?? null,
+          })) }
+        : undefined,
+    },
+    include: { faaliyetler: { orderBy: { sira: 'asc' } } },
   })
 
   return NextResponse.json({ item: created }, { status: 201 })

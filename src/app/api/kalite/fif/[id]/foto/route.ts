@@ -3,7 +3,7 @@ import { writeFile } from 'fs/promises'
 import path from 'path'
 import { prisma } from '@/lib/prisma'
 import { requireSession } from '@/lib/auth/require-session'
-import { canManageFif, fifKapsamindaMi } from '@/lib/quality/fif-access'
+import { canManageFif, fifDuzenleyebilirMi } from '@/lib/quality/fif-access'
 import { altKayitDuzenlenebilir } from '@/lib/quality/fif-durum'
 import { FifEkTip } from '@/generated/prisma'
 import { FIF_FOTO_MAX_BYTES, fifMimeGecerli, fifGuvenliDosyaAdi, fifFotoDizin, fifFotoUrl } from '@/lib/quality/fif-foto-dosya'
@@ -18,7 +18,7 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
   const { id } = await params
   const fif = await prisma.fif.findUnique({ where: { id }, select: { id: true, createdById: true, hazirlayanUserId: true, sorumluBolumId: true, yayinlayanBolumId: true } })
   if (!fif) return NextResponse.json({ error: 'FİF bulunamadı' }, { status: 404 })
-  if (!(await fifKapsamindaMi(session, fif))) return NextResponse.json({ error: 'kapsam dışı' }, { status: 403 })
+  if (!(await fifDuzenleyebilirMi(session, fif))) return NextResponse.json({ error: 'kapsam dışı' }, { status: 403 })
   const ekler = await prisma.fifEk.findMany({ where: { fifId: id }, orderBy: { createdAt: 'asc' } })
   return NextResponse.json({ ekler })
 }
@@ -31,7 +31,7 @@ export async function POST(request: NextRequest, { params }: Ctx) {
     const { id } = await params
     const fif = await prisma.fif.findUnique({ where: { id }, select: { id: true, durum: true, createdById: true, hazirlayanUserId: true, sorumluBolumId: true, yayinlayanBolumId: true } })
     if (!fif) return NextResponse.json({ error: 'FİF bulunamadı' }, { status: 404 })
-    if (!(await fifKapsamindaMi(session, fif))) return NextResponse.json({ error: 'kapsam dışı' }, { status: 403 })
+    if (!(await fifDuzenleyebilirMi(session, fif))) return NextResponse.json({ error: 'kapsam dışı' }, { status: 403 })
     if (!altKayitDuzenlenebilir({ userId, isManage: canManageFif(session) }, fif.durum)) {
       return NextResponse.json({ error: 'Bu durumda düzenleme yapılamaz' }, { status: 409 })
     }

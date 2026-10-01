@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { fifNoPrefix, parseFifNo } from './fif-no'
+import { fifNoPrefix, parseFifNo, sonrakiFifNo, fifNoYili } from './fif-no'
 import { fifInput, FIF_ZORUNLU_ALANLAR } from './fif-validators'
 import { fifRecordInScope } from './fif-access'
 import { hardDeleteEdilebilir } from './fif-durum'
@@ -37,6 +37,25 @@ describe('fif-no — kayıt no biçim + yıl geçişi', () => {
   })
 })
 
+describe('fif-no — sonrakiFifNo (SAYISAL en büyük, Paket 3)', () => {
+  it('boş yıl → 001', () => {
+    expect(sonrakiFifNo(2026, [])).toBe('FIF-2026-001')
+  })
+  it('999 → 1000 (metin sıralaması 999\'u büyük sanıyordu)', () => {
+    expect(sonrakiFifNo(2026, ['FIF-2026-999', 'FIF-2026-998'])).toBe('FIF-2026-1000')
+  })
+  it('1000 varken 999 metin olarak büyük görünse de 1001 üretir', () => {
+    expect(sonrakiFifNo(2026, ['FIF-2026-999', 'FIF-2026-1000'])).toBe('FIF-2026-1001')
+  })
+  it('başka yıl, null ve biçim dışı numaralar yok sayılır', () => {
+    expect(sonrakiFifNo(2026, ['FIF-2027-050', null, 'FIF-2026-abc', 'FIF-2026-007'])).toBe('FIF-2026-008')
+  })
+  it('numaralama yılı İstanbul yılı: 31.12 23:30 UTC = 01.01 İstanbul', () => {
+    expect(fifNoYili(new Date('2026-12-31T23:30:00.000Z'))).toBe(2027)
+    expect(fifNoYili(new Date('2026-12-31T20:30:00.000Z'))).toBe(2026)
+  })
+})
+
 describe('fif-validators — Faz 1 zorunluluk (tek kaynak)', () => {
   const gecerli = { tur: 'DUZELTICI', sorumluBolumId: 'dept1', uygunsuzlukTanimi: 'Tespit' }
 
@@ -64,13 +83,24 @@ describe('fif-validators — Faz 1 zorunluluk (tek kaynak)', () => {
   })
 
   it('opsiyonel alanlar boş bırakılabilir; boş string → null normalize', () => {
-    const r = fifInput.safeParse({ ...gecerli, denetlemeAdi: '', standartMadde: '' })
+    const r = fifInput.safeParse({ ...gecerli, standartMadde: '', kokNedenAnalizi: '' })
     expect(r.success).toBe(true)
-    if (r.success) { expect(r.data.denetlemeAdi).toBeNull() }
+    if (r.success) { expect(r.data.standartMadde).toBeNull() }
   })
 
-  it('FIF_ZORUNLU_ALANLAR tam olarak Faz 1 üçlüsü (sıkılaştırma tek kaynak)', () => {
-    expect([...FIF_ZORUNLU_ALANLAR]).toEqual(['tur', 'sorumluBolumId', 'uygunsuzlukTanimi'])
+  it('Paket 3: denetlemeAdi / uygulamaSorumlusuUserId / ekTerminNedeni istekten ALINMAZ (atılır)', () => {
+    const r = fifInput.safeParse({ ...gecerli, denetlemeAdi: 'eski', uygulamaSorumlusuUserId: 'u9', ekTerminNedeni: 'eski', kaynakId: 'k1' })
+    expect(r.success).toBe(true)
+    if (r.success) {
+      expect('denetlemeAdi' in r.data).toBe(false)
+      expect('ekTerminNedeni' in r.data).toBe(false)
+      expect('uygulamaSorumlusuUserId' in r.data).toBe(false)
+      expect(r.data.kaynakId).toBe('k1')
+    }
+  })
+
+  it('FIF_ZORUNLU_ALANLAR: tür + sorumlu bölüm + yayınlayan bölüm + tespit (Onaya Gönder, tek kaynak)', () => {
+    expect([...FIF_ZORUNLU_ALANLAR]).toEqual(['tur', 'sorumluBolumId', 'yayinlayanBolumId', 'uygunsuzlukTanimi'])
   })
 
   it('faaliyet satırı açıklaması zorunlu (alt kayıt tutarlılık)', () => {

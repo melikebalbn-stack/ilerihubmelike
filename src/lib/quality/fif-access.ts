@@ -6,7 +6,11 @@
  *   - canManageFif (Kalite ekibi/admin VEYA fif.manage) → TÜMÜ.
  *   - diğerleri → kendi açtığı (createdById) / hazırlayan olduğu (hazirlayanUserId)
  *     / sorumlu-yayınlayan bölümü kendi bölümü olan (Personnel.departmentId + omurgada
- *     sorumlu/müdür olduğu bölümler) kayıtlar.
+ *     sorumlu/müdür olduğu bölümler) kayıtlar
+ *     / Paket 3: herhangi bir FAALİYET SATIRININ SORUMLUSU olduğu kayıtlar — YALNIZ
+ *     GÖRME. Satır sorumlusu formu düzenleyemez; sadece kendi satırında "Faaliyeti
+ *     Kapat" ve "Ek Termin İste" yapar (bu uçlar satır sahipliğini ayrıca arar).
+ * Düzenleme (PUT/DELETE/alt kayıtlar): fifDuzenleyebilirMi — satır sorumluluğu SAYILMAZ.
  *
  * `.manage` izni ikincil; asıl yönetim kapısı canAccessKalite substring'i (RMA/
  * uygunsuzluk deseni, dokunulmadı).
@@ -15,16 +19,18 @@ import type { Session } from 'next-auth'
 import { canAccessKalite } from '@/lib/auth/kalite-access'
 import { prisma } from '@/lib/prisma'
 import type { Prisma } from '@/generated/prisma'
+import { kullaniciKssKoltugundaMi } from '@/lib/quality/fif-zincir'
 
 /**
  * KSS (Kalite Sistem Sorumlusu) kapısı — FİF'E ÖZEL, `canAccessKalite`'a
  * DOKUNMAZ (o kapı RMA/uygunsuzluk ile paylaşılıyor; daraltmak regresyon riski).
- * KSS adımlarını (kayıt/dağıtım, kapanış kontrolü — FAZ B) yalnız `fif.kss`
- * izni olan kişi yapar; `fif.manage` (Kalite ekibi) KSS yerine GEÇMEZ.
- * Bilinçli tercih: KSS rolü ayrı olmazsa 11 adımdaki KSS adımları ayrıştırılamaz.
+ * Kalite kararı: KSS KOLTUK bazlı — kullanıcı KSS koltuklarından birinde oturuyor
+ * mu (fif-zincir.FIF_KSS_KOLTUK_KODLARI)? `fif.kss` izni artık KULLANILMAZ.
+ * DB'den okunur (koltuk değişikliği anında geçer; JWT izin önbelleği beklenmez).
+ * `fif.manage` (Kalite ekibi) KSS yerine GEÇMEZ.
  */
-export function isFifKss(session: Session | null | undefined): boolean {
-  return (session?.user?.permissions ?? []).includes('fif.kss')
+export async function isFifKss(session: Session | null | undefined): Promise<boolean> {
+  return kullaniciKssKoltugundaMi(prisma, session?.user?.id)
 }
 
 export function canManageFif(session: Session | null | undefined): boolean {
@@ -36,6 +42,8 @@ export function canManageFif(session: Session | null | undefined): boolean {
 
 /** Kapsam kararı için gereken minimum kayıt alanları. */
 export type FifScopeRecord = {
+  /** Verilirse (tekil kontrol) satır sorumluluğu DB'den bakılır — bkz. fifKapsamindaMi. */
+  id?: string
   createdById: string | null
   hazirlayanUserId: string | null
   sorumluBolumId: string | null
@@ -47,7 +55,7 @@ export type FifUserContext = {
   userId: string | null
   isManage: boolean
   /**
-   * `fif.kss` — KSS TÜM FİF'leri GÖRÜR (adımları her formda gelebilir) ama
+   * KSS koltuğu — KSS TÜM FİF'leri GÖRÜR (adımları her formda gelebilir) ama
    * manage yetkisi ALMAZ: başka rollerin onay adımlarını yapamaz. Görünürlük ile
    * yetki bilinçli olarak ayrıldı.
    */
@@ -97,7 +105,7 @@ async function kullaniciBolumIdleri(userId: string): Promise<string[]> {
 export async function getFifUserContext(session: Session | null | undefined): Promise<FifUserContext> {
   const userId = session?.user?.id ?? null
   const isManage = canManageFif(session)
-  const isKss = isFifKss(session)
+  const isKss = await isFifKss(session)
   if (!userId || isManage || isKss) return { userId, isManage, isKss, deptIds: [] }
   const deptIds = await kullaniciBolumIdleri(userId)
   return { userId, isManage, isKss, deptIds }
@@ -114,6 +122,7 @@ export async function fifWhereForUser(session: Session | null | undefined): Prom
   const or: Prisma.FifWhereInput[] = [
     { createdById: ctx.userId },
     { hazirlayanUserId: ctx.userId },
+    { faaliyetler: { some: { sorumluUserId: ctx.userId } } },
   ]
   if (ctx.deptIds.length) {
     or.push({ sorumluBolumId: { in: ctx.deptIds } })
@@ -122,11 +131,29 @@ export async function fifWhereForUser(session: Session | null | undefined): Prom
   return { OR: or }
 }
 
-/** Tekil kayıt görünür/düzenlenebilir mi (detay/PUT/DELETE için). */
+/**
+ * Tekil kayıt DÜZENLENEBİLİR mi (form PUT/DELETE, faaliyet/Ek-1/Ek-2/etkinlik
+ * alt kayıtları). Paket 3b-1 öncesi kural: kendi/hazırlayan/bölüm; manage/KSS tümü.
+ */
+export async function fifDuzenleyebilirMi(
+  session: Session | null | undefined,
+  r: FifScopeRecord,
+): Promise<boolean> {
+  return fifRecordInScope(await getFifUserContext(session), r)
+}
+
+/**
+ * Tekil kayıt GÖRÜNÜR mü (detay sayfası/GET + satır işlemleri kapısı).
+ * Düzenleme kapsamı + satır sorumlusu (liste where'iyle AYNI kural).
+ */
 export async function fifKapsamindaMi(
   session: Session | null | undefined,
   r: FifScopeRecord,
 ): Promise<boolean> {
   const ctx = await getFifUserContext(session)
-  return fifRecordInScope(ctx, r)
+  if (fifRecordInScope(ctx, r)) return true
+  // Satır sorumlusu (Paket 3): liste where'iyle AYNI kural, tekil kayıtta DB'den.
+  if (!ctx.userId || !r.id) return false
+  const satir = await prisma.fifFaaliyet.findFirst({ where: { fifId: r.id, sorumluUserId: ctx.userId }, select: { id: true } })
+  return !!satir
 }

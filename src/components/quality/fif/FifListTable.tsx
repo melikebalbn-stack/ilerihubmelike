@@ -4,11 +4,12 @@ import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { FIF_DURUM_ETIKET as DURUM_ETIKET, FIF_DURUM_RENK as DURUM_RENK } from '@/lib/quality/fif-durum-etiket'
+import { FIF_DURUM_ETIKET as DURUM_ETIKET, FIF_DURUM_RENK as DURUM_RENK, fifEtiket } from '@/lib/quality/fif-durum-etiket'
 
 type FifRow = {
   id: string
-  kayitNo: string
+  /** Paket 3: "Kayda Al"a kadar NULL → "Taslak". */
+  kayitNo: string | null
   tur: 'DUZELTICI' | 'ONLEYICI'
   tarih: string
   durum: string
@@ -58,7 +59,7 @@ export function FifListTable() {
         </div>
         <div className="flex-1 min-w-[220px]">
           <label className="text-xs text-slate-500">Ara (kayıt no / bölüm)</label>
-          <Input className="mt-1 h-9" value={q} onChange={(e) => setQ(e.target.value)} placeholder="FIF-2026-… veya bölüm adı" />
+          <Input className="mt-1 h-9" value={q} onChange={(e) => setQ(e.target.value)} placeholder="FIF-2026-…, Taslak veya bölüm adı" />
         </div>
       </div>
 
@@ -83,7 +84,7 @@ export function FifListTable() {
             ) : rows.map((r) => (
               <tr key={r.id} className="border-t hover:bg-slate-50">
                 <td className="px-3 py-2">
-                  <Link href={`/kalite/fif/${r.id}`} className="font-medium text-[#1B4F72] hover:underline">{r.kayitNo}</Link>
+                  <Link href={`/kalite/fif/${r.id}`} className={`font-medium hover:underline ${r.kayitNo ? 'text-[#1B4F72]' : 'italic text-slate-500'}`}>{fifEtiket(r)}</Link>
                 </td>
                 <td className="px-3 py-2">{r.tur === 'DUZELTICI' ? 'Düzeltici' : 'Önleyici'}</td>
                 <td className="px-3 py-2">{new Date(r.tarih).toLocaleDateString('tr-TR')}</td>

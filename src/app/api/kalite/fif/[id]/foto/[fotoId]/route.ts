@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireSession } from '@/lib/auth/require-session'
-import { canManageFif, fifKapsamindaMi } from '@/lib/quality/fif-access'
+import { canManageFif, fifDuzenleyebilirMi } from '@/lib/quality/fif-access'
 import { altKayitDuzenlenebilir } from '@/lib/quality/fif-durum'
 import { fifFotoSil } from '@/lib/quality/fif-foto-dosya'
 
@@ -14,7 +14,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   const { id, fotoId } = await params
   const fif = await prisma.fif.findUnique({ where: { id }, select: { id: true, durum: true, createdById: true, hazirlayanUserId: true, sorumluBolumId: true, yayinlayanBolumId: true } })
   if (!fif) return NextResponse.json({ error: 'FİF bulunamadı' }, { status: 404 })
-  if (!(await fifKapsamindaMi(session, fif))) return NextResponse.json({ error: 'kapsam dışı' }, { status: 403 })
+  if (!(await fifDuzenleyebilirMi(session, fif))) return NextResponse.json({ error: 'kapsam dışı' }, { status: 403 })
   if (!altKayitDuzenlenebilir({ userId, isManage: canManageFif(session) }, fif.durum)) {
     return NextResponse.json({ error: 'Bu durumda düzenleme yapılamaz' }, { status: 409 })
   }

@@ -5,8 +5,9 @@ import { canManageFif, isFifKss } from '@/lib/quality/fif-access'
 import { fifZinciriCoz } from '@/lib/quality/fif-zincir'
 import { gecisYapabilirMi, type FifGecisCtx, type FifGecisState } from '@/lib/quality/fif-durum'
 import { fifDurumBildir } from '@/lib/quality/fif-bildirim'
-import { FifDurum, FifSonuc, FifEtkinlikMadde } from '@/generated/prisma'
-import { addMonths } from 'date-fns'
+import { generateNextFifNo, fifNoYili } from '@/lib/quality/fif-no'
+import { ayEkle, istanbulBugunTarihi, FIF_ETKINLIK_AY } from '@/lib/quality/fif-termin'
+import { FifDurum, FifSonuc, FifGecmisOlay } from '@/generated/prisma'
 import { z } from 'zod'
 
 export const dynamic = 'force-dynamic'
@@ -26,7 +27,7 @@ const RED_GECISLERI: Array<[FifDurum, FifDurum]> = [
 
 /**
  * POST /api/kalite/fif/[id]/durum — TEK durum geçiş ucu. fif-durum.ts'ten geçer.
- * Transaction: durum + FifGecmis; bildirim commit sonrası (mail I/O tx dışında).
+ * Transaction: durum + FifGecmis; bildirim commit sonrası (in-app + push I/O tx dışında).
  */
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { session, userId, error } = await requireSession()
@@ -40,7 +41,16 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   const fif = await prisma.fif.findUnique({
     where: { id },
-    include: { faaliyetler: { select: { id: true, hedefTarih: true } }, etkinlikler: { select: { madde: true, uygun: true } } },
+    include: {
+      faaliyetler: {
+        select: {
+          id: true, hedefTarih: true, etkinlikPlanTarihi: true, etkinlikUygun: true, sorumluUserId: true,
+          // "Kapatmaya Gönder" şartı (satirKapatildiMi)
+          sonuc: true, gerceklesenTarih: true, parafUserId: true,
+        },
+      },
+      etkinlikler: { select: { madde: true, uygun: true } },
+    },
   })
   if (!fif) return NextResponse.json({ error: 'FİF bulunamadı' }, { status: 404 })
 
@@ -58,34 +68,43 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     userId,
     isManage: canManageFif(session),
     sorumluBolumMudurUserId,
-    isKss: isFifKss(session),
+    isKss: await isFifKss(session),
   }
   const state: FifGecisState = {
     durum: fif.durum, createdById: fif.createdById, hazirlayanUserId: fif.hazirlayanUserId,
     yayinlayanOnaylayanUserId: fif.yayinlayanOnaylayanUserId, sorumluOnaylayanUserId: fif.sorumluOnaylayanUserId,
-    izlemeSorumlusuUserId: fif.izlemeSorumlusuUserId, takipSorumlusuUserId: fif.takipSorumlusuUserId,
-    sorumluBolumId: fif.sorumluBolumId, kssUserId: fif.kssUserId,
+    izlemeSorumlusuUserId: fif.izlemeSorumlusuUserId,
+    sorumluBolumId: fif.sorumluBolumId, yayinlayanBolumId: fif.yayinlayanBolumId,
     uygunsuzlukTanimi: fif.uygunsuzlukTanimi, tur: fif.tur,
     yayilimVarMi: fif.yayilimVarMi, yayilimAciklama: fif.yayilimAciklama,
     faaliyetler: fif.faaliyetler, etkinlikler: fif.etkinlikler,
   }
 
+  // Yetki eksikse 403; ön koşul (ör. "Tüm faaliyetler kapatılmalı", zorunlu alan)
+  // ya da geçersiz geçiş 400.
   const karar = gecisYapabilirMi(ctx, state, hedef)
-  if (!karar.ok) return NextResponse.json({ error: karar.sebep }, { status: 403 })
+  if (!karar.ok) return NextResponse.json({ error: karar.sebep }, { status: karar.tur === 'yetki' ? 403 : 400 })
 
-  // ZİNCİR SNAPSHOT'I (FAZ B): form onaya giderken aktörler omurgadan çözülür ve
-  // kayda yazılır. FAIL-CLOSED — KSS ya da bölüm müdürü çözülemezse form ilerlemez.
-  let zincirYazimi: { sorumluOnaylayanUserId?: string; yayinlayanOnaylayanUserId?: string; kssUserId: string } | null = null
-  if (hedef === FifDurum.ONAY_BEKLIYOR) {
+  // ZİNCİR SNAPSHOT'I: "Onaya Gönder" (TASLAK → KSS_KAYIT_BEKLIYOR) anında
+  // onaylayanlar omurgadan çözülür ve kayda yazılır. FAIL-CLOSED — KSS koltukları
+  // boşsa ya da bölüm müdürü çözülemezse form ilerlemez. Paket 2: KSS artık
+  // snapshot'lanmaz; kssUserId işlemi yapan KSS ile yazılır (aşağıda).
+  let zincirYazimi: { sorumluOnaylayanUserId?: string; yayinlayanOnaylayanUserId?: string } | null = null
+  if (fif.durum === FifDurum.TASLAK && hedef === FifDurum.KSS_KAYIT_BEKLIYOR) {
     const z = await fifZinciriCoz(prisma, { sorumluBolumId: fif.sorumluBolumId, yayinlayanBolumId: fif.yayinlayanBolumId })
     if (!z.ok) return NextResponse.json({ error: z.sebep }, { status: 400 })
     zincirYazimi = {
-      // Elle seçilmiş onaylayan varsa KORUNUR; boşsa omurgadan doldurulur.
+      // Dolu onaylayan KORUNUR (PUT bölüm değişince yeniden çözer); boşsa omurgadan doldurulur.
       ...(fif.sorumluOnaylayanUserId ? {} : z.sorumluOnaylayan ? { sorumluOnaylayanUserId: z.sorumluOnaylayan.userId } : {}),
       ...(fif.yayinlayanOnaylayanUserId ? {} : z.yayinlayanOnaylayan ? { yayinlayanOnaylayanUserId: z.yayinlayanOnaylayan.userId } : {}),
-      kssUserId: z.kss.userId,
     }
   }
+
+  // KSS adımını yapan kişi kayda yazılır (KSS kayıt/kapanış/etkinlik adımları).
+  // manage ile yapılan etkinlik kararı KSS sayılmaz → kssUserId'ye dokunulmaz.
+  const kssAdimi =
+    ctx.isKss &&
+    (fif.durum === FifDurum.KSS_KAYIT_BEKLIYOR || fif.durum === FifDurum.KSS_KAPANIS_BEKLIYOR || fif.durum === FifDurum.ETKINLIK)
 
   const isRed = RED_GECISLERI.some(([f, t]) => f === fif.durum && t === hedef)
   const isReopen = fif.durum === FifDurum.ETKINLIK && hedef === FifDurum.FAALIYET
@@ -94,35 +113,39 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ error: 'Red gerekçesi (açıklama) zorunlu' }, { status: 400 })
   }
 
-  await prisma.$transaction(async (tx) => {
+  const kaydaAl = fif.durum === FifDurum.KSS_KAYIT_BEKLIYOR && hedef === FifDurum.FAALIYET
+
+  const kayitNo = await prisma.$transaction(async (tx) => {
+    // NUMARA ONAYDA (Paket 3): KSS "Kayda Al" anında, geçişle AYNI transaction'da
+    // advisory lock altında üretilir. Numarası olan (eski akış) kayıt aynen kalır.
+    const simdi = new Date()
+    const yeniNo = kaydaAl && !fif.kayitNo ? await generateNextFifNo(fifNoYili(simdi), tx) : null
     await tx.fif.update({
       where: { id },
       data: {
         durum: hedef,
-        ...(hedef === FifDurum.KAPATMA_BEKLIYOR ? { kapatmaTarihi: new Date() } : {}),
-        // KSS kaydı aldı (adım 3): kayıt anı damgalanır.
-        ...(fif.durum === FifDurum.KSS_KAYIT_BEKLIYOR && hedef === FifDurum.FAALIYET
-          ? { kayitTarihi: new Date(), ...(userId ? { kssUserId: userId } : {}) }
-          : {}),
+        ...(hedef === FifDurum.KAPATMA_BEKLIYOR ? { kapatmaTarihi: simdi } : {}),
+        // KSS kaydı aldı (adım 3): kayıt anı damgalanır (+ numara).
+        ...(kaydaAl ? { kayitTarihi: simdi } : {}),
+        ...(yeniNo ? { kayitNo: yeniNo } : {}),
+        ...(kssAdimi && userId ? { kssUserId: userId } : {}),
         ...(zincirYazimi ?? {}),
         ...(isRed ? { redNedeni: aciklama } : {}),
+
       },
     })
-    // ETKİNLİK GÖREVİ (FAZ C): kapanıştan 3 AY sonrası planlanır — iki madde
-    // (KAPATMA + TEKRAR_ETMEME) yoksa oluşturulur, planlananTarih'i BOŞ olanlara
-    // tarih yazılır (elle girilmiş tarih EZİLMEZ). Takvim ayı: addMonths, 30 gün
-    // DEĞİL (30 Kasım + 3 ay = 28/29 Şubat taşması doğru hesaplanır).
-    if (hedef === FifDurum.ETKINLIK) {
-      const temel = fif.kapatmaTarihi ?? new Date()
-      const planTarihi = addMonths(temel, 3)
-      for (const madde of [FifEtkinlikMadde.KAPATMA, FifEtkinlikMadde.TEKRAR_ETMEME]) {
-        const mevcut = await tx.fifEtkinlik.findFirst({ where: { fifId: id, madde }, select: { id: true, planlananTarih: true } })
-        if (!mevcut) {
-          await tx.fifEtkinlik.create({ data: { fifId: id, madde, planlananTarih: planTarihi } })
-        } else if (!mevcut.planlananTarih) {
-          await tx.fifEtkinlik.update({ where: { id: mevcut.id }, data: { planlananTarih: planTarihi } })
-        }
-      }
+    // 3 AYLIK ETKİNLİK (Kalite kararı): süre İLK KAPANIŞ ONAYINDA başlar. KSS kapanış
+    // kontrolü onaylanınca (KSS_KAPANIS_BEKLIYOR → ETKINLIK) etkin bulunmamış HER
+    // satıra plan = geçiş günü (İstanbul) + 3 ay (ay sonu kırpılır). Daha önce etkin
+    // bulunmuş satıra DOKUNULMAZ. Hatırlatma işareti sıfırlanır → plan − 7 günde yeni
+    // hatırlatma gider. (Eski FİF geneli FifEtkinlik maddeleri artık açılmaz: bu
+    // geçişten sonra tüm satırlar plan taşır → yeni akış.)
+    if (fif.durum === FifDurum.KSS_KAPANIS_BEKLIYOR && hedef === FifDurum.ETKINLIK) {
+      const plan = ayEkle(istanbulBugunTarihi(simdi), FIF_ETKINLIK_AY)
+      await tx.fifFaaliyet.updateMany({
+        where: { fifId: id, OR: [{ etkinlikUygun: null }, { etkinlikUygun: false }] },
+        data: { etkinlikPlanTarihi: plan, etkinlikHatirlatmaTarihi: null },
+      })
     }
 
     // Yeniden açılış: faaliyet satırları sonuc=YT (yapılamadı/termin) işaretlenir.
@@ -130,17 +153,25 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       await tx.fifFaaliyet.updateMany({ where: { fifId: id }, data: { sonuc: FifSonuc.YT } })
     }
     await tx.fifGecmis.create({
-      data: { fifId: id, eskiDurum: fif.durum, yeniDurum: hedef, userId, aciklama: aciklama ?? null },
+      data: {
+        fifId: id, eskiDurum: fif.durum, yeniDurum: hedef, userId, olay: FifGecmisOlay.DURUM_DEGISTI,
+        aciklama: aciklama ?? (yeniNo ? `Kayıt numarası verildi: ${yeniNo}` : null),
+      },
     })
+    return yeniNo ?? fif.kayitNo
   })
 
-  // Bildirim — commit sonrası, best-effort (mail I/O tx dışında).
+  // Bildirim — commit sonrası, best-effort (in-app + push I/O tx dışında).
+  // Başlık yeni numarayla kurulsun ("Kayda Al"da verildiyse "Taslak" yazmasın).
   let bildirim = null
   try {
-    bildirim = await fifDurumBildir(fif, hedef, { red: isRed, iptal: isIptal })
+    bildirim = await fifDurumBildir(
+      { ...fif, kayitNo, faaliyetSorumluIdleri: fif.faaliyetler.map((f) => f.sorumluUserId).filter((x): x is string => !!x) },
+      hedef, { red: isRed, iptal: isIptal },
+    )
   } catch (e) {
     console.error('[fif-durum] bildirim:', e)
   }
 
-  return NextResponse.json({ ok: true, durum: hedef, bildirim })
+  return NextResponse.json({ ok: true, durum: hedef, kayitNo, bildirim })
 }

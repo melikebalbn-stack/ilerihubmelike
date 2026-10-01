@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from 'react'
+import { acikTicketMi } from '@/lib/tickets/durumlar'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { ShieldAlert, Loader2, Send, CheckCircle2, Info } from 'lucide-react'
@@ -29,7 +30,6 @@ interface YetkisizErisimProps {
 
 // Ticket "açık" (kapanmamış) statüleri — mükerrer talep kontrolü için.
 // Kaynak: /api/tickets GET OPEN_STATUSES ile birebir.
-const ACIK_STATULER = ['NEW', 'ASSIGNED', 'IN_PROGRESS', 'PENDING', 'ON_HOLD', 'REOPENED']
 
 type TalepSonuc =
   | { tip: 'olusturuldu'; ticketNo: string }
@@ -74,7 +74,7 @@ export function YetkisizErisim({
         const mevcut = Array.isArray(liste)
           ? liste.find(
               (t: { subject?: string; status?: string; ticketNumber?: string }) =>
-                t.subject === konu && ACIK_STATULER.includes(t.status ?? ''),
+                t.subject === konu && acikTicketMi(t.status),
             )
           : null
         if (mevcut?.ticketNumber) {

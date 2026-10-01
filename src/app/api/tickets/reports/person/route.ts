@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { ACIK_TICKET_DURUMLARI_DIZI } from '@/lib/tickets/durumlar'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
 import {
@@ -82,7 +83,7 @@ export async function GET(request: NextRequest) {
       where: { resolvedByEmail: email, isActive: true, ...donemKosulu },
     })
 
-    const acikDurumlar = ['NEW', 'ASSIGNED', 'IN_PROGRESS', 'PENDING', 'ON_HOLD', 'REOPENED']
+    const acikDurumlar = ACIK_TICKET_DURUMLARI_DIZI
     const saat = (a: Date, b: Date) => (b.getTime() - a.getTime()) / 36e5
 
     // Süre ortalamaları — yalnız ilgili damgası OLAN talepler paydaya girer.

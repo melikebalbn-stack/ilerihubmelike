@@ -138,7 +138,7 @@ const PRIO_RANK: Record<string, number> = { TICKET_LOW: 0, NORMAL: 1, TICKET_HIG
 // Durum iş-akışı sırası (görsel gruplama için)
 const STATUS_RANK: Record<string, number> = {
   NEW: 0, REOPENED: 1, ASSIGNED: 2, IN_PROGRESS: 3, PENDING: 4, ON_HOLD: 5,
-  RESOLVED: 6, CLOSED: 7, CANCELLED: 8,
+  PURCHASING: 6, RESOLVED: 7, CLOSED: 8, CANCELLED: 9,
 }
 const ts = (d?: string | null) => (d ? new Date(d).getTime() : 0)
 
@@ -349,6 +349,7 @@ export default function ITSupportPage() {
       IN_PROGRESS: { label: "Islemde", variant: "default" },
       PENDING: { label: "Beklemede", variant: "outline" },
       ON_HOLD: { label: "Askida", variant: "outline" },
+    PURCHASING: { label: "Satinalma Surecinde", variant: "outline" },
       RESOLVED: { label: "Cozuldu", variant: "secondary" },
       CLOSED: { label: "Kapatildi", variant: "secondary" },
       CANCELLED: { label: "Iptal", variant: "destructive" },
@@ -799,6 +800,7 @@ export default function ITSupportPage() {
                     <SelectItem value="IN_PROGRESS">Islemde</SelectItem>
                     <SelectItem value="PENDING">Beklemede</SelectItem>
                     <SelectItem value="RESOLVED">Cozuldu</SelectItem>
+                    <SelectItem value="PURCHASING">Satinalma Surecinde</SelectItem>
                     <SelectItem value="CLOSED">Kapatildi</SelectItem>
                   </SelectContent>
                 </Select>
@@ -852,9 +854,8 @@ export default function ITSupportPage() {
                 <ScrollArea className="h-[600px]">
                   {(() => {
                     // Client-side gruplama (sıra B3 korunur — API'den geliyor). Açık üstte, kapalı altta soluk.
-                    const acikSet = new Set(["NEW", "ASSIGNED", "IN_PROGRESS", "PENDING", "ON_HOLD", "REOPENED"])
-                    const acik = filteredTickets.filter((t) => acikSet.has(t.status))
-                    const kapali = filteredTickets.filter((t) => !acikSet.has(t.status))
+                    const acik = filteredTickets.filter((t) => isOpenStatus(t.status))
+                    const kapali = filteredTickets.filter((t) => !isOpenStatus(t.status))
 
                     // Client-side sıralama. sort===null → grup varsayılanı:
                     //   açık: öncelik desc + en uzun bekleyen üstte (createdAt asc)
@@ -1013,7 +1014,16 @@ export default function ITSupportPage() {
             className="w-full max-w-4xl my-4 rounded-lg bg-background shadow-xl border"
             onClick={(e) => e.stopPropagation()}
           >
-            <TicketDetail ticketId={selectedTicketId} onClose={() => setSelectedTicketId(null)} />
+            <TicketDetail
+              ticketId={selectedTicketId}
+              onClose={() => {
+                setSelectedTicketId(null)
+                // Detayda yapılan değişiklik (durum, kapatma, silme) listeye
+                // yansısın — eskiden modal kapanıyor ama liste bayat kalıyordu,
+                // kullanıcı sayfayı elle yenilemek zorundaydı.
+                void fetchData()
+              }}
+            />
           </div>
         </div>
       )}

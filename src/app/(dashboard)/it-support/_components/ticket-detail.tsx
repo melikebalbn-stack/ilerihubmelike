@@ -27,7 +27,7 @@ import { toast } from "sonner"
 // Durum okunaklı TR etiketleri — toast geri bildiriminde kullanılır.
 const STATUS_TR: Record<string, string> = {
   NEW: "Yeni", ASSIGNED: "Atandı", IN_PROGRESS: "İşlemde", PENDING: "Beklemede",
-  ON_HOLD: "Askıda", RESOLVED: "Çözüldü", CLOSED: "Kapatıldı", CANCELLED: "İptal",
+  ON_HOLD: "Askıda", PURCHASING: "Satınalma Sürecinde", RESOLVED: "Çözüldü", CLOSED: "Kapatıldı", CANCELLED: "İptal",
   REOPENED: "Yeniden Açıldı",
 }
 
@@ -149,6 +149,7 @@ function getStatusBadge(status: string) {
     IN_PROGRESS: { label: "Islemde", variant: "default" },
     PENDING: { label: "Beklemede", variant: "outline" },
     ON_HOLD: { label: "Askida", variant: "outline" },
+    PURCHASING: { label: "Satinalma Surecinde", variant: "outline" },
     RESOLVED: { label: "Cozuldu", variant: "secondary" },
     CLOSED: { label: "Kapatildi", variant: "secondary" },
     CANCELLED: { label: "Iptal", variant: "destructive" },
@@ -839,6 +840,7 @@ export function TicketDetail({ ticketId, onClose }: { ticketId: string; onClose?
                   <SelectItem value="IN_PROGRESS">Islemde</SelectItem>
                   <SelectItem value="PENDING">Beklemede</SelectItem>
                   <SelectItem value="ON_HOLD">Askida</SelectItem>
+                  <SelectItem value="PURCHASING">Satinalma Surecinde</SelectItem>
                   <SelectItem value="CLOSED">Kapatildi</SelectItem>
                 </SelectContent>
               </Select>
@@ -960,6 +962,7 @@ export function TicketDetail({ ticketId, onClose }: { ticketId: string; onClose?
                     <SelectItem value="IN_PROGRESS">Islemde</SelectItem>
                     <SelectItem value="PENDING">Beklemede</SelectItem>
                     <SelectItem value="ON_HOLD">Askida</SelectItem>
+                  <SelectItem value="PURCHASING">Satinalma Surecinde</SelectItem>
                     <SelectItem value="CLOSED">Kapatildi</SelectItem>
                   </SelectContent>
                 </Select>

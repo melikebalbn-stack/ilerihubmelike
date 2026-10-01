@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { ACIK_TICKET_DURUMLARI_DIZI, acikTicketMi } from '@/lib/tickets/durumlar'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
 import { ortalama, yuzde } from '@/lib/tickets/kpi'
@@ -116,8 +117,8 @@ export async function GET(request: NextRequest) {
 
     // AÇIK durum kümesi — tek kaynak (openTickets, kişi yükü ve takım havuzu
     // aynı tanımı kullansın; biri değişirse hepsi değişsin).
-    const ACIK_DURUMLAR = ['NEW', 'ASSIGNED', 'IN_PROGRESS', 'PENDING', 'ON_HOLD', 'REOPENED']
-    const acikMi = (status: string) => ACIK_DURUMLAR.includes(status)
+    const ACIK_DURUMLAR = ACIK_TICKET_DURUMLARI_DIZI
+    const acikMi = (status: string) => acikTicketMi(status)
 
     // Genel İstatistikler
     const totalTickets = allTickets.length

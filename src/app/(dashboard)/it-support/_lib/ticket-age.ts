@@ -1,10 +1,13 @@
 // Ticket bekleme yaşı — açılıştan (createdAt) şimdiye. Yalnız AÇIK ticket'larda anlamlı.
 // Yaş-bazlı renkli rozet: <1 gün gri, 1-2 gün turuncu, >2 gün kırmızı.
 
-export const OPEN_TICKET_STATUSES = ["NEW", "ASSIGNED", "IN_PROGRESS", "PENDING", "ON_HOLD", "REOPENED"]
+import { ACIK_TICKET_DURUMLARI_DIZI, acikTicketMi } from "@/lib/tickets/durumlar"
+
+/** Geriye dönük ad — kaynak @/lib/tickets/durumlar (tek kopya). */
+export const OPEN_TICKET_STATUSES = ACIK_TICKET_DURUMLARI_DIZI
 
 export function isOpenStatus(status: string): boolean {
-  return OPEN_TICKET_STATUSES.includes(status)
+  return acikTicketMi(status)
 }
 
 export interface TicketAge {

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { ACIK_TICKET_DURUMLARI_DIZI } from '@/lib/tickets/durumlar'
 import { prisma } from '@/lib/prisma'
 import { dispatchTicketCreated, dispatchTicketAssigned, dispatchTicketToTeam, dispatchTicketKaydedildi } from '@/lib/ticket-notifications'
 import { parseMembers } from '@/lib/tickets/team-members'
@@ -77,7 +78,7 @@ export async function GET(request: NextRequest) {
       // IT ekibi için filtre yok - hepsini görür
     } else if (viewMode === 'open') {
       // Açık ticket'lar
-      where.status = { in: ['NEW', 'ASSIGNED', 'IN_PROGRESS', 'PENDING', 'ON_HOLD', 'REOPENED'] }
+      where.status = { in: ACIK_TICKET_DURUMLARI_DIZI }
       // Normal kullanıcılar sadece kendi açık ticket'larını görsün
       if (!userIsITStaff) {
         where.requesterEmail = userEmail
@@ -114,7 +115,7 @@ export async function GET(request: NextRequest) {
     // her biri [priority desc, createdAt desc]; birleştir. Skip yok → top-N güvenli
     // (limit açık grubu doldurmazsa kalanı kapalıdan al). Mevcut where.status'u
     // ezmemek için AND ile kesişim.
-    const OPEN_STATUSES = ['NEW', 'ASSIGNED', 'IN_PROGRESS', 'PENDING', 'ON_HOLD', 'REOPENED']
+    const OPEN_STATUSES = ACIK_TICKET_DURUMLARI_DIZI
     const CLOSED_STATUSES = ['RESOLVED', 'CLOSED', 'CANCELLED']
     const include = {
       category: { select: { id: true, name: true, color: true, icon: true } },

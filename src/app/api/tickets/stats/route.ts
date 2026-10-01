@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { ACIK_TICKET_DURUMLARI_DIZI } from '@/lib/tickets/durumlar'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
 import { getMyTeamIds, assignedToMeFilter } from '@/lib/tickets/my-teams'
@@ -51,7 +52,7 @@ export async function GET(request: NextRequest) {
       prisma.ticket.count({
         where: {
           ...baseWhere,
-          status: { in: ['NEW', 'ASSIGNED', 'IN_PROGRESS', 'PENDING', 'ON_HOLD', 'REOPENED'] }
+          status: { in: ACIK_TICKET_DURUMLARI_DIZI }
         }
       }),
       // Yeni ticket sayısı
@@ -89,7 +90,7 @@ export async function GET(request: NextRequest) {
         where: {
           isActive: true,
           requesterEmail: userEmail,
-          status: { in: ['NEW', 'ASSIGNED', 'IN_PROGRESS', 'PENDING', 'ON_HOLD', 'REOPENED'] }
+          status: { in: ACIK_TICKET_DURUMLARI_DIZI }
         }
       }),
       // Bana atanan ticket'lar (havuz dahil: takımıma düşmüş, henüz üstlenilmemiş olanlar da)
@@ -97,7 +98,7 @@ export async function GET(request: NextRequest) {
         where: {
           isActive: true,
           ...assignedToMeFilter(userEmail, myTeamIds),
-          status: { in: ['NEW', 'ASSIGNED', 'IN_PROGRESS', 'PENDING', 'ON_HOLD', 'REOPENED'] }
+          status: { in: ACIK_TICKET_DURUMLARI_DIZI }
         }
       }),
       // SLA ihlali
@@ -108,7 +109,7 @@ export async function GET(request: NextRequest) {
             { slaResponseBreached: true },
             { slaResolutionBreached: true }
           ],
-          status: { in: ['NEW', 'ASSIGNED', 'IN_PROGRESS', 'PENDING', 'ON_HOLD', 'REOPENED'] }
+          status: { in: ACIK_TICKET_DURUMLARI_DIZI }
         }
       }),
       // Önceliğe göre dağılım
@@ -116,7 +117,7 @@ export async function GET(request: NextRequest) {
         by: ['priority'],
         where: {
           isActive: true,
-          status: { in: ['NEW', 'ASSIGNED', 'IN_PROGRESS', 'PENDING', 'ON_HOLD', 'REOPENED'] }
+          status: { in: ACIK_TICKET_DURUMLARI_DIZI }
         },
         _count: true,
       }),
@@ -125,7 +126,7 @@ export async function GET(request: NextRequest) {
         by: ['categoryId'],
         where: {
           isActive: true,
-          status: { in: ['NEW', 'ASSIGNED', 'IN_PROGRESS', 'PENDING', 'ON_HOLD', 'REOPENED'] }
+          status: { in: ACIK_TICKET_DURUMLARI_DIZI }
         },
         _count: true,
       }),

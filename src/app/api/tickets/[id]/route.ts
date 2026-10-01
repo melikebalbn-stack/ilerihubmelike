@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
 import { logAuditEvent } from '@/lib/audit-log'
-import { dispatchTicketAssigned, dispatchTicketKapandi } from '@/lib/ticket-notifications'
+import { dispatchTicketAssigned, dispatchTicketKapandi, dispatchTicketSatinalma } from '@/lib/ticket-notifications'
 import { parseMembers, isTeamMember } from '@/lib/tickets/team-members'
 import { ticketYetkileri } from '@/lib/ticket-yetki'
 import { getSlaAyar, getTatilMap, cozumSlaDakika, hesaplaSlaHedefleri } from '@/lib/sla'
@@ -652,6 +652,26 @@ export async function PUT(
         }
       } catch (err) {
         console.error('[ticket-kapanis-notify] dispatch failed:', err)
+      }
+    }
+
+    // ── SATINALMA SÜRECİ BİLDİRİMİ (best-effort) ───────────────────────
+    // PURCHASING'e GEÇİŞTE talebi açana haber verilir: talebi unutulmadı,
+    // tedarik başladı. SLA saati bu durumda zaten duruyor (sla/ihlal.ts).
+    // Durumu değiştiren kişi talebi açansa gönderilmez (dispatcher içinde).
+    if (status !== undefined && status !== existingTicket.status && status === 'PURCHASING') {
+      try {
+        await dispatchTicketSatinalma(
+          {
+            id: ticket.id,
+            ticketNumber: ticket.ticketNumber,
+            subject: ticket.subject,
+            requesterEmail: ticket.requesterEmail,
+          },
+          user.email,
+        )
+      } catch (err) {
+        console.error('[ticket-satinalma-notify] dispatch failed:', err)
       }
     }
 

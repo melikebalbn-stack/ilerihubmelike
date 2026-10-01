@@ -419,6 +419,41 @@ export async function dispatchTicketAssigned(
   } catch (err) {
     console.error('[ticket-assign-notify] push failed:', err)
   }
+
+  // Kanal 3: MAİL (01.10.2026 — eskiden YOKTU).
+  // Boşluk şuydu: kategori varsayılan ataması yapınca atanan kişi
+  // `zatenBildirilen` kümesine giriyor ve dispatchTicketCreated'ın MAİL
+  // alıcılarından DÜŞÜLÜYORDU. Bu fonksiyon da mail atmadığı için atanan kişi
+  // (ör. IT kategorisinde Enes, Grafik'te Nursel) hiç mail almıyordu —
+  // yalnız in-app + push. Artık atama maili buradan gider.
+  try {
+    const u = await prisma.user.findUnique({
+      where: { id: assignedUserId },
+      select: { email: true, firstName: true, lastName: true, name: true },
+    })
+    if (u?.email) {
+      const ad = [u.firstName, u.lastName].filter(Boolean).join(' ').trim() || u.name || u.email
+      const url = ileriHubUrl(link)
+      const metin =
+        `${ticket.ticketNumber} numaralı talep size atandı.\n\n` +
+        `Konu: ${ticket.subject}\nAtayan: ${assignerName}\n\n${url}\n\nİleri Group`
+      const html = renderEmailHtml({
+        module: 'Destek',
+        title: 'Size bir talep atandı',
+        subtitle: `Talep No: ${ticket.ticketNumber}`,
+        preheader: `${ticket.ticketNumber} size atandı — ${ticket.subject}`,
+        infoRows: [
+          { label: 'Talep No', value: `<strong>${escapeHtml(ticket.ticketNumber)}</strong>` },
+          { label: 'Konu', value: escapeHtml(ticket.subject) },
+          { label: 'Atayan', value: escapeHtml(assignerName) },
+        ],
+        cta: { label: 'Talebi Aç', url },
+      })
+      await ticketMailGonder({ name: ad, email: u.email }, `${title} — ${ticket.subject}`, metin, html)
+    }
+  } catch (err) {
+    console.error('[ticket-assign-notify] mail failed:', err)
+  }
 }
 
 // ════════════════════════════════════════════════════════════
@@ -431,7 +466,8 @@ export async function dispatchTicketAssigned(
  *
  *   - In-app: prisma.notification.create (üye başına)
  *   - Push:   sendPushToUser (abonelik yoksa 0 döner)
- *   - Mail YOK (dispatchTicketAssigned ile aynı desen)
+ *   - Mail:   01.10.2026'da eklendi (bkz. dispatchTicketAssigned'daki gerekçe —
+ *             havuza düşen üyeler de mail alıcı kümesinden düşülüyordu)
  *
  * KURALLAR:
  *   - `excludeEmail` (ticket'ı açan) üyeyse ONA GİTMEZ — kendi açtığı talebi
@@ -450,11 +486,11 @@ export async function dispatchTicketToTeam(
   const alicilar = memberEmails.map((e) => e.toLowerCase().trim()).filter((e) => e !== '' && e !== haric)
   if (alicilar.length === 0) return
 
-  let users: { id: string }[] = []
+  let users: { id: string; email: string; firstName: string | null; lastName: string | null; name: string | null }[] = []
   try {
     users = await prisma.user.findMany({
       where: { email: { in: alicilar }, isActive: true },
-      select: { id: true },
+      select: { id: true, email: true, firstName: true, lastName: true, name: true },
     })
   } catch (err) {
     console.error('[ticket-team-notify] üye çözümleme başarısız:', err)
@@ -484,6 +520,28 @@ export async function dispatchTicketToTeam(
       })
     } catch (err) {
       console.error('[ticket-team-notify] push failed:', err)
+    }
+    try {
+      const ad = [u.firstName, u.lastName].filter(Boolean).join(' ').trim() || u.name || u.email
+      const url = ileriHubUrl(link)
+      const metin =
+        `${teamName} havuzuna yeni bir talep düştü.\n\n` +
+        `Talep No: ${ticket.ticketNumber}\nKonu: ${ticket.subject}\n\n${url}\n\nİleri Group`
+      const html = renderEmailHtml({
+        module: 'Destek',
+        title: 'Takımınıza yeni talep',
+        subtitle: `${teamName} havuzu`,
+        preheader: `${ticket.ticketNumber} ${teamName} havuzuna düştü`,
+        infoRows: [
+          { label: 'Talep No', value: `<strong>${escapeHtml(ticket.ticketNumber)}</strong>` },
+          { label: 'Konu', value: escapeHtml(ticket.subject) },
+          { label: 'Havuz', value: escapeHtml(teamName) },
+        ],
+        cta: { label: 'Talebi Aç', url },
+      })
+      await ticketMailGonder({ name: ad, email: u.email }, `${title} — ${ticket.subject}`, metin, html)
+    } catch (err) {
+      console.error('[ticket-team-notify] mail failed:', err)
     }
   }
 }
@@ -969,5 +1027,100 @@ export async function dispatchTicketKaydedildi(ticket: TicketKaydedildiInfo): Pr
     })
   } catch (err) {
     console.error('[ticket-kayit-notify] email failed:', err)
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// PUBLIC: SATINALMA SÜRECİ BİLDİRİMİ (01.10.2026)
+// ════════════════════════════════════════════════════════════
+
+export type TicketSatinalmaInfo = {
+  id: string
+  ticketNumber: string
+  subject: string
+  requesterEmail: string
+}
+
+/**
+ * Talep "Satınalma Sürecinde" durumuna geçtiğinde TALEBİ AÇANA haber verir.
+ *
+ * Melih kararı: kullanıcı talebinin unutulmadığını, sipariş aşamasına geçtiğini
+ * görsün. SLA saati bu durumda durduğu için (bkz. sla/ihlal.ts) kullanıcıya
+ * "ne zaman biter" sözü VERİLMEZ — metin bilgilendirmedir.
+ *
+ * Kanallar dispatchTicketKapandi ile aynı: e-posta + in-app + push.
+ * Alıcı çözümü `alicimiCoz` ile — mail kanalından açılmış, sistemde kaydı
+ * olmayan talep sahibine de e-posta gider.
+ *
+ * Durumu DEĞİŞTİREN kişi talebi açanla aynıysa gönderilmez.
+ * throw ETMEZ → durum güncellemesi bildirimden dolayı bozulmaz.
+ */
+export async function dispatchTicketSatinalma(
+  ticket: TicketSatinalmaInfo,
+  degistirenEmail: string | null,
+): Promise<void> {
+  const acan = (ticket.requesterEmail ?? '').toLowerCase().trim()
+  if (acan === '') return
+  if (acan === (degistirenEmail ?? '').toLowerCase().trim()) return
+
+  const r = await alicimiCoz(acan, '[ticket-satinalma-notify]', ticket.ticketNumber)
+  if (!r) return
+
+  const link = `/it-support?ticket=${ticket.ticketNumber}`
+  const title = `Talebiniz satınalma sürecine alındı: ${ticket.ticketNumber}`
+
+  try {
+    const text =
+      `Talebiniz satınalma sürecine alındı.\n\n` +
+      `Talep No: ${ticket.ticketNumber}\n` +
+      `Konu: ${ticket.subject}\n\n` +
+      `Gerekli ürün/hizmet için tedarik süreci başlatıldı. Tedarik tamamlandığında ` +
+      `talebiniz kaldığı yerden sürdürülecek.\n\n${ileriHubUrl(link)}\n\nİleri Group`
+    const html = renderEmailHtml({
+      module: 'Destek',
+      title: 'Talebiniz satınalma sürecinde',
+      subtitle: `Talep No: ${ticket.ticketNumber}`,
+      preheader: `${ticket.ticketNumber} satınalma sürecine alındı`,
+      infoRows: [
+        { label: 'Talep No', value: `<strong>${escapeHtml(ticket.ticketNumber)}</strong>` },
+        { label: 'Konu', value: escapeHtml(ticket.subject) },
+      ],
+      afterHtml: p(
+        'Gerekli ürün/hizmet için tedarik süreci başlatıldı. Tedarik tamamlandığında talebiniz kaldığı yerden sürdürülecek.',
+      ),
+      cta: { label: 'Talebi Aç', url: ileriHubUrl(link) },
+    })
+    await ticketMailGonder({ name: r.name, email: r.email }, title, text, html)
+  } catch (err) {
+    console.error('[ticket-satinalma-notify] email failed:', err)
+  }
+
+  // in-app + push YALNIZ User kaydı olana (ikisi de userId'ye dayanıyor).
+  if (!r.id) return
+
+  try {
+    await prisma.notification.create({
+      data: {
+        userId: r.id,
+        title,
+        message: `${ticket.subject} — tedarik süreci başlatıldı.`,
+        type: 'INFO' as const,
+        link,
+      },
+    })
+  } catch (err) {
+    console.error('[ticket-satinalma-notify] in-app failed:', err)
+  }
+
+  try {
+    await sendPushToUser(prisma, r.id, {
+      title,
+      body: ticket.subject,
+      url: link,
+      tag: `ticket-${ticket.id}`,
+      data: { ticketId: ticket.id, ticketNumber: ticket.ticketNumber },
+    })
+  } catch (err) {
+    console.error('[ticket-satinalma-notify] push failed:', err)
   }
 }

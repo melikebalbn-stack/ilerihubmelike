@@ -2609,6 +2609,7 @@ enum TicketStatus {
   IN_PROGRESS // İşlemde - Üzerinde çalışılıyor
   PENDING // Beklemede - Kullanıcı yanıtı bekleniyor
   ON_HOLD // Askıda - Harici sebep
+  PURCHASING // Satınalma Sürecinde - Sipariş/tedarik bekleniyor (SLA saati DURUR)
   RESOLVED // Çözüldü - Çözüm uygulandı
   CLOSED // Kapatıldı - Kullanıcı onayladı
   CANCELLED // İptal - Talep iptal edildi

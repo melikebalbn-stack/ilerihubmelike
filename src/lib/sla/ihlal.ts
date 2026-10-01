@@ -15,8 +15,12 @@ import { businessMinutesBetween, type SlaCalismaAyari } from './calisma-takvimi'
 /** Kapalı sayılan durumlar — bunlarda SLA saati işlemez. */
 export const KAPALI_DURUMLAR = ['RESOLVED', 'CLOSED', 'CANCELLED'] as const
 
-/** SLA saatini DURDURAN durumlar. */
-export const DURAKLATAN_DURUMLAR = ['PENDING', 'ON_HOLD'] as const
+/**
+ * SLA saatini DURDURAN durumlar.
+ * PURCHASING (01.10.2026): sipariş/tedarik beklenen süre IT'nin hanesine
+ * yazılmaz — PENDING/ON_HOLD ile aynı muamele.
+ */
+export const DURAKLATAN_DURUMLAR = ['PENDING', 'ON_HOLD', 'PURCHASING'] as const
 
 export function duraklatiyorMu(status: string): boolean {
   return (DURAKLATAN_DURUMLAR as readonly string[]).includes(status)

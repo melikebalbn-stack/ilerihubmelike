@@ -436,6 +436,7 @@ export default function ITReportsPage() {
     IN_PROGRESS: "Islemde",
     PENDING: "Beklemede",
     ON_HOLD: "Askida",
+  PURCHASING: "Satinalma Surecinde",
     RESOLVED: "Cozuldu",
     CLOSED: "Kapatildi",
     CANCELLED: "Iptal",

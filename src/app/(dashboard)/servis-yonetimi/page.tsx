@@ -20,6 +20,7 @@ import {
 } from '@/components/ui/dialog'
 import { Plus } from 'lucide-react'
 import { ServisGecmisDialog, GecmisButonu } from './_components/ServisGecmisDialog'
+import { normalizeTr } from '@/lib/normalize-tr'
 
 type ServisFirma = {
   id: string
@@ -169,10 +170,9 @@ function ServisFirmaPanel({ canManage, canHistory }: { canManage: boolean; canHi
     yukle()
   }, [yukle])
 
-  const normalize = (value: string) => value.toLocaleLowerCase('tr-TR')
   const filtreliFirmalar = firmalar.filter((firma) => {
-    const query = normalize(arama.trim())
-    return !query || normalize(firma.ad).includes(query) || (firma.yetkiliAdi && normalize(firma.yetkiliAdi).includes(query))
+    const query = normalizeTr(arama.trim())
+    return !query || normalizeTr(firma.ad).includes(query) || (firma.yetkiliAdi && normalizeTr(firma.yetkiliAdi).includes(query))
   })
 
   function yeniAc() {
@@ -370,11 +370,10 @@ function ServisYerleskePanel({ canManage, canHistory }: { canManage: boolean; ca
     yukle()
   }, [yukle])
 
-  const normalize = (value: string) => value.toLocaleLowerCase('tr-TR')
   const filtreliYerleskeler = yerleskeler.filter((yerleske) => {
-    const query = normalize(arama.trim())
+    const query = normalizeTr(arama.trim())
     const alanlar = [yerleske.kod, yerleske.ad, yerleske.adres]
-    return !query || alanlar.some((alan) => alan && normalize(alan).includes(query))
+    return !query || alanlar.some((alan) => alan && normalizeTr(alan).includes(query))
   })
 
   function yeniAc() {
@@ -603,10 +602,9 @@ function ServisGuzergahPanel({ canManage, canHistory }: { canManage: boolean; ca
     yukle()
   }, [yukle])
 
-  const normalize = (value: string) => value.toLocaleLowerCase('tr-TR')
   const filtreliGuzergahlar = guzergahlar.filter((guzergah) => {
-    const query = normalize(arama.trim())
-    return !query || normalize(guzergah.kod).includes(query) || normalize(guzergah.ad).includes(query)
+    const query = normalizeTr(arama.trim())
+    return !query || normalizeTr(guzergah.kod).includes(query) || normalizeTr(guzergah.ad).includes(query)
   })
 
   function yeniAc() {
@@ -845,11 +843,10 @@ function ServisDurakPanel({ canManage, canHistory }: { canManage: boolean; canHi
     yukle()
   }, [yukle])
 
-  const normalize = (value: string) => value.toLocaleLowerCase('tr-TR')
   const filtreliDuraklar = duraklar.filter((durak) => {
-    const query = normalize(arama.trim())
+    const query = normalizeTr(arama.trim())
     const alanlar = [durak.kod, durak.ad, durak.il, durak.ilce, durak.mahalle]
-    return !query || alanlar.some((alan) => alan && normalize(alan).includes(query))
+    return !query || alanlar.some((alan) => alan && normalizeTr(alan).includes(query))
   })
 
   function yeniAc() {
@@ -1089,10 +1086,9 @@ function ServisAracPanel({ canManage, canHistory }: { canManage: boolean; canHis
     yukle()
   }, [yukle])
 
-  const normalize = (value: string) => value.toLocaleLowerCase('tr-TR')
   const filtreliAraclar = araclar.filter((arac) => {
-    const query = normalize(arama.trim())
-    return !query || normalize(arac.plaka).includes(query) || (arac.aracTipi && normalize(arac.aracTipi).includes(query))
+    const query = normalizeTr(arama.trim())
+    return !query || normalizeTr(arac.plaka).includes(query) || (arac.aracTipi && normalizeTr(arac.aracTipi).includes(query))
   })
 
   function yeniAc() {
@@ -1402,9 +1398,9 @@ function ServisSoforPanel({ canManage, canHistory }: { canManage: boolean; canHi
 
   useEffect(() => { yukle() }, [yukle])
 
-  const query = arama.trim().toLocaleLowerCase('tr-TR')
+  const query = normalizeTr(arama.trim())
   const filtreliSoforler = soforler.filter((sofor) =>
-    !query || sofor.adSoyad.toLocaleLowerCase('tr-TR').includes(query)
+    !query || normalizeTr(sofor.adSoyad).includes(query)
   )
 
   function yeniAc() {
@@ -1591,11 +1587,10 @@ function ServisSeferDilimiPanel({ canManage, canHistory }: { canManage: boolean;
     yukle()
   }, [yukle])
 
-  const normalize = (value: string) => value.toLocaleLowerCase('tr-TR')
   const filtreliDilimler = dilimler.filter((dilim) => {
-    const query = normalize(arama.trim())
+    const query = normalizeTr(arama.trim())
     const alanlar = [dilim.kod, dilim.ad, dilim.grupKodu]
-    return !query || alanlar.some((alan) => alan && normalize(alan).includes(query))
+    return !query || alanlar.some((alan) => alan && normalizeTr(alan).includes(query))
   })
 
   function yeniAc() {

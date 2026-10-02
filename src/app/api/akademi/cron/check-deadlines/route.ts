@@ -11,63 +11,25 @@ export async function POST(req: NextRequest) {
   }
 
   const now = new Date();
-  const sevenDaysStart = new Date(now);
-  sevenDaysStart.setDate(now.getDate() + 7);
-  sevenDaysStart.setHours(0, 0, 0, 0);
-  const sevenDaysEnd = new Date(sevenDaysStart);
-  sevenDaysEnd.setHours(23, 59, 59, 999);
 
-  // 1) DEADLINE_APPROACHING — dueDate tam 7 gün sonra (gün hassasiyetinde),
-  //    reminderSentAt boş, completedAt yok (CourseProgress üzerinden join)
-  const approaching = await prisma.userCourseAssignment.findMany({
-    where: {
-      dueDate: { gte: sevenDaysStart, lte: sevenDaysEnd },
-      reminderSentAt: null,
-    },
-    include: {
-      assignment: {
-        include: { course: { select: { id: true, title: true } } },
-      },
-    },
-  });
+  // GECİKME EŞİĞİ (Melih kararı 02.10.2026): "son tarih geçti" bildirimi son
+  // tarihin üstünden TAM BİR GÜN geçmeden çıkmaz. Eskiden dueDate < now yeterliydi
+  // ve son tarih günü saat 00:00'da dolduğu için aynı gün içinde bildirim gidiyordu.
+  const gecikmeEsigi = new Date(now);
+  gecikmeEsigi.setDate(now.getDate() - 1);
 
-  let approachingSent = 0;
-  for (const a of approaching) {
-    // Tamamlandıysa atla (CourseProgress.completedAt)
-    const progress = await prisma.courseProgress.findUnique({
-      where: {
-        userId_courseId: {
-          userId: a.userId,
-          courseId: a.assignment.courseId,
-        },
-      },
-      select: { completedAt: true },
-    });
-    if (progress?.completedAt) continue;
+  // "7 gün kaldı" HATIRLATMASI KALDIRILDI (Melih kararı 02.10.2026).
+  // Gerekçe: tek bir eğitim ataması onlarca kişiye aynı anda düştüğü için
+  // hatırlatma günü gelen kutuları kilitliyordu ve kimse okumuyordu. Artık
+  // yalnız GECİKME bildiriliyor — bir şey yapılmadığında haber veriliyor,
+  // yapılması gerekenler önceden sayılmıyor.
+  // DEADLINE_APPROACHING olay tipi ve şablonu DURUYOR: sertifika yaklaşma
+  // bildirimi (check-certificates) aynı altyapıyı kullanıyor.
 
-    try {
-      await notifyAkademiEvent({
-        userId: a.userId,
-        eventType: "DEADLINE_APPROACHING",
-        courseTitle: a.assignment.course.title,
-        data: { deadline: a.dueDate, daysLeft: 7 },
-        link: `/akademi/courses/${a.assignment.courseId}`,
-      });
-      approachingSent++;
-    } catch (err) {
-      console.error("[cron-deadlines] approaching notify:", err);
-    }
-
-    await prisma.userCourseAssignment.update({
-      where: { id: a.id },
-      data: { reminderSentAt: now },
-    });
-  }
-
-  // 2) DEADLINE_MISSED — dueDate geçmiş, missedNotifiedAt boş, tamamlanmamış
+  // GECİKME — son tarihin üstünden bir gün geçmiş, bildirim gitmemiş, tamamlanmamış
   const missed = await prisma.userCourseAssignment.findMany({
     where: {
-      dueDate: { lt: now },
+      dueDate: { lt: gecikmeEsigi },
       missedNotifiedAt: null,
     },
     include: {
@@ -115,7 +77,7 @@ export async function POST(req: NextRequest) {
   }
 
   return NextResponse.json({
-    approaching: { found: approaching.length, sent: approachingSent },
+    // `approaching` alanı 02.10.2026'da düştü — hatırlatma akışı kaldırıldı.
     missed: { found: missed.length, sent: missedSent },
   });
 }

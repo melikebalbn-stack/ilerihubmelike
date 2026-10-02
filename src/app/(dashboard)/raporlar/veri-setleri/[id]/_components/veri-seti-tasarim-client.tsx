@@ -211,6 +211,8 @@ export default function VeriSetiTasarimClient({ katalogYukleyebilir, mevcut }: P
   const [seciliTablo, setSeciliTablo] = useState('')
   const [hubKolonlar, setHubKolonlar] = useState<HubKolon[]>([])
   const [yukleniyor, setYukleniyor] = useState<string | null>(null)
+  /** Listede olmayan (IFS'te yeni açılmış) projeksiyonu adıyla kataloğa çekmek için. */
+  const [yeniProjeksiyon, setYeniProjeksiyon] = useState('')
   const [solHata, setSolHata] = useState<CevrilmisHata | null>(null)
 
   // Sağ — önizleme
@@ -275,12 +277,17 @@ export default function VeriSetiTasarimClient({ katalogYukleyebilir, mevcut }: P
     }
   }, [kaynaklar, kaynakAlanlari])
 
-  async function katalogYukle(projeksiyon: string) {
+  /**
+   * IFS $metadata → katalog. `sec` ile yeni eklenen projeksiyon yüklenince seçili hale gelir
+   * (listedekiler koddaki sabitten DEĞİL, katalogdan da geliyor; bir kez yüklemek kalıcı).
+   */
+  async function katalogYukle(projeksiyon: string, sec = false) {
     setYukleniyor(`yukle:${projeksiyon}`)
     setSolHata(null)
     try {
       await apiGonder('/api/raporlar/katalog/yukle', 'POST', { projeksiyon })
       projeksiyonlariYukle()
+      if (sec) { setSeciliProjeksiyon(projeksiyon); setSeciliEntity(null); setYeniProjeksiyon('') }
       if (seciliProjeksiyon === projeksiyon) setEntityAra((s) => s + '')
     } catch (e) { setSolHata(hataYapisi(e)) }
     finally { setYukleniyor(null) }
@@ -810,6 +817,27 @@ export default function VeriSetiTasarimClient({ katalogYukleyebilir, mevcut }: P
                         </div>
                       )
                     })()}
+                    {katalogYukleyebilir && (
+                      <div className="rounded border border-dashed border-slate-200 p-2 space-y-1">
+                        <p className="text-[11px] text-muted-foreground m-0">
+                          Listede yok mu? IFS&apos;teki projeksiyon adını yazıp ekle — bir kez yüklenir, sonra listede kalır.
+                        </p>
+                        <div className="flex gap-1">
+                          <Input
+                            placeholder="ör. ShopOrderOperationsHandling" value={yeniProjeksiyon} className="h-8 text-xs"
+                            onChange={(e) => setYeniProjeksiyon(e.target.value.replace(/[^A-Za-z0-9_]/g, ''))}
+                            onKeyDown={(e) => { if (e.key === 'Enter' && yeniProjeksiyon) { e.preventDefault(); katalogYukle(yeniProjeksiyon, true) } }}
+                          />
+                          <Button
+                            size="sm" variant="outline" className="h-8 shrink-0"
+                            disabled={!yeniProjeksiyon || !!yukleniyor?.startsWith('yukle:')}
+                            onClick={() => katalogYukle(yeniProjeksiyon, true)}
+                          >
+                            {yukleniyor === `yukle:${yeniProjeksiyon}` ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <Plus className="h-3 w-3 mr-1" />}Ekle
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                     {seciliProjeksiyon && (
                       <>
                         <Input placeholder="Entity süz…" value={entityAra} onChange={(e) => setEntityAra(e.target.value)} className="h-8" />

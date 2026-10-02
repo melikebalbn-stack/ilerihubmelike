@@ -19,32 +19,44 @@ export const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5MB
 // ── Import kolon başlıkları (başlık satırı zorunlu, sıra önemsiz, isimle eşleşir) ──
 // Adlar GERÇEK KAL-KYT-15 dosyasının '2026' sayfasıyla birebir hizalandı.
 // Dosyada olup modelde karşılığı OLMAYAN sütunlar sessizce yok sayılır:
-//   RED ORANI (hesaplanır), HURDA ADEDİ (bu modelde alan yok), DURUM (kapanıştan türer).
+//   RED ORANI (hesaplanır), DURUM (kapanıştan türer).
+// Aşağıdaki alanlar sonradan eklendi (2026-10, Melih Bey onayı): musteriAdi,
+// hurdaAdedi, kacisKokNedeni, geciciAksiyon, onaylayan, ogrenilmisDersler,
+// katilimcilar — eski export dosyalarında bu kolonlar yoksa sessizce boş geçilir
+// (hiçbiri zorunluBaslik listesinde değil).
 export const IMPORT_COLS = {
   tarih: 'TARİH',
   mamulUrunKodu: 'MAMUL ÜRÜN KODU',
+  musteriAdi: 'MÜŞTERİ ADI',
   yariMamulKodu: 'YARI MAMUL ÜRÜN KODU',
   malzemeAdi: 'MALZEME ADI',
   isEmriNo: 'İŞ EMRİ NO',
   isEmriAdeti: 'İŞ EMRİ ADETİ',
   redAdeti: 'RED ADETİ',
   reworkAdedi: 'REWORK ADEDİ',
+  hurdaAdedi: 'HURDA ADETİ',
   tespitEdenBolum: 'TESPİT EDEN BÖLÜM',
   olusanBolum: 'HATANIN OLUŞTUĞU BÖLÜM',
   hataKodu: 'HATA KODU',
   hataDetayi: 'HATA DETAYI',
   karar: 'KARAR',
   kokNeden: 'KÖK NEDEN',
+  kacisKokNedeni: 'KAÇIŞ KÖK NEDENİ',
   duzelticiFaaliyet: 'DÜZELTİCİ FAALİYET',
+  geciciAksiyon: 'GEÇİCİ AKSİYON',
   sorumlu: 'SORUMLU',
+  onaylayan: 'ONAYLAYAN',
+  katilimcilar: 'TOPLANTI KATILIMCILARI',
   termin: 'TERMİN',
   kapanisTarihi: 'KAPANIŞ TARİHİ',
+  ogrenilmisDersler: 'ÖĞRENİLMİŞ DERSLER',
 } as const
 
 /**
- * Export kolon sırası — Excel'in ORİJİNAL düzeni. Satır bazlı düz tablo:
- * her uygunsuzluk satırı bir Excel satırı, başlık alanları tekrar eder.
- * HURDA ADEDİ sütunu YOK (bu modülde böyle bir alan yok).
+ * Export kolon sırası — Excel'in ORİJİNAL düzeni + sonradan eklenen alanlar sona
+ * eklendi (mevcut dosyalarla sütun pozisyonu uyuşmazlığı yaratmasın diye araya
+ * değil sona). Satır bazlı düz tablo: her uygunsuzluk satırı bir Excel satırı,
+ * başlık alanları tekrar eder.
  */
 export const EXPORT_HEADERS = [
   'TARİH',
@@ -56,6 +68,7 @@ export const EXPORT_HEADERS = [
   'RED ADETİ',
   'RED ORANI',
   'REWORK ADEDİ',
+  'HURDA ADETİ',
   'TESPİT EDEN BÖLÜM',
   'HATANIN OLUŞTUĞU BÖLÜM',
   'HATA KODU',
@@ -67,6 +80,12 @@ export const EXPORT_HEADERS = [
   'TERMİN',
   'KAPANIŞ TARİHİ',
   'DURUM',
+  'MÜŞTERİ ADI',
+  'KAÇIŞ KÖK NEDENİ',
+  'GEÇİCİ AKSİYON',
+  'ONAYLAYAN',
+  'TOPLANTI KATILIMCILARI',
+  'ÖĞRENİLMİŞ DERSLER',
 ] as const
 
 /** RED ORANI kolonunun 0-tabanlı indeksi — hücre biçimi için. */

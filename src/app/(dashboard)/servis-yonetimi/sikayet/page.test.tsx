@@ -20,6 +20,7 @@ const SATIR = {
   durum: 'AKSIYON_ALINDI' as const,
   kaynak: 'IV',
   guzergahId: 'g1',
+  guzergah: { kod: 'G1', ad: 'Hat 1' },
   durakId: 'd1',
   durak: { id: 'd1', kod: 'D1', ad: 'Durak 1' },
   sikayetciPersonnelId: 'p1',
@@ -140,6 +141,28 @@ describe('liste içeriği', () => {
     expect(hucreler).toContain('D1 — Durak 1')
     expect(hucreler).toContain('Geç gelme')
     expect(hucreler).toContain('Ayşe Sorumlu')
+  })
+
+  it('🔴 Güzergâh sütununda ham id DEĞİL "kod — ad" görünür', async () => {
+    const HAM_ID = 'cmteaa2gk004yhhpey02syx55'
+    fetchMockKur([{ ...SATIR, guzergahId: HAM_ID }])
+    render(<SikayetListesiPage />)
+
+    await waitFor(() => expect(screen.getByText('Ahmet Yolcu')).toBeInTheDocument())
+    const hucreler = screen.getAllByRole('cell').map(c => c.textContent)
+    expect(hucreler).toContain('G1 — Hat 1')
+    expect(hucreler).not.toContain(HAM_ID)
+  })
+
+  it('🔴 güzergâh bilgisi gelmezse ham id değil anlamlı metin görünür', async () => {
+    const HAM_ID = 'cmteaa2gk004yhhpey02syx55'
+    fetchMockKur([{ ...SATIR, guzergahId: HAM_ID, guzergah: null }])
+    render(<SikayetListesiPage />)
+
+    await waitFor(() => expect(screen.getByText('Ahmet Yolcu')).toBeInTheDocument())
+    const hucreler = screen.getAllByRole('cell').map(c => c.textContent)
+    expect(hucreler).toContain('Güzergâh bilgisi bulunamadı')
+    expect(hucreler).not.toContain(HAM_ID)
   })
 
   it('tarihler gün olarak gösteriliyor (saat/zaman dilimi gürültüsü yok)', async () => {

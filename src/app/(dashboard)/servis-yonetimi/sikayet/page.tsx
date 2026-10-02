@@ -42,6 +42,8 @@ type SikayetSatiri = {
   durum: Durum
   kaynak: string
   guzergahId: string
+  /** Sunucu kod/ad'ı hep döndürür (ORTAK_SELECT); ham id ASLA kullanıcıya basılmaz. */
+  guzergah?: { kod: string; ad: string } | null
   durakId: string | null
   durak: { id: string; kod: string; ad: string } | null
   sikayetciPersonnelId?: string | null
@@ -561,7 +563,7 @@ export default function SikayetListesiPage() {
                 <TableCell className="font-mono">{s.no}</TableCell>
                 <TableCell>{gunMetni(s.tarih)}</TableCell>
                 <TableCell>{gunMetni(s.bildirimTarihi)}</TableCell>
-                <TableCell>{s.guzergahId}</TableCell>
+                <TableCell>{s.guzergah ? `${s.guzergah.kod} — ${s.guzergah.ad}` : 'Güzergâh bilgisi bulunamadı'}</TableCell>
                 <TableCell>{s.durak ? `${s.durak.kod} — ${s.durak.ad}` : '-'}</TableCell>
                 <TableCell>{sikayetKategoriEtiketi(s.kategori)}</TableCell>
                 <TableCell>

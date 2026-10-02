@@ -102,6 +102,11 @@ export default function SettingsPage() {
   // Menü yönetimi: HR/Admin rolü VEYA İV/İdari İşler bölümü (server canManageMenu
   // ile aynı; API zaten 403 ile çift emniyet)
   const canManageMenu = ['HR_MANAGER', 'ADMIN', 'SUPER_ADMIN'].includes(userRole) || isOfisBolumu
+  // Duyuru/anket: kartın kapısı, uçların zorladığı İZNİN AYNISI (duyuru.admin).
+  // Melih kararı 02.10.2026: duyuruyu İV ve süper adminler yapar, İdari İşler
+  // yapmaz. Bölüm kuralına bağlansaydı İdari İşler kartı görür ama her işlemde
+  // 403 alırdı — görünen yetki ile gerçek yetki ayrışmasın.
+  const canManageDuyuru = ((session?.user as any)?.permissions ?? []).includes('duyuru.admin')
 
   // Data states
   const [locations, setLocations] = useState<Location[]>([])
@@ -1159,6 +1164,7 @@ export default function SettingsPage() {
       )}
 
       {/* Duyuru Sistemi Ayarları */}
+      {canManageDuyuru && (
       <CollapsibleSection
         title="Duyuru Sistemi Ayarları"
         description="Duyuru kategorileri ve anket yönetimi"
@@ -1182,6 +1188,7 @@ export default function SettingsPage() {
           onDeleteSurvey={handleDeleteSurvey}
         />
       </CollapsibleSection>
+      )}
 
       {/* IT Ticket Ayarları */}
       {isAdmin && (

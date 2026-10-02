@@ -48,6 +48,8 @@ export async function GET(request: NextRequest) {
     include: {
       tespitEdenBolum: { select: { kod: true, ad: true } },
       sorumlu: { select: { adSoyad: true } },
+      onaylayan: { select: { adSoyad: true } },
+      katilimcilar: { include: { personnel: { select: { adSoyad: true } } } },
       satirlar: {
         orderBy: { siraNo: 'asc' },
         include: {
@@ -86,6 +88,7 @@ export async function GET(request: NextRequest) {
         s?.redAdeti ?? '',
         oran,
         s?.reworkAdedi ?? '',
+        s?.hurdaAdedi ?? '',
         tespitEden,
         s?.olusanBolum ? `${s.olusanBolum.kod} ${s.olusanBolum.ad}` : '',
         s?.hataKodu ? `${s.hataKodu.kod} ${s.hataKodu.ad}` : '',
@@ -97,6 +100,12 @@ export async function GET(request: NextRequest) {
         formatDateTR(k.termin),
         formatDateTR(k.kapanisTarihi),
         durum,
+        k.musteriAdi ?? '',
+        k.kacisKokNedeni ?? '',
+        k.geciciAksiyon ?? '',
+        k.onaylayan?.adSoyad ?? '',
+        k.katilimcilar.map((p) => p.personnel.adSoyad).join(', '),
+        k.ogrenilmisDersler.join('\n'),
       ])
     }
   }

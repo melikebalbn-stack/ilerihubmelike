@@ -30,6 +30,7 @@ type SatirTaslak = {
   malzemeAdi: string | null
   redAdeti: number
   reworkAdedi: number | null
+  hurdaAdedi: number | null
   /** Ham hücre: sayı ise kod, metin ise bölüm adı. */
   olusanBolumRaw: string | null
   hataKodu: number | null
@@ -43,14 +44,20 @@ type Grup = {
   kayit: {
     tarih: Date
     mamulUrunKodu: string
+    musteriAdi: string | null
     isEmriNo: string
     isEmriAdeti: number | null
     tespitEdenBolumRaw: string | null
     kokNeden: string | null
+    kacisKokNedeni: string | null
     duzelticiFaaliyet: string | null
+    geciciAksiyon: string | null
     sorumluRaw: string | null
+    onaylayanRaw: string | null
+    katilimcilarRaw: string | null
     termin: Date | null
     kapanisTarihi: Date | null
+    ogrenilmisDersler: string[]
   }
   satirlar: SatirTaslak[]
 }
@@ -260,6 +267,12 @@ export async function POST(request: NextRequest) {
       satirGecerli = false
     }
 
+    const hurdaRaw = intOrNull(cell(row, 'hurdaAdedi'))
+    if (hurdaRaw === 'NaN') {
+      rowHata('HURDA ADETİ sayı olmalı')
+      satirGecerli = false
+    }
+
     const isEmriAdetiRaw = intOrNull(cell(row, 'isEmriAdeti'))
     if (isEmriAdetiRaw === 'NaN') {
       rowHata('İŞ EMRİ ADETİ sayı olmalı')
@@ -300,6 +313,7 @@ export async function POST(request: NextRequest) {
       malzemeAdi: str(cell(row, 'malzemeAdi')) || null,
       redAdeti: redAdetiRaw as number,
       reworkAdedi: reworkRaw === 'NaN' ? null : reworkRaw,
+      hurdaAdedi: hurdaRaw === 'NaN' ? null : hurdaRaw,
       olusanBolumRaw: str(cell(row, 'olusanBolum')) || null,
       hataKodu: hataKoduRaw === 'NaN' ? null : hataKoduRaw,
       hataDetayi: str(cell(row, 'hataDetayi')) || null,
@@ -323,12 +337,16 @@ export async function POST(request: NextRequest) {
         }
       }
       cakisma(IMPORT_COLS.kokNeden, mevcut.kayit.kokNeden, str(cell(row, 'kokNeden')) || null)
+      cakisma(IMPORT_COLS.kacisKokNedeni, mevcut.kayit.kacisKokNedeni, str(cell(row, 'kacisKokNedeni')) || null)
       cakisma(IMPORT_COLS.duzelticiFaaliyet, mevcut.kayit.duzelticiFaaliyet, str(cell(row, 'duzelticiFaaliyet')) || null)
+      cakisma(IMPORT_COLS.geciciAksiyon, mevcut.kayit.geciciAksiyon, str(cell(row, 'geciciAksiyon')) || null)
       cakisma(IMPORT_COLS.sorumlu, mevcut.kayit.sorumluRaw, str(cell(row, 'sorumlu')) || null)
+      cakisma(IMPORT_COLS.onaylayan, mevcut.kayit.onaylayanRaw, str(cell(row, 'onaylayan')) || null)
       cakisma(IMPORT_COLS.termin, mevcut.kayit.termin, termin)
       cakisma(IMPORT_COLS.kapanisTarihi, mevcut.kayit.kapanisTarihi, kapanisTarihi)
       cakisma(IMPORT_COLS.isEmriAdeti, mevcut.kayit.isEmriAdeti, isEmriAdetiRaw === 'NaN' ? null : isEmriAdetiRaw)
       cakisma(IMPORT_COLS.tespitEdenBolum, mevcut.kayit.tespitEdenBolumRaw, str(cell(row, 'tespitEdenBolum')) || null)
+      cakisma(IMPORT_COLS.musteriAdi, mevcut.kayit.musteriAdi, str(cell(row, 'musteriAdi')) || null)
     } else {
       satir.siraNo = 1
       grupMap.set(anahtar, {
@@ -337,14 +355,23 @@ export async function POST(request: NextRequest) {
         kayit: {
           tarih,
           mamulUrunKodu,
+          musteriAdi: str(cell(row, 'musteriAdi')) || null,
           isEmriNo,
           isEmriAdeti: isEmriAdetiRaw === 'NaN' ? null : isEmriAdetiRaw,
           tespitEdenBolumRaw: str(cell(row, 'tespitEdenBolum')) || null,
           kokNeden: str(cell(row, 'kokNeden')) || null,
+          kacisKokNedeni: str(cell(row, 'kacisKokNedeni')) || null,
           duzelticiFaaliyet: str(cell(row, 'duzelticiFaaliyet')) || null,
+          geciciAksiyon: str(cell(row, 'geciciAksiyon')) || null,
           sorumluRaw: str(cell(row, 'sorumlu')) || null,
+          onaylayanRaw: str(cell(row, 'onaylayan')) || null,
+          katilimcilarRaw: str(cell(row, 'katilimcilar')) || null,
           termin,
           kapanisTarihi,
+          ogrenilmisDersler: str(cell(row, 'ogrenilmisDersler'))
+            .split('\n')
+            .map((s) => s.trim())
+            .filter(Boolean),
         },
         satirlar: [satir],
       })
@@ -404,18 +431,25 @@ export async function POST(request: NextRequest) {
     for (const k of found) kodMap.set(k.kod, { id: k.id, tip: k.tip, ad: k.ad })
   }
 
-  // Sorumlu: sicil no VEYA ad
-  const sorumluRawlar = [
-    ...new Set(gruplar.map((g) => g.kayit.sorumluRaw).filter((s): s is string => !!s)),
+  // Sorumlu/onaylayan/katılımcı: sicil no VEYA ad — TEK sorgu, hepsi aynı havuzdan.
+  // Katılımcı hücresi virgülle ayrılmış birden çok kişi içerebilir.
+  const katilimciToken = (raw: string | null) =>
+    (raw ?? '').split(',').map((s) => s.trim()).filter(Boolean)
+  const kisiRawlar = [
+    ...new Set([
+      ...gruplar.map((g) => g.kayit.sorumluRaw).filter((s): s is string => !!s),
+      ...gruplar.map((g) => g.kayit.onaylayanRaw).filter((s): s is string => !!s),
+      ...gruplar.flatMap((g) => katilimciToken(g.kayit.katilimcilarRaw)),
+    ]),
   ]
   const personelByS = new Map<string, string>() // sicilNo -> id
   const personelByAd = new Map<string, string>() // normalize(adSoyad) -> id
-  if (sorumluRawlar.length > 0) {
+  if (kisiRawlar.length > 0) {
     const found = await prisma.personnel.findMany({
       where: {
         OR: [
-          { sicilNo: { in: sorumluRawlar } },
-          { adSoyad: { in: sorumluRawlar, mode: 'insensitive' } },
+          { sicilNo: { in: kisiRawlar } },
+          { adSoyad: { in: kisiRawlar, mode: 'insensitive' } },
         ],
       },
       select: { id: true, sicilNo: true, adSoyad: true },
@@ -425,25 +459,23 @@ export async function POST(request: NextRequest) {
       personelByAd.set(trNormalize(p.adSoyad), p.id)
     }
   }
+  /** sicil no ya da ad → Personnel.id. Bulunamazsa hata listesine ekler, null döner. */
+  const kisiCoz = (raw: string, label: string, row: number): string | null => {
+    const id = personelByS.get(raw) ?? personelByAd.get(trNormalize(raw)) ?? null
+    if (!id) hatalar.push({ row, message: `${label}: "${raw}" personelde bulunamadı (sicil no ya da ad yazın)` })
+    return id
+  }
 
   const cozulmus = gruplar.map((g) => {
     const tespitEdenBolumId = bolumCoz(
       g.kayit.tespitEdenBolumRaw, IMPORT_COLS.tespitEdenBolum, g.ilkRow,
     )
 
-    let sorumluId: string | null = null
-    if (g.kayit.sorumluRaw) {
-      sorumluId =
-        personelByS.get(g.kayit.sorumluRaw) ??
-        personelByAd.get(trNormalize(g.kayit.sorumluRaw)) ??
-        null
-      if (!sorumluId) {
-        hatalar.push({
-          row: g.ilkRow,
-          message: `${IMPORT_COLS.sorumlu}: "${g.kayit.sorumluRaw}" personelde bulunamadı (sicil no ya da ad yazın)`,
-        })
-      }
-    }
+    const sorumluId = g.kayit.sorumluRaw ? kisiCoz(g.kayit.sorumluRaw, IMPORT_COLS.sorumlu, g.ilkRow) : null
+    const onaylayanId = g.kayit.onaylayanRaw ? kisiCoz(g.kayit.onaylayanRaw, IMPORT_COLS.onaylayan, g.ilkRow) : null
+    const katilimciIds = katilimciToken(g.kayit.katilimcilarRaw)
+      .map((raw) => kisiCoz(raw, IMPORT_COLS.katilimcilar, g.ilkRow))
+      .filter((id): id is string => id !== null)
 
     const satirlar = g.satirlar.map((s) => {
       let hataKoduId: string | null = null
@@ -472,7 +504,7 @@ export async function POST(request: NextRequest) {
         hataKoduId,
       }
     })
-    return { g, tespitEdenBolumId, sorumluId, satirlar }
+    return { g, tespitEdenBolumId, sorumluId, onaylayanId, katilimciIds, satirlar }
   })
 
   hatalar.sort((a, b) => a.row - b.row)
@@ -524,16 +556,24 @@ export async function POST(request: NextRequest) {
             no,
             tarih: c.g.kayit.tarih,
             mamulUrunKodu: c.g.kayit.mamulUrunKodu,
+            musteriAdi: c.g.kayit.musteriAdi,
             isEmriNo: c.g.kayit.isEmriNo,
             isEmriAdeti: c.g.kayit.isEmriAdeti,
             tespitEdenBolumId: c.tespitEdenBolumId,
             kokNeden: c.g.kayit.kokNeden,
+            kacisKokNedeni: c.g.kayit.kacisKokNedeni,
             duzelticiFaaliyet: c.g.kayit.duzelticiFaaliyet,
+            geciciAksiyon: c.g.kayit.geciciAksiyon,
             sorumluId: c.sorumluId,
+            onaylayanId: c.onaylayanId,
             termin: c.g.kayit.termin,
             kapanisTarihi: c.g.kayit.kapanisTarihi,
+            ogrenilmisDersler: c.g.kayit.ogrenilmisDersler,
             olusturanId: userId,
             guncelleyenId: userId,
+            katilimcilar: c.katilimciIds.length > 0
+              ? { create: c.katilimciIds.map((personnelId) => ({ personnelId })) }
+              : undefined,
             satirlar: {
               create: c.satirlar.map((s) => ({
                 siraNo: s.siraNo,
@@ -541,6 +581,7 @@ export async function POST(request: NextRequest) {
                 malzemeAdi: s.malzemeAdi,
                 redAdeti: s.redAdeti,
                 reworkAdedi: s.reworkAdedi,
+                hurdaAdedi: s.hurdaAdedi,
                 olusanBolumId: s.olusanBolumId,
                 hataKoduId: s.hataKoduId,
                 hataDetayi: s.hataDetayi,

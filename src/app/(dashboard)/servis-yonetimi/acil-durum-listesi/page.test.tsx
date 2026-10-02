@@ -70,9 +70,17 @@ function fetchMockKur(sonuc: unknown = ORNEK_SONUC) {
   return fetchMock
 }
 
-/** Güzergâh + dilim seçildiğinde ekran kendiliğinden veriyi çeker. */
+/**
+ * Güzergâh + dilim seçildiğinde ekran kendiliğinden veriyi çeker.
+ * <select> etiketiyle HEMEN render edilir; seçenekler ise iki ardışık fetch'ten sonra gelir.
+ * Seçenek henüz yokken fireEvent.change değeri yutulur (jsdom, olmayan option'ı seçmez) →
+ * seçenekler gelmeden değiştirmek yük altında kararsızlığın kök nedeniydi.
+ */
 async function seciminiYap() {
-  await waitFor(() => expect(screen.getByLabelText('Güzergâh')).toBeInTheDocument())
+  await waitFor(() => {
+    expect(screen.getByLabelText('Güzergâh').querySelector('option[value="g1"]')).not.toBeNull()
+    expect(screen.getByLabelText('Sefer Dilimi').querySelector('option[value="d1"]')).not.toBeNull()
+  })
   fireEvent.change(screen.getByLabelText('Güzergâh'), { target: { value: 'g1' } })
   fireEvent.change(screen.getByLabelText('Sefer Dilimi'), { target: { value: 'd1' } })
 }

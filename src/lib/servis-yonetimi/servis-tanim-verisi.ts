@@ -3,8 +3,11 @@
  *
  * VERİ KAYNAĞI İKİ KATMANLI:
  *   1. dev DB'den okunan yerleşmiş tanım verisi (9 güzergâh, 106 durak)
- *   2. İdari İşler eşleme tablosundan gelen 27 YENİ durak → toplam 133
- *      Bu 27'sinin SIRASI GERÇEK DEĞİL (bkz. ilgili güzergâhın yorumu).
+ *   2. İdari İşler eşleme tablosundan gelen YENİ duraklar (SIRASI GERÇEK DEĞİL,
+ *      bkz. ilgili güzergâhın yorumu)
+ *   Toplam ÖLÇÜLEN: 9 güzergâh, 138 durak (servis-tanim-verisi.test.ts sabitler).
+ *   Eski başlıktaki "27 yeni durak → 133" sayısı sonradan eklenen duraklarla
+ *   bayatlamıştı; kırılımı (106 + yeni) ayrıca ölçülmedi, yalnız toplam doğru.
  *
  * Buradan okuyanlar:
  *   - prisma/seed-servis-tanim.ts  (tanım paketini DB'ye yazar)
@@ -371,25 +374,29 @@ export const DURAK_ESLEME: DurakEsleme[] = [
   // A4/A5 — GÜL PASTANESİ, KARAKOL: Personnel metni kendi (yeni) durağı.
   { satir: 14, guzergah: 'BEYLIKBAGI_GUZELTEPE', hamMetin: 'GÜL PASTANESİ', kisi: 2, hedef: 'GÜL PASTANESİ' },
   { satir: 15, guzergah: 'BEYLIKBAGI_GUZELTEPE', hamMetin: 'KARAKOL', kisi: 1, hedef: 'KARAKOL' },
+  // A5 — ERİŞ DURAĞI (İdari İşler 1. tur cevabı): 2026-09-28 tarihli formda bu
+  // üç metin "ERİŞ DURAĞI" olarak yazılmıştı. Hedef mevcut "Eriş Durağı" (sıra 7).
+  // Hamlar Personnel'deki TAM metindir (Türkçe karakterli, değiştirilmedi).
+  // Üçü de A5 formRef'iyle TEYIT_BEKLIYOR (madde A3) kapsamında kalır.
+  { satir: 29, guzergah: 'DARICA', hamMetin: 'TAKSİ DURAĞI', kisi: 1, hedef: 'Eriş Durağı' },
+  { satir: 31, guzergah: 'DARICA', hamMetin: 'BAĞLARBAŞI PETROL OFİSİ DARICA', kisi: 1, hedef: 'Eriş Durağı' },
+  { satir: 33, guzergah: 'DARICA', hamMetin: 'MARAŞ DONDURMA', kisi: 1, hedef: 'Eriş Durağı' },
 ]
 
 // ----------------------------------------------------------------------------
 // 🔴 EŞLEMESİ AÇIK SATIRLAR — hedef VERİLMEDİ, uydurulmadı
 // ----------------------------------------------------------------------------
 //
-// 14 satır, 18 kişi. Bu metinler bir durağa BAĞLANMAZ; göç
-// script'i bunları eşleşmeyen listesinde bırakır. Cevap gelince
-// DURAK_ESLEME'ye taşınır ve buradan silinir.
-export const ESLEME_ACIK = [
-  // DARICA — geri kalan üç satırın hiçbiri ACIK_MADDELER'in A1-A8
-  // kararlarından hiçbirine karşılık gelmiyor; hâlâ tamamen açık.
-  // TODO(idari-isler) satır 29
-  { satir: 29, guzergah: 'DARICA', hamMetin: 'TAKSİ DURAĞI', kisi: 1 },
-  // TODO(idari-isler) satır 31
-  { satir: 31, guzergah: 'DARICA', hamMetin: 'BAĞLARBAŞI PETROL OFİSİ DARICA', kisi: 1 },
-  // TODO(idari-isler) satır 33
-  { satir: 33, guzergah: 'DARICA', hamMetin: 'MARAŞ DONDURMA', kisi: 1 },
-] as const
+// Şu an 0 satır: DARICA'daki son üç açık satır (TAKSİ DURAĞI, BAĞLARBAŞI
+// PETROL OFİSİ DARICA, MARAŞ DONDURMA) İdari İşler cevabıyla "Eriş Durağı"na
+// bağlandı ve DURAK_ESLEME'ye taşındı. Yeni açık satır çıkarsa buraya eklenir;
+// göç script'i bunları durağa BAĞLAMAZ, eşleşmeyen listesinde bırakır.
+export const ESLEME_ACIK: readonly {
+  satir: number
+  guzergah: string
+  hamMetin: string
+  kisi: number
+}[] = []
 
 // ----------------------------------------------------------------------------
 // 🔴 OLASI YİNELENEN ÇİFTLER — KARAR TABANI, birleştirme YAPILMADI
@@ -665,11 +672,11 @@ export const OLASI_YINELENEN_CIFTLER: YinelenenCift[] = [
 // 🔴 İKİ LİSTE VAR, KARIŞTIRMA:
 //   - ACIK_MADDELER (burası) = SORU düzeyi, 6 soru. Her birinin NE olduğunu
 //     (çelişki mi, anlaşılmadı mı, ad teyidi mi) söyler.
-//   - ESLEME_ACIK = SATIR düzeyi, 14 ham metin / 18 kişi. Göç script'inin
-//     fiilen eşleştiremeyeceği satırlar bunlardır.
-// Satır sayısı soru sayısından fazla: bir soru birden çok ham metni
-// kapsıyor, ayrıca eşleme tablosunda 6 soruda adı geçmeyen satırlar da var
-// (TAKSİ DURAĞI, BAĞLARBAŞI PETROL OFİSİ DARICA, MARAŞ DONDURMA).
+//   - ESLEME_ACIK = SATIR düzeyi. Göç script'inin fiilen eşleştiremeyeceği
+//     satırlar bunlardır (şu an boş).
+// Bir soru birden çok ham metni kapsayabilir; eşleme tablosunda 6 soruda adı
+// geçmeyen satırlar da vardı (TAKSİ DURAĞI, BAĞLARBAŞI PETROL OFİSİ DARICA,
+// MARAŞ DONDURMA) — bunlar A5 cevabıyla Eriş Durağı'na bağlandı.
 //
 // Dışa açık, çünkü test bu listenin boşalmadığını (ve boşaldığında
 // hatırlatıldığını) kontrol edebilsin.
@@ -754,7 +761,7 @@ const TEYIT_BEKLIYOR_HAM: Omit<TeyitBekleyenKarar, 'formRef'>[] = [
   // --- 1. tur — A1-A8 ---
   { madde: 'A1', guzergah: 'DARICA', konu: 'MEZBAHANE DURAĞI / MEZBAHANE EDİŞ YAPI → "Mezbahane Ediş Yapı" (mevcut, sıra 12)', durum: 'mevcut durağa bağlandı' },
   { madde: 'A2', guzergah: 'GEBZE_DEVELI', konu: 'AKSE SAPAĞI / AKSE SAP DURAK PASTA / DURAK PASTANESİ → "Akse Sapağı Durak Pastanesi" (mevcut, sıra 8)', durum: 'mevcut durağa bağlandı' },
-  { madde: 'A3', guzergah: 'DARICA', konu: 'ERİŞ kümesi → "Eriş Durağı" (mevcut, sıra 7)', durum: 'mevcut durağa bağlandı' },
+  { madde: 'A3', guzergah: 'DARICA', konu: 'ERİŞ kümesi + TAKSİ DURAĞI / BAĞLARBAŞI PETROL OFİSİ DARICA / MARAŞ DONDURMA → "Eriş Durağı" (mevcut, sıra 7)', durum: 'mevcut durağa bağlandı' },
   { madde: 'A4', guzergah: 'BEYLIKBAGI_GUZELTEPE', konu: 'GÜL PASTANESİ — Personnel metni kendi durağı', durum: 'yeni durak (geçici sıra)' },
   { madde: 'A5', guzergah: 'BEYLIKBAGI_GUZELTEPE', konu: 'KARAKOL — Personnel metni kendi durağı', durum: 'yeni durak (geçici sıra)' },
   { madde: 'A6', guzergah: 'AYDOS_KURTKOY', konu: 'ŞEKERPINAR TOKİ — iki metinden biri, ayrı durak', durum: 'yeni durak (geçici sıra)' },

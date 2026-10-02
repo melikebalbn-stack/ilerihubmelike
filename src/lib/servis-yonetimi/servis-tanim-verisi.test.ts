@@ -94,9 +94,9 @@ describe('servis tanım verisi', () => {
 })
 
 describe('durak eşleme tablosu', () => {
-  it('62 net satır, 3 açık satır, 65 toplam', () => {
-    expect(DURAK_ESLEME).toHaveLength(62)
-    expect(ESLEME_ACIK).toHaveLength(3)
+  it('65 net satır, 0 açık satır, 65 toplam', () => {
+    expect(DURAK_ESLEME).toHaveLength(65)
+    expect(ESLEME_ACIK).toHaveLength(0)
     expect(DURAK_ESLEME.length + ESLEME_ACIK.length).toBe(65)
   })
 
@@ -105,9 +105,30 @@ describe('durak eşleme tablosu', () => {
     expect(hepsi.sort((a, b) => a - b)).toEqual(Array.from({ length: 65 }, (_, i) => i + 1))
   })
 
-  it('kişi sayıları: net 90, açık 3', () => {
-    expect(DURAK_ESLEME.reduce((t, e) => t + e.kisi, 0)).toBe(90)
-    expect(ESLEME_ACIK.reduce((t, e) => t + e.kisi, 0)).toBe(3)
+  it('kişi sayıları: net 93, açık 0', () => {
+    expect(DURAK_ESLEME.reduce((t, e) => t + e.kisi, 0)).toBe(93)
+    expect(ESLEME_ACIK.reduce((t, e) => t + e.kisi, 0)).toBe(0)
+  })
+
+  // İdari İşler 1. tur cevabı (A5): üç metin DARICA "Eriş Durağı"na çözülür.
+  it('🔴 TAKSİ DURAĞI / BAĞLARBAŞI PETROL OFİSİ DARICA / MARAŞ DONDURMA → Eriş Durağı', () => {
+    const darica = TUM_GUZERGAHLAR.find((g) => g.kod === 'DARICA')!
+    for (const ham of ['TAKSİ DURAĞI', 'BAĞLARBAŞI PETROL OFİSİ DARICA', 'MARAŞ DONDURMA']) {
+      const satirlar = DURAK_ESLEME.filter((e) => e.guzergah === 'DARICA' && norm(e.hamMetin) === norm(ham))
+      expect(satirlar, ham).toHaveLength(1)
+      expect(satirlar[0].hamMetin, `${ham}: ham metin DEĞİŞTİRİLMEDİ`).toBe(ham)
+      const durak = darica.duraklar.filter((d) => norm(d.ad) === norm(satirlar[0].hedef))
+      expect(durak, ham).toHaveLength(1)
+      expect(durak[0].ad, ham).toBe('Eriş Durağı')
+    }
+  })
+
+  it('üç metin A5 formRef\'li TEYIT_BEKLIYOR kapsamında (A3 maddesi)', () => {
+    const a3 = TEYIT_BEKLIYOR.find((t) => t.madde === 'A3')
+    expect(a3?.formRef).toBe('A5')
+    for (const ham of ['TAKSİ DURAĞI', 'BAĞLARBAŞI PETROL OFİSİ DARICA', 'MARAŞ DONDURMA']) {
+      expect(a3?.konu, ham).toContain(ham)
+    }
   })
 
   // 🔴 Asıl kural: her hedef, kendi güzergâhında TAM OLARAK BİR durağa

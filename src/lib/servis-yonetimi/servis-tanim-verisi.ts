@@ -782,39 +782,22 @@ export const TEYIT_BEKLIYOR: TeyitBekleyenKarar[] = TEYIT_BEKLIYOR_HAM.map((t) =
 }))
 
 // ----------------------------------------------------------------------------
-// 🔴 ARAÇLAR — dev DB'den ölçüldü (2026-09-29): 9 araç, plaka benzersiz.
+// ARAÇLAR — BOŞ: araç verisi seed DIŞINDA (Melih kararı, prod denetimi)
 // ----------------------------------------------------------------------------
 //
-// ŞOFÖR EKLENMEDİ (kişisel veri, git'e girmez — Elif kararı, 2026-09-29).
-// Idempotent anahtar `kod` DEĞİL `plaka` (ServisArac'ta kod alanı yok, plaka
-// UNIQUE) — talimattaki "kod ile idempotent" ifadesi burada plaka karşılığı.
-//
-// 🔴 FİRMA — dev'de araçlar TEK firmaya değil İKİ firmaya bağlı (ölçüldü):
-// 8 araç "Taşeron Firma A (Genel)", 1 araç (34LYL484) "Taşeron Firma B
-// (Kaynarca-Kartal)". Seed script'in --firma-ad parametresi TEK firma alır
-// (yerleşke/firma başlığındaki tasarım). Araç verisi bu yüzden kendi
-// firmaAd'ını taşır; seed bunu ayrı, plaka'dan bağımsız bir find-or-create
-// ile çözer (aynı idempotent desen, --firma-ad akışından BAĞIMSIZ). Firma
-// adlarının kendisi de PLACEHOLDER (İdari İşler'den gerçek ad bekleniyor) —
-// bu metin YENİ bir placeholder İCAT ETMİYOR, dev DB'de zaten var olan
-// metnin birebir kopyası.
+// Araç, gerçek firma adı gelmeden seed'e girmez: firma adı olmadan
+// ServisArac.firmaId (NOT NULL) doldurulamaz ve uydurma ad prod'a yazılır.
+// Gerçek ad gelince veri BURAYA eklenir; yer tutucu ad içeren veriyi seed'in
+// savunma kontrolü (seed mantığı) DB'ye dokunmadan durdurur. Şoför de
+// eklenmez (kişisel veri, git'e girmez).
+// Idempotent anahtar `plaka` (ServisArac'ta kod alanı yok, plaka UNIQUE).
 export interface AracTanimi {
   plaka: string
   kapasite: number
   firmaAd: string
 }
 
-export const ARACLAR: AracTanimi[] = [
-  { plaka: '34LAC828', kapasite: 15, firmaAd: 'Taşeron Firma A (PLACEHOLDER - Genel) - gerçek ad bekleniyor' },
-  { plaka: '34LDP316', kapasite: 27, firmaAd: 'Taşeron Firma A (PLACEHOLDER - Genel) - gerçek ad bekleniyor' },
-  { plaka: '34LUU645', kapasite: 15, firmaAd: 'Taşeron Firma A (PLACEHOLDER - Genel) - gerçek ad bekleniyor' },
-  { plaka: '34LYL484', kapasite: 27, firmaAd: 'Taşeron Firma B (PLACEHOLDER - Kaynarca-Kartal) - gerçek ad bekleniyor' },
-  { plaka: '41P0145', kapasite: 15, firmaAd: 'Taşeron Firma A (PLACEHOLDER - Genel) - gerçek ad bekleniyor' },
-  { plaka: '41P0327', kapasite: 15, firmaAd: 'Taşeron Firma A (PLACEHOLDER - Genel) - gerçek ad bekleniyor' },
-  { plaka: '41P4607', kapasite: 27, firmaAd: 'Taşeron Firma A (PLACEHOLDER - Genel) - gerçek ad bekleniyor' },
-  { plaka: '41P5093', kapasite: 15, firmaAd: 'Taşeron Firma A (PLACEHOLDER - Genel) - gerçek ad bekleniyor' },
-  { plaka: '41P5573', kapasite: 27, firmaAd: 'Taşeron Firma A (PLACEHOLDER - Genel) - gerçek ad bekleniyor' },
-]
+export const ARACLAR: AracTanimi[] = []
 
 // ----------------------------------------------------------------------------
 // 🔴 SEFER DİLİMLERİ — dev DB'den ölçüldü (2026-09-29): 2 dilim.

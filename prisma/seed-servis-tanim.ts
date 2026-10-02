@@ -19,19 +19,30 @@
  * Göç script'i de aynı fonksiyonu kullanır (Melih'in kuralı, bkz. o dosyanın
  * birleştirme notu).
  *
- * 🔴 YERLEŞKE ve FİRMA PARAMETRE — placeholder GÖMÜLMEDİ.
- * Melih gerçek adları İdari İşler'den alıyor. Verilmezse script DURUR.
+ * 🔴 YERLEŞKE PARAMETRE — yer tutucu GÖMÜLMEDİ. Verilmezse script DURUR
+ * (dry-run dahil; ServisGuzergah.yerleskeId NOT NULL). Melih gerçek adı
+ * İdari İşler'den alıyor.
  *   npx tsx prisma/seed-servis-tanim.ts \
  *     --db=<veritabani> \
- *     --yerleske-kod=<kod> --yerleske-ad="<ad>" \
- *     --firma-ad="<taşeron firma adı>"
+ *     --yerleske-kod=<kod> --yerleske-ad="<ad>"
+ *
+ * 🔴 FİRMA VE ARAÇ YAZILMAZ. --firma-ad KALDIRILDI. Araç verisi (ARACLAR)
+ * gerçek firma adı gelene kadar BOŞ; boşken ne araç ne firma sorgusu/yazımı
+ * yapılır. Araç/firma adında "PLACEHOLDER" geçen veri DB'ye dokunmadan
+ * hata verir.
+ *
+ * 🔴 TEK PLAN, İKİ MOD: dry-run ve apply AYNI planla() planını kullanır
+ * (src/lib/servis-yonetimi/servis-tanim-seed-mantigi.ts). Plan, apply'da
+ * oluşacak HER satırı varlık türüne göre sayar (yerleşke, firma, güzergâh,
+ * durak, bağ, araç, sefer dilimi). Apply gerçek create sayısını plana
+ * karşı doğrular; fark varsa hata verir.
  *
  * 🔴 --apply OLMADAN HİÇBİR ŞEY YAZMAZ (göç script'iyle aynı desen).
  *
  * KAYNAK: veri iki katmanlı (bkz. servis-tanim-verisi.ts):
  *   1. dev DB'den okunan yerleşmiş tanım verisi — 9 güzergâh, 106 durak
- *   2. İdari İşler eşleme tablosundan gelen 27 yeni durak → toplam 133
- * 🔴 O 27 durağın SIRASI GERÇEK DEĞİL: güzergâhtaki fiziksel sırası
+ *   2. İdari İşler eşleme tablosundan gelen yeni duraklar → toplam 138
+ * 🔴 Yeni durakların SIRASI GERÇEK DEĞİL: güzergâhtaki fiziksel sırası
  * bilinmediği için mevcut max'tan devam ettirildi. Atama ve kapasite
  * sıradan bağımsız olduğu için FAZ 1+2 çekirdeği etkilenmiyor; yalnız
  * ekrandaki görünüm sırası yanlış. TODO(elif).
@@ -59,40 +70,27 @@ import {
   GUZERGAH_ARAC_ANA_ATAMA,
 } from '../src/lib/servis-yonetimi/servis-tanim-verisi'
 import {
-  isleGuzergahVeDuraklar,
-  isleAraclar,
-  isleSeferDilimleri,
+  SAYIM_ANAHTARLARI,
+  TanimHatasi,
+  cliCoz,
+  placeholderKontrol,
+  planSayimi,
+  planla,
+  uygula,
+  type TanimPrisma,
 } from '../src/lib/servis-yonetimi/servis-tanim-seed-mantigi'
 
 export * from '../src/lib/servis-yonetimi/servis-tanim-verisi'
 
 // ----------------------------------------------------------------------------
-// CLI
+// ANA AKIŞ
 // ----------------------------------------------------------------------------
 
-const args = process.argv.slice(2)
-const APPLY = args.includes('--apply')
-const arg = (ad: string) => args.find((a) => a.startsWith(`--${ad}=`))?.slice(ad.length + 3)
-
-const EXPECTED_DB = arg('db')
-const YERLESKE_KOD = arg('yerleske-kod')
-const YERLESKE_AD = arg('yerleske-ad')
-const FIRMA_AD = arg('firma-ad')
-
-function zorunlu(deger: string | undefined, bayrak: string, aciklama: string): string {
-  if (!deger) {
-    console.error(`❌ --${bayrak}=<deger> ZORUNLU. ${aciklama}`)
-    console.error('   PLACEHOLDER GÖMÜLMEDİ: gerçek ad verilmeden tanım yazılmaz.')
-    process.exit(1)
-  }
-  return deger
-}
-
 async function main() {
-  const db = zorunlu(EXPECTED_DB, 'db', 'Örnek: --db=ilerihub_dev_elif')
-  const yerleskeKod = zorunlu(YERLESKE_KOD, 'yerleske-kod', 'İdari İşler’den alınan gerçek yerleşke kodu.')
-  const yerleskeAd = zorunlu(YERLESKE_AD, 'yerleske-ad', 'İdari İşler’den alınan gerçek yerleşke adı.')
-  const firmaAd = zorunlu(FIRMA_AD, 'firma-ad', 'İdari İşler’den alınan gerçek taşeron firma adı.')
+  // DB'ye dokunmadan ÖNCE: parametreler (yerleşke dahil, dry-run'da da) ve
+  // araç/firma verisinde yer tutucu kontrolü.
+  const { db, yerleskeKod, yerleskeAd, apply: APPLY } = cliCoz(process.argv.slice(2))
+  placeholderKontrol(ARACLAR)
 
   const pool = new Pool({ connectionString: process.env.DATABASE_URL })
   const prisma = new PrismaClient({ adapter: new PrismaPg(pool) })
@@ -108,47 +106,33 @@ async function main() {
     }
     console.log(`✅ Veritabanı doğrulandı: ${gercekDb}${APPLY ? ' — APPLY MODU' : ' — DRY-RUN'}\n`)
 
-    let olusturulacak = { yerleske: 0, firma: 0, guzergah: 0, durak: 0, bag: 0, arac: 0, dilim: 0 }
-    let mevcut = { yerleske: 0, firma: 0, guzergah: 0, durak: 0, bag: 0, arac: 0, dilim: 0 }
+    // --- PLAN (yalnız okur; dry-run ve apply için ORTAK) ---------------------
+    const tprisma = prisma as unknown as TanimPrisma
+    const plan = await planla(tprisma, {
+      yerleskeKod,
+      yerleskeAd,
+      guzergahlar: TUM_GUZERGAHLAR,
+      araclar: ARACLAR,
+      dilimler: SEFER_DILIMLERI,
+    })
+    const { olusturulacak, mevcut } = planSayimi(plan)
 
-    // --- Yerleşke -----------------------------------------------------------
-    const yerleskeVar = await prisma.servisYerleske.findFirst({ where: { kod: yerleskeKod } })
-    yerleskeVar ? mevcut.yerleske++ : olusturulacak.yerleske++
-    const yerleskeId =
-      yerleskeVar?.id ??
-      (APPLY
-        ? (await prisma.servisYerleske.create({ data: { kod: yerleskeKod, ad: yerleskeAd } })).id
-        : '(dry-run)')
-
-    // --- Firma --------------------------------------------------------------
-    const firmaVar = await prisma.servisFirma.findFirst({ where: { ad: firmaAd } })
-    firmaVar ? mevcut.firma++ : olusturulacak.firma++
-    if (!firmaVar && APPLY) await prisma.servisFirma.create({ data: { ad: firmaAd } })
-
-    // --- Güzergâh + durak + bağ ----------------------------------------------
-    const guzergahSonuc = await isleGuzergahVeDuraklar(prisma, APPLY, yerleskeId, TUM_GUZERGAHLAR)
-    olusturulacak.guzergah = guzergahSonuc.olusturulacak.guzergah
-    olusturulacak.durak = guzergahSonuc.olusturulacak.durak
-    olusturulacak.bag = guzergahSonuc.olusturulacak.bag
-    mevcut.guzergah = guzergahSonuc.mevcut.guzergah
-    mevcut.durak = guzergahSonuc.mevcut.durak
-    mevcut.bag = guzergahSonuc.mevcut.bag
-
-    // --- Araç (şoför EKLENMEDİ — kişisel veri) --------------------------------
-    const aracSonuc = await isleAraclar(prisma, APPLY, ARACLAR)
-    olusturulacak.arac = aracSonuc.olusturulacak.arac
-    mevcut.arac = aracSonuc.mevcut.arac
-
-    // --- Sefer dilimi ---------------------------------------------------------
-    const dilimSonuc = await isleSeferDilimleri(prisma, APPLY, SEFER_DILIMLERI)
-    olusturulacak.dilim = dilimSonuc.olusturulacak.dilim
-    mevcut.dilim = dilimSonuc.mevcut.dilim
-
-    console.log('═══ ÖZET ═══')
-    for (const k of ['yerleske', 'firma', 'guzergah', 'durak', 'bag', 'arac', 'dilim'] as const) {
+    console.log('═══ PLAN ═══')
+    for (const k of SAYIM_ANAHTARLARI) {
       console.log(`  ${k.padEnd(10)} oluşturulacak: ${String(olusturulacak[k]).padStart(4)} · mevcut korundu: ${mevcut[k]}`)
     }
-    if (!APPLY) console.log('\n(DRY-RUN — hiçbir şey yazılmadı. --apply ile gerçek yazım yapılır.)')
+
+    if (APPLY) {
+      const yazilan = await uygula(tprisma, plan)
+      console.log('\n═══ UYGULANDI ═══')
+      for (const k of SAYIM_ANAHTARLARI) console.log(`  ${k.padEnd(10)} yazılan: ${String(yazilan[k]).padStart(4)}`)
+      const fark = SAYIM_ANAHTARLARI.filter((k) => yazilan[k] !== olusturulacak[k])
+      if (fark.length > 0) {
+        throw new Error(`Plan ile uygulama sayıları FARKLI: ${fark.join(', ')}`)
+      }
+    } else {
+      console.log('\n(DRY-RUN — hiçbir şey yazılmadı. --apply ile gerçek yazım yapılır.)')
+    }
 
     // 🔴 Güzergâh → araç ANA varsayılan ataması: Elif güzergah/plaka listesini
     // AYRICA iletecek (bkz. servis-tanim-verisi.ts). Liste gelene kadar BOŞ —
@@ -171,6 +155,7 @@ async function main() {
 }
 
 main().catch((e) => {
-  console.error(e)
+  if (e instanceof TanimHatasi) console.error(`❌ ${e.message}`)
+  else console.error(e)
   process.exitCode = 1
 })

@@ -1,179 +1,244 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
-import { ARACLAR, SEFER_DILIMLERI, TUM_GUZERGAHLAR } from './servis-tanim-verisi'
-import { isleAraclar, isleGuzergahVeDuraklar, isleSeferDilimleri } from './servis-tanim-seed-mantigi'
+import { ARACLAR, GUZERGAH_ARAC_ANA_ATAMA, SEFER_DILIMLERI, TUM_GUZERGAHLAR } from './servis-tanim-verisi'
+import {
+  SAYIM_ANAHTARLARI,
+  TanimHatasi,
+  cliCoz,
+  placeholderKontrol,
+  planSayimi,
+  planla,
+  uygula,
+  type PlanGirdisi,
+  type Sayim,
+  type TanimPrisma,
+} from './servis-tanim-seed-mantigi'
 
-function toplamDurakSayisi() {
-  return TUM_GUZERGAHLAR.reduce((s, g) => s + g.duraklar.length, 0)
+const MODELLER = [
+  'servisYerleske',
+  'servisFirma',
+  'servisGuzergah',
+  'servisDurak',
+  'servisGuzergahDurak',
+  'servisArac',
+  'servisSeferDilimi',
+] as const
+type ModelAdi = (typeof MODELLER)[number]
+type Satir = Record<string, unknown> & { id: string }
+
+/** Bellek içi sahte DB: findFirst where-eşitliğiyle arar, create satır ekler. Her çağrı sayılır. */
+function sahteDb() {
+  const tablolar = Object.fromEntries(MODELLER.map((m) => [m, [] as Satir[]])) as Record<ModelAdi, Satir[]>
+  const findFirst = Object.fromEntries(MODELLER.map((m) => [m, vi.fn()])) as Record<ModelAdi, ReturnType<typeof vi.fn>>
+  const create = Object.fromEntries(MODELLER.map((m) => [m, vi.fn()])) as Record<ModelAdi, ReturnType<typeof vi.fn>>
+  let sayac = 0
+
+  const prisma = Object.fromEntries(
+    MODELLER.map((m) => {
+      findFirst[m].mockImplementation(async ({ where }: { where: Record<string, unknown> }) => {
+        return tablolar[m].find((r) => Object.entries(where).every(([k, v]) => r[k] === v)) ?? null
+      })
+      create[m].mockImplementation(async ({ data }: { data: Record<string, unknown> }) => {
+        const satir = { ...data, id: `${m}-${++sayac}` }
+        tablolar[m].push(satir)
+        return satir
+      })
+      return [m, { findFirst: findFirst[m], create: create[m] }]
+    }),
+  ) as unknown as TanimPrisma
+
+  const createSayisi = () => Object.values(create).reduce((t, f) => t + f.mock.calls.length, 0)
+  const findFirstSayisi = () => Object.values(findFirst).reduce((t, f) => t + f.mock.calls.length, 0)
+  return { prisma, tablolar, findFirst, create, createSayisi, findFirstSayisi }
 }
 
-function mockPrisma(opts: {
-  guzergahVar: boolean
-  durakVar: boolean
-  bagVar: boolean | ((guzergahId: string, durakId: string) => boolean)
-}) {
-  const create = vi.fn().mockResolvedValue({ id: 'yeni' })
-  const bagVarFn =
-    typeof opts.bagVar === 'function' ? opts.bagVar : () => opts.bagVar as boolean
+const GIRDI: PlanGirdisi = {
+  yerleskeKod: 'YRL',
+  yerleskeAd: 'Test Yerleşke',
+  guzergahlar: TUM_GUZERGAHLAR,
+  araclar: ARACLAR,
+  dilimler: SEFER_DILIMLERI,
+}
 
+const TOPLAM_DURAK = TUM_GUZERGAHLAR.reduce((t, g) => t + g.duraklar.length, 0)
+
+/** Sahte DB'deki create çağrılarını varlık türüne göre Sayim biçimine çevirir. */
+function gercekCreateSayimi(db: ReturnType<typeof sahteDb>): Sayim {
   return {
-    prisma: {
-      servisGuzergah: {
-        findFirst: vi.fn(async ({ where }: { where: { kod: string } }) =>
-          opts.guzergahVar ? { id: `g-${where.kod}` } : null,
-        ),
-        create,
-      },
-      servisDurak: {
-        findFirst: vi.fn(async ({ where }: { where: { kod: string } }) =>
-          opts.durakVar ? { id: `d-${where.kod}` } : null,
-        ),
-        create,
-      },
-      servisGuzergahDurak: {
-        findFirst: vi.fn(async ({ where }: { where: { guzergahId: string; durakId: string } }) =>
-          bagVarFn(where.guzergahId, where.durakId) ? { id: 'bag' } : null,
-        ),
-        create,
-      },
-    },
-    create,
+    yerleske: db.create.servisYerleske.mock.calls.length,
+    firma: db.create.servisFirma.mock.calls.length,
+    guzergah: db.create.servisGuzergah.mock.calls.length,
+    durak: db.create.servisDurak.mock.calls.length,
+    bag: db.create.servisGuzergahDurak.mock.calls.length,
+    arac: db.create.servisArac.mock.calls.length,
+    dilim: db.create.servisSeferDilimi.mock.calls.length,
   }
 }
 
-describe('isleGuzergahVeDuraklar — bag +138 regresyon testi', () => {
-  it('ilk --apply sonrasını simüle eder: tüm kayıtlar zaten var → dry-run "eklenecek 0" verir', async () => {
-    const { prisma, create } = mockPrisma({ guzergahVar: true, durakVar: true, bagVar: true })
-
-    const sonuc = await isleGuzergahVeDuraklar(prisma, false, 'yerleske-1', TUM_GUZERGAHLAR)
-
-    expect(sonuc.olusturulacak).toEqual({ guzergah: 0, durak: 0, bag: 0 })
-    expect(sonuc.mevcut.bag).toBe(toplamDurakSayisi())
-    expect(sonuc.mevcut.durak).toBe(toplamDurakSayisi())
-    expect(sonuc.mevcut.guzergah).toBe(TUM_GUZERGAHLAR.length)
-    // dry-run: apply sonrası durum simüle edilse bile hiçbir create çağrılmaz
-    expect(create).not.toHaveBeenCalled()
+describe('seed verisi — araç dışı, yer tutucu yok', () => {
+  it('ARACLAR ve GUZERGAH_ARAC_ANA_ATAMA boş', () => {
+    expect(ARACLAR).toHaveLength(0)
+    expect(GUZERGAH_ARAC_ANA_ATAMA).toHaveLength(0)
   })
 
-  it('hiçbir kayıt yokken dry-run: tüm durak/bağ "oluşturulacak" sayılır, yine de yazılmaz', async () => {
-    const { prisma, create } = mockPrisma({ guzergahVar: false, durakVar: false, bagVar: false })
-
-    const sonuc = await isleGuzergahVeDuraklar(prisma, false, 'yerleske-1', TUM_GUZERGAHLAR)
-
-    expect(sonuc.olusturulacak.durak).toBe(toplamDurakSayisi())
-    expect(sonuc.olusturulacak.bag).toBe(toplamDurakSayisi())
-    expect(sonuc.olusturulacak.guzergah).toBe(TUM_GUZERGAHLAR.length)
-    expect(create).not.toHaveBeenCalled()
+  it('veri dosyasında yer tutucu firma metni (kod ya da yorum olarak) geçmiyor', () => {
+    const kaynak = readFileSync(resolve(process.cwd(), 'src/lib/servis-yonetimi/servis-tanim-verisi.ts'), 'utf8')
+    const satirlar = kaynak.split('\n').filter((l) => /placeholder|taşeron firma/i.test(l))
+    expect(satirlar).toEqual([])
   })
+})
 
-  it('kısmi durum (bug\'ın asıl kanıtı): güzergâh/durak MEVCUT ama tek bir bağ eksik → bag "oluşturulacak" tam 1 olmalı, tümü değil', async () => {
-    let ilkCagrininAnahtari: string | null = null
-    const { prisma } = mockPrisma({
-      guzergahVar: true,
-      durakVar: true,
-      bagVar: (guzergahId, durakId) => {
-        const anahtar = `${guzergahId}|${durakId}`
-        if (ilkCagrininAnahtari === null) {
-          ilkCagrininAnahtari = anahtar
-          return false // yalnız ilk çağrılan bağ eksik
-        }
-        return true
-      },
+describe('planla + uygula — araçsız mod', () => {
+  it('boş DB: firma ve araç için HİÇ sorgu/create yok; sayımlar beklenen', async () => {
+    const db = sahteDb()
+    const plan = await planla(db.prisma, GIRDI)
+    const { olusturulacak } = planSayimi(plan)
+    await uygula(db.prisma, plan)
+
+    expect(olusturulacak).toEqual({
+      yerleske: 1, firma: 0, guzergah: 10, durak: TOPLAM_DURAK, bag: TOPLAM_DURAK, arac: 0, dilim: 2,
     })
+    expect(TOPLAM_DURAK).toBe(138)
+    expect(db.create.servisFirma).not.toHaveBeenCalled()
+    expect(db.create.servisArac).not.toHaveBeenCalled()
+    expect(db.findFirst.servisFirma).not.toHaveBeenCalled()
+    expect(db.findFirst.servisArac).not.toHaveBeenCalled()
+    expect(db.tablolar.servisFirma).toHaveLength(0)
+    expect(db.tablolar.servisArac).toHaveLength(0)
+  })
 
-    const sonuc = await isleGuzergahVeDuraklar(prisma, false, 'yerleske-1', TUM_GUZERGAHLAR)
-
-    // 🔴 Bu satır, düzeltilmeden önceki bug'ı (bagVar sorgusunun dry-run'da
-    // hiç çalışmaması, her durağın bağını unconditional "yeni" sayması)
-    // yakalardı: eski kodda bu değer toplamDurakSayisi() (138) olurdu.
-    expect(sonuc.olusturulacak.bag).toBe(1)
-    expect(sonuc.mevcut.bag).toBe(toplamDurakSayisi() - 1)
-    expect(sonuc.olusturulacak.durak).toBe(0)
-    expect(sonuc.olusturulacak.guzergah).toBe(0)
+  it('planla() yalnız okur: dry-run (yalnız planla) hiçbir create çağırmaz', async () => {
+    const db = sahteDb()
+    await planla(db.prisma, GIRDI)
+    expect(db.createSayisi()).toBe(0)
   })
 })
 
-function mockAracPrisma(opts: { aracVar: boolean; firmaVar: boolean }) {
-  const aracCreate = vi.fn().mockResolvedValue({ id: 'yeni-arac' })
-  // 🔴 Gerçek DB find-or-create'i simüle eder: firmaVar başlangıç durumunu
-  // verir, ama create() çağrıldıktan SONRA aynı ad için findFirst artık
-  // "var" döner (gerçek DB'de olduğu gibi) — aksi halde aynı firma her
-  // araç için tekrar tekrar "yaratılacak" sanılır (yanlış-pozitif dedup testi).
-  const bilinenFirmalar = new Set<string>()
-  const firmaCreate = vi.fn(async ({ data }: { data: { ad: string } }) => {
-    bilinenFirmalar.add(data.ad)
-    return { id: `firma-${data.ad}` }
-  })
-  return {
-    prisma: {
-      servisArac: {
-        findFirst: vi.fn(async () => (opts.aracVar ? { id: 'arac-1' } : null)),
-        create: aracCreate,
-      },
-      servisFirma: {
-        findFirst: vi.fn(async ({ where }: { where: { ad: string } }) =>
-          opts.firmaVar || bilinenFirmalar.has(where.ad) ? { id: `firma-${where.ad}` } : null,
-        ),
-        create: firmaCreate,
-      },
-    },
-    aracCreate,
-    firmaCreate,
-  }
-}
+describe('plan sayıları = apply sayıları (her varlık türü)', () => {
+  it('boş DB senaryosu', async () => {
+    const db = sahteDb()
+    const plan = await planla(db.prisma, GIRDI)
+    const { olusturulacak } = planSayimi(plan)
+    const yazilan = await uygula(db.prisma, plan)
 
-describe('isleAraclar', () => {
-  it('ilk --apply sonrasını simüle eder: tüm araçlar zaten var → dry-run "eklenecek 0" verir', async () => {
-    const { prisma, aracCreate } = mockAracPrisma({ aracVar: true, firmaVar: true })
-    const sonuc = await isleAraclar(prisma, false, ARACLAR)
-    expect(sonuc.olusturulacak.arac).toBe(0)
-    expect(sonuc.mevcut.arac).toBe(ARACLAR.length)
-    expect(aracCreate).not.toHaveBeenCalled()
+    for (const k of SAYIM_ANAHTARLARI) {
+      expect(yazilan[k], `uygula dönüşü: ${k}`).toBe(olusturulacak[k])
+      expect(gercekCreateSayimi(db)[k], `gerçek create çağrısı: ${k}`).toBe(olusturulacak[k])
+    }
   })
 
-  it('hiçbir araç yokken dry-run: tümü "oluşturulacak" sayılır, yazılmaz', async () => {
-    const { prisma, aracCreate } = mockAracPrisma({ aracVar: false, firmaVar: false })
-    const sonuc = await isleAraclar(prisma, false, ARACLAR)
-    expect(sonuc.olusturulacak.arac).toBe(ARACLAR.length)
-    expect(aracCreate).not.toHaveBeenCalled()
+  it('tamamen dolu (idempotent) senaryo: plan 0, apply 0 create', async () => {
+    const db = sahteDb()
+    await uygula(db.prisma, await planla(db.prisma, GIRDI)) // ilk apply
+    for (const f of Object.values(db.create)) f.mockClear()
+
+    const plan = await planla(db.prisma, GIRDI)
+    const { olusturulacak, mevcut } = planSayimi(plan)
+    const yazilan = await uygula(db.prisma, plan)
+
+    for (const k of SAYIM_ANAHTARLARI) {
+      expect(olusturulacak[k], `plan: ${k}`).toBe(0)
+      expect(yazilan[k], `apply: ${k}`).toBe(0)
+    }
+    expect(db.createSayisi()).toBe(0)
+    expect(mevcut).toMatchObject({ yerleske: 1, guzergah: 10, durak: 138, bag: 138, dilim: 2, firma: 0, arac: 0 })
   })
 
-  it('--apply + firma mevcut değilse: firma da find-or-create ile oluşturulur', async () => {
-    const { prisma, aracCreate, firmaCreate } = mockAracPrisma({ aracVar: false, firmaVar: false })
-    await isleAraclar(prisma, true, ARACLAR)
-    expect(aracCreate).toHaveBeenCalledTimes(ARACLAR.length)
-    // dev'de araçlar 2 farklı firmaya bağlı (bkz. servis-tanim-verisi.ts) —
-    // firma create çağrı sayısı ARAÇ sayısından AZ olmalı (aynı firma tekrar yaratılmaz)
-    expect(firmaCreate.mock.calls.length).toBeGreaterThan(0)
-    expect(firmaCreate.mock.calls.length).toBeLessThan(ARACLAR.length)
+  it('kısmi durum: güzergâh+durak VAR ama bazı bağlar ve bir dilim eksik → sayımlar yine eşit', async () => {
+    const db = sahteDb()
+    await uygula(db.prisma, await planla(db.prisma, GIRDI))
+    db.tablolar.servisGuzergahDurak.splice(0, 5) // 5 bağ silindi
+    db.tablolar.servisSeferDilimi.splice(0, 1) // 1 dilim silindi
+    for (const f of Object.values(db.create)) f.mockClear()
+
+    const plan = await planla(db.prisma, GIRDI)
+    const { olusturulacak } = planSayimi(plan)
+    expect(olusturulacak).toMatchObject({ bag: 5, dilim: 1, durak: 0, guzergah: 0, yerleske: 0 })
+    const yazilan = await uygula(db.prisma, plan)
+    for (const k of SAYIM_ANAHTARLARI) {
+      expect(yazilan[k], k).toBe(olusturulacak[k])
+      expect(gercekCreateSayimi(db)[k], `create: ${k}`).toBe(olusturulacak[k])
+    }
+  })
+
+  it('araçlı veri (gelecekteki gerçek ad senaryosu): firma bir kez, araç sayıları eşit', async () => {
+    const girdi: PlanGirdisi = {
+      ...GIRDI,
+      araclar: [
+        { plaka: '34 TEST 01', kapasite: 15, firmaAd: 'Örnek Taşıma A.Ş.' },
+        { plaka: '34 TEST 02', kapasite: 27, firmaAd: 'Örnek Taşıma A.Ş.' },
+        { plaka: '34 TEST 03', kapasite: 27, firmaAd: 'Diğer Servis Ltd.' },
+      ],
+    }
+    const db = sahteDb()
+    const plan = await planla(db.prisma, girdi)
+    const { olusturulacak } = planSayimi(plan)
+    expect(olusturulacak).toMatchObject({ firma: 2, arac: 3 })
+    const yazilan = await uygula(db.prisma, plan)
+    for (const k of SAYIM_ANAHTARLARI) {
+      expect(yazilan[k], k).toBe(olusturulacak[k])
+      expect(gercekCreateSayimi(db)[k], `create: ${k}`).toBe(olusturulacak[k])
+    }
+    // araçlar kendi firmasına bağlandı
+    const firmaId = (ad: string) => db.tablolar.servisFirma.find((f) => f.ad === ad)!.id
+    expect(db.tablolar.servisArac.find((a) => a.plaka === '34 TEST 03')!.firmaId).toBe(firmaId('Diğer Servis Ltd.'))
+
+    // ikinci koşu: idempotent
+    for (const f of Object.values(db.create)) f.mockClear()
+    const plan2 = await planla(db.prisma, girdi)
+    expect(planSayimi(plan2).olusturulacak).toEqual({
+      yerleske: 0, firma: 0, guzergah: 0, durak: 0, bag: 0, arac: 0, dilim: 0,
+    })
+    await uygula(db.prisma, plan2)
+    expect(db.createSayisi()).toBe(0)
   })
 })
 
-function mockDilimPrisma(opts: { dilimVar: boolean }) {
-  const create = vi.fn().mockResolvedValue({ id: 'yeni-dilim' })
-  return {
-    prisma: {
-      servisSeferDilimi: {
-        findFirst: vi.fn(async () => (opts.dilimVar ? { id: 'dilim-1' } : null)),
-        create,
-      },
-    },
-    create,
-  }
-}
-
-describe('isleSeferDilimleri', () => {
-  it('ilk --apply sonrasını simüle eder: tüm dilimler zaten var → dry-run "eklenecek 0" verir', async () => {
-    const { prisma, create } = mockDilimPrisma({ dilimVar: true })
-    const sonuc = await isleSeferDilimleri(prisma, false, SEFER_DILIMLERI)
-    expect(sonuc.olusturulacak.dilim).toBe(0)
-    expect(sonuc.mevcut.dilim).toBe(SEFER_DILIMLERI.length)
-    expect(create).not.toHaveBeenCalled()
+describe('PLACEHOLDER savunma kontrolü', () => {
+  it('placeholder içeren firma adı: planla DB\'ye HİÇ dokunmadan hata verir', async () => {
+    const db = sahteDb()
+    const girdi: PlanGirdisi = {
+      ...GIRDI,
+      araclar: [{ plaka: '34 TEST 01', kapasite: 15, firmaAd: 'Firma A (PLACEHOLDER - Genel)' }],
+    }
+    await expect(planla(db.prisma, girdi)).rejects.toThrow(TanimHatasi)
+    expect(db.findFirstSayisi()).toBe(0)
+    expect(db.createSayisi()).toBe(0)
   })
 
-  it('hiçbir dilim yokken dry-run: tümü "oluşturulacak" sayılır, yazılmaz', async () => {
-    const { prisma, create } = mockDilimPrisma({ dilimVar: false })
-    const sonuc = await isleSeferDilimleri(prisma, false, SEFER_DILIMLERI)
-    expect(sonuc.olusturulacak.dilim).toBe(SEFER_DILIMLERI.length)
-    expect(create).not.toHaveBeenCalled()
+  it('büyük/küçük harfe duyarsız ve plaka alanını da kapsar', () => {
+    expect(() => placeholderKontrol([{ plaka: '34 X', kapasite: 1, firmaAd: 'x placeholder y' }])).toThrow(TanimHatasi)
+    expect(() => placeholderKontrol([{ plaka: 'PlaceHolder-1', kapasite: 1, firmaAd: 'Gerçek Firma' }])).toThrow(TanimHatasi)
+  })
+
+  it('temiz veri ve boş liste geçer', () => {
+    expect(() => placeholderKontrol([])).not.toThrow()
+    expect(() => placeholderKontrol([{ plaka: '34 X', kapasite: 1, firmaAd: 'Gerçek Firma' }])).not.toThrow()
+  })
+})
+
+describe('CLI parametreleri', () => {
+  const tam = ['--db=ilerihub_dev_elif', '--yerleske-kod=YRL', '--yerleske-ad=Test Yerleşke']
+
+  it('tam parametre çözülür; --apply yoksa dry-run', () => {
+    expect(cliCoz(tam)).toEqual({ db: 'ilerihub_dev_elif', yerleskeKod: 'YRL', yerleskeAd: 'Test Yerleşke', apply: false })
+    expect(cliCoz([...tam, '--apply']).apply).toBe(true)
+  })
+
+  it('yerleşke kodu eksikse açık hata (dry-run dahil)', () => {
+    expect(() => cliCoz(['--db=x', '--yerleske-ad=Y'])).toThrow(/--yerleske-kod=<deger> ZORUNLU/)
+  })
+
+  it('yerleşke adı eksikse açık hata (dry-run dahil)', () => {
+    expect(() => cliCoz(['--db=x', '--yerleske-kod=K'])).toThrow(/--yerleske-ad=<deger> ZORUNLU/)
+  })
+
+  it('--db eksikse açık hata', () => {
+    expect(() => cliCoz(['--yerleske-kod=K', '--yerleske-ad=Y'])).toThrow(/--db=<deger> ZORUNLU/)
+  })
+
+  it('kaldırılan --firma-ad verilirse sessizce yok sayılmaz, hata verir', () => {
+    expect(() => cliCoz([...tam, '--firma-ad=Bir Firma'])).toThrow(/--firma-ad KALDIRILDI/)
   })
 })

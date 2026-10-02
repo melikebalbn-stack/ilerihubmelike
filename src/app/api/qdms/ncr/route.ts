@@ -13,7 +13,6 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get("search")
     const source = searchParams.get("source")
     const status = searchParams.get("status")
-    const departmentId = searchParams.get("departmentId")
 
     const where: any = {}
 
@@ -22,8 +21,6 @@ export async function GET(request: NextRequest) {
         { ncrNumber: { contains: search, mode: "insensitive" } },
         { title: { contains: search, mode: "insensitive" } },
         { productId: { contains: search, mode: "insensitive" } },
-        { customerName: { contains: search, mode: "insensitive" } },
-        { workOrderNo: { contains: search, mode: "insensitive" } },
       ]
     }
 
@@ -35,10 +32,6 @@ export async function GET(request: NextRequest) {
       where.status = status
     }
 
-    if (departmentId) {
-      where.departmentId = departmentId
-    }
-
     const ncrs = await prisma.qdmsNonConformance.findMany({
       where,
       include: {
@@ -47,18 +40,6 @@ export async function GET(request: NextRequest) {
         },
         department: {
           select: { id: true, name: true },
-        },
-        causedByDepartment: {
-          select: { id: true, name: true },
-        },
-        actionResponsible: {
-          select: { id: true, name: true },
-        },
-        actionApprover: {
-          select: { id: true, name: true },
-        },
-        participants: {
-          include: { user: { select: { id: true, name: true } } },
         },
       },
       orderBy: { detectedAt: "desc" },
@@ -90,13 +71,7 @@ export async function POST(request: NextRequest) {
     if (error) return error
 
     const body = await request.json()
-    const {
-      title, source, severity, description, quantity, productCode, lotNumber, departmentId,
-      subPartCode, customerName, workOrderNo, workOrderQuantity, reworkQuantity, scrapQuantity,
-      causedByDepartmentId, rootCauseOccurrence, rootCauseEscape, interimAction, permanentAction,
-      plannedActionDate, actionCompletionDate, actionResponsibleId, actionApproverId,
-      participantIds, lessonsLearned,
-    } = body
+    const { title, source, severity, description, quantity, productCode, lotNumber, departmentId } = body
 
     // Validasyon
     if (!title || !source) {
@@ -122,12 +97,6 @@ export async function POST(request: NextRequest) {
       CRITICAL: "CRITICAL",
     }
 
-    const toInt = (v: unknown) => {
-      const n = parseInt(String(v), 10)
-      return Number.isFinite(n) ? n : null
-    }
-    const toDate = (v: unknown) => (v ? new Date(String(v)) : null)
-
     const ncr = await prisma.qdmsNonConformance.create({
       data: {
         ncrNumber,
@@ -142,25 +111,6 @@ export async function POST(request: NextRequest) {
         detectedAt: new Date(),
         detectedById: userId,
         departmentId: departmentId || null,
-        subPartCode: subPartCode || null,
-        customerName: customerName || null,
-        workOrderNo: workOrderNo || null,
-        workOrderQuantity: toInt(workOrderQuantity),
-        reworkQuantity: toInt(reworkQuantity),
-        scrapQuantity: toInt(scrapQuantity),
-        causedByDepartmentId: causedByDepartmentId || null,
-        rootCauseOccurrence: rootCauseOccurrence || null,
-        rootCauseEscape: rootCauseEscape || null,
-        interimAction: interimAction || null,
-        permanentAction: permanentAction || null,
-        plannedActionDate: toDate(plannedActionDate),
-        actionCompletionDate: toDate(actionCompletionDate),
-        actionResponsibleId: actionResponsibleId || null,
-        actionApproverId: actionApproverId || null,
-        lessonsLearned: Array.isArray(lessonsLearned) ? lessonsLearned : [],
-        participants: Array.isArray(participantIds) && participantIds.length > 0
-          ? { create: participantIds.map((participantId: string) => ({ userId: participantId })) }
-          : undefined,
       },
       include: {
         detectedBy: {
@@ -168,18 +118,6 @@ export async function POST(request: NextRequest) {
         },
         department: {
           select: { id: true, name: true },
-        },
-        causedByDepartment: {
-          select: { id: true, name: true },
-        },
-        actionResponsible: {
-          select: { id: true, name: true },
-        },
-        actionApprover: {
-          select: { id: true, name: true },
-        },
-        participants: {
-          include: { user: { select: { id: true, name: true } } },
         },
       },
     })

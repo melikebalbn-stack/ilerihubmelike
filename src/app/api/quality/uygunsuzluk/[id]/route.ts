@@ -4,6 +4,7 @@ import { requireSession } from '@/lib/auth/require-session'
 import { canManageUygunsuzluk } from '@/lib/quality/uygunsuzluk-access'
 import { uygunsuzlukInput } from '@/lib/quality/uygunsuzluk-validators'
 import { referanslariDogrula } from '@/lib/quality/uygunsuzluk-refs'
+import { hesaplaDurum } from '@/lib/quality/uygunsuzluk-labels'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,6 +20,7 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
     where: { id },
     include: {
       tespitEdenBolum: { select: { id: true, kod: true, ad: true } },
+      kategori: { select: { id: true, ad: true } },
       sorumlu: { select: { adSoyad: true, sicilNo: true } },
       onaylayan: { select: { adSoyad: true, sicilNo: true } },
       katilimcilar: { include: { personnel: { select: { id: true, adSoyad: true, sicilNo: true } } } },
@@ -35,7 +37,7 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
   })
   if (!kayit) return NextResponse.json({ error: 'Uygunsuzluk kaydı bulunamadı' }, { status: 404 })
 
-  return NextResponse.json({ ...kayit, durum: kayit.kapanisTarihi ? 'KAPALI' : 'ACIK' })
+  return NextResponse.json({ ...kayit, durum: hesaplaDurum(kayit) })
 }
 
 /**
@@ -104,9 +106,11 @@ export async function PATCH(request: NextRequest, { params }: Ctx) {
       data: {
         tarih: d.tarih,
         mamulUrunKodu: d.mamulUrunKodu,
+        altParcaKodu: d.altParcaKodu ?? null,
         musteriAdi: d.musteriAdi ?? null,
         isEmriNo: d.isEmriNo,
         isEmriAdeti: d.isEmriAdeti ?? null,
+        kategoriId: d.kategoriId ?? null,
         tespitEdenBolumId: d.tespitEdenBolumId ?? null,
         kokNeden: d.kokNeden ?? null,
         kacisKokNedeni: d.kacisKokNedeni ?? null,
@@ -145,7 +149,7 @@ export async function PATCH(request: NextRequest, { params }: Ctx) {
     })
   })
 
-  return NextResponse.json({ ...updated, durum: updated.kapanisTarihi ? 'KAPALI' : 'ACIK' })
+  return NextResponse.json({ ...updated, durum: hesaplaDurum(updated) })
 }
 
 /** DELETE /api/quality/uygunsuzluk/[id] — sil. Auth: canManageUygunsuzluk. Satırlar cascade. */

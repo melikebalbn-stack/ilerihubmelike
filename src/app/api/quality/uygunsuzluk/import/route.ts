@@ -44,9 +44,11 @@ type Grup = {
   kayit: {
     tarih: Date
     mamulUrunKodu: string
+    altParcaKodu: string | null
     musteriAdi: string | null
     isEmriNo: string
     isEmriAdeti: number | null
+    kategoriRaw: string | null
     tespitEdenBolumRaw: string | null
     kokNeden: string | null
     kacisKokNedeni: string | null
@@ -347,6 +349,8 @@ export async function POST(request: NextRequest) {
       cakisma(IMPORT_COLS.isEmriAdeti, mevcut.kayit.isEmriAdeti, isEmriAdetiRaw === 'NaN' ? null : isEmriAdetiRaw)
       cakisma(IMPORT_COLS.tespitEdenBolum, mevcut.kayit.tespitEdenBolumRaw, str(cell(row, 'tespitEdenBolum')) || null)
       cakisma(IMPORT_COLS.musteriAdi, mevcut.kayit.musteriAdi, str(cell(row, 'musteriAdi')) || null)
+      cakisma(IMPORT_COLS.altParcaKodu, mevcut.kayit.altParcaKodu, str(cell(row, 'altParcaKodu')) || null)
+      cakisma(IMPORT_COLS.kategori, mevcut.kayit.kategoriRaw, str(cell(row, 'kategori')) || null)
     } else {
       satir.siraNo = 1
       grupMap.set(anahtar, {
@@ -355,9 +359,11 @@ export async function POST(request: NextRequest) {
         kayit: {
           tarih,
           mamulUrunKodu,
+          altParcaKodu: str(cell(row, 'altParcaKodu')) || null,
           musteriAdi: str(cell(row, 'musteriAdi')) || null,
           isEmriNo,
           isEmriAdeti: isEmriAdetiRaw === 'NaN' ? null : isEmriAdetiRaw,
+          kategoriRaw: str(cell(row, 'kategori')) || null,
           tespitEdenBolumRaw: str(cell(row, 'tespitEdenBolum')) || null,
           kokNeden: str(cell(row, 'kokNeden')) || null,
           kacisKokNedeni: str(cell(row, 'kacisKokNedeni')) || null,
@@ -381,6 +387,12 @@ export async function POST(request: NextRequest) {
   const gruplar = [...grupMap.values()]
 
   // ── Referans çözümü ──
+  // Kategori: yalnız AD (aktif/pasif farketmez — pasifleşmiş bir kategoriye de
+  // atanmış geçmiş kayıt gelebilir). Bulunamazsa hata.
+  const kategoriler = await prisma.kaliteUygunsuzlukKategori.findMany({ select: { id: true, ad: true } })
+  const kategoriByAd = new Map(kategoriler.map((k) => [trNormalize(k.ad), k]))
+  const ornekKategoriAdlari = kategoriler.slice(0, 4).map((k) => k.ad).join(', ')
+
   // Bölümler: KOD (sayısal) ya da AD. Hata kodu: yalnız KOD.
   const bolumler = await prisma.hataKodu.findMany({
     where: { tip: 'BOLUM' },
@@ -471,6 +483,18 @@ export async function POST(request: NextRequest) {
       g.kayit.tespitEdenBolumRaw, IMPORT_COLS.tespitEdenBolum, g.ilkRow,
     )
 
+    let kategoriId: string | null = null
+    if (g.kayit.kategoriRaw) {
+      const k = kategoriByAd.get(trNormalize(g.kayit.kategoriRaw))
+      if (k) kategoriId = k.id
+      else {
+        hatalar.push({
+          row: g.ilkRow,
+          message: `${IMPORT_COLS.kategori}: "${g.kayit.kategoriRaw}" bulunamadı (örnek: ${ornekKategoriAdlari || 'tanımlı kategori yok'})`,
+        })
+      }
+    }
+
     const sorumluId = g.kayit.sorumluRaw ? kisiCoz(g.kayit.sorumluRaw, IMPORT_COLS.sorumlu, g.ilkRow) : null
     const onaylayanId = g.kayit.onaylayanRaw ? kisiCoz(g.kayit.onaylayanRaw, IMPORT_COLS.onaylayan, g.ilkRow) : null
     const katilimciIds = katilimciToken(g.kayit.katilimcilarRaw)
@@ -504,7 +528,7 @@ export async function POST(request: NextRequest) {
         hataKoduId,
       }
     })
-    return { g, tespitEdenBolumId, sorumluId, onaylayanId, katilimciIds, satirlar }
+    return { g, tespitEdenBolumId, kategoriId, sorumluId, onaylayanId, katilimciIds, satirlar }
   })
 
   hatalar.sort((a, b) => a.row - b.row)
@@ -556,9 +580,11 @@ export async function POST(request: NextRequest) {
             no,
             tarih: c.g.kayit.tarih,
             mamulUrunKodu: c.g.kayit.mamulUrunKodu,
+            altParcaKodu: c.g.kayit.altParcaKodu,
             musteriAdi: c.g.kayit.musteriAdi,
             isEmriNo: c.g.kayit.isEmriNo,
             isEmriAdeti: c.g.kayit.isEmriAdeti,
+            kategoriId: c.kategoriId,
             tespitEdenBolumId: c.tespitEdenBolumId,
             kokNeden: c.g.kayit.kokNeden,
             kacisKokNedeni: c.g.kayit.kacisKokNedeni,

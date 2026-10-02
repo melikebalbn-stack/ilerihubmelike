@@ -21,9 +21,12 @@ import { MusteriSecici, type MusteriOption } from '@/components/quality/rma/Must
 import { HataKoduSecici, type HataKoduSecenek } from './HataKoduSecici'
 import {
   UYGUNSUZLUK_KARAR_OPTIONS,
+  UYGUNSUZLUK_DURUM_LABELS,
   redOrani,
   formatOran,
+  hesaplaDurum,
 } from '@/lib/quality/uygunsuzluk-labels'
+import { UygunsuzlukDosyaPaneli } from './UygunsuzlukDosyaPaneli'
 
 // ── Tipler ──
 interface SatirState {
@@ -44,9 +47,12 @@ export interface UygunsuzlukDetay {
   no: number
   tarih: string
   mamulUrunKodu: string
+  altParcaKodu: string | null
   musteriAdi: string | null
   isEmriNo: string
   isEmriAdeti: number | null
+  kategoriId: string | null
+  kategori?: { id: string; ad: string } | null
   tespitEdenBolumId: string | null
   kokNeden: string | null
   kacisKokNedeni: string | null
@@ -60,6 +66,20 @@ export interface UygunsuzlukDetay {
   termin: string | null
   kapanisTarihi: string | null
   ogrenilmisDersler: string[]
+  tarihGecmisi: {
+    alanAdi: string
+    eskiDeger: string | null
+    yeniDeger: string | null
+    degistirenAdi: string | null
+    degistirmeTarihi: string
+  }[]
+  dosyalar: {
+    id: string
+    dosyaAdi: string
+    dosyaUrl: string
+    dosyaBoyutu: number | null
+    yuklemeTarihi: string
+  }[]
   satirlar: {
     siraNo: number
     yariMamulKodu: string | null
@@ -113,8 +133,28 @@ export function UygunsuzlukFormClient({
 
   const [kodlar, setKodlar] = useState<HataKoduSecenek[]>([])
 
+  const [kategoriler, setKategoriler] = useState<{ id: string; ad: string }[]>(
+    initial?.kategori ? [initial.kategori] : [],
+  )
+  const [kategoriId, setKategoriId] = useState<string | null>(initial?.kategoriId ?? null)
+
+  useEffect(() => {
+    fetch('/api/quality/uygunsuzluk-kategori')
+      .then((r) => (r.ok ? r.json() : { items: [] }))
+      .then((j) => {
+        const gelenler: { id: string; ad: string }[] = j.items ?? []
+        // Kaydın mevcut kategorisi pasifleşmiş olsa bile listede kalsın.
+        setKategoriler((prev) => {
+          const mevcut = prev.find((k) => k.id === initial?.kategoriId)
+          return mevcut && !gelenler.some((g) => g.id === mevcut.id) ? [...gelenler, mevcut] : gelenler
+        })
+      })
+      .catch(() => {})
+  }, [initial?.kategoriId])
+
   const [tarih, setTarih] = useState(initial ? isoToDate(initial.tarih) : '')
   const [mamulUrunKodu, setMamulUrunKodu] = useState(initial?.mamulUrunKodu ?? '')
+  const [altParcaKodu, setAltParcaKodu] = useState(initial?.altParcaKodu ?? '')
   const [musteriAdi, setMusteriAdi] = useState(initial?.musteriAdi ?? '')
   const [isEmriNo, setIsEmriNo] = useState(initial?.isEmriNo ?? '')
   const [isEmriAdeti, setIsEmriAdeti] = useState(
@@ -204,6 +244,22 @@ export function UygunsuzlukFormClient({
   const toplamRed = satirlar.reduce((t, s) => t + (Number(s.redAdeti) || 0), 0)
   const oran = redOrani(toplamRed, Number(isEmriAdeti) || null)
 
+  const durumGuncel = hesaplaDurum({
+    kapanisTarihi: kapanisTarihi || null,
+    kokNeden,
+    kacisKokNedeni,
+    duzelticiFaaliyet,
+    geciciAksiyon,
+    sorumluId: sorumlu?.id ?? null,
+    onaylayanId: onaylayan?.id ?? null,
+    termin: termin || null,
+  })
+  const durumRenk: Record<string, string> = {
+    ACIK: 'bg-amber-100 text-amber-800',
+    DEVAM_EDIYOR: 'bg-blue-100 text-blue-800',
+    KAPALI: 'bg-green-100 text-green-800',
+  }
+
   async function kaydet() {
     if (kaydediliyor) return
     if (!tarih) return void toast.error('Tarih zorunlu')
@@ -228,9 +284,11 @@ export function UygunsuzlukFormClient({
       const body = {
         tarih,
         mamulUrunKodu: mamulUrunKodu.trim(),
+        altParcaKodu: altParcaKodu.trim() || null,
         musteriAdi: musteriAdi.trim() || null,
         isEmriNo: isEmriNo.trim(),
         isEmriAdeti: isEmriAdeti ? Number(isEmriAdeti) : null,
+        kategoriId,
         tespitEdenBolumId,
         kokNeden: kokNeden.trim() || null,
         kacisKokNedeni: kacisKokNedeni.trim() || null,
@@ -290,9 +348,14 @@ export function UygunsuzlukFormClient({
               <ArrowLeft className="h-4 w-4 mr-1" /> Listeye dön
             </Link>
           </Button>
-          <h1 className="text-2xl font-bold text-[#1B4F72]">
-            {initial ? `Uygunsuzluk No: ${initial.no}` : 'Yeni Uygunsuzluk'}
-          </h1>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-2xl font-bold text-[#1B4F72]">
+              {initial ? `Uygunsuzluk No: ${initial.no}` : 'Yeni Uygunsuzluk'}
+            </h1>
+            <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${durumRenk[durumGuncel]}`}>
+              {UYGUNSUZLUK_DURUM_LABELS[durumGuncel]}
+            </span>
+          </div>
         </div>
         {canManage && (
           <Button
@@ -319,6 +382,10 @@ export function UygunsuzlukFormClient({
         <div>
           <Label className="text-xs text-slate-600">Mamul ürün kodu *</Label>
           <Input value={mamulUrunKodu} disabled={ro} onChange={(e) => setMamulUrunKodu(e.target.value)} className="mt-1 h-9" />
+        </div>
+        <div>
+          <Label className="text-xs text-slate-600">Alt parça kodu</Label>
+          <Input value={altParcaKodu} disabled={ro} onChange={(e) => setAltParcaKodu(e.target.value)} className="mt-1 h-9" />
         </div>
         <div>
           <Label className="text-xs text-slate-600">Müşteri adı</Label>
@@ -377,6 +444,26 @@ export function UygunsuzlukFormClient({
           <Label className="text-xs text-slate-600">Kapanış tarihi</Label>
           <Input type="date" value={kapanisTarihi} disabled={ro} onChange={(e) => setKapanisTarihi(e.target.value)} className="mt-1 h-9" />
         </div>
+        {initial && initial.tarihGecmisi.length > 0 && (
+          <div className="md:col-span-2 lg:col-span-3">
+            <Label className="text-xs text-slate-600">Tarih revizyon geçmişi</Label>
+            <div className="mt-1 space-y-1">
+              {initial.tarihGecmisi.map((t, i) => {
+                const alanEtiket = t.alanAdi === 'termin' ? 'Termin' : 'Kapanış tarihi'
+                return (
+                  <p key={i} className="text-xs text-slate-500">
+                    <span className="font-medium">{alanEtiket}:</span>{' '}
+                    {t.eskiDeger ? new Date(t.eskiDeger).toLocaleDateString('tr-TR') : 'boş'}
+                    {' → '}
+                    {t.yeniDeger ? new Date(t.yeniDeger).toLocaleDateString('tr-TR') : 'boş'}
+                    {' — '}
+                    {t.degistirenAdi ?? 'bilinmiyor'}, {new Date(t.degistirmeTarihi).toLocaleString('tr-TR')}
+                  </p>
+                )
+              })}
+            </div>
+          </div>
+        )}
         <div className="md:col-span-2 lg:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
             <Label className="text-xs text-slate-600">Kök neden (oluşum)</Label>
@@ -420,6 +507,25 @@ export function UygunsuzlukFormClient({
               ))}
             </div>
           )}
+        </div>
+        <div>
+          <div className="flex items-center justify-between">
+            <Label className="text-xs text-slate-600">Kategori</Label>
+            {canManage && (
+              <Link href="/kalite/uygunsuzluk/kategoriler" className="text-[11px] text-[#1B4F72] hover:underline">
+                Kategorileri yönet
+              </Link>
+            )}
+          </div>
+          <Select value={kategoriId ?? 'yok'} onValueChange={(v) => setKategoriId(v === 'yok' ? null : v)} disabled={ro}>
+            <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="Kategori seçin" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="yok">Seçilmedi</SelectItem>
+              {kategoriler.map((k) => (
+                <SelectItem key={k.id} value={k.id}>{k.ad}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
         <div className="md:col-span-2 lg:col-span-3">
           <Label className="text-xs text-slate-600">Öğrenilmiş dersler</Label>
@@ -555,6 +661,15 @@ export function UygunsuzlukFormClient({
           </Button>
         )}
       </div>
+
+      {/* ── Döküman ekleri — kayıt oluşmadan (initial yokken) eklenemez, önce kaydet gerekir ── */}
+      {initial && (
+        <UygunsuzlukDosyaPaneli
+          uygunsuzlukId={initial.id}
+          initialDosyalar={initial.dosyalar}
+          canManage={canManage}
+        />
+      )}
     </div>
   )
 }

@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { requireSession } from '@/lib/auth/require-session'
 import { canManageUygunsuzluk } from '@/lib/quality/uygunsuzluk-access'
 import { buildUygunsuzlukWhere } from '@/lib/quality/uygunsuzluk-query'
-import { UYGUNSUZLUK_KARAR_LABELS, redOrani } from '@/lib/quality/uygunsuzluk-labels'
+import { UYGUNSUZLUK_KARAR_LABELS, UYGUNSUZLUK_DURUM_LABELS, redOrani, hesaplaDurum } from '@/lib/quality/uygunsuzluk-labels'
 import {
   EXPORT_HEADERS,
   RED_ORANI_COL,
@@ -47,6 +47,7 @@ export async function GET(request: NextRequest) {
     orderBy: { no: 'desc' },
     include: {
       tespitEdenBolum: { select: { kod: true, ad: true } },
+      kategori: { select: { ad: true } },
       sorumlu: { select: { adSoyad: true } },
       onaylayan: { select: { adSoyad: true } },
       katilimcilar: { include: { personnel: { select: { adSoyad: true } } } },
@@ -63,7 +64,7 @@ export async function GET(request: NextRequest) {
   const rows: (string | number)[][] = [[...EXPORT_HEADERS]]
 
   for (const k of kayitlar) {
-    const durum = k.kapanisTarihi ? 'Kapalı' : 'Açık'
+    const durum = UYGUNSUZLUK_DURUM_LABELS[hesaplaDurum(k)]
     const tespitEden = k.tespitEdenBolum
       ? `${k.tespitEdenBolum.kod} ${k.tespitEdenBolum.ad}`
       : ''
@@ -106,6 +107,8 @@ export async function GET(request: NextRequest) {
         k.onaylayan?.adSoyad ?? '',
         k.katilimcilar.map((p) => p.personnel.adSoyad).join(', '),
         k.ogrenilmisDersler.join('\n'),
+        k.altParcaKodu ?? '',
+        k.kategori?.ad ?? '',
       ])
     }
   }

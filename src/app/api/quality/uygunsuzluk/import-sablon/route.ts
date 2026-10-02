@@ -29,6 +29,7 @@ export async function GET() {
   const ornek1: Record<string, string | number> = {
     [C.tarih]: '10.08.2026',
     [C.mamulUrunKodu]: 'MAM-001',
+    [C.altParcaKodu]: 'AP-01',
     [C.musteriAdi]: 'ABC Makina',
     [C.yariMamulKodu]: 'YM-101',
     [C.malzemeAdi]: 'Gövde sacı',
@@ -52,10 +53,12 @@ export async function GET() {
     [C.termin]: '20.08.2026',
     [C.kapanisTarihi]: '',
     [C.ogrenilmisDersler]: 'Kalıp bakım periyodu kısaltıldı',
+    [C.kategori]: '',
   }
   const ornek2: Record<string, string | number> = {
     [C.tarih]: '10.08.2026',
     [C.mamulUrunKodu]: 'MAM-001',
+    [C.altParcaKodu]: '',
     [C.musteriAdi]: '',
     [C.yariMamulKodu]: 'YM-102',
     [C.malzemeAdi]: 'Kapak',
@@ -79,6 +82,7 @@ export async function GET() {
     [C.termin]: '',
     [C.kapanisTarihi]: '',
     [C.ogrenilmisDersler]: '',
+    [C.kategori]: '',
   }
   const ws = XLSX.utils.json_to_sheet([ornek1, ornek2], { header: headers as string[] })
   ws['!cols'] = headers.map((h) => ({ wch: Math.max(12, Math.min(34, String(h).length + 4)) }))
@@ -142,6 +146,10 @@ export async function GET() {
     ['• TOPLANTI KATILIMCILARI: birden çok kişi VİRGÜLLE ayrılır (sicil no ya da ad'],
     ['  soyad karışık yazılabilir), ör. "1234, Ayşe Yılmaz".'],
     ['• ÖĞRENİLMİŞ DERSLER: birden çok ders ALT ALTA (hücre içinde yeni satır) yazılır.'],
+    ['• ALT PARÇA KODU: serbest metin, başlık düzeyinde (ürün satırlarındaki YARI MAMUL'],
+    ['  ÜRÜN KODU\'ndan ayrı).'],
+    ['• KATEGORİ: Kalite > Uygunsuzluk Kayıtları > Kategorileri Yönet ekranında tanımlı'],
+    ['  bir kategori adıyla BİREBİR eşleşmeli; eşleşmezse satır hata verir.'],
   ]
   const wsAciklama = XLSX.utils.aoa_to_sheet(aciklama)
   wsAciklama['!cols'] = [{ wch: 88 }]

@@ -13,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { redOrani, formatOran } from '@/lib/quality/uygunsuzluk-labels'
+import { redOrani, formatOran, UYGUNSUZLUK_DURUM_LABELS, type UygunsuzlukDurum } from '@/lib/quality/uygunsuzluk-labels'
 import { UygunsuzlukImportDialog } from './UygunsuzlukImportDialog'
 
 type BolumSecenek = { id: string; kod: number; ad: string }
@@ -29,7 +29,7 @@ type UygunsuzlukRow = {
   tespitEdenBolum: { id: string; kod: number; ad: string } | null
   satirSayisi: number
   toplamRedAdeti: number
-  durum: 'ACIK' | 'KAPALI'
+  durum: UygunsuzlukDurum
   sorumluAd: string | null
 }
 
@@ -236,6 +236,7 @@ export function UygunsuzlukListTable({ canManage = false }: { canManage?: boolea
               <SelectContent>
                 <SelectItem value="all">Tümü</SelectItem>
                 <SelectItem value="acik">Açık</SelectItem>
+                <SelectItem value="devam">Devam Ediyor</SelectItem>
                 <SelectItem value="kapali">Kapalı</SelectItem>
               </SelectContent>
             </Select>
@@ -399,12 +400,14 @@ export function UygunsuzlukListTable({ canManage = false }: { canManage?: boolea
                         <Link href={href} className="block">
                           <span
                             className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold ${
-                              r.durum === 'ACIK'
-                                ? 'bg-amber-100 text-amber-800'
-                                : 'bg-green-100 text-green-800'
+                              r.durum === 'KAPALI'
+                                ? 'bg-green-100 text-green-800'
+                                : r.durum === 'DEVAM_EDIYOR'
+                                  ? 'bg-blue-100 text-blue-800'
+                                  : 'bg-amber-100 text-amber-800'
                             }`}
                           >
-                            {r.durum === 'ACIK' ? 'Açık' : 'Kapalı'}
+                            {UYGUNSUZLUK_DURUM_LABELS[r.durum]}
                           </span>
                         </Link>
                       </td>

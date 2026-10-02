@@ -6,6 +6,7 @@ import { uygunsuzlukInput } from '@/lib/quality/uygunsuzluk-validators'
 import { referanslariDogrula } from '@/lib/quality/uygunsuzluk-refs'
 import { buildUygunsuzlukWhere } from '@/lib/quality/uygunsuzluk-query'
 import { generateNextUygunsuzlukNo } from '@/lib/quality/uygunsuzluk-no'
+import { hesaplaDurum } from '@/lib/quality/uygunsuzluk-labels'
 
 export const dynamic = 'force-dynamic'
 
@@ -32,6 +33,7 @@ export async function GET(request: NextRequest) {
       take: pageSize,
       include: {
         tespitEdenBolum: { select: { id: true, kod: true, ad: true } },
+        kategori: { select: { id: true, ad: true } },
         sorumlu: { select: { adSoyad: true } },
         satirlar: { select: { redAdeti: true } },
         _count: { select: { satirlar: true } },
@@ -41,7 +43,7 @@ export async function GET(request: NextRequest) {
 
   const items = rows.map((r) => ({
     ...r,
-    durum: r.kapanisTarihi ? 'KAPALI' : 'ACIK',
+    durum: hesaplaDurum(r),
     satirSayisi: r._count.satirlar,
     toplamRedAdeti: r.satirlar.reduce((s, x) => s + x.redAdeti, 0),
     sorumluAd: r.sorumlu?.adSoyad ?? null,
@@ -90,9 +92,11 @@ export async function POST(request: NextRequest) {
         no,
         tarih: d.tarih,
         mamulUrunKodu: d.mamulUrunKodu,
+        altParcaKodu: d.altParcaKodu ?? null,
         musteriAdi: d.musteriAdi ?? null,
         isEmriNo: d.isEmriNo,
         isEmriAdeti: d.isEmriAdeti ?? null,
+        kategoriId: d.kategoriId ?? null,
         tespitEdenBolumId: d.tespitEdenBolumId ?? null,
         kokNeden: d.kokNeden ?? null,
         kacisKokNedeni: d.kacisKokNedeni ?? null,
@@ -132,7 +136,7 @@ export async function POST(request: NextRequest) {
   })
 
   return NextResponse.json(
-    { ...created, durum: created.kapanisTarihi ? 'KAPALI' : 'ACIK' },
+    { ...created, durum: hesaplaDurum(created) },
     { status: 201 },
   )
 }

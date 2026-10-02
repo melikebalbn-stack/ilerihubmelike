@@ -27,6 +27,7 @@ export const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5MB
 export const IMPORT_COLS = {
   tarih: 'TARİH',
   mamulUrunKodu: 'MAMUL ÜRÜN KODU',
+  altParcaKodu: 'ALT PARÇA KODU',
   musteriAdi: 'MÜŞTERİ ADI',
   yariMamulKodu: 'YARI MAMUL ÜRÜN KODU',
   malzemeAdi: 'MALZEME ADI',
@@ -50,6 +51,7 @@ export const IMPORT_COLS = {
   termin: 'TERMİN',
   kapanisTarihi: 'KAPANIŞ TARİHİ',
   ogrenilmisDersler: 'ÖĞRENİLMİŞ DERSLER',
+  kategori: 'KATEGORİ',
 } as const
 
 /**
@@ -86,6 +88,8 @@ export const EXPORT_HEADERS = [
   'ONAYLAYAN',
   'TOPLANTI KATILIMCILARI',
   'ÖĞRENİLMİŞ DERSLER',
+  'ALT PARÇA KODU',
+  'KATEGORİ',
 ] as const
 
 /** RED ORANI kolonunun 0-tabanlı indeksi — hücre biçimi için. */

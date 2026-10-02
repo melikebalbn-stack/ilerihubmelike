@@ -30,3 +30,34 @@ export function redOrani(toplamRedAdeti: number, isEmriAdeti: number | null | un
 export function formatOran(oran: number): string {
   return `%${oran.toLocaleString('tr-TR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}`
 }
+
+export type UygunsuzlukDurum = 'ACIK' | 'DEVAM_EDIYOR' | 'KAPALI'
+
+export const UYGUNSUZLUK_DURUM_LABELS: Record<UygunsuzlukDurum, string> = {
+  ACIK: 'Açık',
+  DEVAM_EDIYOR: 'Devam Ediyor',
+  KAPALI: 'Kapalı',
+}
+
+/**
+ * Durum — TEK KAYNAK hesap. Şemada alan YOK, kasıtlı (redOrani ile aynı mantık).
+ * KAPALI: kapanış tarihi girilmiş. DEVAM EDİYOR: kapanmamış ama ilerleme verisi
+ * (kök neden/aksiyon/sorumlu/onaylayan/termin) girilmiş. ACIK: hiçbiri.
+ */
+export function hesaplaDurum(k: {
+  kapanisTarihi: Date | string | null
+  kokNeden?: string | null
+  kacisKokNedeni?: string | null
+  duzelticiFaaliyet?: string | null
+  geciciAksiyon?: string | null
+  sorumluId?: string | null
+  onaylayanId?: string | null
+  termin?: Date | string | null
+}): UygunsuzlukDurum {
+  if (k.kapanisTarihi) return 'KAPALI'
+  const ilerlemeVar = Boolean(
+    k.kokNeden || k.kacisKokNedeni || k.duzelticiFaaliyet || k.geciciAksiyon ||
+    k.sorumluId || k.onaylayanId || k.termin,
+  )
+  return ilerlemeVar ? 'DEVAM_EDIYOR' : 'ACIK'
+}

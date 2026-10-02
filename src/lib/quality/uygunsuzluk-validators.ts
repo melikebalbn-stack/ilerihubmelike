@@ -40,6 +40,7 @@ export const uygunsuzlukInput = z
     // Zod v4: `required_error` kaldırıldı, karşılığı `error`.
     tarih: z.coerce.date({ error: 'Tarih zorunlu' }),
     mamulUrunKodu: z.string().trim().min(1, 'Mamul ürün kodu zorunlu'),
+    musteriAdi: bosStr,
     isEmriNo: z.string().trim().min(1, 'İş emri no zorunlu'),
     isEmriAdeti: z.number().int().min(1, 'İş emri adeti en az 1 olmalı').optional().nullable(),
     tespitEdenBolumId: bosId,
@@ -48,9 +49,11 @@ export const uygunsuzlukInput = z
     duzelticiFaaliyet: bosStr,
     geciciAksiyon: bosStr,
     sorumluId: bosId,
+    onaylayanId: bosId,
     termin: z.coerce.date().optional().nullable(),
     kapanisTarihi: z.coerce.date().optional().nullable(),
     ogrenilmisDersler: z.array(z.string().trim().min(1)).optional().default([]),
+    katilimciIds: z.array(z.string().min(1)).optional().default([]),
     satirlar: z.array(uygunsuzlukSatirInput).min(1, 'En az bir ürün satırı zorunlu'),
   })
   .superRefine((data, ctx) => {

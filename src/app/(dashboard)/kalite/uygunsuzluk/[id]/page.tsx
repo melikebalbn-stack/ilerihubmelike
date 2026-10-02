@@ -26,6 +26,8 @@ export default async function UygunsuzlukDetayPage({
     where: { id },
     include: {
       sorumlu: { select: { adSoyad: true, sicilNo: true } },
+      onaylayan: { select: { adSoyad: true, sicilNo: true } },
+      katilimcilar: { include: { personnel: { select: { id: true, adSoyad: true, sicilNo: true } } } },
       satirlar: { orderBy: { siraNo: 'asc' } },
     },
   })
@@ -36,6 +38,7 @@ export default async function UygunsuzlukDetayPage({
     no: kayit.no,
     tarih: kayit.tarih.toISOString(),
     mamulUrunKodu: kayit.mamulUrunKodu,
+    musteriAdi: kayit.musteriAdi,
     isEmriNo: kayit.isEmriNo,
     isEmriAdeti: kayit.isEmriAdeti,
     tespitEdenBolumId: kayit.tespitEdenBolumId,
@@ -45,6 +48,9 @@ export default async function UygunsuzlukDetayPage({
     geciciAksiyon: kayit.geciciAksiyon,
     sorumluId: kayit.sorumluId,
     sorumlu: kayit.sorumlu,
+    onaylayanId: kayit.onaylayanId,
+    onaylayan: kayit.onaylayan,
+    katilimcilar: kayit.katilimcilar.map((k) => k.personnel),
     termin: kayit.termin ? kayit.termin.toISOString() : null,
     kapanisTarihi: kayit.kapanisTarihi ? kayit.kapanisTarihi.toISOString() : null,
     ogrenilmisDersler: kayit.ogrenilmisDersler,

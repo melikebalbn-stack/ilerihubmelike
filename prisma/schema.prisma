@@ -9451,7 +9451,9 @@ model Personnel {
   bulkCardScanFailures          BulkCardScanFailure[]
   // RMA/SMA iade kayıtlarında sorumlu (KAL-KYT-16) — back-relation (DB kolonu eklemez).
   rmaSorumluluklar              RmaKayit[]
-  uygunsuzlukSorumluluklari     KaliteUygunsuzluk[]
+  uygunsuzlukSorumluluklari     KaliteUygunsuzluk[]           @relation("UygunsuzlukSorumlu")
+  uygunsuzlukOnaylamalari       KaliteUygunsuzluk[]           @relation("UygunsuzlukOnaylayan")
+  uygunsuzlukKatilimlari        KaliteUygunsuzlukKatilimci[]
 
   // Servis Yönetimi (FAZ 1/A) — ters ilişkiler (DB kolonu eklemez)
   servisSoforKaydi ServisSofor?
@@ -11174,6 +11176,7 @@ model KaliteUygunsuzluk {
   no                Int        @unique // tek kesintisiz seri (RmaKayit deseni)
   tarih             DateTime
   mamulUrunKodu     String
+  musteriAdi        String? // Düz metin — Syteline adı Hub müşteri kaydıyla birebir eşleşmeyebilir, FK değil
   isEmriNo          String
   isEmriAdeti       Int?
   tespitEdenBolumId String?
@@ -11183,7 +11186,9 @@ model KaliteUygunsuzluk {
   duzelticiFaaliyet String?    @db.Text // Kalıcı aksiyon
   geciciAksiyon     String?    @db.Text // Geçici aksiyon
   sorumluId         String?
-  sorumlu           Personnel? @relation(fields: [sorumluId], references: [id], onDelete: SetNull)
+  sorumlu           Personnel? @relation("UygunsuzlukSorumlu", fields: [sorumluId], references: [id], onDelete: SetNull)
+  onaylayanId       String?
+  onaylayan         Personnel? @relation("UygunsuzlukOnaylayan", fields: [onaylayanId], references: [id], onDelete: SetNull)
   termin            DateTime?
   kapanisTarihi     DateTime?
   ogrenilmisDersler String[] // Excel'e aktarılabilir liste
@@ -11197,6 +11202,7 @@ model KaliteUygunsuzluk {
   satirlar     KaliteUygunsuzlukSatir[]
   dosyalar     KaliteUygunsuzlukDosya[]
   tarihGecmisi KaliteUygunsuzlukTarihGecmisi[]
+  katilimcilar KaliteUygunsuzlukKatilimci[]
 
   @@index([isEmriNo])
   @@index([tarih])
@@ -11258,6 +11264,22 @@ model KaliteUygunsuzlukTarihGecmisi {
   degistirmeTarihi DateTime @default(now())
 
   @@index([uygunsuzlukId])
+}
+
+/// Toplantıya katılan personel. Başlık silinince cascade; personel silinince
+/// yalnız bu satır düşer (katılım kaydı anlamsızlaşır, KaliteUygunsuzluk kalır).
+model KaliteUygunsuzlukKatilimci {
+  id            String            @id @default(cuid())
+  uygunsuzlukId String
+  uygunsuzluk   KaliteUygunsuzluk @relation(fields: [uygunsuzlukId], references: [id], onDelete: Cascade)
+  personnelId   String
+  personnel     Personnel         @relation(fields: [personnelId], references: [id], onDelete: Cascade)
+
+  ekleyenTarihi DateTime @default(now())
+
+  @@unique([uygunsuzlukId, personnelId])
+  @@index([uygunsuzlukId])
+  @@index([personnelId])
 }
 
 /// Kalite hata kodu ağacı (KAL-KYT-15 Bölüm 1).

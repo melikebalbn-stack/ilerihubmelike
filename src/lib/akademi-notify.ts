@@ -204,19 +204,20 @@ function buildInAppMessage(ctx: NotifyContext): string {
   return `${ctx.courseTitle} eğitimi için bildirim.`;
 }
 
-/** Sınav sonucu olayları: yönetici kanalı KAPALI — yalnız kullanıcı + İK (16.09.2026). */
-const MANAGER_CHANNEL_OFF: ReadonlySet<AkademiEventType> = new Set([
-  "EXAM_PASSED",
-  "EXAM_FAILED",
-]);
-
 /**
  * 9 event tipi için ortak gönderim fonksiyonu.
- * In-app: kullanıcı + İK. Mail: kullanıcı + (EXAM_* hariç) yönetici + İK.
+ *
+ * MAİL YALNIZ EĞİTİMİ ALAN KİŞİYE gider (Melih kararı 02.10.2026). Yönetici ve
+ * İK kopyaları KALDIRILDI: toplu atamada her atama için üç mail çıkıyor ve
+ * gelen kutuları kilitleniyordu — bir müdür ekibinin, İK ise ŞİRKETİN TÜM
+ * atamalarının kopyasını alıyordu.
+ *
+ * In-app bildirim DEĞİŞMEDİ: kullanıcı + İK çanda görmeye devam eder; şikâyet
+ * mail trafiğineydi. MANAGER_CHANNEL_OFF kümesi de düştü — artık hiçbir olayda
+ * yöneticiye mail gitmediği için "hangi olayda kapalı" sorusu kalmadı.
  */
 export async function notifyAkademiEvent(ctx: NotifyContext): Promise<void> {
   const recipients = await resolveRecipients(ctx.userId);
-  const managerEnabled = !MANAGER_CHANNEL_OFF.has(ctx.eventType);
 
   // 1) In-app — kullanıcının kendisi
   try {
@@ -282,16 +283,10 @@ export async function notifyAkademiEvent(ctx: NotifyContext): Promise<void> {
     void mailGonder("user", { email: recipients.user.email, name: recipients.user.name }, content.textForUser, content.htmlForUser);
   }
 
-  // Yöneticiye (varsa ve olay için kanal açıksa — EXAM_* için KAPALI)
-  if (managerEnabled && recipients.manager?.email) {
-    void mailGonder("manager", { email: recipients.manager.email, name: recipients.manager.name }, content.textForManager, content.htmlForManager);
-  }
-
-  // İK (her birine ayrı — KVKK)
-  for (const hrUser of recipients.hr) {
-    if (!hrUser.email) continue;
-    void mailGonder("hr", { email: hrUser.email, name: hrUser.name }, content.textForManager, content.htmlForManager);
-  }
+  // Yönetici ve İK mailleri 02.10.2026'da KALDIRILDI (bkz. fonksiyon başı).
+  // `content.textForManager` / `htmlForManager` şablonlarda DURUYOR: in-app
+  // başlıkları ve ileride istenirse haftalık özet aynı metni kullanır, silmek
+  // dokuz şablonu dokunmayı gerektirirdi.
 }
 
 /**

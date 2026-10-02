@@ -9321,16 +9321,16 @@ model Personnel {
   asansorMekanik AsansorMekanik?
 
   // İstihdam
-  iseGirisTarihi DateTime @db.Date
+  iseGirisTarihi  DateTime  @db.Date
   // İzin: İV'nin elle düzeltebildiği KIDEM başlangıcı (yalnız gösterim). Boşsa en eski istihdam
   // dönemi (topluluğa giriş) kullanılır. Yıllık izin HAK EDİŞİNİ etkilemez (o daima son işe giriş).
   kidemBaslangici DateTime? @db.Date
-  gorev          String
-  bolumDetay     String?
-  bolum          String
-  birimSorumlusu String?
-  sorumlu2       String?
-  sorumlu3       String?
+  gorev           String
+  bolumDetay      String?
+  bolum           String
+  birimSorumlusu  String?
+  sorumlu2        String?
+  sorumlu3        String?
 
   // ── FAZ 1 · METİN → FK GEÇİŞİ (çift yazım dönemi) ────────────────────────────
   // Yukarıdaki dört METİN alanı KALIYOR ve yazılmaya devam ediyor; okuma tarafının
@@ -11172,23 +11172,26 @@ enum UygunsuzlukKarar {
 ///
 /// redOrani ALANI YOK — hesaplanır (redAdeti / isEmriAdeti), saklanmaz.
 model KaliteUygunsuzluk {
-  id                String     @id @default(cuid())
-  no                Int        @unique // tek kesintisiz seri (RmaKayit deseni)
+  id                String                     @id @default(cuid())
+  no                Int                        @unique // tek kesintisiz seri (RmaKayit deseni)
   tarih             DateTime
   mamulUrunKodu     String
+  altParcaKodu      String? // Ürün satırlarındaki "yarı mamul kodu"ndan ayrı — başlık düzeyinde tek alt parça kodu
   musteriAdi        String? // Düz metin — Syteline adı Hub müşteri kaydıyla birebir eşleşmeyebilir, FK değil
   isEmriNo          String
   isEmriAdeti       Int?
+  kategoriId        String?
+  kategori          KaliteUygunsuzlukKategori? @relation(fields: [kategoriId], references: [id], onDelete: Restrict)
   tespitEdenBolumId String?
-  tespitEdenBolum   HataKodu?  @relation("UygunsuzlukTespitEdenBolum", fields: [tespitEdenBolumId], references: [id], onDelete: Restrict)
-  kokNeden          String?    @db.Text // Oluşum kök nedeni
-  kacisKokNedeni    String?    @db.Text // Kaçış kök nedeni
-  duzelticiFaaliyet String?    @db.Text // Kalıcı aksiyon
-  geciciAksiyon     String?    @db.Text // Geçici aksiyon
+  tespitEdenBolum   HataKodu?                  @relation("UygunsuzlukTespitEdenBolum", fields: [tespitEdenBolumId], references: [id], onDelete: Restrict)
+  kokNeden          String?                    @db.Text // Oluşum kök nedeni
+  kacisKokNedeni    String?                    @db.Text // Kaçış kök nedeni
+  duzelticiFaaliyet String?                    @db.Text // Kalıcı aksiyon
+  geciciAksiyon     String?                    @db.Text // Geçici aksiyon
   sorumluId         String?
-  sorumlu           Personnel? @relation("UygunsuzlukSorumlu", fields: [sorumluId], references: [id], onDelete: SetNull)
+  sorumlu           Personnel?                 @relation("UygunsuzlukSorumlu", fields: [sorumluId], references: [id], onDelete: SetNull)
   onaylayanId       String?
-  onaylayan         Personnel? @relation("UygunsuzlukOnaylayan", fields: [onaylayanId], references: [id], onDelete: SetNull)
+  onaylayan         Personnel?                 @relation("UygunsuzlukOnaylayan", fields: [onaylayanId], references: [id], onDelete: SetNull)
   termin            DateTime?
   kapanisTarihi     DateTime?
   ogrenilmisDersler String[] // Excel'e aktarılabilir liste
@@ -11229,6 +11232,21 @@ model KaliteUygunsuzlukSatir {
 
   @@index([uygunsuzlukId])
   @@index([hataKoduId])
+}
+
+/// Uygunsuzluk kategorisi (ölçüsel, görsel vb.) — Ayarlar'dan yönetilen açık liste.
+/// Kullanımdaki bir kategori silinemez (Restrict); pasifleştirme ile kaldırılır.
+model KaliteUygunsuzlukKategori {
+  id       String              @id @default(cuid())
+  ad       String              @unique
+  aktif    Boolean             @default(true)
+  siraNo   Int                 @default(0)
+  kayitlar KaliteUygunsuzluk[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([aktif, siraNo])
 }
 
 /// Uygunsuzluk döküman eki. Başlık silinince cascade. Audit deseni: yükleyenId

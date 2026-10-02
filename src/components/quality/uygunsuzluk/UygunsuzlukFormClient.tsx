@@ -44,6 +44,7 @@ export interface UygunsuzlukDetay {
   no: number
   tarih: string
   mamulUrunKodu: string
+  musteriAdi: string | null
   isEmriNo: string
   isEmriAdeti: number | null
   tespitEdenBolumId: string | null
@@ -53,6 +54,9 @@ export interface UygunsuzlukDetay {
   geciciAksiyon: string | null
   sorumluId: string | null
   sorumlu?: { adSoyad: string; sicilNo: string | null } | null
+  onaylayanId: string | null
+  onaylayan?: { adSoyad: string; sicilNo: string | null } | null
+  katilimcilar: { id: string; adSoyad: string; sicilNo: string | null }[]
   termin: string | null
   kapanisTarihi: string | null
   ogrenilmisDersler: string[]
@@ -111,6 +115,7 @@ export function UygunsuzlukFormClient({
 
   const [tarih, setTarih] = useState(initial ? isoToDate(initial.tarih) : '')
   const [mamulUrunKodu, setMamulUrunKodu] = useState(initial?.mamulUrunKodu ?? '')
+  const [musteriAdi, setMusteriAdi] = useState(initial?.musteriAdi ?? '')
   const [isEmriNo, setIsEmriNo] = useState(initial?.isEmriNo ?? '')
   const [isEmriAdeti, setIsEmriAdeti] = useState(
     initial?.isEmriAdeti != null ? String(initial.isEmriAdeti) : '',
@@ -131,11 +136,31 @@ export function UygunsuzlukFormClient({
         }
       : null,
   )
+  const [onaylayan, setOnaylayan] = useState<MusteriOption | null>(
+    initial?.onaylayanId && initial.onaylayan
+      ? {
+          id: initial.onaylayanId,
+          code: initial.onaylayan.sicilNo ?? '',
+          name: initial.onaylayan.adSoyad,
+        }
+      : null,
+  )
+  const [katilimcilar, setKatilimcilar] = useState<MusteriOption[]>(
+    initial?.katilimcilar.map((k) => ({ id: k.id, code: k.sicilNo ?? '', name: k.adSoyad })) ?? [],
+  )
   const [termin, setTermin] = useState(initial ? isoToDate(initial.termin) : '')
   const [kapanisTarihi, setKapanisTarihi] = useState(initial ? isoToDate(initial.kapanisTarihi) : '')
   const [ogrenilmisDersler, setOgrenilmisDersler] = useState(
     initial?.ogrenilmisDersler?.join('\n') ?? '',
   )
+
+  function katilimciEkle(m: MusteriOption | null) {
+    if (!m) return
+    setKatilimcilar((prev) => (prev.some((k) => k.id === m.id) ? prev : [...prev, m]))
+  }
+  function katilimciCikar(id: string) {
+    setKatilimcilar((prev) => prev.filter((k) => k.id !== id))
+  }
 
   const [satirlar, setSatirlar] = useState<SatirState[]>(
     initial && initial.satirlar.length
@@ -203,6 +228,7 @@ export function UygunsuzlukFormClient({
       const body = {
         tarih,
         mamulUrunKodu: mamulUrunKodu.trim(),
+        musteriAdi: musteriAdi.trim() || null,
         isEmriNo: isEmriNo.trim(),
         isEmriAdeti: isEmriAdeti ? Number(isEmriAdeti) : null,
         tespitEdenBolumId,
@@ -211,12 +237,14 @@ export function UygunsuzlukFormClient({
         duzelticiFaaliyet: duzelticiFaaliyet.trim() || null,
         geciciAksiyon: geciciAksiyon.trim() || null,
         sorumluId: sorumlu?.id ?? null,
+        onaylayanId: onaylayan?.id ?? null,
         termin: termin || null,
         kapanisTarihi: kapanisTarihi || null,
         ogrenilmisDersler: ogrenilmisDersler
           .split('\n')
           .map((s) => s.trim())
           .filter(Boolean),
+        katilimciIds: katilimcilar.map((k) => k.id),
         satirlar: satirlar.map((s, i) => ({
           siraNo: i + 1,
           yariMamulKodu: s.yariMamulKodu.trim() || null,
@@ -293,6 +321,10 @@ export function UygunsuzlukFormClient({
           <Input value={mamulUrunKodu} disabled={ro} onChange={(e) => setMamulUrunKodu(e.target.value)} className="mt-1 h-9" />
         </div>
         <div>
+          <Label className="text-xs text-slate-600">Müşteri adı</Label>
+          <Input value={musteriAdi} disabled={ro} onChange={(e) => setMusteriAdi(e.target.value)} className="mt-1 h-9" />
+        </div>
+        <div>
           <Label className="text-xs text-slate-600">İş emri no *</Label>
           <Input value={isEmriNo} disabled={ro} onChange={(e) => setIsEmriNo(e.target.value)} className="mt-1 h-9 font-quality-mono" />
         </div>
@@ -314,11 +346,23 @@ export function UygunsuzlukFormClient({
           </div>
         </div>
         <div>
-          <Label className="text-xs text-slate-600">Sorumlu</Label>
+          <Label className="text-xs text-slate-600">Aksiyon sorumlusu</Label>
           <div className="mt-1">
             <MusteriSecici
               value={sorumlu}
               onChange={setSorumlu}
+              disabled={ro}
+              searchUrl="/api/quality/rma/sorumlu-ara"
+              placeholder="Personel ara…"
+            />
+          </div>
+        </div>
+        <div>
+          <Label className="text-xs text-slate-600">Aksiyon onaylayan</Label>
+          <div className="mt-1">
+            <MusteriSecici
+              value={onaylayan}
+              onChange={setOnaylayan}
               disabled={ro}
               searchUrl="/api/quality/rma/sorumlu-ara"
               placeholder="Personel ara…"
@@ -350,6 +394,32 @@ export function UygunsuzlukFormClient({
             <Label className="text-xs text-slate-600">Kalıcı aksiyon (düzeltici faaliyet)</Label>
             <Textarea value={duzelticiFaaliyet} disabled={ro} onChange={(e) => setDuzelticiFaaliyet(e.target.value)} rows={3} className="mt-1" />
           </div>
+        </div>
+        <div className="md:col-span-2 lg:col-span-3">
+          <Label className="text-xs text-slate-600">Toplantıya katılanlar</Label>
+          <div className="mt-1">
+            <MusteriSecici
+              value={null}
+              onChange={katilimciEkle}
+              disabled={ro}
+              searchUrl="/api/quality/rma/sorumlu-ara"
+              placeholder="Katılımcı eklemek için ara…"
+            />
+          </div>
+          {katilimcilar.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-2">
+              {katilimcilar.map((k) => (
+                <Badge key={k.id} variant="outline" className="gap-1 bg-slate-50 text-slate-700 border-slate-200">
+                  {k.name}
+                  {!ro && (
+                    <button type="button" onClick={() => katilimciCikar(k.id)} aria-label="Katılımcıyı çıkar">
+                      ×
+                    </button>
+                  )}
+                </Badge>
+              ))}
+            </div>
+          )}
         </div>
         <div className="md:col-span-2 lg:col-span-3">
           <Label className="text-xs text-slate-600">Öğrenilmiş dersler</Label>

@@ -90,6 +90,7 @@ export async function POST(request: NextRequest) {
         no,
         tarih: d.tarih,
         mamulUrunKodu: d.mamulUrunKodu,
+        musteriAdi: d.musteriAdi ?? null,
         isEmriNo: d.isEmriNo,
         isEmriAdeti: d.isEmriAdeti ?? null,
         tespitEdenBolumId: d.tespitEdenBolumId ?? null,
@@ -98,11 +99,15 @@ export async function POST(request: NextRequest) {
         duzelticiFaaliyet: d.duzelticiFaaliyet ?? null,
         geciciAksiyon: d.geciciAksiyon ?? null,
         sorumluId: d.sorumluId ?? null,
+        onaylayanId: d.onaylayanId ?? null,
         termin: d.termin ?? null,
         kapanisTarihi: d.kapanisTarihi ?? null,
         ogrenilmisDersler: d.ogrenilmisDersler ?? [],
         olusturanId: userId,
         guncelleyenId: userId,
+        katilimcilar: d.katilimciIds && d.katilimciIds.length > 0
+          ? { create: d.katilimciIds.map((personnelId) => ({ personnelId })) }
+          : undefined,
         satirlar: {
           create: d.satirlar.map((s) => ({
             siraNo: s.siraNo,
@@ -118,7 +123,11 @@ export async function POST(request: NextRequest) {
           })),
         },
       },
-      include: { satirlar: { orderBy: { siraNo: 'asc' } } },
+      include: {
+        satirlar: { orderBy: { siraNo: 'asc' } },
+        onaylayan: { select: { adSoyad: true, sicilNo: true } },
+        katilimcilar: { include: { personnel: { select: { id: true, adSoyad: true, sicilNo: true } } } },
+      },
     })
   })
 

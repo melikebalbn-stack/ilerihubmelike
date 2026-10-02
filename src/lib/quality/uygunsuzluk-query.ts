@@ -5,8 +5,8 @@
  * AYNI filtreyi kullansın diye buraya çıkarıldı; iki uç ıraksamasın
  * (rma-query.ts'teki gerekçenin aynısı).
  *
- * Filtre: isEmriNo, mamulUrunKodu, tespitEdenBolumId, durum(acik|kapali),
- *         from/to (tarih), q (no | iş emri no | mamul ürün kodu).
+ * Filtre: isEmriNo, mamulUrunKodu, musteriAdi, tespitEdenBolumId, durum(acik|kapali),
+ *         from/to (tarih), q (no | iş emri no | mamul ürün kodu | müşteri adı).
  */
 import { Prisma } from '@/generated/prisma'
 
@@ -18,6 +18,9 @@ export function buildUygunsuzlukWhere(sp: URLSearchParams): Prisma.KaliteUygunsu
 
   const mamulUrunKodu = sp.get('mamulUrunKodu')?.trim()
   if (mamulUrunKodu) where.mamulUrunKodu = { contains: mamulUrunKodu, mode: 'insensitive' }
+
+  const musteriAdi = sp.get('musteriAdi')?.trim()
+  if (musteriAdi) where.musteriAdi = { contains: musteriAdi, mode: 'insensitive' }
 
   const bolumId = sp.get('tespitEdenBolumId')
   if (bolumId) where.tespitEdenBolumId = bolumId
@@ -39,6 +42,7 @@ export function buildUygunsuzlukWhere(sp: URLSearchParams): Prisma.KaliteUygunsu
     const or: Prisma.KaliteUygunsuzlukWhereInput[] = [
       { isEmriNo: { contains: q, mode: 'insensitive' } },
       { mamulUrunKodu: { contains: q, mode: 'insensitive' } },
+      { musteriAdi: { contains: q, mode: 'insensitive' } },
     ]
     const asNo = Number.parseInt(q, 10)
     if (Number.isInteger(asNo) && String(asNo) === q) or.push({ no: asNo })

@@ -23,6 +23,7 @@ type UygunsuzlukRow = {
   no: number
   tarih: string
   mamulUrunKodu: string
+  musteriAdi: string | null
   isEmriNo: string
   isEmriAdeti: number | null
   tespitEdenBolum: { id: string; kod: number; ad: string } | null
@@ -44,6 +45,7 @@ export function UygunsuzlukListTable({ canManage = false }: { canManage?: boolea
 
   const [isEmriNo, setIsEmriNo] = useState('')
   const [mamulUrunKodu, setMamulUrunKodu] = useState('')
+  const [musteriAdi, setMusteriAdi] = useState('')
   const [bolumId, setBolumId] = useState('all')
   const [durum, setDurum] = useState('all')
   const [from, setFrom] = useState('')
@@ -72,6 +74,7 @@ export function UygunsuzlukListTable({ canManage = false }: { canManage?: boolea
     const p = new URLSearchParams()
     if (isEmriNo.trim()) p.set('isEmriNo', isEmriNo.trim())
     if (mamulUrunKodu.trim()) p.set('mamulUrunKodu', mamulUrunKodu.trim())
+    if (musteriAdi.trim()) p.set('musteriAdi', musteriAdi.trim())
     if (bolumId !== 'all') p.set('tespitEdenBolumId', bolumId)
     if (durum !== 'all') p.set('durum', durum)
     if (from) p.set('from', new Date(from).toISOString())
@@ -82,7 +85,7 @@ export function UygunsuzlukListTable({ canManage = false }: { canManage?: boolea
     }
     if (q.trim()) p.set('q', q.trim())
     return p
-  }, [isEmriNo, mamulUrunKodu, bolumId, durum, from, to, q])
+  }, [isEmriNo, mamulUrunKodu, musteriAdi, bolumId, durum, from, to, q])
 
   const fetchList = useCallback(async () => {
     setLoading(true)
@@ -118,6 +121,7 @@ export function UygunsuzlukListTable({ canManage = false }: { canManage?: boolea
   const hasFilters =
     isEmriNo !== '' ||
     mamulUrunKodu !== '' ||
+    musteriAdi !== '' ||
     bolumId !== 'all' ||
     durum !== 'all' ||
     from !== '' ||
@@ -133,6 +137,7 @@ export function UygunsuzlukListTable({ canManage = false }: { canManage?: boolea
   function clearFilters() {
     setIsEmriNo('')
     setMamulUrunKodu('')
+    setMusteriAdi('')
     setBolumId('all')
     setDurum('all')
     setFrom('')
@@ -198,6 +203,15 @@ export function UygunsuzlukListTable({ canManage = false }: { canManage?: boolea
             />
           </div>
           <div>
+            <Label className="text-xs text-slate-600">Müşteri adı</Label>
+            <Input
+              value={musteriAdi}
+              onChange={(e) => reset(setMusteriAdi)(e.target.value)}
+              placeholder="Müşteri adı…"
+              className="mt-1 h-9"
+            />
+          </div>
+          <div>
             <Label className="text-xs text-slate-600">Tespit eden bölüm</Label>
             <Select value={bolumId} onValueChange={reset(setBolumId)}>
               <SelectTrigger className="mt-1 h-9">
@@ -245,7 +259,7 @@ export function UygunsuzlukListTable({ canManage = false }: { canManage?: boolea
             />
           </div>
           <div className="lg:col-span-3">
-            <Label className="text-xs text-slate-600">Ara (no / iş emri / mamul kodu)</Label>
+            <Label className="text-xs text-slate-600">Ara (no / iş emri / mamul kodu / müşteri)</Label>
             <Input
               value={q}
               onChange={(e) => setQ(e.target.value)}
@@ -296,6 +310,7 @@ export function UygunsuzlukListTable({ canManage = false }: { canManage?: boolea
                     'No',
                     'Tarih',
                     'Mamul Kodu',
+                    'Müşteri',
                     'İş Emri No',
                     'Tespit Eden Bölüm',
                     'Satır',
@@ -334,6 +349,11 @@ export function UygunsuzlukListTable({ canManage = false }: { canManage?: boolea
                       <td className="px-3 py-2">
                         <Link href={href} className="block">
                           {r.mamulUrunKodu}
+                        </Link>
+                      </td>
+                      <td className="px-3 py-2">
+                        <Link href={href} className="block">
+                          {r.musteriAdi || '—'}
                         </Link>
                       </td>
                       <td className="px-3 py-2 font-quality-mono text-xs">

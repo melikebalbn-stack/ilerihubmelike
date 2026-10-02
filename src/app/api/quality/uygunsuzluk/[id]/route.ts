@@ -20,6 +20,8 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
     include: {
       tespitEdenBolum: { select: { id: true, kod: true, ad: true } },
       sorumlu: { select: { adSoyad: true, sicilNo: true } },
+      onaylayan: { select: { adSoyad: true, sicilNo: true } },
+      katilimcilar: { include: { personnel: { select: { id: true, adSoyad: true, sicilNo: true } } } },
       satirlar: {
         orderBy: { siraNo: 'asc' },
         include: {
@@ -95,11 +97,14 @@ export async function PATCH(request: NextRequest, { params }: Ctx) {
 
     // Satır tam-liste replace: mevcutları sil, yenilerini yaz. `no` DOKUNULMAZ.
     await tx.kaliteUygunsuzlukSatir.deleteMany({ where: { uygunsuzlukId: id } })
+    // Katılımcı tam-liste replace: aynı mantık (ekle/çıkar tek işlemde).
+    await tx.kaliteUygunsuzlukKatilimci.deleteMany({ where: { uygunsuzlukId: id } })
     return tx.kaliteUygunsuzluk.update({
       where: { id },
       data: {
         tarih: d.tarih,
         mamulUrunKodu: d.mamulUrunKodu,
+        musteriAdi: d.musteriAdi ?? null,
         isEmriNo: d.isEmriNo,
         isEmriAdeti: d.isEmriAdeti ?? null,
         tespitEdenBolumId: d.tespitEdenBolumId ?? null,
@@ -108,10 +113,14 @@ export async function PATCH(request: NextRequest, { params }: Ctx) {
         duzelticiFaaliyet: d.duzelticiFaaliyet ?? null,
         geciciAksiyon: d.geciciAksiyon ?? null,
         sorumluId: d.sorumluId ?? null,
+        onaylayanId: d.onaylayanId ?? null,
         termin: d.termin ?? null,
         kapanisTarihi: d.kapanisTarihi ?? null,
         ogrenilmisDersler: d.ogrenilmisDersler ?? [],
         guncelleyenId: userId,
+        katilimcilar: d.katilimciIds && d.katilimciIds.length > 0
+          ? { create: d.katilimciIds.map((personnelId) => ({ personnelId })) }
+          : undefined,
         satirlar: {
           create: d.satirlar.map((s) => ({
             siraNo: s.siraNo,
@@ -130,6 +139,8 @@ export async function PATCH(request: NextRequest, { params }: Ctx) {
       include: {
         satirlar: { orderBy: { siraNo: 'asc' } },
         tespitEdenBolum: { select: { kod: true, ad: true } },
+        onaylayan: { select: { adSoyad: true, sicilNo: true } },
+        katilimcilar: { include: { personnel: { select: { id: true, adSoyad: true, sicilNo: true } } } },
       },
     })
   })

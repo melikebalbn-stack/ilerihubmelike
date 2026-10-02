@@ -2,7 +2,7 @@
  * FİF kayıt numarası — yıl bazlı atomik seri (KAL-FR-10).
  *
  * Format: FIF-{year}-{seq:3digits} → 'FIF-2026-001' (1000 ve sonrası 4+ hane).
- * Paket 3: numara KSS "Kayda Al" (KSS_KAYIT_BEKLIYOR → FAALIYET) anında verilir;
+ * Paket 3: numara KSS "Kayda Al" (Paket 4: KSS_KAYIT_BEKLIYOR → SORUMLU_ATAMA_BEKLIYOR) anında verilir;
  * o ana kadar kayitNo NULL. quality-report-no.ts deseni:
  * pg_advisory_xact_lock(hashtext('fif_no_<year>')) ile yıl bazlı eşzamanlı
  * numaralamalar serialize olur. Durum geçişiyle AYNI $transaction içinde

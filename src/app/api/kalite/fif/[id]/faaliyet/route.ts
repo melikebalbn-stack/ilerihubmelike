@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireSession } from '@/lib/auth/require-session'
-import { fifDuzenleyebilirMi, canManageFif } from '@/lib/quality/fif-access'
-import { altKayitDuzenlenebilir } from '@/lib/quality/fif-durum'
+import { fifDuzenleyebilirMi, canManageFif, isFifKss } from '@/lib/quality/fif-access'
+import {
+  altKayitDuzenlenebilir, faaliyetPlanlamaYetkisi, kokNedenDoluMu, KOK_NEDEN_ONCE, FAALIYET_PLANLAMA_DURUMLARI,
+  EK_TERMINLI_SILINEMEZ,
+} from '@/lib/quality/fif-durum'
 import { FifDurum, FifSonuc } from '@/generated/prisma'
 import { faaliyetKapaliMi } from '@/lib/quality/fif-termin'
 import { fifFaaliyetInput } from '@/lib/quality/fif-validators'
+import { fifFaaliyetAtamaBildir } from '@/lib/quality/fif-bildirim'
 import { z } from 'zod'
 
 export const dynamic = 'force-dynamic'
@@ -28,8 +32,11 @@ async function yetkiVeFif(id: string) {
   const fif = await prisma.fif.findUnique({
     where: { id },
     select: {
-      id: true, durum: true, createdById: true, hazirlayanUserId: true,
-      sorumluBolumId: true, yayinlayanBolumId: true,
+      id: true, kayitNo: true, durum: true, createdById: true, hazirlayanUserId: true,
+      sorumluBolumId: true, yayinlayanBolumId: true, izlemeSorumlusuUserId: true,
+      // Paket 4: faaliyet planlaması (izleme sorumlusu / müdür) + "önce kök neden".
+      sorumluOnaylayanUserId: true, kokNedenAnalizi: true,
+      kokNedenler: { select: { aciklama: true } }, besNedenler: { select: { id: true } },
     },
   })
   if (!fif) return { error: NextResponse.json({ error: 'FİF bulunamadı' }, { status: 404 }) }
@@ -42,14 +49,19 @@ async function yetkiVeFif(id: string) {
   if (!altKayitDuzenlenebilir({ userId: session?.user?.id ?? null, isManage: manage }, fif.durum)) {
     return { error: NextResponse.json({ error: 'Bu durumda düzenleme yapılamaz' }, { status: 409 }) }
   }
-  if (!manage && fif.durum !== 'FAALIYET') {
-    return { error: NextResponse.json({ error: 'Faaliyet satırları yalnız FAALIYET aşamasında düzenlenir' }, { status: 409 }) }
+  if (!manage && !FAALIYET_PLANLAMA_DURUMLARI.includes(fif.durum)) {
+    return { error: NextResponse.json({ error: 'Faaliyet satırları yalnız faaliyet aşamasında düzenlenir' }, { status: 409 }) }
   }
   return {
     error: null as null,
     durum: fif.durum,
     userId,
     manage,
+    isKss: await isFifKss(session),
+    fif: { id: fif.id, kayitNo: fif.kayitNo },
+    /** faaliyetPlanlamaYetkisi girdisi (durum + müdür snapshot'ı + izleme sorumlusu). */
+    planlama: { durum: fif.durum, sorumluOnaylayanUserId: fif.sorumluOnaylayanUserId, izlemeSorumlusuUserId: fif.izlemeSorumlusuUserId },
+    kokNedenDolu: kokNedenDoluMu(fif),
   }
 }
 
@@ -57,30 +69,31 @@ async function yetkiVeFif(id: string) {
 const EK_TERMIN_KULLAN = 'Hedef tarih değişikliği için "Ek Termin İste" (ek termin talebi) kullanın'
 
 /**
- * Paket 3: satırı KAPATMAK yalnız "Faaliyeti Kapat" ucundan (paraf + gerçekleşen
- * tarih + etkinlik planı birlikte yazılır). Bu uçtan sonuc=K verilirse o adımlar
- * atlanırdı → manage dışında reddedilir.
+ * Paket 4: faaliyet SONUCUNU (K / YT) yalnız KSS "Sonuç Gir" ucu yazar (K'da paraf +
+ * gerçekleşen tarih + bekleyen ek termin iptali birlikte). Bu uçtan sonuc=K/YT
+ * verilirse o adımlar atlanırdı → manage dışında reddedilir.
  */
-function kapatmaBuUctanMi(sonuc: FifSonuc | null | undefined, manage: boolean): string | null {
-  return sonuc === FifSonuc.K && !manage ? 'Faaliyeti kapatmak için "Faaliyeti Kapat" işlemini kullanın' : null
+function sonucBuUctanMi(sonuc: FifSonuc | null | undefined, manage: boolean): string | null {
+  return (sonuc === FifSonuc.K || sonuc === FifSonuc.YT) && !manage
+    ? 'Faaliyet sonucu için KSS "Sonuç Gir" işlemini kullanın'
+    : null
 }
 
 
 /**
  * PARAF (FAZ A — adım 6): faaliyet satırının parafı istemciden KABUL EDİLMEZ.
- * `parafla=true` gönderildiğinde sunucu oturum kullanıcısını yazar; bunu yalnız
- * SATIRIN SORUMLUSU (Paket 3 — eskiden formun uygulama sorumlusu; o alan kalktı)
- * ya da manage yapabilir. `parafla=false` → paraf temizlenir (aynı yetki).
- * Olağan akışta paraf "Faaliyeti Kapat" ucunda atılır.
+ * `parafla=true` gönderildiğinde sunucu oturum kullanıcısını yazar. Paket 4: paraf
+ * KSS'nindir (sonucu KSS girer) — yalnız KSS ya da manage. `parafla=false` → paraf
+ * temizlenir (aynı yetki). Olağan akışta paraf KSS "Sonuç Gir" → K ucunda atılır.
  */
 function parafCoz(
   body: unknown,
-  g: { userId: string | null; satirSorumlusuUserId: string | null; manage: boolean },
+  g: { userId: string | null; isKss: boolean; manage: boolean },
 ): { ok: true; veri: { parafUserId: string | null; parafTarihi: Date | null } | null } | { ok: false; sebep: string } {
   const istek = (body as { parafla?: unknown } | null)?.parafla
   if (typeof istek !== 'boolean') return { ok: true, veri: null } // paraf alanına dokunma
-  const yetkili = g.manage || (!!g.userId && g.userId === g.satirSorumlusuUserId)
-  if (!yetkili) return { ok: false, sebep: 'Paraf yalnız satırın sorumlu kişisi tarafından atılabilir' }
+  const yetkili = g.manage || (!!g.userId && g.isKss)
+  if (!yetkili) return { ok: false, sebep: 'Paraf yalnız Kalite Sistem Sorumlusu tarafından atılabilir' }
   return istek
     ? { ok: true, veri: { parafUserId: g.userId, parafTarihi: new Date() } }
     : { ok: true, veri: { parafUserId: null, parafTarihi: null } }
@@ -98,10 +111,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ error: 'Geçersiz veri', issues: parsed.error.flatten() }, { status: 400 })
   }
   const f = parsed.data
+  // Paket 4: satır ekleme izleme sorumlusu / sorumlu bölüm müdüründe (veya manage) ve kök neden önce.
+  const planlama = faaliyetPlanlamaYetkisi({ userId: g.userId, isManage: g.manage }, g.planlama)
+  if (planlama) return NextResponse.json({ error: planlama.sebep }, { status: planlama.status })
+  if (!g.kokNedenDolu) return NextResponse.json({ error: KOK_NEDEN_ONCE }, { status: 400 })
   if (f.sonuc === FifSonuc.ES) return NextResponse.json({ error: EK_TERMIN_KULLAN }, { status: 400 })
-  const kapatma = kapatmaBuUctanMi(f.sonuc, g.manage)
-  if (kapatma) return NextResponse.json({ error: kapatma }, { status: 400 })
-  const paraf = parafCoz(body, { ...g, satirSorumlusuUserId: f.sorumluUserId ?? null })
+  const sonucHatasi = sonucBuUctanMi(f.sonuc, g.manage)
+  if (sonucHatasi) return NextResponse.json({ error: sonucHatasi }, { status: 400 })
+  const paraf = parafCoz(body, g)
   if (!paraf.ok) return NextResponse.json({ error: paraf.sebep }, { status: 403 })
   const created = await prisma.$transaction(async (tx) => {
     const c = await tx.fifFaaliyet.create({
@@ -118,6 +135,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     await fifDegistiIsaretle(tx, id)
     return c
   })
+  if (created.sorumluUserId) {
+    try {
+      await fifFaaliyetAtamaBildir(g.fif, [{ sira: created.sira, aciklama: created.aciklama, hedefTarih: created.hedefTarih, sorumluUserId: created.sorumluUserId }])
+    } catch (e) {
+      console.error('[fif-faaliyet] atama bildirimi:', e)
+    }
+  }
   return NextResponse.json({ item: created }, { status: 201 })
 }
 
@@ -156,10 +180,20 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     return NextResponse.json({ error: EK_TERMIN_KULLAN }, { status: 400 })
   }
 
-  const kapatma = kapatmaBuUctanMi(f.sonuc, g.manage)
-  if (kapatma) return NextResponse.json({ error: kapatma }, { status: 400 })
+  const sonucHatasi = sonucBuUctanMi(f.sonuc, g.manage)
+  if (sonucHatasi) return NextResponse.json({ error: sonucHatasi }, { status: 400 })
 
-  const paraf = parafCoz(body, { ...g, satirSorumlusuUserId: mevcut.sorumluUserId })
+  // Paket 4: satıra uygulama sorumlusu ATAMA (değiştirme) ve FAALIYET'te hedef tarih
+  // girme planlamadır — izleme sorumlusu / sorumlu bölüm müdürü (veya manage).
+  const sorumluDegisti = f.sorumluUserId !== undefined && (f.sorumluUserId ?? null) !== mevcut.sorumluUserId
+  const hedefDegisti = g.durum === FifDurum.FAALIYET && f.hedefTarih !== undefined &&
+    (f.hedefTarih?.getTime() ?? null) !== (mevcut.hedefTarih?.getTime() ?? null)
+  if (sorumluDegisti || hedefDegisti) {
+    const planlama = faaliyetPlanlamaYetkisi({ userId: g.userId, isManage: g.manage }, g.planlama)
+    if (planlama) return NextResponse.json({ error: planlama.sebep }, { status: planlama.status })
+  }
+
+  const paraf = parafCoz(body, g)
   if (!paraf.ok) return NextResponse.json({ error: paraf.sebep }, { status: 403 })
 
   const yeniHedef = f.hedefTarih !== undefined ? f.hedefTarih : mevcut.hedefTarih
@@ -182,6 +216,13 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     await fifDegistiIsaretle(tx, id)
     return up
   })
+  if (sorumluDegisti && updated.sorumluUserId) {
+    try {
+      await fifFaaliyetAtamaBildir(g.fif, [{ sira: updated.sira, aciklama: updated.aciklama, hedefTarih: updated.hedefTarih, sorumluUserId: updated.sorumluUserId }])
+    } catch (e) {
+      console.error('[fif-faaliyet] atama bildirimi:', e)
+    }
+  }
   return NextResponse.json({ item: updated })
 }
 
@@ -194,10 +235,15 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
   const faaliyetId = z.string().min(1).safeParse(request.nextUrl.searchParams.get('faaliyetId'))
   if (!faaliyetId.success) return NextResponse.json({ error: 'faaliyetId zorunlu' }, { status: 400 })
 
-  const mevcut = await prisma.fifFaaliyet.findFirst({ where: { id: faaliyetId.data, fifId: id }, select: { id: true, parafUserId: true } })
+  const mevcut = await prisma.fifFaaliyet.findFirst({
+    where: { id: faaliyetId.data, fifId: id },
+    select: { id: true, parafUserId: true, _count: { select: { ekTerminler: true } } },
+  })
   if (!mevcut) return NextResponse.json({ error: 'Faaliyet bulunamadı' }, { status: 404 })
   // Form PUT'uyla AYNI kural: paraflı (kapatılmış) satır silinmez.
   if (mevcut.parafUserId) return NextResponse.json({ error: 'Paraflı faaliyet silinemez' }, { status: 400 })
+  // Paket 4: ek termin geçmişi olan satır silinmez (FK RESTRICT ile aynı kural).
+  if (mevcut._count.ekTerminler > 0) return NextResponse.json({ error: EK_TERMINLI_SILINEMEZ }, { status: 400 })
 
   await prisma.$transaction(async (tx) => {
     await tx.fifFaaliyet.delete({ where: { id: faaliyetId.data } })

@@ -10,10 +10,6 @@ import { Textarea } from '@/components/ui/textarea'
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
 } from '@/components/ui/dialog'
-import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
-  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
-} from '@/components/ui/alert-dialog'
 import { etkinlikKontrolAcikMi } from '@/lib/quality/fif-termin'
 
 export type BekleyenTalep = { id: string; istenenHedefTarih: string; mevcutHedefTarih: string | null; neden: string; talepEdenAd: string }
@@ -24,10 +20,12 @@ type Props = {
   faaliyet: {
     id: string
     sira: number
-    /** Kayıtlı hedef tarih (YYYY-MM-DD) — boşsa kapatma/ek termin yok. */
+    /** Kayıtlı hedef tarih (YYYY-MM-DD) — boşsa sonuç girişi/ek termin yok. */
     kayitliHedef: string
     kapali: boolean
     sorumluUserId: string
+    /** Son girilen sonuç (YT ise satır açık, KSS tekrar sonuç girebilir). */
+    sonuc: string | null
     etkinlikPlanTarihi: string | null
     etkinlikUygun: boolean | null
   }
@@ -43,9 +41,12 @@ const mavi = 'bg-[#1B4F72] hover:bg-[#1B4F72]/90'
 
 /**
  * Faaliyet satırı işlemleri (Paket 3b-2) — formdan BAĞIMSIZ, anında sunucuya gider:
- *  · Satırın SORUMLUSU: "Faaliyeti Kapat", "Ek Termin İste" (formu düzenleyemese de).
- *  · KSS: bekleyen ek termin talebine Onayla / Reddet; kapatılmış satırda plan − 7
- *    günden itibaren "Etkinlik Kontrolü" (Uygun / Etkin değil → satır yeniden açılır).
+ *  · Satırın SORUMLUSU: "Ek Termin İste" (formu düzenleyemese de). Paket 4: satır
+ *    sorumlusu artık KAPATAMAZ.
+ *  · KSS: açık satırda "Sonuç Gir" — K (Tamamlandı → satır kapanır) / YT (Yapılamadı →
+ *    satır açık kalır, açıklama zorunlu); bekleyen ek termin talebine Onayla / Reddet;
+ *    kapatılmış satırda plan − 7 günden itibaren "Etkinlik Kontrolü" (Uygun / Etkin
+ *    değil → satır yeniden açılır).
  * Kurallar sunucuda da aynen uygulanır; buradaki koşullar yalnız butonu gösterir.
  */
 export function FifFaaliyetIslemleri({ fifId, fifDurum, faaliyet: f, bekleyenTalep, aktifKullaniciId, isKss, kilitli }: Props) {
@@ -60,6 +61,10 @@ export function FifFaaliyetIslemleri({ fifId, fifDurum, faaliyet: f, bekleyenTal
   // KSS red notu
   const [redAcik, setRedAcik] = useState(false)
   const [redNotu, setRedNotu] = useState('')
+  // KSS sonuç girişi (Paket 4)
+  const [sonucAcik, setSonucAcik] = useState(false)
+  const [sonucSecim, setSonucSecim] = useState<'K' | 'YT' | null>(null)
+  const [sonucAciklama, setSonucAciklama] = useState('')
   // KSS etkinlik kontrolü
   const [etkAcik, setEtkAcik] = useState(false)
   const [etkUygun, setEtkUygun] = useState<boolean | null>(null)
@@ -71,7 +76,7 @@ export function FifFaaliyetIslemleri({ fifId, fifDurum, faaliyet: f, bekleyenTal
   const faaliyetAsamasi = fifDurum === 'FAALIYET'
   const satirSahibi = !!aktifKullaniciId && f.sorumluUserId === aktifKullaniciId
   const acikVeHedefli = faaliyetAsamasi && !f.kapali && !!f.kayitliHedef
-  const kapatabilir = satirSahibi && acikVeHedefli
+  const sonucGirebilir = isKss && acikVeHedefli
   const terminIsteyebilir = satirSahibi && acikVeHedefli && !bekleyenTalep
   const talepKarari = isKss && !!bekleyenTalep
   const etkinlikKontrolu = isKss && f.kapali && f.etkinlikUygun !== true &&
@@ -96,7 +101,7 @@ export function FifFaaliyetIslemleri({ fifId, fifDurum, faaliyet: f, bekleyenTal
 
   const taban = `/api/kalite/fif/${fifId}/faaliyet/${f.id}`
 
-  if (!kapatabilir && !terminIsteyebilir && !talepKarari && !etkinlikKontrolu) return null
+  if (!sonucGirebilir && !terminIsteyebilir && !talepKarari && !etkinlikKontrolu) return null
 
   return (
     <div className="flex flex-wrap items-center justify-end gap-2">
@@ -172,27 +177,44 @@ export function FifFaaliyetIslemleri({ fifId, fifDurum, faaliyet: f, bekleyenTal
         </Dialog>
       )}
 
-      {kapatabilir && (
-        <AlertDialog>
-          <AlertDialogTrigger asChild>
-            <Button type="button" size="sm" className={mavi} disabled={mesgul}>{mesgul ? 'İşleniyor…' : 'Faaliyeti Kapat'}</Button>
-          </AlertDialogTrigger>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Faaliyet #{f.sira} kapatılsın mı?</AlertDialogTitle>
-              <AlertDialogDescription>
-                Gerçekleşen tarih bugün olarak yazılır ve satır sizin adınıza parafe edilir. 3 aylık
-                etkinlik süresi, FİF'in kapanış onayından sonra başlar.
-                {bekleyenTalep ? ' Bekleyen ek termin talebi otomatik iptal edilir.' : ''}
-                {' '}Kaydedilmemiş form değişiklikleri varsa önce Kaydet&apos;e basın.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Vazgeç</AlertDialogCancel>
-              <AlertDialogAction onClick={() => gonder(`${taban}/kapat`, 'POST', null, 'Faaliyet kapatıldı')}>Kapat</AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+      {sonucGirebilir && (
+        <Dialog open={sonucAcik} onOpenChange={(v) => { setSonucAcik(v); if (v) { setSonucSecim(null); setSonucAciklama(''); setHata(null) } }}>
+          <DialogTrigger asChild>
+            <Button type="button" size="sm" className={mavi} disabled={mesgul}>Sonuç Gir</Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Sonuç gir — faaliyet #{f.sira}</DialogTitle>
+              <DialogDescription>
+                Hedef: {trTarih(f.kayitliHedef)}.{f.sonuc === 'YT' ? ' Önceki sonuç: Yapılamadı (YT).' : ''} &quot;Tamamlandı&quot;
+                seçilirse satır bugünün tarihiyle sizin parafınızla kapanır
+                {bekleyenTalep ? ' ve bekleyen ek termin talebi otomatik iptal edilir' : ''}. &quot;Yapılamadı&quot; seçilirse
+                satır açık kalır. Satır sorumlusu bilgilendirilir. Kaydedilmemiş form değişiklikleri varsa önce Kaydet&apos;e basın.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3">
+              <div className="flex gap-2">
+                <Button type="button" variant={sonucSecim === 'K' ? 'default' : 'outline'} className={sonucSecim === 'K' ? mavi : ''} onClick={() => setSonucSecim('K')}>Tamamlandı (K)</Button>
+                <Button type="button" variant={sonucSecim === 'YT' ? 'default' : 'outline'} className={sonucSecim === 'YT' ? 'bg-red-600 hover:bg-red-600/90' : ''} onClick={() => setSonucSecim('YT')}>Yapılamadı (YT)</Button>
+              </div>
+              <div>
+                <Label className="text-xs">Açıklama{sonucSecim === 'YT' ? ' *' : ''}</Label>
+                <Textarea rows={3} className="mt-1" value={sonucAciklama} onChange={(e) => setSonucAciklama(e.target.value)}
+                  placeholder={sonucSecim === 'YT' ? 'Neden yapılamadı? (zorunlu)' : 'Not (opsiyonel)'} />
+              </div>
+              {hata && <p className="text-sm text-red-600">{hata}</p>}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setSonucAcik(false)} disabled={mesgul}>Vazgeç</Button>
+              <Button className={mavi}
+                disabled={mesgul || sonucSecim === null || (sonucSecim === 'YT' && !sonucAciklama.trim())}
+                onClick={async () => {
+                  const govde = { sonuc: sonucSecim, aciklama: sonucAciklama.trim() || undefined }
+                  if (await gonder(`${taban}/sonuc`, 'POST', govde, sonucSecim === 'K' ? 'Faaliyet kapatıldı' : 'Sonuç kaydedildi: yapılamadı (YT)')) setSonucAcik(false)
+                }}>Kaydet</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       )}
 
       {etkinlikKontrolu && (
@@ -241,7 +263,7 @@ export function FifFaaliyetIslemleri({ fifId, fifDurum, faaliyet: f, bekleyenTal
         </Dialog>
       )}
 
-      {hata && !talepAcik && !redAcik && !etkAcik && <p className="w-full text-right text-xs text-red-600">{hata}</p>}
+      {hata && !talepAcik && !redAcik && !etkAcik && !sonucAcik && <p className="w-full text-right text-xs text-red-600">{hata}</p>}
     </div>
   )
 }

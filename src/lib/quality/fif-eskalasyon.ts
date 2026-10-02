@@ -108,3 +108,39 @@ export function eskalasyonGovdesi(seviye: FifEskalasyonSeviyesi, gecikmeIsGunu: 
     `Eskalasyon seviyesi: ${seviye}. ${kim}`
   )
 }
+
+/**
+ * Paket 4 — KÖK NEDEN / FAALİYET PLANI eskalasyonu (5 iş günü): KSS yönlendirmesinden
+ * (SORUMLU_ATAMA_BEKLIYOR'a İLK giriş) itibaren 5 iş günü dolmuş VE (kök neden boş
+ * VEYA hiç faaliyet satırı yok) ise. Başlangıcı olmayan (bu adımdan önce yönlendirilmiş)
+ * kayıt eskale edilmez. Sayım kokNedenSonTarihi ile — ekrandaki uyarıyla AYNI kural.
+ */
+export function kokNedenEskalasyonuGerekli(g: {
+  baslangic: Date | null
+  kokNedenDolu: boolean
+  faaliyetSayisi: number
+  tatilMap: Map<string, IproTatilTip>
+  ayar: SlaCalismaAyari
+  simdi: Date
+}): { gerekli: boolean; sonGun: Date | null } {
+  if (!g.baslangic) return { gerekli: false, sonGun: null }
+  if (g.kokNedenDolu && g.faaliyetSayisi > 0) return { gerekli: false, sonGun: null }
+  const s = kokNedenSonTarihi(g.baslangic, g.tatilMap, g.ayar, g.simdi)
+  return { gerekli: s.gecikti, sonGun: s.sonGun }
+}
+
+/** Kök neden eskalasyonu başlığı — FİF başına TEK gönderimin dedup anahtarı. */
+export function kokNedenEskalasyonKonusu(fifEtiketi: string): string {
+  return `[FİF ${fifEtiketi}] Eskalasyon — kök neden / faaliyet planı ${FIF_KOK_NEDEN_IS_GUNU} iş gününde tamamlanmadı`
+}
+
+export function kokNedenEskalasyonGovdesi(g: { kokNedenDolu: boolean; faaliyetSayisi: number; sonGun: Date }): string {
+  const eksik = [!g.kokNedenDolu ? 'kök neden analizi' : null, g.faaliyetSayisi === 0 ? 'faaliyet planı' : null]
+    .filter(Boolean)
+    .join(' ve ')
+  const son = g.sonGun.toLocaleDateString('tr-TR', { timeZone: 'UTC' })
+  return (
+    `KSS yönlendirmesinden itibaren ${FIF_KOK_NEDEN_IS_GUNU} iş günü doldu (son gün ${son}); ${eksik} henüz girilmedi.\n` +
+    'Sorumlu bölüm müdürü, izleme sorumlusu (atanmışsa) ve KSS bilgilendirildi.'
+  )
+}

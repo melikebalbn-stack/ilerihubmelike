@@ -94,10 +94,10 @@ describe('FİF PUT — kısmi başlık güncellemesi', () => {
     expect(fifUpdate.mock.calls[0][0].data).toEqual({ standartMadde: '8.7', updatedAt: expect.any(Date) })
   })
 
-  it('formun gönderdiği alanlar eskisi gibi yazılır (açık null dahil)', async () => {
-    await PUT(istek({ tur: 'ONLEYICI', izlemeSorumlusuUserId: null, kysDegisikligi: false }), ctx)
+  it('formun gönderdiği alanlar eskisi gibi yazılır', async () => {
+    await PUT(istek({ tur: 'ONLEYICI', kysDegisikligi: false }), ctx)
     expect(fifUpdate.mock.calls[0][0].data).toEqual({
-      tur: 'ONLEYICI', izlemeSorumlusuUserId: null, kysDegisikligi: false, updatedAt: expect.any(Date),
+      tur: 'ONLEYICI', kysDegisikligi: false, updatedAt: expect.any(Date),
     })
   })
 
@@ -123,6 +123,12 @@ describe('FİF PUT — kısmi başlık güncellemesi', () => {
 
 describe('FİF PUT — faaliyet senkronu (sil-yeniden-yaz YOK)', () => {
   it('id\'li güncellenir (paraf/sonuç/gerçekleşen YOK), id\'siz oluşturulur, eksik parafsız silinir', async () => {
+    // Paket 4: yeni satırı sorumlu bölüm müdürü ekler ve kök neden önce dolu olmalı.
+    fifFindUnique.mockResolvedValue({
+      id: 'fif1', durum: 'FAALIYET', createdById: 'u1', hazirlayanUserId: 'u1',
+      sorumluBolumId: 'd1', yayinlayanBolumId: null, yayilimVarMi: false, yayilimAciklama: null,
+      sorumluOnaylayanUserId: 'u1', kokNedenAnalizi: 'Kök neden',
+    })
     const r = await PUT(istek({
       faaliyetler: [
         { id: 'f1', sira: 1, aciklama: 'Paraflı satır', hedefTarih: '2026-10-01', aksiyonTuru: 'KALICI',

@@ -1,7 +1,10 @@
 import { redirect, notFound } from 'next/navigation'
 import { requireUser } from '@/lib/auth/require-user'
 import { fifKapsamindaMi, fifDuzenleyebilirMi, canManageFif, isFifKss } from '@/lib/quality/fif-access'
-import { uygunGecisler, altKayitDuzenlenebilir, yeniAkisMi, type FifGecisCtx, type FifGecisState } from '@/lib/quality/fif-durum'
+import {
+  uygunGecisler, altKayitDuzenlenebilir, yeniAkisMi, kokNedenDoluMu, faaliyetPlanlamaYetkisi,
+  type FifGecisCtx, type FifGecisState,
+} from '@/lib/quality/fif-durum'
 import { fifKimdeBekliyor } from '@/lib/quality/fif-termin'
 import { FifGecmisPanel } from '@/components/quality/fif/FifGecmisPanel'
 import { YetkisizErisim } from '@/components/YetkisizErisim'
@@ -18,15 +21,16 @@ import { FifDurum, FifEkTerminDurum } from '@/generated/prisma'
 
 export const dynamic = 'force-dynamic'
 
-/** Kök neden uyarısının göründüğü durumlar: KSS kayda aldıktan (FAALIYET) sonrası. */
+/** Kök neden uyarısının göründüğü durumlar: KSS kayda aldıktan (Paket 4: SORUMLU_ATAMA_BEKLIYOR) sonrası. */
 const KOK_NEDEN_UYARI_DURUMLARI = new Set<FifDurum>([
-  FifDurum.FAALIYET, FifDurum.KAPATMA_BEKLIYOR, FifDurum.KSS_KAPANIS_BEKLIYOR, FifDurum.ETKINLIK, FifDurum.KAPANDI,
+  FifDurum.SORUMLU_ATAMA_BEKLIYOR, FifDurum.FAALIYET, FifDurum.KAPATMA_BEKLIYOR, FifDurum.KSS_KAPANIS_BEKLIYOR, FifDurum.ETKINLIK, FifDurum.KAPANDI,
 ])
 
 /**
  * FİF detay — durum paneli (kimde bekliyor) + form + ekler + geçmiş.
  * Görme: fifKapsamindaMi (satır sorumlusu dahil). Form düzenleme: fifDuzenleyebilirMi
- * (satır sorumlusu SALT-OKUNUR görür; kendi satırında Kapat / Ek Termin İste yapar).
+ * (izleme sorumlusu düzenler; satır sorumlusu SALT-OKUNUR görür, kendi satırında Ek Termin
+ * İste yapar; sonucu KSS girer).
  */
 export default async function FifDetayPage({ params }: { params: Promise<{ id: string }> }) {
   const { session, error } = await requireUser()
@@ -66,6 +70,8 @@ export default async function FifDetayPage({ params }: { params: Promise<{ id: s
   const ctx: FifGecisCtx = {
     userId: session.user.id, isManage: canManageFif(session), sorumluBolumMudurUserId, isKss: await isFifKss(session),
   }
+  // Paket 4 — "önce kök neden, sonra faaliyet" (özet / Ek-1 / 5 Neden'den biri).
+  const kokNedenDolu = kokNedenDoluMu(fif)
   const gecisState: FifGecisState = {
     durum: fif.durum, createdById: fif.createdById, hazirlayanUserId: fif.hazirlayanUserId,
     yayinlayanOnaylayanUserId: fif.yayinlayanOnaylayanUserId, sorumluOnaylayanUserId: fif.sorumluOnaylayanUserId,
@@ -75,6 +81,9 @@ export default async function FifDetayPage({ params }: { params: Promise<{ id: s
     yayilimVarMi: fif.yayilimVarMi, yayilimAciklama: fif.yayilimAciklama,
     faaliyetler: fif.faaliyetler, etkinlikler: fif.etkinlikler,
   }
+  // Paket 4: faaliyet planlama yetkisi (satır ekleme, hedef tarih, uygulama sorumlusu —
+  // FAALIYET'te izleme sorumlusu / sorumlu bölüm müdürü / manage) — API ile AYNI fonksiyon.
+  const faaliyetPlanlayabilir = faaliyetPlanlamaYetkisi(ctx, fif) === null
   // Durum geçişleri (form düzenleme yetkisi olmayan satır sorumlusu da görür;
   // geçiş kuralları kendi rol kontrolünü yapar). yeniAkis: satır bazlı etkinlik.
   const gecisler = uygunGecisler(ctx, gecisState)
@@ -105,6 +114,9 @@ export default async function FifDetayPage({ params }: { params: Promise<{ id: s
     durum: fif.durum, yeniAkis,
     hazirlayanAd: adById.get(fif.hazirlayanUserId ?? fif.createdById ?? '') ?? null,
     yayinlayanOnaylayanAd: fif.yayinlayanOnaylayanUserId ? adById.get(fif.yayinlayanOnaylayanUserId) ?? null : null,
+    sorumluOnaylayanAd: fif.sorumluOnaylayanUserId ? adById.get(fif.sorumluOnaylayanUserId) ?? null : null,
+    izlemeAd: fif.izlemeSorumlusuUserId ? adById.get(fif.izlemeSorumlusuUserId) ?? null : null,
+    kokNedenDolu,
     satirlar: fif.faaliyetler.map((f) => ({
       sonuc: f.sonuc, gerceklesenTarih: f.gerceklesenTarih, etkinlikPlanTarihi: f.etkinlikPlanTarihi,
       etkinlikUygun: f.etkinlikUygun, bekleyenTalep: f.ekTerminler.length > 0,
@@ -151,14 +163,19 @@ export default async function FifDetayPage({ params }: { params: Promise<{ id: s
     })),
   }
 
-  // 5 İŞ GÜNÜ KÖK NEDEN UYARISI: FAALIYET ve sonrası durumlarda, kök neden (özet
-  // metin + Ek-1 balık kılçığı + 5 Neden) hiç girilmemişse. Başlangıç = KSS'nin
-  // "Kayda Al" anı: FAALIYET'e İLK giriş (yeniden faaliyete dönüşte süre
+  // 5 İŞ GÜNÜ KÖK NEDEN / FAALİYET PLANI UYARISI: KSS kayda aldıktan sonraki
+  // durumlarda, kök neden (özet metin + Ek-1 balık kılçığı + 5 Neden) hiç girilmemişse
+  // VEYA hiç faaliyet satırı yoksa (eskalasyon cron'uyla AYNI koşul). Başlangıç = KSS'nin
+  // "Kayda Al" anı: Paket 4'te SORUMLU_ATAMA_BEKLIYOR'a İLK giriş; o adımdan önce
+  // kayda alınmış kayıtlarda FAALIYET'e ilk giriş (yeniden faaliyete dönüşte süre
   // sıfırlanmaz). İş günü eskalasyonla AYNI SLA takviminden.
-  const kokNedenBos = !fif.kokNedenAnalizi?.trim() && fif.kokNedenler.length === 0 && fif.besNedenler.length === 0
   let kokNedenUyari: { sonTarih: string; gecikti: boolean } | null = null
-  if (kokNedenBos && KOK_NEDEN_UYARI_DURUMLARI.has(fif.durum)) {
-    const kayda = [...fif.gecmis].reverse().find((g) => g.yeniDurum === FifDurum.FAALIYET)
+  const planEksik = !kokNedenDolu || fif.faaliyetler.length === 0
+  if (planEksik && KOK_NEDEN_UYARI_DURUMLARI.has(fif.durum)) {
+    const eskidenYeniye = [...fif.gecmis].reverse()
+    const kayda =
+      eskidenYeniye.find((g) => g.yeniDurum === FifDurum.SORUMLU_ATAMA_BEKLIYOR) ??
+      eskidenYeniye.find((g) => g.yeniDurum === FifDurum.FAALIYET)
     const baslangic = kayda?.createdAt ?? fif.createdAt
     const yil = baslangic.getFullYear()
     const [ayar, tatilMap] = await Promise.all([getSlaAyar(), getTatilMap([yil, yil + 1])])
@@ -178,9 +195,11 @@ export default async function FifDetayPage({ params }: { params: Promise<{ id: s
       {kokNedenUyari && (
         <Alert variant={kokNedenUyari.gecikti ? 'destructive' : 'default'}>
           <AlertTriangle className="h-4 w-4" />
-          <AlertTitle>{kokNedenUyari.gecikti ? 'Kök neden analizi süresi geçti' : 'Kök neden analizi bekleniyor'}</AlertTitle>
+          <AlertTitle>{kokNedenUyari.gecikti ? 'Kök neden / faaliyet planı süresi geçti' : 'Kök neden ve faaliyet planı bekleniyor'}</AlertTitle>
           <AlertDescription>
-            FİF açıldıktan sonra 5 iş günü içerisinde kök neden analizinin doldurulması gerekmektedir. Son tarih: {kokNedenUyari.sonTarih}
+            KSS yönlendirmesinden sonra 5 iş günü içerisinde kök neden analizinin doldurulması ve faaliyetlerin planlanması
+            gerekmektedir{!kokNedenDolu ? ' (kök neden girilmedi)' : ''}{fif.faaliyetler.length === 0 ? ' (faaliyet yok)' : ''}.
+            Son tarih: {kokNedenUyari.sonTarih}
           </AlertDescription>
         </Alert>
       )}
@@ -192,6 +211,7 @@ export default async function FifDetayPage({ params }: { params: Promise<{ id: s
       <FifFormClient
         key={fif.updatedAt.toISOString()} initial={initial} kullaniciAdlari={kullaniciAdlari}
         aktifKullaniciId={session.user.id} duzenlenebilir={duzenlenebilir} isKss={ctx.isKss ?? false}
+        faaliyetPlanlayabilir={faaliyetPlanlayabilir} kokNedenDolu={kokNedenDolu}
       />
       <FifEklerPanel
         fifId={fif.id}

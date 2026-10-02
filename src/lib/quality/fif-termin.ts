@@ -54,7 +54,7 @@ type FaaliyetTermin = {
   sonuc: string | null
 }
 
-/** Satır kapalı mı: "Faaliyeti Kapat" sonucu (sonuc=K + gerçekleşen tarih). */
+/** Satır kapalı mı: KSS "Sonuç Gir" → K (sonuc=K + gerçekleşen tarih). YT satır AÇIKTIR. */
 export function faaliyetKapaliMi(f: Pick<FaaliyetTermin, 'sonuc' | 'gerceklesenTarih'>): boolean {
   return f.sonuc === 'K' && !!f.gerceklesenTarih
 }
@@ -129,7 +129,8 @@ const trTarih = (t: TarihGirdisi) =>
 /**
  * Satır durum rozeti — öncelik sırasıyla:
  *   Etkin ✓ · Etkinlik kontrolü bekliyor — {plan} · Kapatıldı (eski akış) ·
- *   Ek termin onayı bekliyor — KSS · Açık — {sorumlu}
+ *   Ek termin onayı bekliyor — KSS · Yapılamadı (YT) — {sorumlu} · Açık — {sorumlu}
+ * Paket 4: YT (KSS "Sonuç Gir" → yapılamadı) satır açık kalır, ayrı rozetle görünür.
  */
 export function faaliyetDurumu(f: SatirDurumGirdi): TerminEtiketi {
   if (faaliyetKapaliMi(f)) {
@@ -138,6 +139,7 @@ export function faaliyetDurumu(f: SatirDurumGirdi): TerminEtiketi {
     return { metin: 'Kapatıldı', ton: 'basari' }
   }
   if (f.bekleyenTalep) return { metin: 'Ek termin onayı bekliyor — KSS', ton: 'uyari' }
+  if (f.sonuc === 'YT') return { metin: `Yapılamadı (YT) — ${f.sorumluAd ?? 'sorumlu atanmamış'}`, ton: 'tehlike' }
   return { metin: `Açık — ${f.sorumluAd ?? 'sorumlu atanmamış'}`, ton: 'uyari' }
 }
 
@@ -148,6 +150,12 @@ export type FifBekleyenGirdi = {
   yeniAkis: boolean
   hazirlayanAd: string | null
   yayinlayanOnaylayanAd: string | null
+  /** Paket 4: sorumlu bölüm müdürü (zincir snapshot'ı) — SORUMLU_ATAMA_BEKLIYOR. */
+  sorumluOnaylayanAd?: string | null
+  /** Paket 4: faaliyet izleme sorumlusu — FAALIYET'te planlamayı müdürle birlikte yapar; boşsa yalnız müdür. */
+  izlemeAd?: string | null
+  /** Paket 4: kök neden dolu mu (fif-durum.kokNedenDoluMu). Verilmezse kök neden adımı gösterilmez. */
+  kokNedenDolu?: boolean
   satirlar: SatirDurumGirdi[]
 }
 
@@ -169,17 +177,32 @@ export function fifKimdeBekliyor(f: FifBekleyenGirdi, simdi: Date): string {
       return `Yayınlayan bölüm müdürü — ${f.yayinlayanOnaylayanAd ?? 'tanımsız'}`
     case 'KSS_KAYIT_BEKLIYOR':
       return 'KSS — kayda alma'
+    case 'SORUMLU_ATAMA_BEKLIYOR':
+      return `Sorumlu bölüm müdürü — ${f.sorumluOnaylayanAd ?? 'tanımsız'} (izleme sorumlusu seçimi + Sorumlu Bölüm Onayı)`
     case 'KSS_KAPANIS_BEKLIYOR':
       return 'KSS — kapanış kontrolü'
     case 'FAALIYET': {
       const parcalar: string[] = []
+      // Paket 4: planlama (kök neden → satırlar → uygulama sorumlusu) izleme sorumlusu
+      // ve sorumlu bölüm müdüründe. İzleme sorumlusu boşsa (onay sonrası boşaltılabilir)
+      // yalnız sorumlu bölüm müdürü gösterilir.
+      const planlayan = f.izlemeAd
+        ? `İzleme sorumlusu (${f.izlemeAd}) / sorumlu bölüm müdürü`
+        : `Sorumlu bölüm müdürü${f.sorumluOnaylayanAd ? ` (${f.sorumluOnaylayanAd})` : ''}`
+      if (f.kokNedenDolu === false) parcalar.push(`${planlayan} — kök neden analizi`)
+      else if (f.kokNedenDolu === true && f.satirlar.length === 0) parcalar.push(`${planlayan} — faaliyet planı`)
       const talepli = acik.filter((s) => s.bekleyenTalep)
       const talepsiz = acik.filter((s) => !s.bekleyenTalep)
-      if (talepsiz.length) parcalar.push(`Satır sorumluları — ${benzersiz(talepsiz.map((s) => s.sorumluAd))}`)
+      // Paket 4: sorumlusuz açık satır planlayanda; atanmış açık satır uygulama
+      // sorumlusunda, sonucunu KSS girer.
+      const atanmamis = talepsiz.filter((s) => !s.sorumluAd)
+      const atanmis = talepsiz.filter((s) => s.sorumluAd)
+      if (atanmamis.length) parcalar.push(`${planlayan} — ${atanmamis.length} satıra sorumlu ataması`)
+      if (atanmis.length) parcalar.push(`Satır sorumluları — ${benzersiz(atanmis.map((s) => s.sorumluAd))} (sonucu KSS girer)`)
       if (talepli.length) parcalar.push(`KSS — ${talepli.length} ek termin onayı`)
       // Kapanış zinciri (hub/main): satırlar bitince "Kapatmaya Gönder" izleme
       // sorumlusunda / sorumlu bölüm müdüründe.
-      if (f.satirlar.length > 0 && acik.length === 0) parcalar.push('İzleme sorumlusu / sorumlu bölüm müdürü — Kapatmaya Gönder')
+      if (f.satirlar.length > 0 && acik.length === 0) parcalar.push(`${planlayan} — Kapatmaya Gönder`)
       const kontrolAcik = etkinlikBekleyen.filter((s) => etkinlikKontrolAcikMi(s.etkinlikPlanTarihi, simdi))
       if (kontrolAcik.length) parcalar.push(`KSS — ${kontrolAcik.length} etkinlik kontrolü`)
       return parcalar.length ? parcalar.join(' · ') : 'Faaliyet satırı bekleniyor'

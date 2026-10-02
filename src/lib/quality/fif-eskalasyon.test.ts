@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { isGunuSayisi, eskalasyonSeviyesi, eskalasyonKonusu, kokNedenSonTarihi } from './fif-eskalasyon'
+import {
+  isGunuSayisi, eskalasyonSeviyesi, eskalasyonKonusu, kokNedenSonTarihi,
+  kokNedenEskalasyonuGerekli, kokNedenEskalasyonKonusu, kokNedenEskalasyonGovdesi,
+} from './fif-eskalasyon'
 import { VARSAYILAN_AYAR } from '@/lib/sla/calisma-takvimi'
 import type { IproTatilTip } from '@/lib/ipro/takvim-util'
 
@@ -67,5 +70,40 @@ describe('fif-eskalasyon — seviye', () => {
   it('hedef tarih anahtarda: ek termin sonrası yeni hedef için aynı seviye YENİDEN gönderilir', () => {
     expect(eskalasyonKonusu('FIF-2026-001', 1, '2026-09-20')).not.toBe(eskalasyonKonusu('FIF-2026-001', 1, '2026-10-15'))
     expect(eskalasyonKonusu('FIF-2026-001', 1, '2026-09-20')).toContain('hedef 2026-09-20')
+  })
+})
+
+describe('fif-eskalasyon — Paket 4: kök neden / faaliyet planı 5 iş günü', () => {
+  const temel = {
+    baslangic: gun('2026-09-21'), kokNedenDolu: false, faaliyetSayisi: 0,
+    tatilMap: bosTatil, ayar: VARSAYILAN_AYAR, simdi: new Date('2026-09-29T06:00:00.000Z'),
+  }
+  it('5 iş günü dolmuş + kök neden boş → gerekli (son gün sonraki Pazartesi)', () => {
+    const r = kokNedenEskalasyonuGerekli(temel)
+    expect(r.gerekli).toBe(true)
+    expect(r.sonGun?.toISOString().slice(0, 10)).toBe('2026-09-28')
+  })
+  it('kök neden dolu ama hiç faaliyet yok → gerekli', () => {
+    expect(kokNedenEskalasyonuGerekli({ ...temel, kokNedenDolu: true }).gerekli).toBe(true)
+  })
+  it('kök neden boş ama faaliyet var → gerekli (VEYA kuralı)', () => {
+    expect(kokNedenEskalasyonuGerekli({ ...temel, faaliyetSayisi: 2 }).gerekli).toBe(true)
+  })
+  it('kök neden dolu VE faaliyet var → gerekmez', () => {
+    expect(kokNedenEskalasyonuGerekli({ ...temel, kokNedenDolu: true, faaliyetSayisi: 1 }).gerekli).toBe(false)
+  })
+  it('süre dolmadıysa (son gün içinde) gerekmez', () => {
+    expect(kokNedenEskalasyonuGerekli({ ...temel, simdi: new Date('2026-09-28T19:00:00.000Z') }).gerekli).toBe(false)
+  })
+  it('başlangıç yoksa (KSS yönlendirmesi Paket 4 öncesi) gerekmez', () => {
+    expect(kokNedenEskalasyonuGerekli({ ...temel, baslangic: null }).gerekli).toBe(false)
+  })
+  it('başlık FİF başına sabit (tek gönderim dedup anahtarı); gövde eksikleri sayar', () => {
+    expect(kokNedenEskalasyonKonusu('FIF-2026-007')).toBe('[FİF FIF-2026-007] Eskalasyon — kök neden / faaliyet planı 5 iş gününde tamamlanmadı')
+    const g = kokNedenEskalasyonGovdesi({ kokNedenDolu: false, faaliyetSayisi: 0, sonGun: new Date(Date.UTC(2026, 8, 28, 12)) })
+    expect(g).toContain('son gün 28.09.2026')
+    expect(g).toContain('kök neden analizi ve faaliyet planı')
+    expect(kokNedenEskalasyonGovdesi({ kokNedenDolu: true, faaliyetSayisi: 0, sonGun: new Date(Date.UTC(2026, 8, 28, 12)) }))
+      .toContain('; faaliyet planı henüz')
   })
 })

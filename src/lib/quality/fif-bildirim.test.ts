@@ -28,7 +28,7 @@ vi.mock('@/lib/email-templates/layout', () => ({
   logoAttachments: () => undefined,
 }))
 vi.mock('@/lib/quality/fif-zincir', () => ({ acaninBolumMuduru: vi.fn(), kssKoltukKullanicilari: vi.fn() }))
-import { fifKullaniciyaBildir } from './fif-bildirim'
+import { fifKullaniciyaBildir, fifDurumBildir, fifFaaliyetAtamaBildir, fifIzlemeSorumlusuBildir } from './fif-bildirim'
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -82,5 +82,68 @@ describe('fifKullaniciyaBildir — üç kanal', () => {
     pushCount.mockResolvedValue(0)
     expect(await fifKullaniciyaBildir('u1', 'k', 'g', '/l')).toEqual({ inApp: true, push: 0, mail: 'gitti' })
     expect(sendPushToUser).not.toHaveBeenCalled()
+  })
+})
+
+describe('fifDurumBildir — Paket 4 alıcıları', () => {
+  const fif = {
+    id: 'fif1', kayitNo: 'FIF-2026-007', durum: 'KSS_KAYIT_BEKLIYOR' as const, sorumluBolumId: 'd1',
+    hazirlayanUserId: 'uAcan', createdById: 'uAcan', yayinlayanOnaylayanUserId: 'uYayin',
+    sorumluOnaylayanUserId: 'uMudur', izlemeSorumlusuUserId: null, uygunsuzlukTanimi: 'Tespit metni',
+  }
+  const alicilar = () => notificationCreate.mock.calls.map((c) => c[0].data.userId)
+  beforeEach(() => {
+    userFindFirst.mockImplementation(async ({ where }: { where: { id: string } }) => ({ id: where.id, email: null, name: where.id, personnel: null }))
+  })
+
+  it('SORUMLU_ATAMA_BEKLIYOR → sorumlu bölüm müdürüne (snapshot) "Sorumlu bölüm onayınız bekleniyor"', async () => {
+    const r = await fifDurumBildir(fif, 'SORUMLU_ATAMA_BEKLIYOR')
+    expect(alicilar()).toEqual(['uMudur'])
+    expect(notificationCreate.mock.calls[0][0].data.title).toBe('[FİF FIF-2026-007] Sorumlu bölüm onayınız bekleniyor')
+    expect(notificationCreate.mock.calls[0][0].data.link).toBe('/kalite/fif/fif1')
+    expect(r.hedefSayisi).toBe(1)
+  })
+  it('Sorumlu Bölüm Onayı (SORUMLU_ATAMA → FAALIYET) → YALNIZ seçilen izleme sorumlusuna', async () => {
+    await fifDurumBildir(
+      { ...fif, durum: 'SORUMLU_ATAMA_BEKLIYOR', izlemeSorumlusuUserId: 'uIzleme', faaliyetSorumluIdleri: ['uS1'] },
+      'FAALIYET',
+    )
+    expect(alicilar()).toEqual(['uIzleme'])
+    expect(notificationCreate.mock.calls[0][0].data.title).toContain('Faaliyet izleme sorumlusu olarak atandınız')
+  })
+})
+
+describe('fifFaaliyetAtamaBildir — Paket 4: uygulama sorumlusu ataması', () => {
+  beforeEach(() => {
+    userFindFirst.mockImplementation(async ({ where }: { where: { id: string } }) =>
+      where.id === 'uPasif' ? null : ({ id: where.id, email: null, name: where.id, personnel: null }))
+  })
+  it('kişi başına TEK bildirim, satırlar listelenir; pasif kullanıcı atlanır', async () => {
+    const n = await fifFaaliyetAtamaBildir({ id: 'fif1', kayitNo: 'FIF-2026-007' }, [
+      { sira: 1, aciklama: 'Kalibrasyon', hedefTarih: new Date('2026-11-01T00:00:00Z'), sorumluUserId: 'uA' },
+      { sira: 3, aciklama: 'Eğitim', hedefTarih: null, sorumluUserId: 'uA' },
+      { sira: 2, aciklama: 'Talimat', hedefTarih: null, sorumluUserId: 'uPasif' },
+    ])
+    expect(n).toBe(1)
+    expect(notificationCreate).toHaveBeenCalledTimes(1)
+    const d = notificationCreate.mock.calls[0][0].data
+    expect(d.userId).toBe('uA')
+    expect(d.title).toBe('[FİF FIF-2026-007] Size faaliyet atandı')
+    expect(d.message).toContain('#1 Kalibrasyon')
+    expect(d.message).toContain('#3 Eğitim (hedef: hedef tarih girilmedi)')
+  })
+})
+
+describe('fifIzlemeSorumlusuBildir — Paket 4: izleme sorumlusu değişince', () => {
+  it('yeni kişiye tek bildirim; pasif kullanıcıya gitmez', async () => {
+    userFindFirst.mockImplementation(async ({ where }: { where: { id: string } }) =>
+      where.id === 'uPasif' ? null : ({ id: where.id, email: null, name: where.id, personnel: null }))
+    expect(await fifIzlemeSorumlusuBildir({ id: 'fif1', kayitNo: 'FIF-2026-007' }, 'uYeni')).toBe(true)
+    expect(notificationCreate).toHaveBeenCalledTimes(1)
+    expect(notificationCreate.mock.calls[0][0].data).toMatchObject({
+      userId: 'uYeni', title: '[FİF FIF-2026-007] Faaliyet izleme sorumlusu olarak atandınız', link: '/kalite/fif/fif1',
+    })
+    expect(await fifIzlemeSorumlusuBildir({ id: 'fif1', kayitNo: 'FIF-2026-007' }, 'uPasif')).toBe(false)
+    expect(notificationCreate).toHaveBeenCalledTimes(1)
   })
 })

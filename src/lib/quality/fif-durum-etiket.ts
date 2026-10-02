@@ -17,6 +17,7 @@ const ETIKET: Record<FifDurum, string> = {
   TASLAK: 'Taslak',
   ONAY_BEKLIYOR: 'Onay Bekliyor',
   KSS_KAYIT_BEKLIYOR: 'KSS Kaydı Bekliyor',
+  SORUMLU_ATAMA_BEKLIYOR: 'Sorumlu Atama Bekliyor',
   FAALIYET: 'Faaliyet',
   KAPATMA_BEKLIYOR: 'Kapatma Bekliyor',
   KSS_KAPANIS_BEKLIYOR: 'KSS Kapanış Kontrolü',
@@ -29,6 +30,7 @@ const RENK: Record<FifDurum, string> = {
   TASLAK: 'bg-slate-100 text-slate-700',
   ONAY_BEKLIYOR: 'bg-amber-100 text-amber-800',
   KSS_KAYIT_BEKLIYOR: 'bg-purple-100 text-purple-800',
+  SORUMLU_ATAMA_BEKLIYOR: 'bg-orange-100 text-orange-800',
   FAALIYET: 'bg-blue-100 text-blue-800',
   KAPATMA_BEKLIYOR: 'bg-amber-100 text-amber-800',
   KSS_KAPANIS_BEKLIYOR: 'bg-purple-100 text-purple-800',
@@ -55,13 +57,15 @@ export function fifEtiket(fif: { kayitNo: string | null }): string {
  */
 const OLAY_ETIKET: Record<string, string> = {
   DURUM_DEGISTI: 'Durum değişti',
-  FAALIYET_KAPATILDI: 'Faaliyet kapatıldı',
+  FAALIYET_KAPATILDI: 'Faaliyet kapatıldı (K)',
   FAALIYET_YENIDEN_ACILDI: 'Faaliyet yeniden açıldı',
+  FAALIYET_YAPILAMADI: 'Faaliyet yapılamadı (YT)',
   EK_TERMIN_TALEP: 'Ek termin talebi',
   EK_TERMIN_ONAY: 'Ek termin onaylandı',
   EK_TERMIN_RED: 'Ek termin reddedildi',
   EK_TERMIN_IPTAL: 'Ek termin iptal edildi',
   ETKINLIK_KONTROL: 'Etkinlik kontrolü',
+  IZLEME_SORUMLUSU_DEGISTI: 'İzleme sorumlusu değişti',
 }
 
 export function fifOlayEtiketi(g: { olay: string | null; aciklama: string | null }): string {

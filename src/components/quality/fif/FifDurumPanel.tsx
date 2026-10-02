@@ -9,10 +9,14 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
 import { FIF_DURUM_ETIKET as DURUM_ETIKET, FIF_DURUM_RENK as DURUM_RENK } from '@/lib/quality/fif-durum-etiket'
+import { UserSecici } from '@/components/quality/fif/FifFormClient'
 
 
-/** pasifSebep doluysa buton PASİF gösterilir (ör. "Tüm faaliyetler kapatılmalı"). */
-type Gecis = { hedef: string; etiket: string; pasifSebep?: string }
+/**
+ * pasifSebep doluysa buton PASİF gösterilir (ör. "Tüm faaliyetler kapatılmalı").
+ * secim='izlemeSorumlusu' (Paket 4 "Sorumlu Bölüm Onayı"): pencerede izleme sorumlusu seçilir.
+ */
+type Gecis = { hedef: string; etiket: string; pasifSebep?: string; secim?: 'izlemeSorumlusu' }
 
 /**
  * Durum paneli: mevcut adım + KİMDE BEKLİYOR + yapılabilecek geçişler.
@@ -31,6 +35,9 @@ export function FifDurumPanel({
   const [gonderiliyor, setGonderiliyor] = useState(false)
   const [hata, setHata] = useState<string | null>(null)
   const [kapanisAcik, setKapanisAcik] = useState(false)
+  // Paket 4: "Sorumlu Bölüm Onayı" — faaliyet izleme sorumlusu seçimi.
+  const [onayGecis, setOnayGecis] = useState<Gecis | null>(null)
+  const [izlemeId, setIzlemeId] = useState('')
 
   // Red geçişleri + IPTAL: neden zorunlu. Liste durum/route.ts RED_GECISLERI ile aynı
   // olmalı — KSS red'leri eksikken pencere açılmıyor, API 400 dönüyordu.
@@ -44,7 +51,7 @@ export function FifDurumPanel({
   }
   const tamamenKapatMi = (g: Gecis) => yeniAkis && durum === 'ETKINLIK' && g.hedef === 'KAPANDI'
 
-  async function uygula(g: Gecis, ek: { aciklama?: string } = {}) {
+  async function uygula(g: Gecis, ek: { aciklama?: string; izlemeSorumlusuUserId?: string } = {}) {
     setGonderiliyor(true); setHata(null)
     try {
       const r = await fetch(`/api/kalite/fif/${fifId}/durum`, {
@@ -52,22 +59,25 @@ export function FifDurumPanel({
         body: JSON.stringify({
           hedef: g.hedef,
           aciklama: ek.aciklama || undefined,
+          izlemeSorumlusuUserId: ek.izlemeSorumlusuUserId || undefined,
         }),
       })
       const d = await r.json().catch(() => ({}))
       if (!r.ok) { setHata(d.error ?? 'Geçiş başarısız'); setGonderiliyor(false); return }
-      setModal(null); setNeden(''); setKapanisAcik(false)
+      setModal(null); setNeden(''); setKapanisAcik(false); setOnayGecis(null); setIzlemeId('')
       setGonderiliyor(false)
       // IPTAL sonrası kayıt işlemsiz kalır; listeye dön. Diğer geçişlerde detayda kal.
       if (g.hedef === 'IPTAL') { toast.success('FİF iptal edildi'); router.push('/kalite/fif') }
       else if (d.kayitNo && durum === 'KSS_KAYIT_BEKLIYOR') toast.success(`Kayda alındı: ${d.kayitNo}`)
+      else if (g.secim === 'izlemeSorumlusu') toast.success('Sorumlu bölüm onayı verildi — izleme sorumlusu bilgilendirildi')
       router.refresh()
     } catch { setHata('Ağ hatası'); setGonderiliyor(false) }
   }
 
   function tikla(g: Gecis) {
     setHata(null)
-    if (tamamenKapatMi(g)) setKapanisAcik(true)
+    if (g.secim === 'izlemeSorumlusu') { setOnayGecis(g); setIzlemeId('') }
+    else if (tamamenKapatMi(g)) setKapanisAcik(true)
     else if (nedenZorunlu(g)) { setModal(g); setNeden('') }
     else uygula(g)
   }
@@ -100,7 +110,7 @@ export function FifDurumPanel({
         ))}
       </div>
 
-      {hata && !modal && !kapanisAcik && <p className="text-sm text-red-600">{hata}</p>}
+      {hata && !modal && !kapanisAcik && !onayGecis && <p className="text-sm text-red-600">{hata}</p>}
 
       {modal && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={() => !gonderiliyor && setModal(null)}>
@@ -114,6 +124,29 @@ export function FifDurumPanel({
             </div>
           </div>
         </div>
+      )}
+
+      {onayGecis && (
+        <Dialog open={!!onayGecis} onOpenChange={(v) => { if (!v && !gonderiliyor) setOnayGecis(null) }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="text-[#1B4F72]">Sorumlu Bölüm Onayı</DialogTitle>
+              <DialogDescription>
+                Faaliyet izleme sorumlusunu seçin. Onaydan sonra kök neden analizi ve faaliyet planlaması (satır, hedef tarih,
+                uygulama sorumlusu) izleme sorumlusu ve sizin tarafınızdan yapılır; izleme sorumlusu bilgilendirilir.
+              </DialogDescription>
+            </DialogHeader>
+            <UserSecici label="Faaliyet İzleme Sorumlusu *" value={izlemeId} onChange={setIzlemeId} />
+            {hata && <p className="text-sm text-red-600">{hata}</p>}
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setOnayGecis(null)} disabled={gonderiliyor}>Vazgeç</Button>
+              <Button className="bg-[#1B4F72] hover:bg-[#1B4F72]/90" disabled={gonderiliyor || !izlemeId}
+                onClick={() => uygula(onayGecis, { izlemeSorumlusuUserId: izlemeId })}>
+                {gonderiliyor ? 'Onaylanıyor…' : 'Onayla'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       )}
 
       {kapanisGecis && (

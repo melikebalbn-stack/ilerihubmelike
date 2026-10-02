@@ -1,8 +1,9 @@
--- PENDING — Melih Bey onayı ve migrate diff karşılaştırması olmadan UYGULANMAZ.
+-- Melih Bey onayıyla uygulanır. Sıra: 20261002070100_fif_paket4_enum'dan ÖNCE.
 --
 -- FİF (KAL-FR-10) Paket 3 — kaynak listesi, satır bazlı sorumlu/termin/etkinlik,
 -- ek termin talebi, faaliyet bazlı geçmiş. DDL bölümü offline `prisma migrate diff`
--- (hub/main şeması → bu branch'in şeması, DB'ye bağlanmadan) çıktısıdır — birebir.
+-- (origin/main şeması → bu branch'in şeması, DB'ye bağlanmadan) çıktısıdır — Paket 4
+-- dosyasındaki ALTER TYPE ile birlikte birebir.
 -- VERİ AKTARIMI bölümü elle yazıldı.
 --
 -- YALNIZ EKLEYİCİ: DROP / DELETE / TRUNCATE YOK. Tek gevşetme: "Fif"."kayitNo"
@@ -14,7 +15,7 @@
 CREATE TYPE "FifEkTerminDurum" AS ENUM ('BEKLIYOR', 'ONAYLANDI', 'REDDEDILDI', 'IPTAL');
 
 -- CreateEnum
-CREATE TYPE "FifGecmisOlay" AS ENUM ('DURUM_DEGISTI', 'FAALIYET_KAPATILDI', 'FAALIYET_YENIDEN_ACILDI', 'EK_TERMIN_TALEP', 'EK_TERMIN_ONAY', 'EK_TERMIN_RED', 'EK_TERMIN_IPTAL', 'ETKINLIK_KONTROL');
+CREATE TYPE "FifGecmisOlay" AS ENUM ('DURUM_DEGISTI', 'FAALIYET_KAPATILDI', 'FAALIYET_YENIDEN_ACILDI', 'FAALIYET_YAPILAMADI', 'EK_TERMIN_TALEP', 'EK_TERMIN_ONAY', 'EK_TERMIN_RED', 'EK_TERMIN_IPTAL', 'ETKINLIK_KONTROL', 'IZLEME_SORUMLUSU_DEGISTI');
 
 -- AlterTable
 ALTER TABLE "Fif" ADD COLUMN     "kaynakId" TEXT,
@@ -87,7 +88,7 @@ CREATE INDEX "FifGecmis_faaliyetId_idx" ON "FifGecmis"("faaliyetId");
 ALTER TABLE "Fif" ADD CONSTRAINT "Fif_kaynakId_fkey" FOREIGN KEY ("kaynakId") REFERENCES "FifKaynak"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "FifEkTermin" ADD CONSTRAINT "FifEkTermin_faaliyetId_fkey" FOREIGN KEY ("faaliyetId") REFERENCES "FifFaaliyet"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "FifEkTermin" ADD CONSTRAINT "FifEkTermin_faaliyetId_fkey" FOREIGN KEY ("faaliyetId") REFERENCES "FifFaaliyet"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "FifGecmis" ADD CONSTRAINT "FifGecmis_faaliyetId_fkey" FOREIGN KEY ("faaliyetId") REFERENCES "FifFaaliyet"("id") ON DELETE SET NULL ON UPDATE CASCADE;

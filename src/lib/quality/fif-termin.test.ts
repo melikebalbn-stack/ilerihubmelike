@@ -71,6 +71,7 @@ describe('fif-termin — rozetler', () => {
     expect(faaliyetKapaliMi({ sonuc: 'K', gerceklesenTarih: tarih('2026-09-28') })).toBe(true)
     expect(faaliyetKapaliMi({ sonuc: 'K', gerceklesenTarih: null })).toBe(false)
     expect(faaliyetKapaliMi({ sonuc: 'ES', gerceklesenTarih: tarih('2026-09-28') })).toBe(false)
+    expect(faaliyetKapaliMi({ sonuc: 'YT', gerceklesenTarih: tarih('2026-09-28') })).toBe(false) // Paket 4: YT açık
   })
 })
 
@@ -108,6 +109,9 @@ describe('fif-termin — satır durum rozeti ("kimde bekliyor")', () => {
   })
   it('ek termin ONAYLI satır (sonuc=ES) hâlâ açık sayılır', () => {
     expect(faaliyetDurumu({ ...temel, sonuc: 'ES' }).metin).toBe('Açık — Ayşe Yılmaz')
+    // Paket 4: KSS "Sonuç Gir" → YT: satır açık, ayrı rozet.
+    expect(faaliyetDurumu({ ...temel, sonuc: 'YT' })).toEqual({ metin: 'Yapılamadı (YT) — Ayşe Yılmaz', ton: 'tehlike' })
+    expect(faaliyetDurumu({ ...temel, sonuc: 'YT', bekleyenTalep: true }).metin).toBe('Ek termin onayı bekliyor — KSS')
   })
 })
 
@@ -122,12 +126,37 @@ describe('fif-termin — FİF başlığı "kimde bekliyor"', () => {
       durum: 'FAALIYET', yeniAkis: false, hazirlayanAd: null, yayinlayanOnaylayanAd: null,
       satirlar: [satir({ sorumluAd: 'Ali' }), satir({ sorumluAd: 'Ali' }), satir({ sorumluAd: 'Veli', bekleyenTalep: true }), kapali()],
     }, simdi)
-    expect(r).toBe('Satır sorumluları — Ali · KSS — 1 ek termin onayı')
+    expect(r).toBe('Satır sorumluları — Ali (sonucu KSS girer) · KSS — 1 ek termin onayı')
+  })
+  it('Paket 4 FAALIYET: sorumlusuz açık satır (ör. kapanış reddinden sonra eklenen) planlayanda', () => {
+    expect(fifKimdeBekliyor({
+      durum: 'FAALIYET', yeniAkis: false, hazirlayanAd: null, yayinlayanOnaylayanAd: null, izlemeAd: 'İz',
+      satirlar: [satir({ sorumluAd: null }), satir({ sorumluAd: 'Ali', sonuc: 'YT' }), kapali()],
+    }, simdi)).toBe('İzleme sorumlusu (İz) / sorumlu bölüm müdürü — 1 satıra sorumlu ataması · Satır sorumluları — Ali (sonucu KSS girer)')
+  })
+  it('Paket 4 FAALIYET: kök neden boşsa önce kök neden; doluysa ve satır yoksa faaliyet planı', () => {
+    const b = { durum: 'FAALIYET', yeniAkis: false, hazirlayanAd: null, yayinlayanOnaylayanAd: null, izlemeAd: 'İz', satirlar: [] }
+    expect(fifKimdeBekliyor({ ...b, kokNedenDolu: false }, simdi)).toBe('İzleme sorumlusu (İz) / sorumlu bölüm müdürü — kök neden analizi')
+    expect(fifKimdeBekliyor({ ...b, kokNedenDolu: true }, simdi)).toBe('İzleme sorumlusu (İz) / sorumlu bölüm müdürü — faaliyet planı')
+    // Kök neden verilmemiş (eski çağıran) → eski metin
+    expect(fifKimdeBekliyor({ ...b, izlemeAd: null }, simdi)).toBe('Faaliyet satırı bekleniyor')
+  })
+  it('Paket 4 SORUMLU_ATAMA_BEKLIYOR: sorumlu bölüm müdürü (izleme seçimi + onay)', () => {
+    const b = { yeniAkis: false, hazirlayanAd: 'H', yayinlayanOnaylayanAd: 'Y', satirlar: [] }
+    expect(fifKimdeBekliyor({ ...b, durum: 'SORUMLU_ATAMA_BEKLIYOR', sorumluOnaylayanAd: 'Müdür M' }, simdi))
+      .toBe('Sorumlu bölüm müdürü — Müdür M (izleme sorumlusu seçimi + Sorumlu Bölüm Onayı)')
+    expect(fifKimdeBekliyor({ ...b, durum: 'SORUMLU_ATAMA_BEKLIYOR' }, simdi))
+      .toBe('Sorumlu bölüm müdürü — tanımsız (izleme sorumlusu seçimi + Sorumlu Bölüm Onayı)')
   })
   it('FAALIYET: tüm satırlar kapalı → sıradaki adım "Kapatmaya Gönder" (izleme / bölüm müdürü)', () => {
     expect(fifKimdeBekliyor({
       durum: 'FAALIYET', yeniAkis: true, hazirlayanAd: null, yayinlayanOnaylayanAd: null, satirlar: [kapali(), kapali()],
-    }, simdi)).toBe('İzleme sorumlusu / sorumlu bölüm müdürü — Kapatmaya Gönder')
+    }, simdi)).toBe('Sorumlu bölüm müdürü — Kapatmaya Gönder')
+  })
+  it('Paket 4: izleme sorumlusu boşken planlama sorumlu bölüm müdüründe görünür', () => {
+    const b = { durum: 'FAALIYET', yeniAkis: false, hazirlayanAd: null, yayinlayanOnaylayanAd: null, sorumluOnaylayanAd: 'Müdür M', izlemeAd: null }
+    expect(fifKimdeBekliyor({ ...b, kokNedenDolu: false, satirlar: [] }, simdi)).toBe('Sorumlu bölüm müdürü (Müdür M) — kök neden analizi')
+    expect(fifKimdeBekliyor({ ...b, satirlar: [satir({ sorumluAd: null })] }, simdi)).toBe('Sorumlu bölüm müdürü (Müdür M) — 1 satıra sorumlu ataması')
   })
   it('ETKINLIK yeni akış: kontrol bekleyen sayısı + en yakın plan; hepsi etkinse "Tamamen Kapat"', () => {
     expect(fifKimdeBekliyor({

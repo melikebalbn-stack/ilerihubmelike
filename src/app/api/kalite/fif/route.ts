@@ -110,7 +110,7 @@ export async function POST(request: NextRequest) {
       sorumluBolumId: d.sorumluBolumId ?? null,
       yayinlayanBolumId: d.yayinlayanBolumId ?? null,
       hazirlayanUserId: d.hazirlayanUserId ?? userId,
-      izlemeSorumlusuUserId: d.izlemeSorumlusuUserId ?? null,
+      // Paket 4: izleme sorumlusunu formu açan SEÇMEZ — sorumlu bölüm müdürü "Sorumlu Bölüm Onayı"nda seçer.
       sorumluOnaylayanUserId: d.sorumluOnaylayanUserId ?? null,
       yayinlayanOnaylayanUserId: d.yayinlayanOnaylayanUserId ?? null,
       kaynakId: d.kaynakId ?? null,

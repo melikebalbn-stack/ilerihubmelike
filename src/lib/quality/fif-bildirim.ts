@@ -8,7 +8,7 @@
  *              (createNotificationWithPush KULLANILMAZ — bug'lı)
  *  · mail    — hub/main yöntemi aynen: renderEmail (Kalite şablonu + "FİF'i aç") +
  *              sendEmail + logo; sentetik bluecollar adreste mail ATLANIR.
- * Durum geçişi, satır işlemleri (kapat / ek termin / etkinlik / müdüre bilgi) ve iki
+ * Durum geçişi, satır işlemleri (KSS sonuç girişi / ek termin / etkinlik / müdüre bilgi) ve iki
  * cron (hatırlatma, eskalasyon) hep `fifKullaniciyaBildir`'den geçer.
  */
 import { prisma } from '@/lib/prisma'
@@ -132,6 +132,8 @@ type FifBildirimGirdi = {
   hazirlayanUserId: string | null
   createdById: string | null
   yayinlayanOnaylayanUserId: string | null
+  /** Paket 4: sorumlu bölüm müdürü (zincir snapshot'ı) — SORUMLU_ATAMA_BEKLIYOR alıcısı. */
+  sorumluOnaylayanUserId: string | null
   izlemeSorumlusuUserId: string | null
   uygunsuzlukTanimi: string | null
   /** Paket 3b-2: KAPANDI bildirimi açan kişiye + faaliyet satırı sorumlularına gider. */
@@ -206,7 +208,27 @@ export async function fifDurumBildir(
       }
       break
     }
+    case FifDurum.SORUMLU_ATAMA_BEKLIYOR:
+      // Paket 4: KSS kayda aldı → sorumlu bölüm müdürü izleme sorumlusunu seçip onaylar.
+      await push(
+        await aliciCoz(fif.sorumluOnaylayanUserId),
+        'Sorumlu bölüm onayınız bekleniyor',
+        `FİF kayda alındı ve bölümünüze yönlendirildi: ${tespitOzeti(fif.uygunsuzlukTanimi)}\n` +
+          'Faaliyet izleme sorumlusunu seçip "Sorumlu Bölüm Onayı"nı verin. Kök neden analizi 5 iş günü içinde tamamlanmalıdır.',
+      )
+      break
     case FifDurum.FAALIYET: {
+      // Paket 4: "Sorumlu Bölüm Onayı" — seçilen izleme sorumlusuna atama bildirimi.
+      // Müdür bu adımı kendisi yaptığı için ona ayrıca "faaliyet aşaması" gitmez.
+      if (fif.durum === FifDurum.SORUMLU_ATAMA_BEKLIYOR) {
+        await push(
+          await aliciCoz(fif.izlemeSorumlusuUserId),
+          'Faaliyet izleme sorumlusu olarak atandınız',
+          `Sorumlu bölüm onayı verildi: ${tespitOzeti(fif.uygunsuzlukTanimi)}\n` +
+            'Kök neden analizini doldurun, ardından faaliyet satırlarını hedef tarih ve uygulama sorumlusuyla planlayın (5 iş günü).',
+        )
+        break
+      }
       await push(await aliciCoz(fif.izlemeSorumlusuUserId), 'Faaliyet aşaması', 'FİF faaliyet aşamasına geçti (izleme).')
       await push(await bolumMudurAlicisi(fif.sorumluBolumId), 'Faaliyet aşaması', 'Bölümünüzde bir FİF faaliyet aşamasına geçti.')
       break
@@ -237,4 +259,60 @@ export async function fifDurumBildir(
       break
   }
   return sonuc
+}
+
+/** Satır ataması bildirimi için gereken satır bilgisi (PUT / faaliyet ucu). */
+export type FifAtananSatir = { sira: number; aciklama: string; hedefTarih: Date | null; sorumluUserId: string }
+
+/**
+ * Paket 4: satıra uygulama sorumlusu ATANINCA / DEĞİŞİNCE yeni sorumluya bildirim
+ * (in-app + push + mail). Aynı kayıtta aynı kişiye birden çok satır atanırsa TEK
+ * bildirimde listelenir. Commit sonrası, best-effort çağrılır.
+ */
+export async function fifFaaliyetAtamaBildir(
+  fif: { id: string; kayitNo: string | null },
+  satirlar: readonly FifAtananSatir[],
+): Promise<number> {
+  const kisiye = new Map<string, FifAtananSatir[]>()
+  for (const st of satirlar) kisiye.set(st.sorumluUserId, [...(kisiye.get(st.sorumluUserId) ?? []), st])
+  let gonderilen = 0
+  for (const [userId, liste] of kisiye) {
+    if (!(await aliciCoz(userId))) continue
+    const satirMetni = liste
+      .map((st) => {
+        const ozet = st.aciklama.length > 100 ? `${st.aciklama.slice(0, 99)}…` : st.aciklama
+        const hedef = st.hedefTarih ? st.hedefTarih.toLocaleDateString('tr-TR', { timeZone: 'Europe/Istanbul' }) : 'hedef tarih girilmedi'
+        return `#${st.sira} ${ozet} (hedef: ${hedef})`
+      })
+      .join('\n')
+    await fifKullaniciyaBildir(
+      userId,
+      fifBildirimKonusu(fif, 'Size faaliyet atandı'),
+      `Uygulama sorumlusu olarak atandığınız faaliyet${liste.length > 1 ? 'ler' : ''}:\n${satirMetni}\n` +
+        'Hedef tarihi FİF üzerinden takip edin; gerekirse "Ek Termin İste"yi kullanın. Sonucu KSS girer.',
+      `/kalite/fif/${fif.id}`,
+    )
+    gonderilen++
+  }
+  return gonderilen
+}
+
+/**
+ * Paket 4: onay sonrası faaliyet izleme sorumlusu DEĞİŞİNCE (müdür / manage) yeni
+ * kişiye bildirim (in-app + push + mail). Commit sonrası, best-effort çağrılır.
+ */
+export async function fifIzlemeSorumlusuBildir(
+  fif: { id: string; kayitNo: string | null },
+  userId: string,
+): Promise<boolean> {
+  if (!(await aliciCoz(userId))) return false
+  await fifKullaniciyaBildir(
+    userId,
+    fifBildirimKonusu(fif, 'Faaliyet izleme sorumlusu olarak atandınız'),
+    'Bu FİF\'in faaliyet izleme sorumlusu olarak atandınız. Kök neden analizini ve faaliyet planını ' +
+      '(satır, hedef tarih, uygulama sorumlusu) sorumlu bölüm müdürüyle birlikte takip edin; tüm satırlar ' +
+      'kapandığında "Kapatmaya Gönder"i kullanın.',
+    `/kalite/fif/${fif.id}`,
+  )
+  return true
 }

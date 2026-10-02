@@ -15,6 +15,8 @@ export const dynamic = 'force-dynamic'
 const girdi = z.object({
   hedef: z.nativeEnum(FifDurum),
   aciklama: z.string().trim().optional(),
+  /** Paket 4: yalnız "Sorumlu Bölüm Onayı"nda (SORUMLU_ATAMA_BEKLIYOR → FAALIYET) — zorunlu orada. */
+  izlemeSorumlusuUserId: z.string().trim().min(1).optional(),
 })
 
 /** Red geçişleri: redNedeni (aciklama) zorunlu. */
@@ -37,7 +39,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const body = await request.json().catch(() => null)
   const parsed = girdi.safeParse(body)
   if (!parsed.success) return NextResponse.json({ error: 'Geçersiz veri', issues: parsed.error.flatten() }, { status: 400 })
-  const { hedef, aciklama } = parsed.data
+  const { hedef, aciklama, izlemeSorumlusuUserId } = parsed.data
 
   const fif = await prisma.fif.findUnique({
     where: { id },
@@ -70,10 +72,25 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     sorumluBolumMudurUserId,
     isKss: await isFifKss(session),
   }
+  // Paket 4 — "Sorumlu Bölüm Onayı": müdür faaliyet izleme sorumlusunu geçişle
+  // birlikte seçer. Seçilen kişi AKTİF kullanıcı olmalı; ön koşul seçimle değerlendirilir.
+  const bolumOnayi = fif.durum === FifDurum.SORUMLU_ATAMA_BEKLIYOR && hedef === FifDurum.FAALIYET
+  let yeniIzleme: string | null = null
+  let izlemeAd: string | null = null
+  if (bolumOnayi && izlemeSorumlusuUserId) {
+    const u = await prisma.user.findFirst({
+      where: { id: izlemeSorumlusuUserId, isActive: true },
+      select: { id: true, name: true, email: true, personnel: { select: { adSoyad: true } } },
+    })
+    if (!u) return NextResponse.json({ error: 'Seçilen izleme sorumlusu aktif bir kullanıcı değil' }, { status: 400 })
+    yeniIzleme = u.id
+    izlemeAd = u.name || u.personnel?.adSoyad || u.email || u.id
+  }
+
   const state: FifGecisState = {
     durum: fif.durum, createdById: fif.createdById, hazirlayanUserId: fif.hazirlayanUserId,
     yayinlayanOnaylayanUserId: fif.yayinlayanOnaylayanUserId, sorumluOnaylayanUserId: fif.sorumluOnaylayanUserId,
-    izlemeSorumlusuUserId: fif.izlemeSorumlusuUserId,
+    izlemeSorumlusuUserId: bolumOnayi ? yeniIzleme : fif.izlemeSorumlusuUserId,
     sorumluBolumId: fif.sorumluBolumId, yayinlayanBolumId: fif.yayinlayanBolumId,
     uygunsuzlukTanimi: fif.uygunsuzlukTanimi, tur: fif.tur,
     yayilimVarMi: fif.yayilimVarMi, yayilimAciklama: fif.yayilimAciklama,
@@ -113,7 +130,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ error: 'Red gerekçesi (açıklama) zorunlu' }, { status: 400 })
   }
 
-  const kaydaAl = fif.durum === FifDurum.KSS_KAYIT_BEKLIYOR && hedef === FifDurum.FAALIYET
+  // Paket 4: Kayda Al sorumlu bölüm müdürüne yönlendirir (SORUMLU_ATAMA_BEKLIYOR);
+  // numara yine bu anda verilir.
+  const kaydaAl = fif.durum === FifDurum.KSS_KAYIT_BEKLIYOR && hedef === FifDurum.SORUMLU_ATAMA_BEKLIYOR
 
   const kayitNo = await prisma.$transaction(async (tx) => {
     // NUMARA ONAYDA (Paket 3): KSS "Kayda Al" anında, geçişle AYNI transaction'da
@@ -131,6 +150,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         ...(kssAdimi && userId ? { kssUserId: userId } : {}),
         ...(zincirYazimi ?? {}),
         ...(isRed ? { redNedeni: aciklama } : {}),
+        ...(bolumOnayi && yeniIzleme ? { izlemeSorumlusuUserId: yeniIzleme } : {}),
 
       },
     })
@@ -155,7 +175,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     await tx.fifGecmis.create({
       data: {
         fifId: id, eskiDurum: fif.durum, yeniDurum: hedef, userId, olay: FifGecmisOlay.DURUM_DEGISTI,
-        aciklama: aciklama ?? (yeniNo ? `Kayıt numarası verildi: ${yeniNo}` : null),
+        aciklama: aciklama ??
+          (yeniNo ? `Kayıt numarası verildi: ${yeniNo}` : bolumOnayi ? `Sorumlu bölüm onayı — faaliyet izleme sorumlusu: ${izlemeAd}` : null),
       },
     })
     return yeniNo ?? fif.kayitNo
@@ -166,7 +187,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   let bildirim = null
   try {
     bildirim = await fifDurumBildir(
-      { ...fif, kayitNo, faaliyetSorumluIdleri: fif.faaliyetler.map((f) => f.sorumluUserId).filter((x): x is string => !!x) },
+      { ...fif, kayitNo, ...(bolumOnayi ? { izlemeSorumlusuUserId: yeniIzleme } : {}), faaliyetSorumluIdleri: fif.faaliyetler.map((f) => f.sorumluUserId).filter((x): x is string => !!x) },
       hedef, { red: isRed, iptal: isIptal },
     )
   } catch (e) {

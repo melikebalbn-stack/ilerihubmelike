@@ -21,7 +21,8 @@ export const dynamic = 'force-dynamic'
  *     KSS'lere bildirim, etkinlikHatirlatmaTarihi = şimdi (satır başına TEK sefer).
  *
  * ALICILAR: izleme sorumlusu + SORUMLU BÖLÜM MÜDÜRÜ + KSS koltuklarındaki
- * HEPSİ (Paket 2). KANAL: in-app + push + mail (fif-bildirim.fifKullaniciyaBildir;
+ * HEPSİ (Paket 2) + Paket 4: hatırlatmaya giren satırların UYGULAMA SORUMLULARI
+ * (sorumluUserId). Kişi kümesi tekilleştirilir (aynı kişiye tek bildirim). KANAL: in-app + push + mail (fif-bildirim.fifKullaniciyaBildir;
  * sentetik bluecollar adreste mail atlanır).
  * Dedup kişi başına ve GÜNLÜK: o kullanıcıya, o FİF için bugün oluşturulmuş
  * "Hedef tarih hatırlatma" in-app bildirimi varsa atlanır (ayrı dedup tablosu
@@ -60,7 +61,7 @@ async function calis(): Promise<Sonuc> {
     },
     select: {
       id: true, kayitNo: true, izlemeSorumlusuUserId: true, sorumluBolumId: true,
-      faaliyetler: { where: { hedefTarih: { not: null, lte: esik }, ...TAKIPTEKI_FAALIYET_WHERE }, select: { hedefTarih: true } },
+      faaliyetler: { where: { hedefTarih: { not: null, lte: esik }, ...TAKIPTEKI_FAALIYET_WHERE }, select: { hedefTarih: true, sorumluUserId: true } },
     },
   })
 
@@ -75,9 +76,11 @@ async function calis(): Promise<Sonuc> {
   }
 
   for (const fif of fifler) {
-    // Alıcı kümesi: izleme sorumlusu + sorumlu bölüm müdürü + tüm KSS (tekilleştirilir).
+    // Alıcı kümesi: izleme sorumlusu + sorumlu bölüm müdürü + tüm KSS + hatırlatmaya
+    // giren satırların uygulama sorumluları (tekilleştirilir).
     const aliciIdleri = new Set<string>(kssIdleri)
     if (fif.izlemeSorumlusuUserId) aliciIdleri.add(fif.izlemeSorumlusuUserId)
+    for (const f of fif.faaliyetler) if (f.sorumluUserId) aliciIdleri.add(f.sorumluUserId)
     const mudurId = await bolumMudurUserId(fif.sorumluBolumId)
     if (mudurId) aliciIdleri.add(mudurId)
     if (aliciIdleri.size === 0) { atlanan++; continue }

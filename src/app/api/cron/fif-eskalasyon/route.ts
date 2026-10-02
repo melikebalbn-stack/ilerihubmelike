@@ -7,11 +7,15 @@ import { fifKullaniciyaBildir } from '@/lib/quality/fif-bildirim'
 import { kssKoltukKullanicilari } from '@/lib/quality/fif-zincir'
 import { fifEtiket } from '@/lib/quality/fif-durum-etiket'
 import { TAKIPTEKI_FAALIYET_WHERE } from '@/lib/quality/fif-termin'
+import { kokNedenDoluMu } from '@/lib/quality/fif-durum'
 import {
   isGunuSayisi,
   eskalasyonSeviyesi,
   eskalasyonKonusu,
   eskalasyonGovdesi,
+  kokNedenEskalasyonuGerekli,
+  kokNedenEskalasyonKonusu,
+  kokNedenEskalasyonGovdesi,
   type FifEskalasyonSeviyesi,
 } from '@/lib/quality/fif-eskalasyon'
 
@@ -30,6 +34,11 @@ export const dynamic = 'force-dynamic'
  * takvim kodu YOK. SEVİYE BAŞINA TEK bildirim: dedup anahtarı in-app başlığı
  * ("… Eskalasyon N …"), tarih penceresi YOK (hatırlatmadaki günlük dedup'tan
  * bilinçli farklı — eskalasyon her gün tekrar etmez).
+ *
+ * Paket 4 — KÖK NEDEN / FAALİYET PLANI (aynı cron, ikinci iş): KSS yönlendirmesinden
+ * (SORUMLU_ATAMA_BEKLIYOR'a İLK giriş) 5 iş günü geçmiş ve kök neden boş VEYA hiç
+ * faaliyet yoksa → sorumlu bölüm müdürü + izleme sorumlusu (varsa) + KSS (Melih Bey
+ * kararı: üst yönetim bu adımda YOK). FİF başına TEK gönderim (başlık bazlı dedup).
  *
  * FAIL-OPEN: hedef koltuk çözülemezse (parent'ı olmayan BÜRO MEMURU/DEPO gibi
  * bölümler, boş koltuk) GM + super-admin bilgilendirilir; kimse haber almadan
@@ -159,7 +168,68 @@ async function calis(dryRun: boolean) {
     bildirilen++
   }
 
-  return { taranan: fifler.length, bildirilen, atlanan, pushGiden, mailGiden, mailAtlanan, plan, dryRun }
+  // ── 2) KÖK NEDEN / FAALİYET PLANI — 5 İŞ GÜNÜ (Paket 4) ──
+  const kokAdaylar = await prisma.fif.findMany({
+    where: {
+      durum: { in: [FifDurum.SORUMLU_ATAMA_BEKLIYOR, FifDurum.FAALIYET] },
+      gecmis: { some: { yeniDurum: FifDurum.SORUMLU_ATAMA_BEKLIYOR } },
+    },
+    select: {
+      id: true, kayitNo: true, sorumluBolumId: true, sorumluOnaylayanUserId: true, izlemeSorumlusuUserId: true,
+      kokNedenAnalizi: true,
+      kokNedenler: { select: { aciklama: true } },
+      besNedenler: { select: { id: true } },
+      _count: { select: { faaliyetler: true } },
+      gecmis: {
+        where: { yeniDurum: FifDurum.SORUMLU_ATAMA_BEKLIYOR },
+        orderBy: { createdAt: 'asc' }, take: 1, select: { createdAt: true },
+      },
+    },
+  })
+  const kokPlan: { kayitNo: string; hedefler: string[] }[] = []
+  let kokBildirilen = 0
+  let kokAtlanan = 0
+  const kssler = kokAdaylar.length ? await kssKoltukKullanicilari(prisma) : []
+  for (const fif of kokAdaylar) {
+    const kokNedenDolu = kokNedenDoluMu(fif)
+    const faaliyetSayisi = fif._count.faaliyetler
+    const karar = kokNedenEskalasyonuGerekli({
+      baslangic: fif.gecmis[0]?.createdAt ?? null, kokNedenDolu, faaliyetSayisi, tatilMap, ayar, simdi,
+    })
+    if (!karar.gerekli || !karar.sonGun) continue
+
+    const link = `/kalite/fif/${fif.id}`
+    const etiket = fifEtiket(fif)
+    const konu = kokNedenEskalasyonKonusu(etiket)
+    const zatenVar = await prisma.notification.findFirst({ where: { link, title: konu }, select: { id: true } })
+    if (zatenVar) { kokAtlanan++; continue }
+
+    const hedefler: Alici[] = []
+    const mudur = (await userAlici(fif.sorumluOnaylayanUserId)) ?? (await bolumMuduru(fif.sorumluBolumId))
+    if (mudur) hedefler.push(mudur)
+    const izleme = await userAlici(fif.izlemeSorumlusuUserId)
+    if (izleme) hedefler.push(izleme)
+    for (const k of kssler) hedefler.push({ userId: k.userId, ad: k.ad })
+
+    const tekil = new Map(hedefler.map((h) => [h.userId, h]))
+    kokPlan.push({ kayitNo: etiket, hedefler: [...tekil.values()].map((h) => h.ad) })
+    if (dryRun) continue
+
+    const govde = kokNedenEskalasyonGovdesi({ kokNedenDolu, faaliyetSayisi, sonGun: karar.sonGun })
+    for (const h of tekil.values()) {
+      const r = await fifKullaniciyaBildir(h.userId, konu, govde, link, 'WARNING')
+      pushGiden += r.push
+      if (r.mail === 'gitti') mailGiden++
+      else if (r.mail === 'atlandi') mailAtlanan++
+    }
+    kokBildirilen++
+  }
+
+  return {
+    taranan: fifler.length, bildirilen, atlanan, pushGiden, mailGiden, mailAtlanan, plan,
+    kokNeden: { taranan: kokAdaylar.length, bildirilen: kokBildirilen, atlanan: kokAtlanan, plan: kokPlan },
+    dryRun,
+  }
 }
 
 function cronYetkili(request: NextRequest): boolean {

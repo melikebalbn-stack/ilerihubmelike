@@ -130,6 +130,14 @@ describe('fif-access — kapsam predicate (fifRecordInScope, DB\'siz)', () => {
     expect(fifRecordInScope({ ...ctx, deptIds: ['deptX'] }, kayit)).toBe(true)
   })
 
+  it('Paket 4: faaliyet izleme sorumlusu kaydı görür/düzenler; alan verilmezse (seçmeyen çağıran) kapsam dışı', () => {
+    const ctx = { userId: 'u1', isManage: false, deptIds: [] }
+    expect(fifRecordInScope(ctx, { ...kayit, izlemeSorumlusuUserId: 'u1' })).toBe(true)
+    expect(fifRecordInScope(ctx, { ...kayit, izlemeSorumlusuUserId: 'baskasi' })).toBe(false)
+    expect(fifRecordInScope(ctx, kayit)).toBe(false)
+    expect(fifRecordInScope({ ...ctx, userId: null }, { ...kayit, izlemeSorumlusuUserId: null })).toBe(false)
+  })
+
   it('ilgisiz/boş → görmez (farklı user, bölüm eşleşmez, oturumsuz)', () => {
     expect(fifRecordInScope({ userId: 'u1', isManage: false, deptIds: ['deptY'] }, kayit)).toBe(false)
     expect(fifRecordInScope({ userId: null, isManage: false, deptIds: [] }, kayit)).toBe(false)

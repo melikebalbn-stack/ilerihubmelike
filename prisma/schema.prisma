@@ -15360,6 +15360,9 @@ enum FifDurum {
   ONAY_BEKLIYOR
   /// KSS kayda alır: kayıt no/dağıtım kontrolü, sorumlu bölüm ataması (11 adım — adım 3).
   KSS_KAYIT_BEKLIYOR
+  /// Paket 4: sorumlu bölüm müdürü kök neden + faaliyet satırlarını (sorumlu + hedef)
+  /// girer, "Faaliyetleri Başlat" ile FAALIYET'e geçer. Müdür reddi/iade YOK.
+  SORUMLU_ATAMA_BEKLIYOR
   FAALIYET
   KAPATMA_BEKLIYOR
   /// KSS kapanış kontrolü: yayılım + KYS/risk kararı (11 adım — adım 9).
@@ -15421,12 +15424,16 @@ enum FifGecmisOlay {
   DURUM_DEGISTI
   FAALIYET_KAPATILDI
   FAALIYET_YENIDEN_ACILDI
+  /// Paket 4: KSS "Sonuç Gir" → YT (yapılamadı); satır açık kalır.
+  FAALIYET_YAPILAMADI
   EK_TERMIN_TALEP
   EK_TERMIN_ONAY
   EK_TERMIN_RED
   /// Bekleyen talep, satır kapatıldığı için sistemce iptal edildi.
   EK_TERMIN_IPTAL
   ETKINLIK_KONTROL
+  /// Paket 4: sorumlu bölüm onayından sonra izleme sorumlusu değişti / boşaltıldı.
+  IZLEME_SORUMLUSU_DEGISTI
 }
 
 /// FİF kaynağı (denetim/şikâyet/iç tespit vb.) — yönetilebilir liste (Paket 3).
@@ -15556,7 +15563,8 @@ model FifFaaliyet {
 model FifEkTermin {
   id                String           @id @default(cuid())
   faaliyetId        String
-  faaliyet          FifFaaliyet      @relation(fields: [faaliyetId], references: [id], onDelete: Cascade)
+  /// Restrict: ek termin geçmişi (onay/red dahil) denetim kaydıdır — satır silinince kaybolmasın.
+  faaliyet          FifFaaliyet      @relation(fields: [faaliyetId], references: [id], onDelete: Restrict)
   talepEdenUserId   String
   mevcutHedefTarih  DateTime?
   istenenHedefTarih DateTime

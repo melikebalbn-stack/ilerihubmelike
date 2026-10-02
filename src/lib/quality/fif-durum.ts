@@ -65,12 +65,65 @@ export function yeniAkisMi(s: Pick<FifGecisState, 'faaliyetler'>): boolean {
 }
 
 /**
- * Satır "Faaliyeti Kapat" ile kapatılmış mı: sonuç K + gerçekleşen tarih + paraf.
- * (Kapat ucu üçünü birlikte yazar; elle/eski yoldan K verilmiş ama parafsız satır
+ * Satır kapatılmış mı: sonuç K + gerçekleşen tarih + paraf. (Paket 4: KSS
+ * "Sonuç Gir" K ucu üçünü birlikte yazar; elle/eski yoldan K verilmiş ama parafsız satır
  * KAPALI SAYILMAZ.)
  */
 export function satirKapatildiMi(f: FifGecisState['faaliyetler'][number]): boolean {
   return f.sonuc === 'K' && !!f.gerceklesenTarih && !!f.parafUserId
+}
+
+/**
+ * Paket 4 — "önce kök neden, sonra faaliyet": kök neden analizi dolu mu. Üç
+ * kaynaktan EN AZ BİRİ yeter: özet metin, Ek-1 balık kılçığı (boş olmayan
+ * kategori notu), 5 Neden satırı. TEK KAYNAK: durum ucu, form PUT, faaliyet ucu
+ * ve detay sayfası (faaliyet bölümü pasif + uyarı) aynı fonksiyonu çağırır.
+ */
+export function kokNedenDoluMu(k: {
+  kokNedenAnalizi: string | null | undefined
+  kokNedenler: readonly { aciklama: string | null }[]
+  besNedenler: readonly unknown[]
+}): boolean {
+  return (
+    !!k.kokNedenAnalizi?.trim() ||
+    k.kokNedenler.some((x) => !!x.aciklama?.trim()) ||
+    k.besNedenler.length > 0
+  )
+}
+
+/**
+ * Paket 4: ek termin geçmişi (onay/red/iptal dahil) olan faaliyet satırı silinemez —
+ * form PUT senkronu ve faaliyet DELETE ucu aynı metinle 400; DB'de FifEkTermin →
+ * FifFaaliyet FK'si RESTRICT (ikinci bekçi).
+ */
+export const EK_TERMINLI_SILINEMEZ = 'Ek termin geçmişi olan faaliyet silinemez.'
+
+/** Kök neden boşken faaliyet eklenmeye çalışılırsa — UI uyarısı ve API 400 aynı metin. */
+export const KOK_NEDEN_ONCE = 'Önce kök neden analizini doldurun'
+
+/**
+ * Paket 4: FAALİYET PLANLAMA — satır EKLEME, satıra uygulama SORUMLUSU atama ve
+ * FAALIYET'te hedef tarih girme kimde. Yalnız FAALIYET'te (sorumlu bölüm onayından
+ * sonra); sorumlu bölüm müdürü (zincir snapshot'ı sorumluOnaylayanUserId — koltuk
+ * omurgasından çözülen), faaliyet izleme sorumlusu veya manage. Kapanış reddinden
+ * (→ FAALIYET) sonra eklenen yeni satır da onlarda.
+ * Döner: null = izinli; aksi hâlde {sebep, status} (yetki 403, durum 400).
+ */
+export const FAALIYET_PLANLAMA_DURUMLARI: readonly FifDurum[] = [FifDurum.FAALIYET]
+
+export function faaliyetPlanlamaYetkisi(
+  ctx: Pick<FifGecisCtx, 'userId' | 'isManage'>,
+  s: Pick<FifGecisState, 'durum' | 'sorumluOnaylayanUserId' | 'izlemeSorumlusuUserId'>,
+): { sebep: string; status: 400 | 403 } | null {
+  if (!FAALIYET_PLANLAMA_DURUMLARI.includes(s.durum)) {
+    return { sebep: 'Faaliyet satırı yalnız faaliyet aşamasında (Sorumlu Bölüm Onayı\'ndan sonra) eklenir / sorumlusu atanır', status: 400 }
+  }
+  if (ctx.isManage) return null
+  if (ctx.userId && (ctx.userId === s.sorumluOnaylayanUserId || ctx.userId === s.izlemeSorumlusuUserId)) return null
+  return {
+    sebep: 'Faaliyet planlaması (satır ekleme, hedef tarih, sorumlu atama) yalnız izleme sorumlusu ve sorumlu bölüm müdürü tarafından yapılır',
+    status: 403,
+  }
 }
 
 /**
@@ -114,6 +167,12 @@ type GecisKural = {
    * gösterilsin (aksi hâlde buton hiç görünmez).
    */
   pasifGoster?: boolean
+  /**
+   * Geçişle BİRLİKTE seçilen alan (Paket 4: "Sorumlu Bölüm Onayı"nda faaliyet izleme
+   * sorumlusu). UI butonu yetkiliye her zaman gösterir ve seçimi ister; uç seçimi
+   * state'e katıp ön koşulu öyle değerlendirir.
+   */
+  secim?: 'izlemeSorumlusu'
 }
 
 /** Zorunlu alanlar (validator ile TEK kaynak — fif-validators FIF_ZORUNLU_ALANLAR). */
@@ -145,10 +204,16 @@ export const FIF_GECISLER: GecisKural[] = [
     izinli: (c, s) => esitVeyaManage(c, s.yayinlayanOnaylayanUserId),
   },
   {
-    // ADIM 3: KSS kaydı alır, sorumlu bölüme yönlendirir → faaliyet planlama başlar.
-    from: FifDurum.KSS_KAYIT_BEKLIYOR, to: FifDurum.FAALIYET, etiket: 'Kayda Al ve Yönlendir',
+    // ADIM 3 (Paket 4): KSS kaydı alır (numara bu anda verilir) ve sorumlu bölüm
+    // müdürüne yönlendirir → müdür izleme sorumlusunu seçip bölüm onayını verir.
+    // FAIL-CLOSED: müdür (zincir snapshot'ı) yoksa yönlendirilemez.
+    from: FifDurum.KSS_KAYIT_BEKLIYOR, to: FifDurum.SORUMLU_ATAMA_BEKLIYOR, etiket: 'Kayda Al ve Yönlendir',
     izinli: (c) => kssMi(c),
-    onKosul: (s) => (s.sorumluBolumId ? OK : no('Sorumlu bölüm atanmadan kayda alınamaz')),
+    onKosul: (s) => {
+      if (!s.sorumluBolumId) return no('Sorumlu bölüm atanmadan kayda alınamaz')
+      if (!s.sorumluOnaylayanUserId) return no('Sorumlu bölüm müdürü bulunamadı — kayda alınamaz')
+      return OK
+    },
   },
   {
     // KSS eksik/yanlış bilgi görürse forma geri gönderir (red gerekçesi zorunlu — uçta).
@@ -156,10 +221,19 @@ export const FIF_GECISLER: GecisKural[] = [
     izinli: (c) => kssMi(c),
   },
   {
+    // Paket 4: "Sorumlu Bölüm Onayı" — sorumlu bölüm müdürü (snapshot) veya manage,
+    // faaliyet izleme sorumlusunu SEÇER ve onaylar → FAALIYET. Kök neden ve faaliyet
+    // planlaması FAALIYET'te (izleme sorumlusu + müdür). Müdür reddi/iadesi YOK.
+    from: FifDurum.SORUMLU_ATAMA_BEKLIYOR, to: FifDurum.FAALIYET, etiket: 'Sorumlu Bölüm Onayı',
+    izinli: (c, s) => esitVeyaManage(c, s.sorumluOnaylayanUserId),
+    onKosul: (s) => (s.izlemeSorumlusuUserId ? OK : no('Faaliyet izleme sorumlusu seçilmeli')),
+    secim: 'izlemeSorumlusu',
+  },
+  {
     // KAPANIŞ ZİNCİRİ: FAALIYET → KAPATMA_BEKLIYOR → KSS_KAPANIS_BEKLIYOR → ETKINLIK.
     // Kim gönderir: hub/main gibi (izleme sorumlusu / sorumlu bölüm müdürü / manage).
-    // Kalite kararı: en az bir satır ve TÜM satırlar "Faaliyeti Kapat" ile kapatılmış
-    // olmalı. Red sonrası kapalı satırlar kapalı kalır; sonradan eklenen satır da
+    // Kalite kararı: en az bir satır ve TÜM satırlar kapatılmış olmalı (Paket 4:
+    // KSS "Sonuç Gir" → K). Red sonrası kapalı satırlar kapalı kalır; sonradan eklenen satır da
     // kapatılmadan tekrar gönderilemez. Açık satırda buton PASİF + sebep görünür.
     from: FifDurum.FAALIYET, to: FifDurum.KAPATMA_BEKLIYOR, etiket: 'Kapatmaya Gönder',
     izinli: (c, s) =>
@@ -253,7 +327,14 @@ export function gecisYapabilirMi(ctx: FifGecisCtx, s: FifGecisState, hedef: FifD
   return OK
 }
 
-export type UygunGecis = { hedef: FifDurum; etiket: string; /** Doluysa buton PASİF, sebep gösterilir. */ pasifSebep?: string }
+export type UygunGecis = {
+  hedef: FifDurum
+  etiket: string
+  /** Doluysa buton PASİF, sebep gösterilir. */
+  pasifSebep?: string
+  /** Doluysa buton geçişle birlikte bu seçimi ister (GecisKural.secim). */
+  secim?: 'izlemeSorumlusu'
+}
 
 /**
  * UI için: bu kullanıcının şu an yapabileceği geçişler (IPTAL dahil). `pasifGoster`
@@ -264,6 +345,11 @@ export function uygunGecisler(ctx: FifGecisCtx, s: FifGecisState): UygunGecis[] 
   for (const g of FIF_GECISLER) {
     if (g.from !== s.durum) continue
     const etiket = typeof g.etiket === 'function' ? g.etiket(s) : g.etiket
+    // Seçim isteyen geçiş: yetkiliye her zaman (seçim pencerede yapılır; ön koşulu uç denetler).
+    if (g.secim) {
+      if (g.izinli(ctx, s)) list.push({ hedef: g.to, etiket, secim: g.secim })
+      continue
+    }
     const k = gecisYapabilirMi(ctx, s, g.to)
     if (k.ok) list.push({ hedef: g.to, etiket })
     else if (g.pasifGoster && k.tur === 'kosul') list.push({ hedef: g.to, etiket, pasifSebep: k.sebep })

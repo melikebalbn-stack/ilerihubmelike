@@ -29,7 +29,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
   const fif = await prisma.fif.findUnique({
     where: { id },
-    select: { id: true, durum: true, createdById: true, hazirlayanUserId: true, sorumluBolumId: true, yayinlayanBolumId: true },
+    select: { id: true, durum: true, createdById: true, hazirlayanUserId: true, sorumluBolumId: true, yayinlayanBolumId: true, izlemeSorumlusuUserId: true },
   })
   if (!fif) return NextResponse.json({ error: 'FİF bulunamadı' }, { status: 404 })
   if (!(await fifDuzenleyebilirMi(session, fif))) return NextResponse.json({ error: "Bu FİF'i düzenleme yetkiniz yok" }, { status: 403 })

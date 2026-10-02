@@ -1,6 +1,10 @@
 import { describe, it, expect } from 'vitest'
 import { FifDurum, FifSonuc } from '@/generated/prisma'
-import { gecisYapabilirMi, uygunGecisler, altKayitDuzenlenebilir, esKuraliGecerli, esGecmisAciklamasi, hardDeleteEdilebilir, yeniAkisMi, type FifGecisState, type FifGecisCtx } from './fif-durum'
+import {
+  gecisYapabilirMi, uygunGecisler, altKayitDuzenlenebilir, esKuraliGecerli, esGecmisAciklamasi, hardDeleteEdilebilir, yeniAkisMi,
+  kokNedenDoluMu, faaliyetPlanlamaYetkisi, type FifGecisState, type FifGecisCtx,
+} from './fif-durum'
+import { fifOlayEtiketi } from './fif-durum-etiket'
 
 const HAZIRLAYAN = 'uHazir'
 const YAYINLAYAN = 'uYayin'
@@ -92,12 +96,16 @@ describe('fif-durum — FAALIYET → KAPATMA_BEKLIYOR ("Kapatmaya Gönder")', ()
     expect(r.ok).toBe(false)
     if (!r.ok) { expect(r.sebep).toBe('Tüm faaliyetler kapatılmalı'); expect(r.tur).toBe('kosul') }
   })
-  it('K + gerçekleşen var ama PARAF yoksa kapalı SAYILMAZ (Faaliyeti Kapat ile kapatılmamış)', () => {
+  it('K + gerçekleşen var ama PARAF yoksa kapalı SAYILMAZ (KSS "Sonuç Gir" ile kapatılmamış)', () => {
     const r = gecisYapabilirMi(ctx(IZLEME), st([{ ...kapali, parafUserId: null }]), FifDurum.KAPATMA_BEKLIYOR)
     expect(r.ok).toBe(false)
   })
   it('red sonrası yeni eklenen (açık) satır kapatılmadan tekrar gönderilemez', () => {
     expect(gecisYapabilirMi(ctx(IZLEME), st([kapali, kapali, acik]), FifDurum.KAPATMA_BEKLIYOR).ok).toBe(false)
+  })
+  it('Paket 4: YT (yapılamadı) satır AÇIKTIR → gönderilemez', () => {
+    const yt = { ...acik, sonuc: 'YT' }
+    expect(gecisYapabilirMi(ctx(IZLEME), st([kapali, yt]), FifDurum.KAPATMA_BEKLIYOR).ok).toBe(false)
   })
   it('açık satırda buton PASİF + sebep döner (yetkiliye); yetkisize hiç dönmez', () => {
     const g = uygunGecisler(ctx(IZLEME), st([acik])).find((x) => x.hedef === FifDurum.KAPATMA_BEKLIYOR)
@@ -191,22 +199,34 @@ describe('fif-durum — KSS adımları (FAZ B)', () => {
   const kayit = (over = {}) => baseState({ durum: FifDurum.KSS_KAYIT_BEKLIYOR, ...over })
   const kapanis = (over = {}) => baseState({ durum: FifDurum.KSS_KAPANIS_BEKLIYOR, ...over })
 
-  it('KSS izniyle kayda alınır → FAALIYET', () => {
-    expect(gecisYapabilirMi(kssCtx(), kayit(), FifDurum.FAALIYET).ok).toBe(true)
+  it('Paket 4: KSS kayda alır → SORUMLU_ATAMA_BEKLIYOR (sorumlu bölüm müdürüne)', () => {
+    expect(gecisYapabilirMi(kssCtx(), kayit(), FifDurum.SORUMLU_ATAMA_BEKLIYOR).ok).toBe(true)
+    const g = uygunGecisler(kssCtx(), kayit()).find((x) => x.hedef === FifDurum.SORUMLU_ATAMA_BEKLIYOR)
+    expect(g?.etiket).toBe('Kayda Al ve Yönlendir')
+  })
+  it('Paket 4: kayıttan doğrudan FAALIYET\'e ATLANAMAZ (müdür adımı zorunlu)', () => {
+    const r = gecisYapabilirMi(kssCtx(), kayit(), FifDurum.FAALIYET)
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.tur).toBe('gecersiz')
   })
   it('KSS koltuğundaki HERKES kayda alabilir (biri yeterli)', () => {
-    expect(gecisYapabilirMi(kssCtx('uBaskaKss'), kayit(), FifDurum.FAALIYET).ok).toBe(true)
+    expect(gecisYapabilirMi(kssCtx('uBaskaKss'), kayit(), FifDurum.SORUMLU_ATAMA_BEKLIYOR).ok).toBe(true)
   })
   it('Paket 2: izni olmayan kullanıcı kayda ALAMAZ (eski KSS snapshot\'ı yetki vermez)', () => {
-    expect(gecisYapabilirMi(ctx(KSS), kayit(), FifDurum.FAALIYET).ok).toBe(false)
+    expect(gecisYapabilirMi(ctx(KSS), kayit(), FifDurum.SORUMLU_ATAMA_BEKLIYOR).ok).toBe(false)
   })
   it('manage KSS adımını YAPAMAZ (fif.manage KSS yerine geçmez)', () => {
-    expect(gecisYapabilirMi(ctx(YABANCI, true), kayit(), FifDurum.FAALIYET).ok).toBe(false)
+    expect(gecisYapabilirMi(ctx(YABANCI, true), kayit(), FifDurum.SORUMLU_ATAMA_BEKLIYOR).ok).toBe(false)
   })
   it('sorumlu bölüm atanmadan kayda alınamaz', () => {
-    const r = gecisYapabilirMi(kssCtx(), kayit({ sorumluBolumId: null }), FifDurum.FAALIYET)
+    const r = gecisYapabilirMi(kssCtx(), kayit({ sorumluBolumId: null }), FifDurum.SORUMLU_ATAMA_BEKLIYOR)
     expect(r.ok).toBe(false)
     if (!r.ok) expect(r.sebep).toContain('Sorumlu bölüm')
+  })
+  it('Paket 4 FAIL-CLOSED: sorumlu bölüm müdürü (snapshot) yoksa kayda alınamaz', () => {
+    const r = gecisYapabilirMi(kssCtx(), kayit({ sorumluOnaylayanUserId: null }), FifDurum.SORUMLU_ATAMA_BEKLIYOR)
+    expect(r.ok).toBe(false)
+    if (!r.ok) { expect(r.sebep).toContain('müdürü bulunamadı'); expect(r.tur).toBe('kosul') }
   })
   it('KSS eksik bilgi görürse TASLAK\'a döndürür', () => {
     expect(gecisYapabilirMi(kssCtx(), kayit(), FifDurum.TASLAK).ok).toBe(true)
@@ -265,6 +285,95 @@ describe('fif-durum — IPTAL', () => {
   })
   it('KAPANDI iptal edilemez (manage bile)', () => {
     expect(gecisYapabilirMi(ctx(YABANCI, true), baseState({ durum: FifDurum.KAPANDI }), FifDurum.IPTAL).ok).toBe(false)
+  })
+})
+
+describe('fif-durum — Paket 4: SORUMLU_ATAMA_BEKLIYOR → FAALIYET ("Sorumlu Bölüm Onayı")', () => {
+  const st = (over: Partial<FifGecisState> = {}) =>
+    baseState({ durum: FifDurum.SORUMLU_ATAMA_BEKLIYOR, izlemeSorumlusuUserId: 'uSecilen', faaliyetler: [], ...over })
+
+  it('sorumlu bölüm müdürü (snapshot) izleme sorumlusu seçiliyken onaylar — kök neden / satır ŞARTI YOK', () => {
+    expect(gecisYapabilirMi(ctx(SORUMLU_ONAY), st(), FifDurum.FAALIYET).ok).toBe(true)
+  })
+  it('manage de onaylar', () => {
+    expect(gecisYapabilirMi(ctx(YABANCI, true), st(), FifDurum.FAALIYET).ok).toBe(true)
+  })
+  it('izleme sorumlusu seçilmeden onaylanamaz — red türü KOŞUL', () => {
+    const r = gecisYapabilirMi(ctx(SORUMLU_ONAY), st({ izlemeSorumlusuUserId: null }), FifDurum.FAALIYET)
+    expect(r.ok).toBe(false)
+    if (!r.ok) { expect(r.sebep).toBe('Faaliyet izleme sorumlusu seçilmeli'); expect(r.tur).toBe('kosul') }
+  })
+  it('KSS / hazırlayan / izleme / yabancı onaylayamaz — red türü YETKİ', () => {
+    for (const c of [kssCtx(), ctx(HAZIRLAYAN), ctx(IZLEME), ctx(YABANCI)]) {
+      const r = gecisYapabilirMi(c, st(), FifDurum.FAALIYET)
+      expect(r.ok).toBe(false)
+      if (!r.ok) expect(r.tur).toBe('yetki')
+    }
+  })
+  it('uygunGecisler: müdüre izleme seçilmemişken de buton döner (etiket "Sorumlu Bölüm Onayı", seçim penceresi)', () => {
+    const g = uygunGecisler(ctx(SORUMLU_ONAY), st({ izlemeSorumlusuUserId: null })).find((x) => x.hedef === FifDurum.FAALIYET)
+    expect(g).toEqual({ hedef: FifDurum.FAALIYET, etiket: 'Sorumlu Bölüm Onayı', secim: 'izlemeSorumlusu' })
+    expect(uygunGecisler(ctx(YABANCI), st({ izlemeSorumlusuUserId: null })).find((x) => x.hedef === FifDurum.FAALIYET)).toBe(undefined)
+  })
+  it('"Faaliyetleri Başlat" adımı YOK — FAALIYET\'te bu geçiş yeniden görünmez', () => {
+    const etiketler = uygunGecisler(ctx(SORUMLU_ONAY), baseState({ durum: FifDurum.FAALIYET })).map((x) => x.etiket)
+    expect(etiketler).not.toContain('Faaliyetleri Başlat')
+    expect(etiketler).not.toContain('Sorumlu Bölüm Onayı')
+  })
+  it('müdür reddi/iadesi YOK: SORUMLU_ATAMA_BEKLIYOR → TASLAK / KSS_KAYIT_BEKLIYOR geçersiz', () => {
+    for (const hedef of [FifDurum.TASLAK, FifDurum.KSS_KAYIT_BEKLIYOR]) {
+      const r = gecisYapabilirMi(ctx(SORUMLU_ONAY), st(), hedef)
+      expect(r.ok).toBe(false)
+      if (!r.ok) expect(r.tur).toBe('gecersiz')
+    }
+  })
+  it('İptal yalnız manage (TASLAK dışı kural)', () => {
+    expect(gecisYapabilirMi(ctx(SORUMLU_ONAY), st(), FifDurum.IPTAL).ok).toBe(false)
+    expect(gecisYapabilirMi(ctx(YABANCI, true), st(), FifDurum.IPTAL).ok).toBe(true)
+  })
+  it('Kapatmaya Gönder yetkisi aynen: izleme sorumlusu / sorumlu bölüm müdürü', () => {
+    const kapali = { hedefTarih: new Date(), sonuc: 'K', gerceklesenTarih: new Date(), parafUserId: 'uKss' }
+    const f = baseState({ durum: FifDurum.FAALIYET, faaliyetler: [kapali] })
+    expect(gecisYapabilirMi(ctx(IZLEME), f, FifDurum.KAPATMA_BEKLIYOR).ok).toBe(true)
+    expect(gecisYapabilirMi(ctx(MUDUR), f, FifDurum.KAPATMA_BEKLIYOR).ok).toBe(true)
+  })
+})
+
+describe('fif-durum — Paket 4: kokNedenDoluMu (özet / Ek-1 / 5 Neden)', () => {
+  const bos = { kokNedenAnalizi: null, kokNedenler: [], besNedenler: [] }
+  it('üçü de boşsa false; boşluk-only özet ve boş Ek-1 notu BOŞ sayılır', () => {
+    expect(kokNedenDoluMu(bos)).toBe(false)
+    expect(kokNedenDoluMu({ ...bos, kokNedenAnalizi: '   ', kokNedenler: [{ aciklama: ' ' }] })).toBe(false)
+  })
+  it('herhangi biri doluysa true', () => {
+    expect(kokNedenDoluMu({ ...bos, kokNedenAnalizi: 'Kalibrasyon eksik' })).toBe(true)
+    expect(kokNedenDoluMu({ ...bos, kokNedenler: [{ aciklama: 'Makine' }] })).toBe(true)
+    expect(kokNedenDoluMu({ ...bos, besNedenler: [{ id: 'b1' }] })).toBe(true)
+  })
+})
+
+describe('fif-durum — Paket 4: faaliyetPlanlamaYetkisi (satır ekleme, hedef tarih, uygulama sorumlusu)', () => {
+  const s = (durum: FifDurum) => ({ durum, sorumluOnaylayanUserId: SORUMLU_ONAY, izlemeSorumlusuUserId: IZLEME })
+  it('FAALIYET\'te sorumlu bölüm müdürü / izleme sorumlusu / manage izinli', () => {
+    expect(faaliyetPlanlamaYetkisi({ userId: SORUMLU_ONAY, isManage: false }, s(FifDurum.FAALIYET))).toBe(null)
+    expect(faaliyetPlanlamaYetkisi({ userId: IZLEME, isManage: false }, s(FifDurum.FAALIYET))).toBe(null)
+    expect(faaliyetPlanlamaYetkisi({ userId: YABANCI, isManage: true }, s(FifDurum.FAALIYET))).toBe(null)
+  })
+  it('hazırlayan / satır sorumlusu / KSS → 403', () => {
+    for (const u of [HAZIRLAYAN, 'uSatir', KSS]) {
+      expect(faaliyetPlanlamaYetkisi({ userId: u, isManage: false }, s(FifDurum.FAALIYET))?.status).toBe(403)
+    }
+  })
+  it('müdür snapshot\'ı ve izleme yoksa yalnız manage', () => {
+    const bos = { durum: FifDurum.FAALIYET, sorumluOnaylayanUserId: null, izlemeSorumlusuUserId: null }
+    expect(faaliyetPlanlamaYetkisi({ userId: null, isManage: false }, bos)?.status).toBe(403)
+    expect(faaliyetPlanlamaYetkisi({ userId: 'x', isManage: true }, bos)).toBe(null)
+  })
+  it('FAALIYET dışında (SORUMLU_ATAMA_BEKLIYOR dahil) herkese 400 — manage dahil', () => {
+    for (const d of [FifDurum.TASLAK, FifDurum.KSS_KAYIT_BEKLIYOR, FifDurum.SORUMLU_ATAMA_BEKLIYOR, FifDurum.KAPATMA_BEKLIYOR, FifDurum.KSS_KAPANIS_BEKLIYOR, FifDurum.ETKINLIK]) {
+      expect(faaliyetPlanlamaYetkisi({ userId: SORUMLU_ONAY, isManage: false }, s(d))?.status).toBe(400)
+      expect(faaliyetPlanlamaYetkisi({ userId: YABANCI, isManage: true }, s(d))?.status).toBe(400)
+    }
   })
 })
 
@@ -360,5 +469,14 @@ describe('fif-durum — iptal/sil 404 fix: IPTAL salt-okunur, hard delete redire
   })
   it('boş TASLAK hard delete → true (handler bu durumda listeye redirect eder)', () => {
     expect(hardDeleteEdilebilir(FifDurum.TASLAK, false)).toBe(true)
+  })
+})
+
+describe('fif-durum-etiket — Geçmiş olay etiketi', () => {
+  it('izleme sorumlusu değişikliği kendi olayıyla; olay boş eski satırlar (ES / durum) aynen', () => {
+    expect(fifOlayEtiketi({ olay: 'IZLEME_SORUMLUSU_DEGISTI', aciklama: 'Faaliyet izleme sorumlusu boşaltıldı (önceki: A)' })).toBe('İzleme sorumlusu değişti')
+    expect(fifOlayEtiketi({ olay: null, aciklama: 'ES: 2026-09-01 → 2026-10-01, neden: x' })).toBe('Ek süre (eski)')
+    expect(fifOlayEtiketi({ olay: null, aciklama: null })).toBe('Durum değişti')
+    expect(fifOlayEtiketi({ olay: 'FAALIYET_YAPILAMADI', aciklama: null })).toBe('Faaliyet yapılamadı (YT)')
   })
 })

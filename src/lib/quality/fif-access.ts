@@ -10,6 +10,8 @@
  *     / Paket 3: herhangi bir FAALİYET SATIRININ SORUMLUSU olduğu kayıtlar — YALNIZ
  *     GÖRME. Satır sorumlusu formu düzenleyemez; sadece kendi satırında "Faaliyeti
  *     Kapat" ve "Ek Termin İste" yapar (bu uçlar satır sahipliğini ayrıca arar).
+ *   / Paket 4: FAALİYET İZLEME SORUMLUSU olduğu kayıtlar — GÖRME + DÜZENLEME (kök
+ *     neden ve faaliyet planlamasını sorumlu bölüm müdürüyle birlikte yapar).
  * Düzenleme (PUT/DELETE/alt kayıtlar): fifDuzenleyebilirMi — satır sorumluluğu SAYILMAZ.
  *
  * `.manage` izni ikincil; asıl yönetim kapısı canAccessKalite substring'i (RMA/
@@ -48,6 +50,11 @@ export type FifScopeRecord = {
   hazirlayanUserId: string | null
   sorumluBolumId: string | null
   yayinlayanBolumId: string | null
+  /**
+   * Paket 4: faaliyet izleme sorumlusu (sorumlu bölüm müdürü "Sorumlu Bölüm Onayı"nda
+   * seçer). Seçmeyen çağıran bu yolu kapsam dışı bırakır (fail-closed).
+   */
+  izlemeSorumlusuUserId?: string | null
 }
 
 /** Kullanıcının FİF bağlamı — bir kez hesaplanır, hem where hem tekil kontrolde kullanılır. */
@@ -72,6 +79,7 @@ export function fifRecordInScope(ctx: FifUserContext, r: FifScopeRecord): boolea
   if (!ctx.userId) return false
   if (r.createdById === ctx.userId) return true
   if (r.hazirlayanUserId === ctx.userId) return true
+  if (r.izlemeSorumlusuUserId && r.izlemeSorumlusuUserId === ctx.userId) return true
   if (r.sorumluBolumId && ctx.deptIds.includes(r.sorumluBolumId)) return true
   if (r.yayinlayanBolumId && ctx.deptIds.includes(r.yayinlayanBolumId)) return true
   return false
@@ -122,6 +130,7 @@ export async function fifWhereForUser(session: Session | null | undefined): Prom
   const or: Prisma.FifWhereInput[] = [
     { createdById: ctx.userId },
     { hazirlayanUserId: ctx.userId },
+    { izlemeSorumlusuUserId: ctx.userId },
     { faaliyetler: { some: { sorumluUserId: ctx.userId } } },
   ]
   if (ctx.deptIds.length) {

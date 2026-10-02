@@ -79,18 +79,26 @@ const bolumBaslik = 'text-sm font-semibold text-[#1B4F72] uppercase tracking-wid
 /**
  * kullaniciAdlari: kayıtlı userId → ad soyad (sunucuda tek sorguda çözülür).
  * Yoksa ekranda "Seçili" kalıyordu — kişi bilgisi kaybolmuş gibi görünüyordu.
- * aktifKullaniciId: satır işlemleri ("Faaliyeti Kapat", "Ek Termin İste") yalnız
- * satırın sorumlusuna görünür.
+ * aktifKullaniciId: satır işlemi "Ek Termin İste" yalnız satırın sorumlusuna görünür.
  * duzenlenebilir: false → form SALT-OKUNUR (Paket 3b-2: yalnız satır sorumlusu olan
  * kullanıcı formu görür ama düzenleyemez; satır işlemleri yine çalışır).
- * isKss: ek termin kararı + satır etkinlik kontrolü butonları.
+ * isKss: satır "Sonuç Gir" (K/YT) + ek termin kararı + satır etkinlik kontrolü butonları.
+ * faaliyetPlanlayabilir (Paket 4): satır ekleme, hedef tarih, uygulama sorumlusu atama —
+ * FAALIYET'te izleme sorumlusu / sorumlu bölüm müdürü / manage (sunucu da aynı kuralı uygular).
+ * kokNedenDolu (Paket 4): kayıtlı kök neden (özet / Ek-1 / 5 Neden) var mı — yoksa
+ * ve formda da özet yazılmamışsa faaliyet bölümü pasif ("Önce kök neden…").
  */
-export function FifFormClient({ initial, kullaniciAdlari = {}, aktifKullaniciId = null, duzenlenebilir = true, isKss = false }: {
+export function FifFormClient({
+  initial, kullaniciAdlari = {}, aktifKullaniciId = null, duzenlenebilir = true, isKss = false,
+  faaliyetPlanlayabilir = false, kokNedenDolu = false,
+}: {
   initial: FifInitial
   kullaniciAdlari?: Record<string, string>
   aktifKullaniciId?: string | null
   duzenlenebilir?: boolean
   isKss?: boolean
+  faaliyetPlanlayabilir?: boolean
+  kokNedenDolu?: boolean
 }) {
   const router = useRouter()
   const duzenleme = !!initial
@@ -106,7 +114,9 @@ export function FifFormClient({ initial, kullaniciAdlari = {}, aktifKullaniciId 
   const [sorumluOnaylayanUserId, setSorumluOnaylayanUserId] = useState(initial?.sorumluOnaylayanUserId ?? '')
   const [yayinlayanOnaylayanUserId, setYayinlayanOnaylayanUserId] = useState(initial?.yayinlayanOnaylayanUserId ?? '')
   const [yayinlayanOnaylayanAd, setYayinlayanOnaylayanAd] = useState('')
-  const [izlemeSorumlusuUserId, setIzlemeSorumlusuUserId] = useState(initial?.izlemeSorumlusuUserId ?? '')
+  // Paket 4: izleme sorumlusunu sorumlu bölüm müdürü "Sorumlu Bölüm Onayı"nda seçer —
+  // formda yalnız gösterilir, payload'a GİRMEZ (kayıttaki değer korunur).
+  const izlemeSorumlusuUserId = initial?.izlemeSorumlusuUserId ?? ''
   const [kaynaklar, setKaynaklar] = useState<Kaynak[]>([])
   const [kaynakId, setKaynakId] = useState(initial?.kaynakId ?? '')
   const [uygunsuzlukTanimi, setUygunsuzlukTanimi] = useState(initial?.uygunsuzlukTanimi ?? '')
@@ -130,6 +140,10 @@ export function FifFormClient({ initial, kullaniciAdlari = {}, aktifKullaniciId 
     })) ?? [],
   )
   const faaliyetAsamasi = initial?.durum === 'FAALIYET'
+  const planlamaAsamasi = faaliyetAsamasi
+  // Kaydedilmemiş özet metin de sayılır — PUT aynı kayıtta gelen kök nedeni dikkate alır.
+  const kokNedenHazir = kokNedenDolu || !!kokNedenAnalizi.trim()
+  const satirEkleyebilir = !ro && faaliyetPlanlayabilir && kokNedenHazir
   const [kaydediyor, setKaydediyor] = useState(false)
   const [hata, setHata] = useState<string | null>(null)
 
@@ -189,7 +203,6 @@ export function FifFormClient({ initial, kullaniciAdlari = {}, aktifKullaniciId 
       yayinlayanBolumId: yayinlayanBolumId || null,
       sorumluOnaylayanUserId: sorumluOnaylayanUserId || null,
       yayinlayanOnaylayanUserId: yayinlayanOnaylayanUserId || null,
-      izlemeSorumlusuUserId: izlemeSorumlusuUserId || null,
       kaynakId: kaynakId || null,
       uygunsuzlukTanimi,
       standartMadde: standartMadde || null,
@@ -312,7 +325,10 @@ export function FifFormClient({ initial, kullaniciAdlari = {}, aktifKullaniciId 
             <Label className={kartLabel}>Yayınlayan Onaylayan (müdür — otomatik)</Label>
             <Input className="mt-1 h-9" value={yayinlayanOnaylayanAd || (yayinlayanOnaylayanUserId ? kullaniciAdlari[yayinlayanOnaylayanUserId] ?? 'Seçili' : '')} readOnly placeholder="yayınlayan bölüm seçince dolar" />
           </div>
-          <UserSecici label="İzleme Sorumlusu" value={izlemeSorumlusuUserId} kayitliAd={kullaniciAdlari[izlemeSorumlusuUserId]} onChange={setIzlemeSorumlusuUserId} disabled={ro} />
+          <div>
+            <Label className={kartLabel}>Faaliyet İzleme Sorumlusu (sorumlu bölüm müdürü seçer)</Label>
+            <Input className="mt-1 h-9" value={izlemeSorumlusuUserId ? kullaniciAdlari[izlemeSorumlusuUserId] ?? 'Seçili' : ''} readOnly placeholder="Sorumlu Bölüm Onayı'nda seçilir" />
+          </div>
         </div>
       </div>
 
@@ -336,20 +352,42 @@ export function FifFormClient({ initial, kullaniciAdlari = {}, aktifKullaniciId 
         </div>
       </div>
 
-      {/* 3. Faaliyetler */}
-      <div className="rounded-md border bg-white p-4 space-y-3">
+      {/* 3. Kök neden (Paket 4: faaliyetlerden ÖNCE — kök neden boşken faaliyet eklenemez) */}
+      <div className="rounded-md border bg-white p-4 space-y-2">
+        <h3 className={bolumBaslik}>Kök Neden Analizi</h3>
+        <Textarea rows={2} value={kokNedenAnalizi} onChange={(e) => setKokNedenAnalizi(e.target.value)} disabled={ro} placeholder="Özet kök neden (Ek-1 balık kılçığı / 5 Neden Faz 3'te)" />
+        <p className="text-[11px] text-slate-400">Ek-1 (balık kılçığı 9 kategori + 5 Neden) ve Ek-2 (öncesi/sonrası foto) Faz 3'te tamamlanacak.</p>
+      </div>
+
+      {/* 4. Faaliyetler */}
+      <div className={`rounded-md border bg-white p-4 space-y-3 ${planlamaAsamasi && !kokNedenHazir ? 'opacity-60' : ''}`}>
         <div className="flex items-center justify-between">
           <h3 className={bolumBaslik}>Faaliyetler</h3>
-          {!ro && <Button type="button" variant="outline" size="sm" onClick={addFaaliyet}>+ Satır</Button>}
+          {!ro && faaliyetPlanlayabilir && (
+            <Button type="button" variant="outline" size="sm" onClick={addFaaliyet} disabled={!satirEkleyebilir}>+ Satır</Button>
+          )}
         </div>
+        {planlamaAsamasi && !kokNedenHazir && (
+          <p className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            Önce kök neden analizini doldurun (özet, Ek-1 balık kılçığı veya 5 Neden). Ardından faaliyet satırları eklenebilir.
+          </p>
+        )}
+        {!planlamaAsamasi && faaliyetler.length === 0 &&
+          (initial?.durum === 'TASLAK' || initial?.durum === 'KSS_KAYIT_BEKLIYOR' || initial?.durum === 'SORUMLU_ATAMA_BEKLIYOR') && (
+          <p className="text-xs text-slate-500">
+            Kök neden ve faaliyetler, Sorumlu Bölüm Onayı&apos;ndan sonra faaliyet izleme sorumlusu ve sorumlu bölüm müdürü tarafından planlanır.
+          </p>
+        )}
         {faaliyetler.length === 0 ? (
           <p className="text-xs text-slate-400">Henüz faaliyet yok.</p>
         ) : faaliyetler.map((f, i) => {
-          // Kapalı satır ("Faaliyeti Kapat") formdan düzenlenmez; FAALIYET'te kayıtlı
+          // Kapalı satır (KSS "Sonuç Gir" → K) formdan düzenlenmez; FAALIYET'te kayıtlı
           // hedef tarih kilitli (değişiklik ek süre akışıyla) — sunucu da aynı kuralı uygular.
+          // Uygulama sorumlusu yalnız izleme sorumlusu / sorumlu bölüm müdürü / manage tarafından atanır (faaliyetPlanlayabilir).
           const kapali = faaliyetKapaliMi(f)
           const satirRo = ro || kapali
-          const hedefKilitli = satirRo || (faaliyetAsamasi && !!f.kayitliHedef)
+          // FAALIYET'te hedef tarih girmek planlamadır (izleme sorumlusu / müdür / manage).
+          const hedefKilitli = satirRo || (faaliyetAsamasi && (!!f.kayitliHedef || !faaliyetPlanlayabilir))
           const rozetler = faaliyetTerminEtiketleri(
             { hedefTarih: f.kayitliHedef || null, ilkHedefTarih: f.ilkHedefTarih, gerceklesenTarih: f.gerceklesenTarih, sonuc: f.sonuc },
             new Date(),
@@ -382,8 +420,8 @@ export function FifFormClient({ initial, kullaniciAdlari = {}, aktifKullaniciId 
             </div>
             <div className="grid grid-cols-12 gap-2 items-end">
               <div className="col-span-6">
-                <UserSecici label="Sorumlu Kişi" value={f.sorumluUserId} kayitliAd={kullaniciAdlari[f.sorumluUserId]}
-                  onChange={(id) => updFaaliyet(i, { sorumluUserId: id })} disabled={satirRo} />
+                <UserSecici label="Uygulama Sorumlusu" value={f.sorumluUserId} kayitliAd={kullaniciAdlari[f.sorumluUserId]}
+                  onChange={(id) => updFaaliyet(i, { sorumluUserId: id })} disabled={satirRo || !faaliyetPlanlayabilir} />
               </div>
               <div className="col-span-6 flex flex-wrap items-center justify-end gap-2 pb-1">
                 {f.id && <Badge variant="outline" className={TON_SINIF[durumRozeti.ton]}>{durumRozeti.metin}</Badge>}
@@ -397,7 +435,7 @@ export function FifFormClient({ initial, kullaniciAdlari = {}, aktifKullaniciId 
                 fifId={initial.id}
                 fifDurum={initial.durum}
                 faaliyet={{
-                  id: f.id, sira: f.sira, kayitliHedef: f.kayitliHedef, kapali, sorumluUserId: f.sorumluUserId,
+                  id: f.id, sira: f.sira, kayitliHedef: f.kayitliHedef, kapali, sorumluUserId: f.sorumluUserId, sonuc: f.sonuc,
                   etkinlikPlanTarihi: f.etkinlikPlanTarihi, etkinlikUygun: f.etkinlikUygun,
                 }}
                 bekleyenTalep={f.bekleyenTalep}
@@ -409,13 +447,6 @@ export function FifFormClient({ initial, kullaniciAdlari = {}, aktifKullaniciId 
           </div>
           )
         })}
-      </div>
-
-      {/* 4. Kök neden (Ek-1 basit; tam Ek-1/Ek-2 Faz 3) */}
-      <div className="rounded-md border bg-white p-4 space-y-2">
-        <h3 className={bolumBaslik}>Kök Neden Analizi</h3>
-        <Textarea rows={2} value={kokNedenAnalizi} onChange={(e) => setKokNedenAnalizi(e.target.value)} disabled={ro} placeholder="Özet kök neden (Ek-1 balık kılçığı / 5 Neden Faz 3'te)" />
-        <p className="text-[11px] text-slate-400">Ek-1 (balık kılçığı 9 kategori + 5 Neden) ve Ek-2 (öncesi/sonrası foto) Faz 3'te tamamlanacak.</p>
       </div>
 
       {/* 5. Kapanış değerlendirmesi (Rev 3 son sayfa) — FAZ B'de KSS'ye kilitlenecek. */}
@@ -472,7 +503,7 @@ export function FifFormClient({ initial, kullaniciAdlari = {}, aktifKullaniciId 
  * Basit kullanıcı seçici: arama → seç. Seçili userId'yi parent tutar.
  * kayitliAd: sayfa açılışında kayıtlı kişinin adı (arama yapılmadan gösterilir).
  */
-function UserSecici({ label, value, kayitliAd, onChange, disabled }: { label: string; value: string; kayitliAd?: string; onChange: (id: string) => void; disabled?: boolean }) {
+export function UserSecici({ label, value, kayitliAd, onChange, disabled }: { label: string; value: string; kayitliAd?: string; onChange: (id: string) => void; disabled?: boolean }) {
   const [q, setQ] = useState('')
   const [sonuc, setSonuc] = useState<{ userId: string; ad: string; bolum: string }[]>([])
   const [secili, setSecili] = useState<string>('')

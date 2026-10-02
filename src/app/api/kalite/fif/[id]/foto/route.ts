@@ -16,7 +16,7 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
   const { session, error } = await requireSession()
   if (error) return error
   const { id } = await params
-  const fif = await prisma.fif.findUnique({ where: { id }, select: { id: true, createdById: true, hazirlayanUserId: true, sorumluBolumId: true, yayinlayanBolumId: true } })
+  const fif = await prisma.fif.findUnique({ where: { id }, select: { id: true, createdById: true, hazirlayanUserId: true, sorumluBolumId: true, yayinlayanBolumId: true, izlemeSorumlusuUserId: true } })
   if (!fif) return NextResponse.json({ error: 'FİF bulunamadı' }, { status: 404 })
   if (!(await fifDuzenleyebilirMi(session, fif))) return NextResponse.json({ error: 'kapsam dışı' }, { status: 403 })
   const ekler = await prisma.fifEk.findMany({ where: { fifId: id }, orderBy: { createdAt: 'asc' } })
@@ -29,7 +29,7 @@ export async function POST(request: NextRequest, { params }: Ctx) {
     const { session, userId, error } = await requireSession()
     if (error) return error
     const { id } = await params
-    const fif = await prisma.fif.findUnique({ where: { id }, select: { id: true, durum: true, createdById: true, hazirlayanUserId: true, sorumluBolumId: true, yayinlayanBolumId: true } })
+    const fif = await prisma.fif.findUnique({ where: { id }, select: { id: true, durum: true, createdById: true, hazirlayanUserId: true, sorumluBolumId: true, yayinlayanBolumId: true, izlemeSorumlusuUserId: true } })
     if (!fif) return NextResponse.json({ error: 'FİF bulunamadı' }, { status: 404 })
     if (!(await fifDuzenleyebilirMi(session, fif))) return NextResponse.json({ error: 'kapsam dışı' }, { status: 403 })
     if (!altKayitDuzenlenebilir({ userId, isManage: canManageFif(session) }, fif.durum)) {

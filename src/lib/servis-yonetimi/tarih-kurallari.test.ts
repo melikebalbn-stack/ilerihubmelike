@@ -5,6 +5,7 @@ import {
   baslangicTarihiCoz,
   bitisTarihiCoz,
   bugunTR,
+  gecerlilikTarihleriniDogrula,
   kapatmaTarihiCoz,
   makulTarihCoz,
   tarihCoz,
@@ -104,5 +105,56 @@ describe('kapatmaTarihiCoz — kapatma bugünden ileri olamaz', () => {
     expect(() => kapatmaTarihiCoz('', baslangic, SIMDI)).toThrow('Kapatma tarihi zorunludur ve geçerli olmalıdır.')
     expect(() => kapatmaTarihiCoz('2025-12-31', baslangic, SIMDI)).toThrow('Kapatma tarihi başlangıç tarihinden önce olamaz.')
     expect(() => kapatmaTarihiCoz('abc', baslangic, SIMDI)).toThrow(TarihHatasi)
+  })
+})
+
+describe('gecerlilikTarihleriniDogrula — araç/güzergâh geçerlilik tarihleri (A7)', () => {
+  it('boş tarihler geçer (geçerlilik opsiyonel)', () => {
+    expect(() => gecerlilikTarihleriniDogrula({}, undefined, SIMDI)).not.toThrow()
+    expect(() => gecerlilikTarihleriniDogrula({ baslangic: '', bitis: null }, undefined, SIMDI)).not.toThrow()
+  })
+
+  it('geçerli aralık geçer', () => {
+    expect(() => gecerlilikTarihleriniDogrula({ baslangic: '2026-08-01', bitis: '2026-12-31' }, undefined, SIMDI)).not.toThrow()
+    expect(() => gecerlilikTarihleriniDogrula({ baslangic: '2026-08-01', bitis: '2026-08-01' }, undefined, SIMDI)).not.toThrow()
+  })
+
+  it('🔴 2099 reddedilir (yeni kayıt)', () => {
+    expect(() => gecerlilikTarihleriniDogrula({ bitis: '2099-12-31' }, undefined, SIMDI)).toThrow(/Geçerlilik bitiş tarihi bugünden en fazla 1 yıl sonrası/)
+    expect(() => gecerlilikTarihleriniDogrula({ baslangic: '2099-01-01' }, undefined, SIMDI)).toThrow(/Geçerlilik başlangıç tarihi/)
+  })
+
+  it('1999 / 2019 (alt sınır öncesi) reddedilir', () => {
+    expect(() => gecerlilikTarihleriniDogrula({ baslangic: '1999-05-01' }, undefined, SIMDI)).toThrow(/2020-01-01 tarihinden önce olamaz/)
+    expect(() => gecerlilikTarihleriniDogrula({ bitis: '2019-12-31' }, undefined, SIMDI)).toThrow(TarihHatasi)
+  })
+
+  it('geçersiz takvim günü / biçim reddedilir', () => {
+    for (const bitis of ['abc', '2026-02-30', '2026-13-01', '03.10.2026']) {
+      expect(() => gecerlilikTarihleriniDogrula({ bitis }, undefined, SIMDI), bitis).toThrow(/Geçerlilik bitiş tarihi geçersiz/)
+    }
+  })
+
+  it('bitiş < başlangıç reddedilir', () => {
+    expect(() => gecerlilikTarihleriniDogrula({ baslangic: '2026-09-01', bitis: '2026-08-31' }, undefined, SIMDI)).toThrow(
+      'Geçerlilik bitiş tarihi başlangıç tarihinden önce olamaz.',
+    )
+  })
+
+  it('🔴 güncellemede DEĞİŞMEYEN eski tarih aralık denetiminden muaf (kural öncesi 2019 kaydı düzenlenebilsin)', () => {
+    const mevcut = { baslangic: new Date('2019-03-01T00:00:00.000Z'), bitis: new Date('2030-01-01T00:00:00.000Z') }
+    expect(() => gecerlilikTarihleriniDogrula({ baslangic: '2019-03-01', bitis: '2030-01-01' }, mevcut, SIMDI)).not.toThrow()
+  })
+
+  it('güncellemede DEĞİŞEN tarih yine denetlenir; muaf olan tarih diğerini korumaz', () => {
+    const mevcut = { baslangic: new Date('2019-03-01T00:00:00.000Z'), bitis: null }
+    expect(() => gecerlilikTarihleriniDogrula({ baslangic: '2019-03-01', bitis: '2099-01-01' }, mevcut, SIMDI)).toThrow(/Geçerlilik bitiş tarihi/)
+    expect(() => gecerlilikTarihleriniDogrula({ baslangic: '2018-01-01' }, mevcut, SIMDI)).toThrow(/Geçerlilik başlangıç tarihi/)
+  })
+
+  it('muaf eski tarihlerde bile bitiş >= başlangıç sırası denetlenir', () => {
+    const mevcut = { baslangic: new Date('2019-03-01T00:00:00.000Z'), bitis: null }
+    expect(() => gecerlilikTarihleriniDogrula({ baslangic: '2019-03-01', bitis: '2026-01-01' }, mevcut, SIMDI)).not.toThrow()
+    expect(() => gecerlilikTarihleriniDogrula({ baslangic: '2026-06-01', bitis: '2026-05-01' }, mevcut, SIMDI)).toThrow(/başlangıç tarihinden önce/)
   })
 })

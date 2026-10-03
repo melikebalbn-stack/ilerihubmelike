@@ -3978,3 +3978,168 @@ describe('A6 — araç plakası: normalize + biçim + aynı/benzer kontrolü', (
     expect(audit.aciklama).toBe('Benzer plaka uyarısı kullanıcı onayıyla geçildi: 06AB123.')
   })
 })
+
+// ============================================================================
+// A7 — araç/güzergâh geçerlilik tarihleri + araç tipi listesi
+// ============================================================================
+import { ARAC_TIPLERI } from './arac-tipleri'
+
+describe('A7 — araç geçerlilik tarihleri (A3 kuralları)', () => {
+  const arac = (ek: Record<string, unknown> = {}) => ({ ...gecerliArac, plaka: '41P0145', ...ek })
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-10-03T09:00:00.000Z'))
+    mocks.aracFindMany.mockReset()
+    mocks.aracFindUnique.mockReset()
+    mocks.aracCreate.mockReset()
+    mocks.aracUpdate.mockReset()
+    mocks.islemGecmisiCreate.mockReset()
+    mocks.aracFindMany.mockResolvedValue([])
+    mocks.firmaFindUnique.mockResolvedValue({ id: 'firma-1', aktif: true })
+    mocks.aracCreate.mockResolvedValue({ id: 'a-yeni' })
+  })
+  afterEach(() => vi.useRealTimers())
+
+  it.each([
+    ['2099-12-31', 'bitis', /Geçerlilik bitiş tarihi bugünden en fazla 1 yıl/],
+    ['1999-01-01', 'baslangic', /Geçerlilik başlangıç tarihi 2020-01-01 tarihinden önce olamaz/],
+  ])('🔴 oluşturma: %s (%s) reddedilir; DB yazması YOK', async (tarih, alan, mesaj) => {
+    const form = alan === 'bitis' ? arac({ gecerlilikBaslangici: '2026-08-01', gecerlilikBitisi: tarih }) : arac({ gecerlilikBaslangici: tarih, gecerlilikBitisi: null })
+    await expect(createServisArac(form)).rejects.toThrow(mesaj)
+    expect(mocks.aracCreate).not.toHaveBeenCalled()
+  })
+
+  it('oluşturma: bitiş < başlangıç reddedilir', async () => {
+    await expect(createServisArac(arac({ gecerlilikBaslangici: '2026-09-01', gecerlilikBitisi: '2026-08-01' }))).rejects.toThrow(/başlangıç tarihinden önce/)
+  })
+
+  it('oluşturma: geçerli aralık (bugün + 1 yıl sınırı dahil) kaydedilir', async () => {
+    await createServisArac(arac({ gecerlilikBaslangici: '2026-10-03', gecerlilikBitisi: '2027-10-03' }))
+    expect(mocks.aracCreate).toHaveBeenCalled()
+  })
+
+  const mevcutArac = (ek: Record<string, unknown> = {}) => ({
+    id: 'a1', plaka: '41P0145', kapasite: 16, firmaId: 'firma-1', aracTipi: 'Minibüs',
+    gecerlilikBaslangici: null, gecerlilikBitisi: null, ...ek,
+  })
+
+  it('güncelleme: yeni 2099 bitişi reddedilir', async () => {
+    mocks.aracFindUnique.mockResolvedValue(mevcutArac())
+    await expect(updateServisArac('a1', arac({ gecerlilikBitisi: '2099-01-01' }))).rejects.toThrow(/Geçerlilik bitiş tarihi/)
+    expect(mocks.aracUpdate).not.toHaveBeenCalled()
+  })
+
+  it('🔴 güncelleme: kural öncesi eski tarih DEĞİŞMİYORSA kayıt diğer alanlar için düzenlenebilir', async () => {
+    mocks.aracFindUnique.mockResolvedValue(mevcutArac({
+      gecerlilikBaslangici: new Date('2019-03-01T00:00:00.000Z'), gecerlilikBitisi: new Date('2031-01-01T00:00:00.000Z'),
+    }))
+    mocks.aracUpdate.mockResolvedValue({ id: 'a1' })
+    await updateServisArac('a1', arac({ kapasite: 20, gecerlilikBaslangici: '2019-03-01', gecerlilikBitisi: '2031-01-01' }))
+    expect(mocks.aracUpdate).toHaveBeenCalled()
+  })
+})
+
+describe('A7 — güzergâh geçerlilik tarihleri', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-10-03T09:00:00.000Z'))
+    mocks.guzergahFindUnique.mockReset()
+    mocks.guzergahCreate.mockReset()
+    mocks.guzergahUpdate.mockReset()
+    mocks.yerleskeFindUnique.mockResolvedValue({ id: 'yer-1' })
+  })
+  afterEach(() => vi.useRealTimers())
+
+  it('🔴 oluşturma: 2099 bitişi ve 1999 başlangıcı reddedilir', async () => {
+    await expect(createServisGuzergah({ ...gecerliGuzergah, gecerlilikBitisi: '2099-12-31' })).rejects.toThrow(/Geçerlilik bitiş tarihi bugünden en fazla 1 yıl/)
+    await expect(createServisGuzergah({ ...gecerliGuzergah, gecerlilikBaslangici: '1999-01-01' })).rejects.toThrow(/Geçerlilik başlangıç tarihi/)
+    expect(mocks.guzergahCreate).not.toHaveBeenCalled()
+  })
+
+  it('oluşturma: geçerli aralık (2026-08-01 .. 2026-12-31) kaydedilir', async () => {
+    mocks.guzergahFindUnique.mockResolvedValue(null)
+    mocks.guzergahCreate.mockResolvedValue({ id: 'g1' })
+    await createServisGuzergah(gecerliGuzergah)
+    expect(mocks.guzergahCreate).toHaveBeenCalled()
+  })
+
+  it('güncelleme: yeni 2099 bitişi reddedilir; DEĞİŞMEYEN eski tarih (2019) muaf', async () => {
+    mocks.guzergahFindUnique.mockResolvedValue({
+      id: 'g1', kod: 'DAR-1', gecerlilikBaslangici: new Date('2019-03-01T00:00:00.000Z'), gecerlilikBitisi: null,
+    })
+    await expect(updateServisGuzergah('g1', { ...gecerliGuzergah, gecerlilikBaslangici: '2019-03-01', gecerlilikBitisi: '2099-01-01' })).rejects.toThrow(/Geçerlilik bitiş tarihi/)
+    expect(mocks.guzergahUpdate).not.toHaveBeenCalled()
+
+    mocks.guzergahFindUnique.mockResolvedValue({
+      id: 'g1', kod: 'DAR-1', gecerlilikBaslangici: new Date('2019-03-01T00:00:00.000Z'), gecerlilikBitisi: null,
+    })
+    mocks.kodGuzergah.mockResolvedValue([])
+    mocks.guzergahUpdate.mockResolvedValue({ id: 'g1' })
+    await updateServisGuzergah('g1', { ...gecerliGuzergah, kod: 'dar-1', gecerlilikBaslangici: '2019-03-01', gecerlilikBitisi: '' })
+    expect(mocks.guzergahUpdate).toHaveBeenCalled()
+  })
+})
+
+describe('A7 — araç tipi seçim listesi', () => {
+  beforeEach(() => {
+    mocks.aracFindMany.mockReset()
+    mocks.aracFindUnique.mockReset()
+    mocks.aracCreate.mockReset()
+    mocks.aracUpdate.mockReset()
+    mocks.aracFindMany.mockResolvedValue([])
+    mocks.firmaFindUnique.mockResolvedValue({ id: 'firma-1', aktif: true })
+    mocks.aracCreate.mockResolvedValue({ id: 'a-yeni' })
+  })
+
+  it('liste sabittir: Minibüs, Midibüs, Otobüs, Otomobil, Diğer', () => {
+    expect([...ARAC_TIPLERI]).toEqual(['Minibüs', 'Midibüs', 'Otobüs', 'Otomobil', 'Diğer'])
+  })
+
+  it.each(ARAC_TIPLERI)('oluşturma: "%s" kabul edilir ve string olarak yazılır', async (tip) => {
+    await createServisArac({ ...gecerliArac, plaka: '41P0145', aracTipi: tip })
+    expect(mocks.aracCreate.mock.calls.at(-1)![0].data.aracTipi).toBe(tip)
+  })
+
+  it('oluşturma: boş araç tipi (opsiyonel) kabul edilir → null', async () => {
+    await createServisArac({ ...gecerliArac, plaka: '41P0145', aracTipi: '' })
+    expect(mocks.aracCreate.mock.calls.at(-1)![0].data.aracTipi).toBeNull()
+  })
+
+  it('🔴 oluşturma: listede olmayan serbest metin reddedilir', async () => {
+    await expect(createServisArac({ ...gecerliArac, plaka: '41P0145', aracTipi: 'Kamyonet' })).rejects.toThrow(
+      'Araç tipi şunlardan biri olmalıdır: Minibüs, Midibüs, Otobüs, Otomobil, Diğer.',
+    )
+    expect(mocks.aracCreate).not.toHaveBeenCalled()
+  })
+
+  it('küçük harf varyantı ("minibüs") yeni kayıtta reddedilir (liste kesin eşleşme)', async () => {
+    await expect(createServisArac({ ...gecerliArac, plaka: '41P0145', aracTipi: 'minibüs' })).rejects.toThrow(/Araç tipi şunlardan biri/)
+  })
+
+  const mevcut = (tip: string | null) => ({
+    id: 'a1', plaka: '41P0145', kapasite: 16, firmaId: 'firma-1', aracTipi: tip, gecerlilikBaslangici: null, gecerlilikBitisi: null,
+  })
+  const form = (tip: string) => ({ ...gecerliArac, plaka: '41P0145', gecerlilikBaslangici: null, gecerlilikBitisi: null, aracTipi: tip })
+
+  it('🔴 güncelleme: eski serbest değer ("arapçeşme") DEĞİŞMEDİKÇE kabul edilir (bozulmaz)', async () => {
+    mocks.aracFindUnique.mockResolvedValue(mevcut('arapçeşme'))
+    mocks.aracUpdate.mockResolvedValue({ id: 'a1' })
+    await updateServisArac('a1', { ...form('arapçeşme'), kapasite: 20 })
+    expect(mocks.aracUpdate.mock.calls[0][0].data.aracTipi).toBe('arapçeşme')
+  })
+
+  it('güncelleme: eski serbest değerden başka bir serbest metne geçiş reddedilir; listeden seçim kabul', async () => {
+    mocks.aracFindUnique.mockResolvedValue(mevcut('arapçeşme'))
+    mocks.aracUpdate.mockResolvedValue({ id: 'a1' })
+    await expect(updateServisArac('a1', form('başka serbest'))).rejects.toThrow(/Araç tipi şunlardan biri/)
+    await updateServisArac('a1', form('Otobüs'))
+    expect(mocks.aracUpdate.mock.calls.at(-1)![0].data.aracTipi).toBe('Otobüs')
+  })
+
+  it('güncelleme: araç tipi boşaltılabilir', async () => {
+    mocks.aracFindUnique.mockResolvedValue(mevcut('arapçeşme'))
+    mocks.aracUpdate.mockResolvedValue({ id: 'a1' })
+    await updateServisArac('a1', form(''))
+    expect(mocks.aracUpdate.mock.calls[0][0].data.aracTipi).toBeNull()
+  })
+})

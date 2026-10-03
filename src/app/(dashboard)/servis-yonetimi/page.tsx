@@ -26,6 +26,8 @@ import { ZincirGeriAlDialog } from './_components/ZincirGeriAlDialog'
 import { usePasifGeriAl } from './_lib/usePasifGeriAl'
 import { apiHataMesaji, jsonIstek, servisIstek } from './_lib/servis-istek'
 import { normalizeTr } from '@/lib/normalize-tr'
+import { ARAC_TIPLERI } from '@/lib/servis-yonetimi/arac-tipleri'
+import { MIN_TARIH, enIleriTarihTR } from '@/lib/servis-yonetimi/tarih-kurallari'
 
 type ServisFirma = {
   id: string
@@ -772,11 +774,11 @@ function ServisGuzergahPanel({ canManage, canPassive, canRestore, canHistory }: 
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label htmlFor="guzergah-baslangic">Geçerlilik Başlangıcı</Label>
-                <Input id="guzergah-baslangic" type="date" value={form.gecerlilikBaslangici} onChange={(e) => setForm({ ...form, gecerlilikBaslangici: e.target.value })} />
+                <Input id="guzergah-baslangic" type="date" min={MIN_TARIH} max={enIleriTarihTR()} value={form.gecerlilikBaslangici} onChange={(e) => setForm({ ...form, gecerlilikBaslangici: e.target.value })} />
               </div>
               <div>
                 <Label htmlFor="guzergah-bitis">Geçerlilik Bitişi</Label>
-                <Input id="guzergah-bitis" type="date" value={form.gecerlilikBitisi} onChange={(e) => setForm({ ...form, gecerlilikBitisi: e.target.value })} />
+                <Input id="guzergah-bitis" type="date" min={form.gecerlilikBaslangici || MIN_TARIH} max={enIleriTarihTR()} value={form.gecerlilikBitisi} onChange={(e) => setForm({ ...form, gecerlilikBitisi: e.target.value })} />
               </div>
             </div>
           </div>
@@ -1245,19 +1247,34 @@ function ServisAracPanel({ canManage, canPassive, canRestore, canHistory }: { ca
             </div>
             <div>
               <Label htmlFor="arac-tipi">Araç Tipi</Label>
-              <Input id="arac-tipi" value={form.aracTipi} onChange={(e) => setForm({ ...form, aracTipi: e.target.value })} />
+              <select
+                id="arac-tipi"
+                value={form.aracTipi}
+                onChange={(e) => setForm({ ...form, aracTipi: e.target.value })}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              >
+                <option value="">Seçin</option>
+                {ARAC_TIPLERI.map((tip) => <option key={tip} value={tip}>{tip}</option>)}
+                {/* Eski (liste öncesi) serbest metin değeri düzenlemede bozulmadan gösterilir. */}
+                {form.aracTipi && !(ARAC_TIPLERI as readonly string[]).includes(form.aracTipi) && (
+                  <option value={form.aracTipi}>{form.aracTipi} (mevcut değer)</option>
+                )}
+              </select>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label htmlFor="arac-baslangic">Geçerlilik Başlangıcı</Label>
-                <Input id="arac-baslangic" type="date" value={form.gecerlilikBaslangici} onChange={(e) => setForm({ ...form, gecerlilikBaslangici: e.target.value })} />
+                <Input id="arac-baslangic" type="date" min={MIN_TARIH} max={enIleriTarihTR()} value={form.gecerlilikBaslangici} onChange={(e) => setForm({ ...form, gecerlilikBaslangici: e.target.value })} />
               </div>
               <div>
                 <Label htmlFor="arac-bitis">Geçerlilik Bitişi</Label>
-                <Input id="arac-bitis" type="date" value={form.gecerlilikBitisi} onChange={(e) => setForm({ ...form, gecerlilikBitisi: e.target.value })} />
+                <Input id="arac-bitis" type="date" min={form.gecerlilikBaslangici || MIN_TARIH} max={enIleriTarihTR()} value={form.gecerlilikBitisi} onChange={(e) => setForm({ ...form, gecerlilikBitisi: e.target.value })} />
               </div>
             </div>
           </div>
+          <p className="text-xs text-muted-foreground">
+            Aracın güzergâha atanması güzergâh detayındaki Varsayılan Araçlar bölümünden yapılır.
+          </p>
           {hata && <p role="alert" className="text-sm text-red-600">{hata}</p>}
           {benzerUyari && (
             <div role="alert" className="space-y-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">

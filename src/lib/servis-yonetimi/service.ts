@@ -42,7 +42,14 @@ import {
   plakaBicimHatasi,
   plakaKontrol,
 } from './plaka'
-import { aralikDogrula, baslangicTarihiCoz, bitisTarihiCoz, kapatmaTarihiCoz } from './tarih-kurallari'
+import { ARAC_TIPI_HATASI, aracTipiGecerliMi } from './arac-tipleri'
+import {
+  aralikDogrula,
+  baslangicTarihiCoz,
+  bitisTarihiCoz,
+  gecerlilikTarihleriniDogrula,
+  kapatmaTarihiCoz,
+} from './tarih-kurallari'
 import {
   firmaSonZincirIslemId,
   firmaZincirGeriAl,
@@ -304,6 +311,7 @@ export async function listServisGuzergahlar(filtre?: { aktif?: boolean }) {
 export async function createServisGuzergah(form: ServisGuzergahForm, yapanId?: string | null) {
   const { valid, errors } = validateServisGuzergahForm(form)
   if (!valid) throw new Error(errors.join(' '))
+  gecerlilikTarihleriniDogrula({ baslangic: form.gecerlilikBaslangici, bitis: form.gecerlilikBitisi })
 
   const kod = form.kod.trim().toUpperCase()
   const [kodCakismasi, yerleske] = await Promise.all([
@@ -339,6 +347,12 @@ export async function updateServisGuzergah(id: string, form: ServisGuzergahForm,
 
   const existing = await prisma.servisGuzergah.findUnique({ where: { id } })
   if (!existing) throw new Error('Güzergâh bulunamadı.')
+
+  // A7: geçerlilik tarihi kuralları yalnız DEĞİŞEN tarihe uygulanır.
+  gecerlilikTarihleriniDogrula(
+    { baslangic: form.gecerlilikBaslangici, bitis: form.gecerlilikBitisi },
+    { baslangic: existing.gecerlilikBaslangici, bitis: existing.gecerlilikBitisi },
+  )
 
   const kod = form.kod.trim().toUpperCase()
   const [kodCakismasi, yerleske] = await Promise.all([
@@ -542,6 +556,9 @@ const ARAC_ALANLARI = ['plaka', 'kapasite', 'firmaId', 'aracTipi', 'gecerlilikBa
 export async function createServisArac(form: ServisAracForm, yapanId?: string | null) {
   const { valid, errors } = validateServisAracForm(form)
   if (!valid) throw new Error(errors.join(' '))
+  gecerlilikTarihleriniDogrula({ baslangic: form.gecerlilikBaslangici, bitis: form.gecerlilikBitisi })
+  const yeniAracTipi = form.aracTipi?.trim()
+  if (yeniAracTipi && !aracTipiGecerliMi(yeniAracTipi)) throw new Error(ARAC_TIPI_HATASI)
 
   const data = servisAracData(form)
   const bicimHatasi = plakaBicimHatasi(data.plaka)
@@ -576,6 +593,17 @@ export async function updateServisArac(id: string, form: ServisAracForm, yapanId
 
   const existing = await prisma.servisArac.findUnique({ where: { id } })
   if (!existing) throw new Error('Araç bulunamadı.')
+
+  // A7: tarih kuralları yalnız DEĞİŞEN tarihe uygulanır; araç tipi eski serbest değerse
+  // (değişmedikçe) kabul edilir.
+  gecerlilikTarihleriniDogrula(
+    { baslangic: form.gecerlilikBaslangici, bitis: form.gecerlilikBitisi },
+    { baslangic: existing.gecerlilikBaslangici, bitis: existing.gecerlilikBitisi },
+  )
+  const yeniAracTipi = form.aracTipi?.trim()
+  if (yeniAracTipi && !aracTipiGecerliMi(yeniAracTipi) && yeniAracTipi !== (existing.aracTipi ?? '').trim()) {
+    throw new Error(ARAC_TIPI_HATASI)
+  }
 
   const data = servisAracData(form)
   // Plaka DEĞİŞMİYORSA biçim/benzerlik denetlenmez: eski (kural öncesi) kayıtların

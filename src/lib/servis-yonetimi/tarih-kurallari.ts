@@ -92,3 +92,36 @@ export function kapatmaTarihiCoz(
 export function aralikDogrula(baslangic: Date, bitis: Date | null): void {
   if (bitis && bitis < baslangic) throw new TarihHatasi('Bitiş tarihi başlangıç tarihinden önce olamaz.')
 }
+
+// ----------------------------------------------------------------------------
+// Geçerlilik başlangıç/bitiş (A7) — araç ve güzergâh tanımı
+// ----------------------------------------------------------------------------
+
+const gunStr = (d: Date | null | undefined): string | null => (d ? d.toISOString().slice(0, 10) : null)
+
+/**
+ * Tanım varlıklarının (araç, güzergâh) geçerlilik tarihleri için A3 kuralları:
+ * geçerli takvim günü, makul aralık (2020-01-01 .. bugün + 1 yıl), bitiş >= başlangıç.
+ *
+ * `mevcut` verilirse (güncelleme) DEĞİŞMEYEN tarih aralık denetiminden muaftır:
+ * kural öncesi girilmiş eski bir tarih, kaydın diğer alanları düzenlenirken
+ * kullanıcıyı bloklamasın. Değişen/yeni tarih her zaman denetlenir; başlangıç <=
+ * bitiş sırası ise her durumda denetlenir.
+ */
+export function gecerlilikTarihleriniDogrula(
+  yeni: { baslangic?: string | null; bitis?: string | null },
+  mevcut?: { baslangic?: Date | null; bitis?: Date | null },
+  simdi: Date = new Date(),
+): void {
+  const coz = (deger: string | null | undefined, etiket: string, eski: Date | null | undefined): Date | null => {
+    if (!deger?.trim()) return null
+    const tarih = tarihCoz(deger, etiket)
+    if (gunStr(tarih) !== gunStr(eski)) makulTarihCoz(deger, etiket, simdi) // yalnız değişen için aralık
+    return tarih
+  }
+  const baslangic = coz(yeni.baslangic, 'Geçerlilik başlangıç tarihi', mevcut?.baslangic)
+  const bitis = coz(yeni.bitis, 'Geçerlilik bitiş tarihi', mevcut?.bitis)
+  if (baslangic && bitis && bitis < baslangic) {
+    throw new TarihHatasi('Geçerlilik bitiş tarihi başlangıç tarihinden önce olamaz.')
+  }
+}

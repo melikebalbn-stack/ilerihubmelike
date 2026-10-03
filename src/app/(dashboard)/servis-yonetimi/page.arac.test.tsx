@@ -140,3 +140,85 @@ describe('Araç formu — A6 plaka', () => {
     expect(JSON.parse(yazimlar()[1][1].body)).toMatchObject({ plaka: '06A8123', benzerPlakaOnayi: true })
   })
 })
+
+describe('Araç formu — A7 araç tipi, tarih kuralları, ipucu', () => {
+  it('🔴 Araç Tipi serbest metin DEĞİL seçim listesi: Seçin + Minibüs, Midibüs, Otobüs, Otomobil, Diğer', async () => {
+    await aracSekmesi()
+    fireEvent.click(screen.getByRole('button', { name: /Yeni Araç/ }))
+    const secim = screen.getByLabelText('Araç Tipi') as HTMLSelectElement
+    expect(secim.tagName).toBe('SELECT')
+    expect(within(secim).getAllByRole('option').map((o) => o.textContent)).toEqual([
+      'Seçin', 'Minibüs', 'Midibüs', 'Otobüs', 'Otomobil', 'Diğer',
+    ])
+    expect(secim.value).toBe('')
+  })
+
+  it('seçilen araç tipi isteğe string olarak gider', async () => {
+    fetchKur([{ ok: true, status: 201, body: { ok: true, data: {} } }])
+    await aracSekmesi()
+    fireEvent.click(screen.getByRole('button', { name: /Yeni Araç/ }))
+    fireEvent.change(screen.getByLabelText('Plaka *'), { target: { value: '06ABC123' } })
+    fireEvent.change(screen.getByLabelText('Kapasite *'), { target: { value: '27' } })
+    fireEvent.change(screen.getByLabelText('Araç Tipi'), { target: { value: 'Otobüs' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Kaydet' }))
+    await waitFor(() => expect(yazimlar()).toHaveLength(1))
+    expect(JSON.parse(yazimlar()[0][1].body)).toMatchObject({ plaka: '06ABC123', kapasite: 27, aracTipi: 'Otobüs' })
+  })
+
+  it('🔴 eski serbest değer ("arapçeşme") düzenlemede BOZULMADAN gösterilir ve seçili gelir; kaydedince aynen gider', async () => {
+    fetchKur([{ ok: true, status: 200, body: { ok: true, data: {} } }], [{ ...ARAC, aracTipi: 'arapçeşme' }])
+    await aracSekmesi()
+    fireEvent.click(screen.getByRole('button', { name: 'Düzenle' }))
+    const secim = screen.getByLabelText('Araç Tipi') as HTMLSelectElement
+    expect(secim.value).toBe('arapçeşme')
+    expect(within(secim).getByRole('option', { name: 'arapçeşme (mevcut değer)' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Kaydet' }))
+    await waitFor(() => expect(yazimlar()).toHaveLength(1))
+    expect(JSON.parse(yazimlar()[0][1].body).aracTipi).toBe('arapçeşme')
+  })
+
+  it('listedeki değer ("Minibüs") için "mevcut değer" seçeneği EKLENMEZ', async () => {
+    await aracSekmesi()
+    fireEvent.click(screen.getByRole('button', { name: 'Düzenle' }))
+    const secim = screen.getByLabelText('Araç Tipi') as HTMLSelectElement
+    expect(secim.value).toBe('Minibüs')
+    expect(within(secim).queryByRole('option', { name: /mevcut değer/ })).toBeNull()
+  })
+
+  it('araç tipi boş olan kayıt "Seçin" ile açılır', async () => {
+    fetchKur([], [{ ...ARAC, aracTipi: null }])
+    await aracSekmesi()
+    fireEvent.click(screen.getByRole('button', { name: 'Düzenle' }))
+    expect((screen.getByLabelText('Araç Tipi') as HTMLSelectElement).value).toBe('')
+  })
+
+  it('🔴 form ipucu: atama güzergâh detayındaki Varsayılan Araçlar bölümünden yapılır', async () => {
+    await aracSekmesi()
+    fireEvent.click(screen.getByRole('button', { name: /Yeni Araç/ }))
+    expect(screen.getByText('Aracın güzergâha atanması güzergâh detayındaki Varsayılan Araçlar bölümünden yapılır.')).toBeTruthy()
+  })
+
+  it('geçerlilik tarih alanlarına makul aralık (min 2020-01-01, max bugün+1 yıl) uygulanır; bitiş min = başlangıç', async () => {
+    await aracSekmesi()
+    fireEvent.click(screen.getByRole('button', { name: /Yeni Araç/ }))
+    const bas = screen.getByLabelText('Geçerlilik Başlangıcı') as HTMLInputElement
+    const bit = screen.getByLabelText('Geçerlilik Bitişi') as HTMLInputElement
+    expect(bas.min).toBe('2020-01-01')
+    expect(bas.max).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    expect(bit.min).toBe('2020-01-01')
+    fireEvent.change(bas, { target: { value: '2026-08-01' } })
+    expect((screen.getByLabelText('Geçerlilik Bitişi') as HTMLInputElement).min).toBe('2026-08-01')
+  })
+
+  it('🔴 2099 bitişi sunucudan reddedilirse mesaj diyalog içinde görünür', async () => {
+    const MESAJ = 'Geçerlilik bitiş tarihi bugünden en fazla 1 yıl sonrası (2027-10-03) olabilir.'
+    fetchKur([{ ok: false, status: 400, body: { ok: false, message: MESAJ } }])
+    await aracSekmesi()
+    fireEvent.click(screen.getByRole('button', { name: /Yeni Araç/ }))
+    fireEvent.change(screen.getByLabelText('Plaka *'), { target: { value: '06ABC123' } })
+    fireEvent.change(screen.getByLabelText('Kapasite *'), { target: { value: '27' } })
+    fireEvent.change(screen.getByLabelText('Geçerlilik Bitişi'), { target: { value: '2099-12-31' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Kaydet' }))
+    await waitFor(() => expect(within(screen.getByRole('dialog')).getByRole('alert').textContent).toBe(MESAJ))
+  })
+})

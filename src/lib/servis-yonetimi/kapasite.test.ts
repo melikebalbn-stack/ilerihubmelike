@@ -319,14 +319,14 @@ describe('servisKapasiteTopluGetir — tek-çift fonksiyonla AYNI filtre ve AYNI
     expect(toplu.tarih).toBe('2026-09-01')
   })
 
-  it('🔴 KVKK: personel tablosundan YALNIZ güzergahId + dilimler.dilimId seçilir (kişi alanı yok)', async () => {
+  it('🔴 KVKK: personel atamasından yalnız teknik kimlikler seçilir (personnelId yalnız tekil sayım için; ad/sicil/telefon yok)', async () => {
     mocks.aracAtamaFindMany.mockResolvedValue([])
     mocks.personelAtamaFindMany.mockResolvedValue([])
     mocks.guzergahFindMany.mockResolvedValue([])
     mocks.dilimFindMany.mockResolvedValue([])
     await servisKapasiteTopluGetir(GUN)
     expect(mocks.personelAtamaFindMany.mock.calls[0][0].select).toEqual({
-      id: true, guzergahId: true, baslangicTarihi: true, atamaKaynagi: true, dilimler: { select: { dilimId: true } },
+      id: true, personnelId: true, guzergahId: true, baslangicTarihi: true, atamaKaynagi: true, dilimler: { select: { dilimId: true } },
     })
     // plaka/kapasite dışında araç alanı seçilmez
     expect(mocks.aracAtamaFindMany.mock.calls[0][0].select).toEqual({
@@ -383,7 +383,9 @@ describe('B4 — dilim bağlantısı olmayan atama (kural DEĞİŞMEZ: kapasitey
     // Motor kuralı aynı: yalnız dilim bağlantılı 4 personel sayılır
     expect(r.guzergahlar[0].ozet).toMatchObject({ atananPersonelSayisi: 4, kapasite: 10, bosKoltuk: 6 })
     expect(r.guzergahlar[1].ozet).toMatchObject({ atananPersonelSayisi: 0, durum: 'ARAC_YOK' })
-    expect(r.toplam.atanmisPersonel).toBe(4)
+    // KPI TEKİL KİŞİ: 4 dilimli + 5 dilimsiz = 9 (dilimsizler KPI'a girer, kapasiteye girmez)
+    expect(r.toplam.atanmisPersonel).toBe(9)
+    expect(r.guzergahlar.map((g) => g.tekilPersonel)).toEqual([6, 3])
     expect(r.toplam.dilimsizAtamaSayisi).toBe(5)
     expect(r.dilimsizAtamalar).toHaveLength(5)
     expect(r.dilimsizAtamalar[0]).toEqual({
@@ -408,7 +410,7 @@ describe('B4 — dilim bağlantısı olmayan atama (kural DEĞİŞMEZ: kapasitey
 })
 
 describe('B4 — motor toplama kuralı (belgeleyen testler: panelde "Personel" ne gösterir)', () => {
-  it('1 personel hem SABAH hem AKŞAM bağlı: her dilimde 1; güzergâh satırı 1; KPI 1 (2 DEĞİL)', () => {
+  it('🔴 1 kişi hem SABAH hem AKŞAM bağlı: her dilimde 1; güzergâh satırı 1; KPI 1 (2 DEĞİL)', () => {
     const r = kapasiteTopluOlustur({
       guzergahlar: [G('g1', 'A')], dilimler: [SABAH, AKSAM],
       aracAtamalari: [arac('g1', 'd1', 'X1', 10), arac('g1', 'd2', 'X1', 10)],
@@ -419,14 +421,15 @@ describe('B4 — motor toplama kuralı (belgeleyen testler: panelde "Personel" n
     expect(r.toplam.atanmisPersonel).toBe(1)
   })
 
-  it('5 yalnız-SABAH + 5 yalnız-AKŞAM personel: satır 5, KPI 5 (tekil personel 10 olsa da) — "en dar dilim" kuralı', () => {
+  it('🔴 5 yalnız-SABAH + 5 yalnız-AKŞAM AYRI kişi: KPI 10 (tekil), güzergâh satırı 5 (en dar dilim)', () => {
     const r = kapasiteTopluOlustur({
       guzergahlar: [G('g1', 'A')], dilimler: [SABAH, AKSAM],
       aracAtamalari: [arac('g1', 'd1', 'X1', 10), arac('g1', 'd2', 'X1', 10)],
       personelAtamalari: [...kisiler('g1', ['d1'], 5), ...kisiler('g1', ['d2'], 5)],
     }, '2026-10-03')
     expect(r.guzergahlar[0].ozet.atananPersonelSayisi).toBe(5)
-    expect(r.toplam.atanmisPersonel).toBe(5)
+    expect(r.guzergahlar[0].tekilPersonel).toBe(10)
+    expect(r.toplam.atanmisPersonel).toBe(10)
   })
 
   it('satır seçimi öncelikle: araçsız ama personelli dilim, uygun dilimin önüne geçer (satır araçsız dilimin personelini gösterir)', () => {
@@ -436,5 +439,66 @@ describe('B4 — motor toplama kuralı (belgeleyen testler: panelde "Personel" n
       personelAtamalari: [...kisiler('g1', ['d1'], 8), ...kisiler('g1', ['d2'], 12)],
     }, '2026-10-03')
     expect(r.guzergahlar[0]).toMatchObject({ dilimKod: 'AKSAM_DONUS', ozet: { durum: 'ARAC_YOK', atananPersonelSayisi: 12 } })
+  })
+})
+
+describe('B6 — KPI "Atanmış personel" = TEKİL kişi', () => {
+  const P = (personnelId: string, guzergahId: string, dilimIdleri: string[]) => ({ personnelId, guzergahId, dilimIdleri })
+
+  it('aynı kişi (personnelId) birden çok atamada/güzergâhta bir kez sayılır', () => {
+    const r = kapasiteTopluOlustur({
+      guzergahlar: [G('g1', 'A'), G('g2', 'B')], dilimler: [SABAH, AKSAM], aracAtamalari: [],
+      personelAtamalari: [P('k1', 'g1', ['d1']), P('k1', 'g1', ['d2']), P('k1', 'g2', ['d1']), P('k2', 'g2', [])],
+    }, '2026-10-03')
+    expect(r.toplam.atanmisPersonel).toBe(2) // k1, k2
+    expect(r.guzergahlar.map((g) => g.tekilPersonel)).toEqual([1, 2])
+  })
+
+  it('dilimsiz kişi KPI\'a girer, satır/dilim kapasitesine girmez', () => {
+    const r = kapasiteTopluOlustur({
+      guzergahlar: [G('g1', 'A')], dilimler: [SABAH], aracAtamalari: [arac('g1', 'd1', 'X1', 10)],
+      personelAtamalari: [P('k1', 'g1', ['d1']), P('k2', 'g1', [])],
+    }, '2026-10-03')
+    expect(r.toplam.atanmisPersonel).toBe(2)
+    expect(r.guzergahlar[0].ozet.atananPersonelSayisi).toBe(1)
+    expect(r.guzergahlar[0].ozet.bosKoltuk).toBe(9)
+    expect(r.toplam.dilimsizAtamaSayisi).toBe(1)
+  })
+
+  it('pasif güzergâhın atamaları KPI\'a girmez (panel yalnız aktif güzergâhları gösterir)', () => {
+    const r = kapasiteTopluOlustur({ guzergahlar: [G('g1', 'A')], dilimler: [SABAH], aracAtamalari: [], personelAtamalari: [P('k1', 'gPasif', ['d1'])] }, '2026-10-03')
+    expect(r.toplam.atanmisPersonel).toBe(0)
+  })
+
+  it('boş durum: atama yok → KPI 0, güzergâh tekil 0', () => {
+    const r = kapasiteTopluOlustur({ guzergahlar: [G('g1', 'A')], dilimler: [SABAH], aracAtamalari: [], personelAtamalari: [] }, '2026-10-03')
+    expect(r.toplam.atanmisPersonel).toBe(0)
+    expect(r.guzergahlar[0].tekilPersonel).toBe(0)
+  })
+
+  it('kimlik yoksa (eski çağrı) her atama ayrı kişi sayılır', () => {
+    const r = kapasiteTopluOlustur({ guzergahlar: [G('g1', 'A')], dilimler: [SABAH], aracAtamalari: [], personelAtamalari: kisiler('g1', ['d1'], 3) }, '2026-10-03')
+    expect(r.toplam.atanmisPersonel).toBe(3)
+  })
+
+  it('🔴 KVKK: personnelId çıktıda YOK (JSON taraması)', () => {
+    const r = kapasiteTopluOlustur({
+      guzergahlar: [G('g1', 'A')], dilimler: [SABAH], aracAtamalari: [],
+      personelAtamalari: [P('gizli-personel-id-123', 'g1', ['d1']), P('gizli-personel-id-456', 'g1', [])],
+    }, '2026-10-03')
+    expect(JSON.stringify(r)).not.toContain('gizli-personel-id')
+  })
+
+  it('🔴 pasif / süresi dolmuş atama KPI\'a girmez: sorgu aktif:true + hesap günü tarih filtresiyle yapılır (tek-çiftle AYNI)', async () => {
+    mocks.aracAtamaFindMany.mockResolvedValue([])
+    mocks.personelAtamaFindMany.mockResolvedValue([])
+    mocks.guzergahFindMany.mockResolvedValue([])
+    mocks.dilimFindMany.mockResolvedValue([])
+    const GUN_B6 = new Date('2026-09-01T00:00:00Z')
+    await servisKapasiteTopluGetir(GUN_B6)
+    const where = mocks.personelAtamaFindMany.mock.calls[0][0].where
+    expect(where.aktif).toBe(true)
+    expect(where.baslangicTarihi).toEqual({ lte: tarihBaslangiciUTC(GUN_B6) })
+    expect(where.OR).toEqual([{ bitisTarihi: null }, { bitisTarihi: { gte: tarihBaslangiciUTC(GUN_B6) } }])
   })
 })

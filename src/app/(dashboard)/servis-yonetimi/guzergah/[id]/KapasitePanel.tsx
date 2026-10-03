@@ -25,6 +25,8 @@ export function KapasitePanel({ guzergahId, dilimler }: { guzergahId: string; di
   const [ozetler, setOzetler] = useState<DilimOzeti[]>([])
   const [yukleniyor, setYukleniyor] = useState(false)
   const [hata, setHata] = useState<string | null>(null)
+  // Güzergâh düzeyi: tekil personel + dilim bağlantısı olmayan atama (motor: kapasite-toplu, AYNI tarih).
+  const [guzergahBilgisi, setGuzergahBilgisi] = useState<{ tekil: number; dilimsiz: number } | null>(null)
 
   const yukle = useCallback(async () => {
     setYukleniyor(true)
@@ -38,6 +40,17 @@ export function KapasitePanel({ guzergahId, dilimler }: { guzergahId: string; di
         return { dilim, ozet: json.data as KapasiteOzeti }
       }))
       setOzetler(sonuclar)
+      // Ek bilgi başarısız olursa dilim tablosu yine görünür (bilgi satırı çizilmez).
+      try {
+        const r = await fetch(`/api/servis-yonetimi/kapasite-toplu?${new URLSearchParams({ guzergahId, tarih: hesapTarihi })}`)
+        const j = await r.json()
+        const satir = r.ok && j?.ok ? (j.data?.guzergahlar?.[0] as { tekilPersonel?: number } | undefined) : undefined
+        setGuzergahBilgisi(satir && typeof satir.tekilPersonel === 'number'
+          ? { tekil: satir.tekilPersonel, dilimsiz: Number(j.data?.toplam?.dilimsizAtamaSayisi ?? 0) }
+          : null)
+      } catch {
+        setGuzergahBilgisi(null)
+      }
     } catch (err) {
       setHata(err instanceof Error ? err.message : 'Kapasite özeti alınamadı.')
     } finally {
@@ -60,6 +73,12 @@ export function KapasitePanel({ guzergahId, dilimler }: { guzergahId: string; di
         </div>
       </div>
       {hata && <p className="text-sm text-red-600">{hata}</p>}
+      {guzergahBilgisi && !yukleniyor && (
+        <p className="text-sm" data-testid="guzergah-tekil">
+          Bu güzergâhta <strong>{guzergahBilgisi.tekil}</strong> tekil personel var. Tablodaki Atanan Personel, her sefer dilimine
+          ayrı ayrı bağlı kişi sayısıdır; bir kişi iki dilimde olabileceğinden toplamları farklı olabilir.
+        </p>
+      )}
       {yukleniyor ? <p className="text-sm text-muted-foreground">Hesaplanıyor...</p> : (
         <Table>
           <TableHeader><TableRow><TableHead>Sefer Dilimi</TableHead><TableHead>Kapasite</TableHead><TableHead>Atanan Personel</TableHead><TableHead>Boş Koltuk</TableHead><TableHead>Doluluk</TableHead><TableHead>Durum</TableHead></TableRow></TableHeader>
@@ -81,6 +100,14 @@ export function KapasitePanel({ guzergahId, dilimler }: { guzergahId: string; di
                 </TableCell>
               </TableRow>
             })}
+            {guzergahBilgisi && guzergahBilgisi.dilimsiz > 0 && (
+              <TableRow data-testid="dilimsiz-satir" className="bg-amber-50 dark:bg-amber-950/20">
+                <TableCell>Dilimi olmayan</TableCell>
+                <TableCell colSpan={5}>
+                  {guzergahBilgisi.dilimsiz} atama — sefer dilimine bağlı olmadığı için kapasiteye girmiyor
+                </TableCell>
+              </TableRow>
+            )}
           </TableBody>
         </Table>
       )}

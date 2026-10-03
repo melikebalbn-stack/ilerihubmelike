@@ -39,6 +39,8 @@ export async function GET() {
         yerleske: `${g.yerleske.kod} — ${g.yerleske.ad}`,
         durakSayisi: g._count.duraklar,
         plakalar: k?.araclar ?? [],
+        dilimKod: k?.dilimKod ?? null,
+        tekilPersonel: k?.tekilPersonel ?? null,
         kapasite: k?.ozet ?? null,
         aktif: g.aktif,
       }

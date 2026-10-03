@@ -23,11 +23,12 @@ export const KAPASITE_GUZERGAH_BASLIKLARI = [
   'GÜZERGÂH',
   'ARAÇ (PLAKA)',
   'KOLTUK',
-  'PERSONEL',
+  'PERSONEL (EN DOLU SEFER)',
   'BOŞ KOLTUK',
   'DOLULUK (%)',
   'DURUM',
   'EN DOLU DİLİM',
+  'TEKİL PERSONEL',
 ] as const
 
 export const KAPASITE_DILIM_BASLIKLARI = [
@@ -54,7 +55,7 @@ export function kapasiteGuzergahSatirlari(g: KapasiteGuzergahSatiri[]): Sayfa {
     [...KAPASITE_GUZERGAH_BASLIKLARI],
     ...g.map((s) => [
       s.kod, s.ad, plakalar(s.araclar), koltuk(s.ozet), s.ozet.atananPersonelSayisi, bos(s.ozet),
-      yuzde(s.ozet.dolulukOrani), kapasiteDurumEtiketi(s.ozet), s.dilimKod ?? '',
+      yuzde(s.ozet.dolulukOrani), kapasiteDurumEtiketi(s.ozet), s.dilimKod ?? '', s.tekilPersonel,
     ]),
   ]
 }
@@ -82,13 +83,20 @@ export function kapasiteOzetSatirlari(toplu: ServisKapasiteToplu): Sayfa {
     [...KAPASITE_OZET_BASLIKLARI],
     ['Rapor tarihi', toplu.tarih],
     ['Güzergâh sayısı', t.guzergahSayisi],
-    ['Atanmış personel', t.atanmisPersonel],
+    ['Atanmış personel (tekil kişi)', t.atanmisPersonel],
+    ['Dilimi olmayan atama (kapasiteye girmiyor)', t.dilimsizAtamaSayisi],
     ['Toplam koltuk (yalnız aracı olan güzergâhlar)', t.toplamKoltuk],
     ['Boş koltuk (aşımlar düşülmüş net)', t.netBosKoltuk],
     ['Kapasite aşımı (güzergâh/dilim)', t.asimSayisi],
     ['Aşan toplam kişi', t.asimKisi],
     ['Aracı olmayan güzergâh', t.aracsizGuzergahSayisi],
     ['Dolmak üzere (≥%90)', t.dolmakUzereSayisi],
+    [
+      'Not',
+      "Güzergâh Kapasitesi sayfasında Koltuk, Personel, Boş ve Doluluk her güzergâhın EN DOLU sefer dilimine aittir; " +
+        'Tekil Personel güzergâhtaki kişi sayısıdır (dilimli ya da dilimsiz, aynı kişi bir kez). Atanmış personel (tekil kişi) ' +
+        'satır toplamı değildir. Dilim ayrıntısı Dilim Detayı sayfasındadır.',
+    ],
   ]
 }
 

@@ -157,7 +157,18 @@ export type KapasiteGirdisi = {
    * atamaId/baslangicTarihi/kaynak ATAMA kaydının teknik alanlarıdır (personel kimliği değil);
    * yalnız "dilim bağlantısı olmayan atama" listesi için.
    */
-  personelAtamalari: { guzergahId: string; dilimIdleri: string[]; atamaId?: string; baslangicTarihi?: string; kaynak?: string }[]
+  personelAtamalari: {
+    guzergahId: string
+    dilimIdleri: string[]
+    /**
+     * TEKİL personel sayısı için (aynı kişi bir kez). YALNIZ motor içinde sayılır, çıktıya ASLA
+     * yazılmaz (KVKK). Verilmezse her atama ayrı kişi sayılır.
+     */
+    personnelId?: string
+    atamaId?: string
+    baslangicTarihi?: string
+    kaynak?: string
+  }[]
 }
 
 /**
@@ -195,6 +206,11 @@ export type KapasiteGuzergahSatiri = {
   dilimSayisi: number
   /** O güzergâhta ANA araçlı dilim sayısı (0 = güzergâhın hiç aracı yok). */
   aracliDilimSayisi: number
+  /**
+   * Bu güzergâhın TEKİL personel sayısı (aktif atamalı kişi; dilimli ya da dilimsiz fark etmez,
+   * aynı kişi bir kez). `ozet.atananPersonelSayisi` ise SEÇİLEN (en dolu) dilimin sayısıdır.
+   */
+  tekilPersonel: number
   araclar: string[]
   ozet: ServisKapasiteOzeti
   dilimler: KapasiteDilimSatiri[]
@@ -212,7 +228,11 @@ export type KapasiteAsimi = {
 
 export type KapasiteToplamlari = {
   guzergahSayisi: number
-  /** Satırlardaki personel toplamı (aracı olmayan güzergâhlar DAHİL). */
+  /**
+   * TEKİL personel: aktif atamalı kişi sayısı — dilimli ya da dilimsiz fark etmez, aynı kişi bir
+   * kez (aracı olmayan güzergâhlar DAHİL). Güzergâh satırlarındaki "Personel"in TOPLAMI DEĞİLDİR
+   * (satır = en dolu dilim; bir kişi iki dilimde olabilir, dilimsiz kişi satıra hiç girmez).
+   */
   atanmisPersonel: number
   /** Yalnız aracı olan güzergâhların koltuğu. */
   toplamKoltuk: number
@@ -272,6 +292,20 @@ export function kapasiteTopluOlustur(girdi: KapasiteGirdisi, tarih: string): Ser
     }
   }
 
+  // TEKİL personel: kimlik yalnız burada (Set); çıktıya yazılmaz.
+  const kisiAnahtari = (p: KapasiteGirdisi['personelAtamalari'][number], i: number) =>
+    p.personnelId ? `p:${p.personnelId}` : p.atamaId ? `a:${p.atamaId}` : `i:${i}`
+  const gecerliGuzergah = new Set(girdi.guzergahlar.map((g) => g.id))
+  const tekilGlobal = new Set<string>()
+  const tekilByGuzergah = new Map<string, Set<string>>()
+  girdi.personelAtamalari.forEach((p, i) => {
+    if (!gecerliGuzergah.has(p.guzergahId)) return
+    const k = kisiAnahtari(p, i)
+    tekilGlobal.add(k)
+    if (!tekilByGuzergah.has(p.guzergahId)) tekilByGuzergah.set(p.guzergahId, new Set())
+    tekilByGuzergah.get(p.guzergahId)!.add(k)
+  })
+
   const dilimSatirlari: KapasiteDilimSatiri[] = []
   const guzergahlar: KapasiteGuzergahSatiri[] = []
 
@@ -304,6 +338,7 @@ export function kapasiteTopluOlustur(girdi: KapasiteGirdisi, tarih: string): Ser
       dilimKod: secilen?.dilimKod ?? null,
       dilimSayisi: cifter.length,
       aracliDilimSayisi: cifter.filter((c) => c.ozet.aracSayisi > 0).length,
+      tekilPersonel: tekilByGuzergah.get(g.id)?.size ?? 0,
       araclar: secilen?.araclar ?? [],
       ozet: secilen?.ozet ?? kapasiteOzetiHesapla([], 0),
       dilimler: cifter,
@@ -333,7 +368,7 @@ export function kapasiteTopluOlustur(girdi: KapasiteGirdisi, tarih: string): Ser
 
   const toplam: KapasiteToplamlari = {
     guzergahSayisi: guzergahlar.length,
-    atanmisPersonel: guzergahlar.reduce((t, g) => t + g.ozet.atananPersonelSayisi, 0),
+    atanmisPersonel: tekilGlobal.size,
     toplamKoltuk: aracli.reduce((t, g) => t + g.ozet.kapasite, 0),
     netBosKoltuk: aracli.reduce((t, g) => t + g.ozet.bosKoltuk, 0),
     asimSayisi: guzergahlar.filter((g) => g.ozet.durum === 'ASIM').length,
@@ -378,7 +413,7 @@ export async function servisKapasiteTopluGetir(
     }),
     prisma.servisPersonelAtama.findMany({
       where: { aktif: true, ...guzergahKosulu, ...tarihFiltresi },
-      select: { id: true, guzergahId: true, baslangicTarihi: true, atamaKaynagi: true, dilimler: { select: { dilimId: true } } },
+      select: { id: true, personnelId: true, guzergahId: true, baslangicTarihi: true, atamaKaynagi: true, dilimler: { select: { dilimId: true } } },
     }),
   ])
 
@@ -391,7 +426,7 @@ export async function servisKapasiteTopluGetir(
       })),
       personelAtamalari: personelAtamalari.map((p) => ({
         guzergahId: p.guzergahId, dilimIdleri: p.dilimler.map((d) => d.dilimId),
-        atamaId: p.id, baslangicTarihi: p.baslangicTarihi.toISOString().slice(0, 10), kaynak: p.atamaKaynagi,
+        personnelId: p.personnelId, atamaId: p.id, baslangicTarihi: p.baslangicTarihi.toISOString().slice(0, 10), kaynak: p.atamaKaynagi,
       })),
     },
     gun.toISOString().slice(0, 10),

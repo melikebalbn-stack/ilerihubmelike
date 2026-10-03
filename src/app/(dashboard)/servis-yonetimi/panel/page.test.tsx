@@ -220,10 +220,11 @@ describe('Servis Paneli — dilimsiz atama uyarısı (B4)', () => {
   const dilimsizToplu = (n: number) => ({ ...TOPLU, toplam: { ...TOPLU.toplam, dilimsizAtamaSayisi: n } })
   const dilimsizPanel = (n: number | null) => ({ ...PANEL, veriKalite: { ...PANEL.veriKalite, dilimsizAtama: n } })
 
-  it('N = 0: "Atanmış personel" kartında altmetin YOK, Veri Kalitesi\'nde dilimsiz satırı YOK', async () => {
+  it('N = 0: "Atanmış personel" altmetni yalnız "tekil kişi"; dilimsiz uyarısı YOK; Veri Kalitesi\'nde dilimsiz satırı YOK', async () => {
     oturum(['servis.view'])
     render(<ServisPaneliPage />)
     await screen.findByText(/yeni servis kullanıcısı/)
+    expect(screen.getByTestId('kpi-tekil-alt').textContent).toBe('tekil kişi')
     expect(screen.queryByText(/dilim bağlantısız/)).toBeNull()
     expect(screen.queryByTestId('vk-dilimsiz')).toBeNull()
   })
@@ -251,5 +252,52 @@ describe('Servis Paneli — dilimsiz atama uyarısı (B4)', () => {
     render(<ServisPaneliPage />)
     await screen.findByText('63 atama dilim bağlantısız, kapasiteye girmiyor')
     expect(screen.getByTestId('kpi-Atanmış personel').textContent).toBe('30')
+  })
+})
+
+describe('Servis Paneli — B6: tekil KPI ve sütun etiketi', () => {
+  it('🔴 KPI altmetni "tekil kişi" (N > 0 iken dilimsiz uyarısıyla birlikte, ayrı satırlarda)', async () => {
+    fetchKur({ ...TOPLU, toplam: { ...TOPLU.toplam, dilimsizAtamaSayisi: 63 } })
+    oturum(['servis.view'])
+    render(<ServisPaneliPage />)
+    const uyari = await screen.findByText('63 atama dilim bağlantısız, kapasiteye girmiyor')
+    expect(screen.getByTestId('kpi-tekil-alt').textContent).toBe('tekil kişi')
+    // ikisi AYNI altmetin kutusunda, ayrı satırlarda
+    expect(uyari.parentElement).toBe(screen.getByTestId('kpi-tekil-alt').parentElement)
+  })
+
+  it('personel sütun başlığı "Personel (en dolu sefer)" + açıklayıcı ipucu (tooltip)', async () => {
+    oturum(['servis.view'])
+    render(<ServisPaneliPage />)
+    const baslik = await screen.findByRole('button', { name: /Personel \(en dolu sefer\)/ })
+    expect(baslik.getAttribute('title')).toContain('en dolu sefer dilimindeki personel sayısı')
+    expect(baslik.getAttribute('title')).toContain('Atanmış personel')
+  })
+
+  it('kısa açıklama: sütunlar en dolu dilime ait, KPI tekil kişi ve satır toplamı değil', async () => {
+    oturum(['servis.view'])
+    render(<ServisPaneliPage />)
+    await screen.findByText('Güzergâh bazında kapasite')
+    const metin = document.body.textContent ?? ''
+    expect(metin).toContain('en dolu sefer dilimine')
+    expect(metin).toContain('tekil kişi')
+    expect(metin).toContain('sütun toplamı değildir')
+  })
+
+  it('her satırda hangi dilimin gösterildiği yazar (tek dilimde "sefer:", çoklu dilimde "en dolu sefer:")', async () => {
+    fetchKur({
+      ...TOPLU,
+      guzergahlar: [
+        { ...TOPLU.guzergahlar[0], dilimSayisi: 2, dilimKod: 'AKŞAM_DÖNÜŞ' },
+        { ...TOPLU.guzergahlar[1], dilimSayisi: 1, dilimKod: 'SABAH_GIDIŞ' },
+        TOPLU.guzergahlar[2],
+      ],
+    })
+    oturum(['servis.view'])
+    render(<ServisPaneliPage />)
+    await screen.findByText('Güzergâh bazında kapasite')
+    const satirlar = screen.getAllByRole('row')
+    expect(satirlar.find((r) => r.textContent?.includes('G1 —'))?.textContent).toContain('en dolu sefer: AKŞAM_DÖNÜŞ')
+    expect(satirlar.find((r) => r.textContent?.includes('G2 —'))?.textContent).toContain('sefer: SABAH_GIDIŞ')
   })
 })

@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, FileSpreadsheet, FileText, Loader2 } from 'lucide-react'
@@ -33,7 +33,7 @@ const bugunMetni = () =>
 
 const AY_ADLARI = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık']
 
-function KpiKarti({ baslik, deger, alt, vurgu }: { baslik: string; deger: string; alt?: string; vurgu?: 'kirmizi' }) {
+function KpiKarti({ baslik, deger, alt, vurgu }: { baslik: string; deger: string; alt?: ReactNode; vurgu?: 'kirmizi' }) {
   return (
     <Card className={vurgu === 'kirmizi' ? 'border-red-300 bg-red-50 dark:bg-red-950/20' : undefined}>
       <CardHeader className="pb-1">
@@ -43,20 +43,21 @@ function KpiKarti({ baslik, deger, alt, vurgu }: { baslik: string; deger: string
         <p className={cn('text-2xl font-semibold tabular-nums', vurgu === 'kirmizi' && 'text-red-600')} data-testid={`kpi-${baslik}`}>
           {deger}
         </p>
-        {alt && <p className="text-xs text-muted-foreground">{alt}</p>}
+        {alt && <div className="text-xs text-muted-foreground">{alt}</div>}
       </CardContent>
     </Card>
   )
 }
 
 function SiralamaBasligi({
-  alan, etiket, siralama, onSirala, className,
+  alan, etiket, siralama, onSirala, className, ipucu,
 }: {
   alan: PanelSiralamaAlani
   etiket: string
   siralama: PanelSiralama | null
   onSirala: (alan: PanelSiralamaAlani) => void
   className?: string
+  ipucu?: string
 }) {
   const aktif = siralama?.alan === alan
   const Ikon = !aktif ? ArrowUpDown : siralama!.yon === 'asc' ? ArrowUp : ArrowDown
@@ -65,7 +66,7 @@ function SiralamaBasligi({
       className={cn('h-9', className)}
       aria-sort={aktif ? (siralama!.yon === 'asc' ? 'ascending' : 'descending') : 'none'}
     >
-      <button type="button" className="inline-flex items-center gap-1 font-medium" onClick={() => onSirala(alan)}>
+      <button type="button" className="inline-flex items-center gap-1 font-medium" onClick={() => onSirala(alan)} title={ipucu}>
         {etiket}
         <Ikon className="h-3 w-3 opacity-60" />
       </button>
@@ -199,9 +200,12 @@ export default function ServisPaneliPage() {
               baslik="Atanmış personel"
               deger={String(toplu.toplam.atanmisPersonel)}
               alt={
-                toplu.toplam.dilimsizAtamaSayisi > 0
-                  ? `${toplu.toplam.dilimsizAtamaSayisi} atama dilim bağlantısız, kapasiteye girmiyor`
-                  : undefined
+                <>
+                  <span className="block" data-testid="kpi-tekil-alt">tekil kişi</span>
+                  {toplu.toplam.dilimsizAtamaSayisi > 0 && (
+                    <span className="block">{toplu.toplam.dilimsizAtamaSayisi} atama dilim bağlantısız, kapasiteye girmiyor</span>
+                  )}
+                </>
               }
             />
             <KpiKarti baslik="Toplam koltuk" deger={String(toplu.toplam.toplamKoltuk)} alt="Yalnız aracı olan güzergâhlar" />
@@ -214,7 +218,9 @@ export default function ServisPaneliPage() {
             />
           </div>
           <p className="-mt-3 text-xs text-muted-foreground">
-            Her güzergâh, en dolu sefer diliminin değerleriyle gösterilir; dilim ayrıntısı Kapasite Raporu'ndadır.
+            Tablodaki Koltuk, Personel, Boş ve Doluluk, her güzergâhın <strong>en dolu sefer dilimine</strong> aittir (hangi dilim
+            olduğu güzergâh adının altında yazar). Üstteki &quot;Atanmış personel&quot; ise <strong>tekil kişi</strong> sayısıdır; sütun
+            toplamı değildir. Dilim ayrıntısı güzergâh detayında ve Kapasite Raporu&apos;ndadır.
           </p>
 
           {toplu.asimlar.length > 0 && (
@@ -258,7 +264,10 @@ export default function ServisPaneliPage() {
                       <SiralamaBasligi alan="guzergah" etiket="Güzergâh" siralama={siralama} onSirala={sirala} />
                       <TableHead className="h-9">Araç</TableHead>
                       <SiralamaBasligi alan="koltuk" etiket="Koltuk" siralama={siralama} onSirala={sirala} className="text-right" />
-                      <SiralamaBasligi alan="personel" etiket="Personel" siralama={siralama} onSirala={sirala} className="text-right" />
+                      <SiralamaBasligi
+                        alan="personel" etiket="Personel (en dolu sefer)" siralama={siralama} onSirala={sirala} className="text-right"
+                        ipucu="Güzergâhın en dolu sefer dilimindeki personel sayısı. Tekil kişi toplamı için üstteki Atanmış personel kartına bakın."
+                      />
                       <SiralamaBasligi alan="bos" etiket="Boş" siralama={siralama} onSirala={sirala} className="text-right" />
                       <SiralamaBasligi alan="doluluk" etiket="Doluluk" siralama={siralama} onSirala={sirala} />
                       <SiralamaBasligi alan="durum" etiket="Durum" siralama={siralama} onSirala={sirala} />
@@ -277,8 +286,10 @@ export default function ServisPaneliPage() {
                       <TableRow key={g.guzergahId} className={g.ozet.durum === 'ASIM' ? 'bg-red-50 dark:bg-red-950/20' : undefined}>
                         <TableCell className="py-1.5">
                           <span className="font-medium">{g.kod}</span> — {g.ad}
-                          {g.dilimSayisi > 1 && g.dilimKod && (
-                            <span className="block text-xs text-muted-foreground">en dolu dilim: {g.dilimKod}</span>
+                          {g.dilimKod && (
+                            <span className="block text-xs text-muted-foreground">
+                              {g.dilimSayisi > 1 ? 'en dolu sefer' : 'sefer'}: {g.dilimKod}
+                            </span>
                           )}
                         </TableCell>
                         <TableCell className="py-1.5 font-mono text-xs">{g.araclar.length > 0 ? g.araclar.join(', ') : TIRE}</TableCell>

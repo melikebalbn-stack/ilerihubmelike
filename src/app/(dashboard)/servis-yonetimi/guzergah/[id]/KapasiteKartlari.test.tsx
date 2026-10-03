@@ -3,7 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import { KapasiteKartlari } from './KapasiteKartlari'
 
 const yanit = (guzergahlar: unknown[]) => ({ ok: true, status: 200, json: async () => ({ ok: true, data: { guzergahlar } }) })
-const satir = (ozet: object) => ({ guzergahId: 'g1', kod: 'G1', ad: 'A', dilimKod: 'SABAH', dilimSayisi: 2, araclar: [], dilimler: [], ozet })
+const satir = (ozet: object) => ({ guzergahId: 'g1', kod: 'G1', ad: 'A', dilimKod: 'SABAH', dilimSayisi: 2, tekilPersonel: 14, araclar: [], dilimler: [], ozet })
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -17,6 +17,14 @@ describe('KapasiteKartlari (güzergâh detayı)', () => {
     expect(screen.getByTestId('guzergah-kart-Boş koltuk').textContent).toBe('4')
     expect(screen.getByTestId('guzergah-kart-Doluluk').textContent).toBe('%75.0')
     expect(String(f.mock.calls[0][0])).toContain('kapasite-toplu?guzergahId=g1')
+  })
+
+  it('B6: kart etiketi "Personel (en dolu sefer)"; altta güzergâhtaki tekil personel', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (_url: string) => yanit([satir({ kapasite: 16, atananPersonelSayisi: 12, bosKoltuk: 4, dolulukOrani: 75, aracSayisi: 1, durum: 'UYGUN', asimMiktari: 0 })])))
+    render(<KapasiteKartlari guzergahId="g1" />)
+    await screen.findByText('Personel (en dolu sefer)')
+    expect(screen.getByTestId('guzergah-kart-Personel').textContent).toBe('12')
+    expect(screen.getByText(/güzergâhta 14 tekil personel/)).toBeTruthy()
   })
 
   it('araç yok → Koltuk/Boş/Doluluk "—", Personel sayısı görünür', async () => {

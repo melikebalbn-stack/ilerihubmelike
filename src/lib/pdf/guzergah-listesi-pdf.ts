@@ -16,13 +16,17 @@ export type GuzergahListesiPdfSatiri = {
   yerleske: string
   durakSayisi: number
   plakalar: string[]
+  /** Satırdaki kapasite değerlerinin ait olduğu (en dolu) sefer dilimi; yoksa null. */
+  dilimKod?: string | null
+  /** Güzergâhın tekil personel sayısı (dilimli/dilimsiz, aynı kişi bir kez); pasifte null. */
+  tekilPersonel?: number | null
   /** Kapasite motoru çıktısı; pasif güzergâhta null (kapasite hesaplanmaz). */
   kapasite: ServisKapasiteOzeti | null
   aktif: boolean
 }
 
 export const GUZERGAH_LISTESI_PDF_BASLIKLARI = [
-  'KOD', 'AD', 'BÖLGE', 'YERLEŞKE', 'DURAK', 'ARAÇ', 'KOLTUK', 'PERSONEL', 'DOLULUK', 'DURUM',
+  'KOD', 'AD', 'BÖLGE', 'YERLEŞKE', 'DURAK', 'ARAÇ', 'SEFER', 'KOLTUK', 'PERSONEL (EN DOLU SEFER)', 'DOLULUK', 'DURUM', 'TEKİL KİŞİ',
 ] as const
 
 const tarihTR = (iso: string) => {
@@ -41,10 +45,12 @@ export function guzergahListesiPdfGovdesi(satirlar: GuzergahListesiPdfSatiri[]):
       s.yerleske,
       String(s.durakSayisi),
       s.plakalar.join(', '),
+      s.dilimKod ?? '—',
       k && !aracsiz ? String(k.kapasite) : '—',
       k ? String(k.atananPersonelSayisi) : '—',
       k && k.dolulukOrani !== null ? `%${k.dolulukOrani.toFixed(1)}` : '—',
       !s.aktif ? 'Pasif' : k ? kapasiteDurumEtiketi(k) : '—',
+      s.tekilPersonel === null || s.tekilPersonel === undefined ? '—' : String(s.tekilPersonel),
     ]
   })
 }
@@ -72,8 +78,16 @@ export function generateGuzergahListesiPdfBuffer(data: { tarih: string; satirlar
   doc.text(`${tarihTR(data.tarih)} itibarıyla kapasite · Oluşturulma: ${new Date().toLocaleString('tr-TR')}`, margin, margin + 6)
   doc.setTextColor(0, 0, 0)
 
+  doc.setFontSize(7)
+  doc.setTextColor(120, 120, 120)
+  doc.text(
+    'Koltuk, Personel ve Doluluk her güzergâhın EN DOLU sefer dilimine aittir (SEFER sütunu); Tekil Kişi güzergâhtaki kişi sayısıdır.',
+    margin, margin + 10,
+  )
+  doc.setTextColor(0, 0, 0)
+
   autoTable(doc, {
-    startY: margin + 11,
+    startY: margin + 13,
     head: [[...GUZERGAH_LISTESI_PDF_BASLIKLARI]],
     body: guzergahListesiPdfGovdesi(data.satirlar),
     theme: 'grid',

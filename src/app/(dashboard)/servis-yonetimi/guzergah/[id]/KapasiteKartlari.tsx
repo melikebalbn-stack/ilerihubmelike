@@ -34,7 +34,7 @@ export function KapasiteKartlari({ guzergahId }: { guzergahId: string }) {
   const asim = o.durum === 'ASIM'
   const kartlar = [
     { ad: 'Koltuk', deger: koltukMetni(o) },
-    { ad: 'Personel', deger: String(o.atananPersonelSayisi) },
+    { ad: 'Personel', etiket: 'Personel (en dolu sefer)', deger: String(o.atananPersonelSayisi) },
     { ad: 'Boş koltuk', deger: bosKoltukMetni(o), kirmizi: asim },
     { ad: 'Doluluk', deger: dolulukMetni(o.dolulukOrani), kirmizi: asim },
   ]
@@ -44,7 +44,7 @@ export function KapasiteKartlari({ guzergahId }: { guzergahId: string }) {
         {kartlar.map((k) => (
           <Card key={k.ad} className={k.kirmizi ? 'border-red-300 bg-red-50 dark:bg-red-950/20' : undefined}>
             <CardHeader className="pb-1">
-              <CardTitle className="text-xs font-medium text-muted-foreground">{k.ad}</CardTitle>
+              <CardTitle className="text-xs font-medium text-muted-foreground">{k.etiket ?? k.ad}</CardTitle>
             </CardHeader>
             <CardContent>
               <p className={`text-2xl font-semibold tabular-nums ${k.kirmizi ? 'text-red-600' : ''}`} data-testid={`guzergah-kart-${k.ad}`}>
@@ -57,6 +57,7 @@ export function KapasiteKartlari({ guzergahId }: { guzergahId: string }) {
       <p className="text-xs text-muted-foreground">
         Bugün · {durumEtiketi(o)}
         {ozet.dilimSayisi > 1 && ozet.dilimKod ? ` · en dolu dilim: ${ozet.dilimKod}` : ''}
+        {` · güzergâhta ${ozet.tekilPersonel} tekil personel`}
       </p>
     </section>
   )

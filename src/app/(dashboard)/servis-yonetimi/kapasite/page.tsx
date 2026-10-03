@@ -119,8 +119,18 @@ export default function TopluKapasitePage() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-base">
-              {toplu.toplam.guzergahSayisi} güzergâh · {toplu.toplam.asimSayisi} aşım · {toplu.toplam.aracsizGuzergahSayisi} araçsız
+              {toplu.toplam.guzergahSayisi} güzergâh · {toplu.toplam.asimSayisi} aşım · {toplu.toplam.aracsizGuzergahSayisi} araçsız ·{' '}
+              <span data-testid="toplu-tekil">{toplu.toplam.atanmisPersonel} tekil personel</span>
             </CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Tablo, her güzergâhın sefer dilimlerini ayrı ayrı gösterir. Tekil personel, aynı kişi bir kez sayılarak tüm aktif atamaları kapsar
+              (dilimli ya da dilimsiz) ve satır toplamı değildir.
+            </p>
+            {toplu.toplam.dilimsizAtamaSayisi > 0 && (
+              <p className="text-xs text-amber-700" data-testid="toplu-dilimsiz">
+                {toplu.toplam.dilimsizAtamaSayisi} atama dilim bağlantısız, kapasiteye girmiyor.
+              </p>
+            )}
           </CardHeader>
           <CardContent>
             <Table>

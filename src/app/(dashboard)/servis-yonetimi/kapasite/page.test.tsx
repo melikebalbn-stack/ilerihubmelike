@@ -19,7 +19,7 @@ const TOPLU = {
     dilim('G1', 'İstanbul Hattı', 'AKSAM', ['34 ABC 123'], { kapasite: 10, atananPersonelSayisi: 12, bosKoltuk: -2, dolulukOrani: 120, durum: 'ASIM', asimMiktari: 2 }),
     dilim('G2', 'Çayırova Hattı', 'SABAH', [], { kapasite: 0, atananPersonelSayisi: 3, bosKoltuk: -3, dolulukOrani: null, durum: 'ARAC_YOK', aracSayisi: 0 }),
   ],
-  toplam: { guzergahSayisi: 2, atanmisPersonel: 20, toplamKoltuk: 20, netBosKoltuk: 3, asimSayisi: 1, asimKisi: 2, aracsizGuzergahSayisi: 1, dolmakUzereSayisi: 0 },
+  toplam: { guzergahSayisi: 2, dilimsizAtamaSayisi: 0, atanmisPersonel: 20, toplamKoltuk: 20, netBosKoltuk: 3, asimSayisi: 1, asimKisi: 2, aracsizGuzergahSayisi: 1, dolmakUzereSayisi: 0 },
 }
 
 let fetchMock: ReturnType<typeof vi.fn>
@@ -89,5 +89,22 @@ describe('Toplu Kapasite', () => {
     oturum(['servis.view'])
     render(<TopluKapasitePage />)
     expect(await screen.findByText('Hesap tarihi geçersiz.')).toBeTruthy()
+  })
+})
+
+describe('Toplu Kapasite — B6: tekil personel ve dilimsiz uyarısı', () => {
+  it('başlıkta "N tekil personel" + açıklama; dilimsiz yoksa uyarı yok', async () => {
+    oturum(['servis.view'])
+    render(<TopluKapasitePage />)
+    expect((await screen.findByTestId('toplu-tekil')).textContent).toBe('20 tekil personel')
+    expect(document.body.textContent).toContain('satır toplamı değildir')
+    expect(screen.queryByTestId('toplu-dilimsiz')).toBeNull()
+  })
+
+  it('🔴 dilimsiz atama varsa "N atama dilim bağlantısız, kapasiteye girmiyor"', async () => {
+    fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ ok: true, data: { ...TOPLU, toplam: { ...TOPLU.toplam, dilimsizAtamaSayisi: 63 } } }) })
+    oturum(['servis.view'])
+    render(<TopluKapasitePage />)
+    expect((await screen.findByTestId('toplu-dilimsiz')).textContent).toBe('63 atama dilim bağlantısız, kapasiteye girmiyor.')
   })
 })

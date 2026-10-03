@@ -11,30 +11,33 @@ import {
 const ozet = (o: object) => ({
   kapasite: 10, atananPersonelSayisi: 5, bosKoltuk: 5, dolulukOrani: 50, aracSayisi: 1, durum: 'UYGUN', asimMiktari: 0, ...o,
 })
-const g = (kod: string, ad: string, araclar: string[], o: object) => ({
-  guzergahId: kod, kod, ad, dilimKod: 'SABAH', dilimSayisi: 1, aracliDilimSayisi: araclar.length, araclar, ozet: ozet(o), dilimler: [],
+const g = (kod: string, ad: string, araclar: string[], o: object, tekil = 0) => ({
+  guzergahId: kod, kod, ad, dilimKod: 'SABAH', dilimSayisi: 1, aracliDilimSayisi: araclar.length, tekilPersonel: tekil, araclar, ozet: ozet(o), dilimler: [],
 })
 const TOPLU = {
   tarih: '2026-10-03',
   guzergahlar: [
-    g('G1', 'İstanbul Hattı', ['34 ABC 123', '34 ABC 124'], { kapasite: 16, atananPersonelSayisi: 12, bosKoltuk: 4, dolulukOrani: 75.04 }),
-    g('G2', 'Şişli Hattı', ['34 SIS 001'], { kapasite: 10, atananPersonelSayisi: 12, bosKoltuk: -2, dolulukOrani: 120, durum: 'ASIM', asimMiktari: 2 }),
-    g('G3', 'Çayırova Hattı', [], { kapasite: 0, atananPersonelSayisi: 3, bosKoltuk: -3, dolulukOrani: null, durum: 'ARAC_YOK', aracSayisi: 0 }),
+    g('G1', 'İstanbul Hattı', ['34 ABC 123', '34 ABC 124'], { kapasite: 16, atananPersonelSayisi: 12, bosKoltuk: 4, dolulukOrani: 75.04 }, 14),
+    g('G2', 'Şişli Hattı', ['34 SIS 001'], { kapasite: 10, atananPersonelSayisi: 12, bosKoltuk: -2, dolulukOrani: 120, durum: 'ASIM', asimMiktari: 2 }, 12),
+    g('G3', 'Çayırova Hattı', [], { kapasite: 0, atananPersonelSayisi: 3, bosKoltuk: -3, dolulukOrani: null, durum: 'ARAC_YOK', aracSayisi: 0 }, 5),
   ],
   dilimSatirlari: [
     { guzergahId: 'G2', guzergahKod: 'G2', guzergahAd: 'Şişli Hattı', dilimId: 'd1', dilimKod: 'SABAH', dilimAd: 'Sabah', araclar: ['34 SIS 001'], ozet: ozet({ kapasite: 10, atananPersonelSayisi: 12, bosKoltuk: -2, dolulukOrani: 120, durum: 'ASIM', asimMiktari: 2 }) },
   ],
   asimlar: [{ guzergahId: 'G2', kod: 'G2', ad: 'Şişli Hattı', dilimKod: 'SABAH', koltuk: 10, personel: 12, fazla: 2 }],
-  toplam: { guzergahSayisi: 3, atanmisPersonel: 27, toplamKoltuk: 26, netBosKoltuk: 2, asimSayisi: 1, asimKisi: 2, aracsizGuzergahSayisi: 1, dolmakUzereSayisi: 0 },
+  toplam: { guzergahSayisi: 3, dilimsizAtamaSayisi: 4, atanmisPersonel: 31, toplamKoltuk: 26, netBosKoltuk: 2, asimSayisi: 1, asimKisi: 2, aracsizGuzergahSayisi: 1, dolmakUzereSayisi: 0 },
 } as unknown as ServisKapasiteToplu
 
 describe('kapasite Excel', () => {
   it('güzergâh sayfası: başlıklar + motor sayıları; araç yoksa koltuk/boş/doluluk BOŞ hücre', () => {
     const s = kapasiteGuzergahSatirlari(TOPLU.guzergahlar)
     expect(s[0]).toEqual([...KAPASITE_GUZERGAH_BASLIKLARI])
-    expect(s[1]).toEqual(['G1', 'İstanbul Hattı', '34 ABC 123, 34 ABC 124', 16, 12, 4, 75, 'Uygun', 'SABAH'])
-    expect(s[2]).toEqual(['G2', 'Şişli Hattı', '34 SIS 001', 10, 12, -2, 120, 'Aşım +2', 'SABAH'])
-    expect(s[3]).toEqual(['G3', 'Çayırova Hattı', '', '', 3, '', '', 'Araç yok', 'SABAH'])
+    // Personel = satırın (en dolu) dilimindeki sayı; sondaki TEKİL PERSONEL güzergâhtaki kişi sayısı
+    expect(s[1]).toEqual(['G1', 'İstanbul Hattı', '34 ABC 123, 34 ABC 124', 16, 12, 4, 75, 'Uygun', 'SABAH', 14])
+    expect(s[2]).toEqual(['G2', 'Şişli Hattı', '34 SIS 001', 10, 12, -2, 120, 'Aşım +2', 'SABAH', 12])
+    expect(s[3]).toEqual(['G3', 'Çayırova Hattı', '', '', 3, '', '', 'Araç yok', 'SABAH', 5])
+    expect(s[0][4]).toBe('PERSONEL (EN DOLU SEFER)')
+    expect(s[0][9]).toBe('TEKİL PERSONEL')
   })
 
   it('xlsx: 4 sayfa (Özet, Güzergâh Kapasitesi, Dilim Detayı, Aşımlar); özet tarih ve toplamlar', () => {
@@ -45,6 +48,16 @@ describe('kapasite Excel', () => {
     expect(ozetSayfa.find((r) => String(r[0]).startsWith('Kapasite aşımı'))?.[1]).toBe(1)
     const asim = XLSX.utils.sheet_to_json<string[]>(wb.Sheets['Aşımlar'], { header: 1 })
     expect(asim[1]).toEqual(['G2', 'Şişli Hattı', 'SABAH', 10, 12, 2])
+  })
+
+  it('Özet: "Atanmış personel (tekil kişi)", dilimsiz atama satırı ve açıklama notu', () => {
+    const wb = XLSX.read(kapasiteExcelOlustur(TOPLU), { type: 'buffer' })
+    const o = XLSX.utils.sheet_to_json<string[]>(wb.Sheets['Özet'], { header: 1 })
+    expect(o.find((r) => r[0] === 'Atanmış personel (tekil kişi)')?.[1]).toBe(31)
+    expect(o.find((r) => String(r[0]).startsWith('Dilimi olmayan atama'))?.[1]).toBe(4)
+    const not = String(o.find((r) => r[0] === 'Not')?.[1])
+    expect(not).toContain('EN DOLU sefer dilimine')
+    expect(not).toContain('satır toplamı değildir')
   })
 
   it('KVKK: dosyada kişi alanı yok (yalnız güzergâh/plaka/sayı başlıkları)', () => {

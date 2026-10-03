@@ -49,8 +49,10 @@ function bulguLinki(kod: string, kayit: VeriKaliteKayit): string {
     case 'guzergah-sefer-dilimi-tanimsiz':
     case 'kapasite-asimi':
     case 'guzergah-arac-yok':
-    case 'personel-atamasi-dilimsiz':
       return `/servis-yonetimi/guzergah/${kayit.guzergahId}`
+    // Dilimsiz atama: doğrudan Personel Atamaları sekmesi, dilimsizler seçili (toplu "Dilim Ata").
+    case 'personel-atamasi-dilimsiz':
+      return `/servis-yonetimi/guzergah/${kayit.guzergahId}?sekme=personel-atama&dilimsiz=1`
     default:
       return '/servis-yonetimi'
   }

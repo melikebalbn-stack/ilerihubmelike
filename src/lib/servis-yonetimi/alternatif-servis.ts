@@ -102,6 +102,9 @@ export type AlternatifServisOnerisi = {
   uygunDilimIdleri: string[]
 }
 
+/** Dilimsiz atama için açık mesaj (B5-3): sessiz bosKoltukVar=false yerine. */
+export const ALTERNATIF_DILIMSIZ_MESAJI = 'Bu atamanın sefer dilimi yok; önce dilim ekleyin.'
+
 // Bir personel atamasına (mevcut güzergah+durak+dilimler) göre alternatif
 // güzergah önerileri üretir. YALNIZ öneri üretir — hiçbir yazma işlemi
 // yapmaz. Personelin sabit bir durağı yoksa (durakId null) ortak-durak/
@@ -116,6 +119,8 @@ export async function alternatifServisOnerileriGetir(atamaId: string): Promise<A
   })
   if (!atama) throw new Error('Personel ataması bulunamadı.')
   if (!atama.aktif) throw new Error('Pasif bir atama için öneri üretilemez.')
+  // Dilimsiz atamada boş koltuk hesabı yapılamaz; sessizce "uygun alternatif yok" demek yanıltır.
+  if (atama.dilimler.length === 0) throw new Error(ALTERNATIF_DILIMSIZ_MESAJI)
   if (!atama.durak) return []
 
   const personelKoordinat: Koordinat | null =

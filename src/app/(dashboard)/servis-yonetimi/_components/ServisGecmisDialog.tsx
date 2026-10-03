@@ -51,7 +51,7 @@ const ALAN_ETIKET: Record<string, string> = {
   ad: 'Ad', yetkiliAdi: 'Yetkili', telefon: 'Telefon', eposta: 'E-posta', adres: 'Adres',
   aktif: 'Durum', personnelId: 'Personel ID', guzergahId: 'Güzergâh ID', durakId: 'Durak ID',
   baslangicTarihi: 'Başlangıç', bitisTarihi: 'Bitiş', atamaKaynagi: 'Atama Kaynağı',
-  dilimIdleri: 'Sefer Dilimleri', sira: 'Sıra', neden: 'Neden', aciklama: 'Açıklama',
+  dilimIdleri: 'Sefer Dilimleri', dilimKodlari: 'Dilim Kodları', topluIslemId: 'Toplu İşlem No', sira: 'Sıra', neden: 'Neden', aciklama: 'Açıklama',
   kod: 'Kod', plaka: 'Plaka', kapasite: 'Kapasite', adSoyad: 'Ad Soyad', rol: 'Rol',
   aracId: 'Araç ID', soforId: 'Şoför ID', dilimId: 'Dilim ID', firmaId: 'Firma ID', yerleskeId: 'Yerleşke ID',
   aracTipi: 'Araç Tipi', bolge: 'Bölge', il: 'İl', ilce: 'İlçe', mahalle: 'Mahalle',
@@ -64,6 +64,7 @@ function alanDegeriGoster(alan: string, deger: unknown): string {
   if (deger === null || deger === undefined) return '-'
   if (alan === 'aktif') return deger ? 'Aktif' : 'Pasif'
   if (alan === 'dilimIdleri' && Array.isArray(deger)) return `${deger.length} dilim seçildi`
+  if (alan === 'dilimKodlari' && Array.isArray(deger)) return deger.length === 0 ? 'Dilim yok' : deger.join(', ')
   if ((alan === 'baslangicTarihi' || alan === 'bitisTarihi') && typeof deger === 'string') return deger.slice(0, 10)
   return String(deger)
 }

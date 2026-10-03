@@ -18,6 +18,7 @@ vi.mock('@/lib/prisma', () => ({
 vi.mock('./kapasite', () => ({ servisKapasiteOzetiGetir: mocks.servisKapasiteOzetiGetir }))
 
 import {
+  ALTERNATIF_DILIMSIZ_MESAJI,
   ALTERNATIF_ESIK_KM_AYAR_KEY,
   VARSAYILAN_ESIK_KM,
   alternatifEsikKmGetir,
@@ -207,5 +208,21 @@ describe('alternatifServisOnerileriGetir', () => {
     expect(mocks.guzergahFindMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: expect.objectContaining({ id: { not: 'gMevcut' }, aktif: true }) }),
     )
+  })
+})
+
+describe('B5-3 — dilimsiz atama için açık mesaj', () => {
+  it('🔴 dilimsiz aktif atama: sessiz "uygun yok" yerine "önce dilim ekleyin" hatası; aday sorgulanmaz', async () => {
+    mocks.personelAtamaFindUnique.mockResolvedValue({
+      id: 'a1', aktif: true, guzergahId: 'g1', durak: { id: 'd1', enlem: 40.1, boylam: 29.1 }, dilimler: [],
+    })
+    await expect(alternatifServisOnerileriGetir('a1')).rejects.toThrow(ALTERNATIF_DILIMSIZ_MESAJI)
+    expect(ALTERNATIF_DILIMSIZ_MESAJI).toBe('Bu atamanın sefer dilimi yok; önce dilim ekleyin.')
+    expect(mocks.guzergahFindMany).not.toHaveBeenCalled()
+  })
+
+  it('dilimsiz + durak yok: yine açık dilim mesajı (durak sessizliğinden önce)', async () => {
+    mocks.personelAtamaFindUnique.mockResolvedValue({ id: 'a1', aktif: true, guzergahId: 'g1', durak: null, dilimler: [] })
+    await expect(alternatifServisOnerileriGetir('a1')).rejects.toThrow('önce dilim ekleyin')
   })
 })

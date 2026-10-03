@@ -41,6 +41,8 @@ import { SaatlerDialog } from './SaatlerDialog'
 import { TarihDuzenleDialog } from '../../_components/TarihDuzenleDialog'
 import { KapasitePanel } from './KapasitePanel'
 import { KapasiteKartlari } from './KapasiteKartlari'
+import { DilimDuzenleDialog, DilimSutunu, TopluDilimAtaDialog } from './AtamaDilimDialoglari'
+import { TOPLU_DILIM_ATAMA_LIMITI } from './atama-dilim-sabitleri'
 import type { GuzergahDurak, SeferDilimi } from './types'
 import { apiHataMesaji, jsonIstek, servisIstek } from '../../_lib/servis-istek'
 import { usePasifGeriAl } from '../../_lib/usePasifGeriAl'
@@ -114,6 +116,16 @@ function AktifRozet({ aktif }: { aktif: boolean }) {
 
 export default function GuzergahDetayPage() {
   const params = useParams()
+  // Veri Kalite bağlantısı: ?sekme=personel-atama&dilimsiz=1 → Personel Atamaları açılır, dilimsizler seçilir.
+  // (Sekmeler yüklenmeden çizilmediği için SSR/hydration farkı oluşmaz.)
+  const [sekme, setSekme] = useState(() =>
+    typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('sekme') === 'personel-atama'
+      ? 'personel-atama'
+      : 'duraklar',
+  )
+  const [dilimsizFiltre] = useState(
+    () => typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('dilimsiz') === '1',
+  )
   const guzergahId = (params?.id as string) || ''
   const { data: session } = useSession()
   const permissions = session?.user?.permissions || []
@@ -302,7 +314,7 @@ export default function GuzergahDetayPage() {
       {yukleniyor ? (
         <p className="text-sm text-muted-foreground">Yükleniyor...</p>
       ) : (
-        <Tabs defaultValue="duraklar">
+        <Tabs value={sekme} onValueChange={setSekme}>
           <TabsList>
             <TabsTrigger value="duraklar">Duraklar</TabsTrigger>
             <TabsTrigger value="arac-varsayilan">Varsayılan Araçlar</TabsTrigger>
@@ -426,6 +438,7 @@ export default function GuzergahDetayPage() {
               canPassive={canPassive}
               canRestore={canRestore}
               canHistory={canHistory}
+              dilimsizFiltre={dilimsizFiltre}
             />
           </TabsContent>
 
@@ -1508,6 +1521,7 @@ function PersonelAtamalarPanel({
   canPassive,
   canRestore,
   canHistory,
+  dilimsizFiltre = false,
 }: {
   guzergahId: string
   aktifDuraklar: GuzergahDurak[]
@@ -1517,6 +1531,7 @@ function PersonelAtamalarPanel({
   canPassive: boolean
   canRestore: boolean
   canHistory: boolean
+  dilimsizFiltre?: boolean
 }) {
   const [liste, setListe] = useState<PersonelAtama[]>([])
   const [yukleniyor, setYukleniyor] = useState(true)
@@ -1531,6 +1546,12 @@ function PersonelAtamalarPanel({
   const [kapatilan, setKapatilan] = useState<PersonelAtama | null>(null)
   const [kapatmaTarihi, setKapatmaTarihi] = useState('')
   const [alternatifIcinAtama, setAlternatifIcinAtama] = useState<PersonelAtama | null>(null)
+  // B5: dilim düzenleme (tek) ve toplu "Dilim Ata"
+  const [dilimDuzenlenen, setDilimDuzenlenen] = useState<PersonelAtama | null>(null)
+  const [secilenAtamalar, setSecilenAtamalar] = useState<string[]>([])
+  const [topluAcik, setTopluAcik] = useState(false)
+  const [bilgi, setBilgi] = useState<string | null>(null)
+  const dilimsizFiltreUygulandi = useRef(false)
 
   const yukle = useCallback(async () => {
     setYukleniyor(true)
@@ -1553,6 +1574,31 @@ function PersonelAtamalarPanel({
   useEffect(() => {
     yukle()
   }, [yukle])
+
+  const aktifAtamalar = liste.filter((v) => v.aktif)
+  const dilimsizAtamalar = aktifAtamalar.filter((v) => v.dilimler.length === 0)
+
+  function dilimsizlariSec() {
+    setSecilenAtamalar(dilimsizAtamalar.slice(0, TOPLU_DILIM_ATAMA_LIMITI).map((v) => v.id))
+    setBilgi(
+      dilimsizAtamalar.length > TOPLU_DILIM_ATAMA_LIMITI
+        ? `${dilimsizAtamalar.length} dilimsiz atama var; tek seferde en fazla ${TOPLU_DILIM_ATAMA_LIMITI} seçilir. İşlem bitince tekrar seçin.`
+        : null,
+    )
+  }
+
+  // Veri Kalite bağlantısından gelindiyse dilimsizler ilk yüklemede seçili gelir.
+  useEffect(() => {
+    if (dilimsizFiltre && canEdit && !yukleniyor && !dilimsizFiltreUygulandi.current) {
+      dilimsizFiltreUygulandi.current = true
+      dilimsizlariSec()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dilimsizFiltre, canEdit, yukleniyor])
+
+  function atamaSecimiDegistir(id: string, secili: boolean) {
+    setSecilenAtamalar((s) => (secili ? [...s, id] : s.filter((x) => x !== id)))
+  }
 
   function yeniAc() {
     setSecilenPersonel(null)
@@ -1622,12 +1668,30 @@ function PersonelAtamalarPanel({
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-medium">Personel Atamaları</h2>
-        {canManage && (
-          <Button size="sm" onClick={yeniAc} disabled={dilimler.length === 0}>
-            <Plus className="mr-2 h-4 w-4" /> Yeni Atama
-          </Button>
-        )}
+        <div className="flex flex-wrap gap-2">
+          {canEdit && dilimsizAtamalar.length > 0 && (
+            <Button size="sm" variant="outline" onClick={dilimsizlariSec}>
+              Dilimsiz atamaları seç ({dilimsizAtamalar.length})
+            </Button>
+          )}
+          {canEdit && secilenAtamalar.length > 0 && (
+            <Button size="sm" onClick={() => setTopluAcik(true)} disabled={dilimler.length === 0}>
+              Dilim Ata ({secilenAtamalar.length})
+            </Button>
+          )}
+          {canManage && (
+            <Button size="sm" onClick={yeniAc} disabled={dilimler.length === 0}>
+              <Plus className="mr-2 h-4 w-4" /> Yeni Atama
+            </Button>
+          )}
+        </div>
       </div>
+      {bilgi && <p className="text-sm text-amber-700">{bilgi}</p>}
+      {canEdit && dilimsizAtamalar.length > 0 && (
+        <p className="text-sm text-amber-700" data-testid="dilimsiz-uyari">
+          {dilimsizAtamalar.length} aktif atamanın sefer dilimi yok; bu atamalar kapasiteye girmiyor. Seçip &quot;Dilim Ata&quot; ile dilim ekleyin.
+        </p>
+      )}
       {canManage && dilimler.length === 0 && (
         <p className="text-sm text-amber-600">Atama yapmak için önce en az bir aktif sefer dilimi gerekir.</p>
       )}
@@ -1638,9 +1702,19 @@ function PersonelAtamalarPanel({
         <Table>
           <TableHeader>
             <TableRow>
+              {canEdit && (
+                <TableHead className="w-8">
+                  <input
+                    type="checkbox"
+                    aria-label="Tüm aktif atamaları seç"
+                    checked={aktifAtamalar.length > 0 && secilenAtamalar.length === Math.min(aktifAtamalar.length, TOPLU_DILIM_ATAMA_LIMITI)}
+                    onChange={(e) => setSecilenAtamalar(e.target.checked ? aktifAtamalar.slice(0, TOPLU_DILIM_ATAMA_LIMITI).map((v) => v.id) : [])}
+                  />
+                </TableHead>
+              )}
               <TableHead>Personel</TableHead>
               <TableHead>Durak</TableHead>
-              <TableHead>Sefer Dilimleri</TableHead>
+              <TableHead>Dilim</TableHead>
               <TableHead>Başlangıç</TableHead>
               <TableHead>Bitiş</TableHead>
               <TableHead>Durum</TableHead>
@@ -1650,16 +1724,28 @@ function PersonelAtamalarPanel({
           <TableBody>
             {liste.length === 0 && (
               <TableRow>
-                <TableCell colSpan={canEdit || canPassive || canRestore || canHistory ? 7 : 6} className="text-center text-muted-foreground">
+                <TableCell colSpan={(canEdit ? 1 : 0) + (canEdit || canPassive || canRestore || canHistory ? 7 : 6)} className="text-center text-muted-foreground">
                   Kayıt yok.
                 </TableCell>
               </TableRow>
             )}
             {liste.map((v) => (
               <TableRow key={v.id}>
+                {canEdit && (
+                  <TableCell>
+                    {v.aktif && (
+                      <input
+                        type="checkbox"
+                        aria-label={`${v.personnel.adSoyad} seç`}
+                        checked={secilenAtamalar.includes(v.id)}
+                        onChange={(e) => atamaSecimiDegistir(v.id, e.target.checked)}
+                      />
+                    )}
+                  </TableCell>
+                )}
                 <TableCell>{v.personnel.adSoyad}{!v.personnel.aktif ? ' (Pasif)' : ''}</TableCell>
                 <TableCell>{v.durak ? `${v.durak.kod} — ${v.durak.ad}` : '-'}</TableCell>
-                <TableCell>{v.dilimler.map((d) => d.dilim.kod).join(', ')}</TableCell>
+                <TableCell><DilimSutunu dilimler={v.dilimler} /></TableCell>
                 <TableCell>{tarihGoster(v.baslangicTarihi)}</TableCell>
                 <TableCell>{tarihGoster(v.bitisTarihi)}</TableCell>
                 <TableCell><Badge variant={v.aktif ? 'default' : 'secondary'}>{v.aktif ? 'Aktif' : 'Pasif'}</Badge></TableCell>
@@ -1667,6 +1753,9 @@ function PersonelAtamalarPanel({
                   <TableCell className="text-right space-x-2">
                     {canHistory && <GecmisButonu onClick={() => setGecmisAtama(v)} />}
                     {canEdit && <Button size="sm" variant="outline" onClick={() => setDuzenlenen(v)}>Düzenle</Button>}
+                    {canEdit && v.aktif && (
+                      <Button size="sm" variant="outline" onClick={() => setDilimDuzenlenen(v)}>Dilim Düzenle</Button>
+                    )}
                     {v.aktif && canPassive && canManage && (
                       <Button size="sm" variant="outline" onClick={() => setAlternatifIcinAtama(v)}>
                         Alternatif Servis Öner
@@ -1754,6 +1843,31 @@ function PersonelAtamalarPanel({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {dilimDuzenlenen && (
+        <DilimDuzenleDialog
+          key={dilimDuzenlenen.id}
+          atama={dilimDuzenlenen}
+          dilimler={dilimler}
+          onKapat={() => setDilimDuzenlenen(null)}
+          onKaydedildi={() => { setDilimDuzenlenen(null); yukle() }}
+        />
+      )}
+
+      {topluAcik && (
+        <TopluDilimAtaDialog
+          guzergahId={guzergahId}
+          atamalar={liste.filter((v) => secilenAtamalar.includes(v.id))}
+          dilimler={dilimler}
+          onKapat={() => setTopluAcik(false)}
+          onTamam={(sonuc) => {
+            setTopluAcik(false)
+            setSecilenAtamalar([])
+            setBilgi(`${sonuc.degisen} atamaya dilim eklendi${sonuc.degismeyen > 0 ? `, ${sonuc.degismeyen} atamada değişiklik yoktu` : ''}.`)
+            yukle()
+          }}
+        />
+      )}
 
       {duzenlenen && (
         <TarihDuzenleDialog

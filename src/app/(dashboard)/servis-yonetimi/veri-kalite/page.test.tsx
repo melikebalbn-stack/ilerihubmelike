@@ -225,7 +225,7 @@ describe('VeriKaliteMerkeziPage — dilimsiz personel ataması kartı (B4)', () 
     render(<VeriKaliteMerkeziPage />)
     await waitFor(() => expect(screen.getByText('Sefer dilimi bağlantısı olmayan personel ataması')).toBeInTheDocument())
     const kayit = screen.getByText('DARICA — Darıca (IMPORT, 2026-09-27 başlangıçlı)')
-    expect(kayit.closest('a')?.getAttribute('href')).toBe('/servis-yonetimi/guzergah/g1')
+    expect(kayit.closest('a')?.getAttribute('href')).toBe('/servis-yonetimi/guzergah/g1?sekme=personel-atama&dilimsiz=1')
   })
 
   it('N = 0: olumlu boş durum', async () => {

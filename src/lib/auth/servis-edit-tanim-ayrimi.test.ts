@@ -40,7 +40,14 @@ function anahtarlar(dosya: string): string[] {
 const yol = (f: string) => relative(API, f).replace(/\\/g, '/')
 
 /** servis.edit ile korunan uçlar — OPERASYONEL kayıtlar. */
-const OPERASYONEL = ['guzergah-personel-atama/[id]/route.ts', 'personel-durum/[id]/route.ts']
+const OPERASYONEL = [
+  'guzergah-personel-atama/[id]/route.ts',
+  'personel-durum/[id]/route.ts',
+  // B5 — atamaya sefer dilimi ekleme/çıkarma (operasyonel atama düzeltmesi; tanım değil)
+  'guzergah-personel-atama/[id]/dilimler/route.ts',
+  'guzergah/[id]/personel-atama/dilim-onizle/route.ts',
+  'guzergah/[id]/personel-atama/dilim-ata/route.ts',
+]
 
 /** servis.tanim.manage ile korunan uçlar — TANIM kayıtları. */
 const TANIM = [
@@ -67,8 +74,8 @@ describe('servis.edit — OPERASYONEL kayıt düzenleme', () => {
     expect(k).toContain('servis.edit')
   })
 
-  it('🔴 SÜRÜKLENME: servis.edit kullanan uç kümesi TAM OLARAK bu iki uç', () => {
-    // Üçüncü bir uç servis.edit'e bağlanırsa (ya da bunlardan biri
+  it('🔴 SÜRÜKLENME: servis.edit kullanan uç kümesi TAM OLARAK OPERASYONEL listesi', () => {
+    // Listede olmayan bir uç servis.edit'e bağlanırsa (ya da bunlardan biri
     // tanim.manage'e kayarsa) burası patlar — ayrım sessizce kaymaz.
     const kullananlar = tumRouteDosyalari()
       .filter(f => anahtarlar(f).includes('servis.edit'))

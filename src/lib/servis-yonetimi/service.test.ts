@@ -3236,3 +3236,275 @@ describe('ServisPersonelAtama — transferServisPersonelAtama (FAZ 1B: Alternati
     expect(mocks.personelAtamaUpdate).not.toHaveBeenCalled()
   })
 })
+
+// ============================================================================
+// A3 — başlangıç/bitiş düzenleme + kapatma tarihi sınırı
+// ============================================================================
+describe('A3 — varsayılan araç/şoför ataması: başlangıç + bitiş düzenleme', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-10-03T09:00:00.000Z'))
+    // Önceki testlerden kalan mockResolvedValueOnce kuyruğu bu testleri bozmasın.
+    for (const m of [
+      mocks.aracVarsayilanFindUnique, mocks.aracVarsayilanFindFirst, mocks.aracVarsayilanUpdate,
+      mocks.soforVarsayilanFindUnique, mocks.soforVarsayilanFindFirst, mocks.soforVarsayilanUpdate,
+      mocks.sorumluFindUnique, mocks.sorumluUpdate,
+      mocks.personelAtamaFindUnique, mocks.personelAtamaFindFirst, mocks.personelAtamaUpdate,
+      mocks.islemGecmisiCreate,
+    ]) m.mockReset()
+  })
+  afterEach(() => vi.useRealTimers())
+
+  const arac = (ek: Record<string, unknown> = {}) => ({
+    id: 'v1', aracId: 'arac-1', dilimId: 'dilim-1', rol: 'ANA', aktif: true,
+    baslangicTarihi: new Date('2026-01-01'), bitisTarihi: new Date('2026-06-30'), neden: null, aciklama: null, ...ek,
+  })
+  const sofor = (ek: Record<string, unknown> = {}) => ({
+    id: 's1', soforId: 'sofor-1', dilimId: 'dilim-1', rol: 'ANA', aktif: true,
+    baslangicTarihi: new Date('2026-01-01'), bitisTarihi: new Date('2026-06-30'), neden: null, aciklama: null, ...ek,
+  })
+
+  it('araç: başlangıç tarihi düzeltilir, çakışma YENİ aralıkla kontrol edilir, audit eski → yeni yazar', async () => {
+    mocks.aracVarsayilanFindUnique.mockResolvedValue(arac())
+    mocks.aracVarsayilanFindFirst.mockResolvedValue(null)
+    mocks.aracVarsayilanUpdate.mockResolvedValue({ id: 'v1' })
+
+    await guncelleServisGuzergahAracVarsayilan('v1', { baslangicTarihi: '2026-02-01' }, 'user-1')
+
+    const where = mocks.aracVarsayilanFindFirst.mock.calls[0][0].where
+    expect(where.AND[1]).toEqual({ baslangicTarihi: { lte: new Date('2026-06-30T00:00:00.000Z') } })
+    expect(mocks.aracVarsayilanUpdate.mock.calls[0][0].data.baslangicTarihi).toEqual(new Date('2026-02-01T00:00:00.000Z'))
+    const audit = mocks.islemGecmisiCreate.mock.calls[0][0].data
+    expect(audit).toMatchObject({ hedefTipi: 'GUZERGAH_ARAC_VARSAYILAN', islem: 'GUNCELLEME', userId: 'user-1' })
+    expect(JSON.stringify(audit.oncekiDeger)).toContain('2026-01-01')
+    expect(JSON.stringify(audit.yeniDeger)).toContain('2026-02-01')
+    expect(Object.keys(audit.yeniDeger)).toEqual(['baslangicTarihi']) // yalnız değişen alan
+  })
+
+  it('araç: başlangıç ve bitiş birlikte düzeltilebilir', async () => {
+    mocks.aracVarsayilanFindUnique.mockResolvedValue(arac())
+    mocks.aracVarsayilanFindFirst.mockResolvedValue(null)
+    mocks.aracVarsayilanUpdate.mockResolvedValue({ id: 'v1' })
+    await guncelleServisGuzergahAracVarsayilan('v1', { baslangicTarihi: '2026-03-01', bitisTarihi: '2026-12-31' }, 'user-1')
+    const data = mocks.aracVarsayilanUpdate.mock.calls[0][0].data
+    expect(data.baslangicTarihi).toEqual(new Date('2026-03-01T00:00:00.000Z'))
+    expect(data.bitisTarihi).toEqual(new Date('2026-12-31T00:00:00.000Z'))
+  })
+
+  it('araç: bitiş boşaltılırsa süresiz (null) olur', async () => {
+    mocks.aracVarsayilanFindUnique.mockResolvedValue(arac())
+    mocks.aracVarsayilanFindFirst.mockResolvedValue(null)
+    mocks.aracVarsayilanUpdate.mockResolvedValue({ id: 'v1' })
+    await guncelleServisGuzergahAracVarsayilan('v1', { bitisTarihi: '' }, 'user-1')
+    expect(mocks.aracVarsayilanUpdate.mock.calls[0][0].data.bitisTarihi).toBeNull()
+  })
+
+  it('araç: bitiş < başlangıç reddedilir (yeni başlangıç mevcut bitişten sonraysa da)', async () => {
+    mocks.aracVarsayilanFindUnique.mockResolvedValue(arac())
+    await expect(
+      guncelleServisGuzergahAracVarsayilan('v1', { baslangicTarihi: '2026-08-01' }, 'user-1'),
+    ).rejects.toThrow('Bitiş tarihi başlangıç tarihinden önce olamaz.')
+    await expect(
+      guncelleServisGuzergahAracVarsayilan('v1', { bitisTarihi: '2025-12-31' }, 'user-1'),
+    ).rejects.toThrow('Bitiş tarihi başlangıç tarihinden önce olamaz.')
+    expect(mocks.aracVarsayilanUpdate).not.toHaveBeenCalled()
+  })
+
+  it('araç: makul aralık dışı ve geçersiz tarih reddedilir (Invalid Date artık sızmaz)', async () => {
+    mocks.aracVarsayilanFindUnique.mockResolvedValue(arac())
+    for (const bitisTarihi of ['2099-01-01', 'abc', '2026-02-30']) {
+      await expect(guncelleServisGuzergahAracVarsayilan('v1', { bitisTarihi }, 'u')).rejects.toThrow(/Bitiş tarihi/)
+    }
+    await expect(guncelleServisGuzergahAracVarsayilan('v1', { baslangicTarihi: '1999-01-01' }, 'u')).rejects.toThrow(/Başlangıç tarihi/)
+    await expect(guncelleServisGuzergahAracVarsayilan('v1', { baslangicTarihi: '' }, 'u')).rejects.toThrow('Başlangıç tarihi zorunludur.')
+    expect(mocks.aracVarsayilanUpdate).not.toHaveBeenCalled()
+  })
+
+  it('araç: başlangıç çakışma yaratıyorsa mevcut Türkçe çakışma mesajıyla reddedilir', async () => {
+    mocks.aracVarsayilanFindUnique.mockResolvedValue(arac())
+    mocks.aracVarsayilanFindFirst.mockResolvedValue({
+      id: 'v-baska', baslangicTarihi: new Date('2025-12-01'), bitisTarihi: new Date('2026-01-15'),
+      guzergah: { kod: 'BASKA', ad: 'Başka Güzergah' },
+    })
+    await expect(
+      guncelleServisGuzergahAracVarsayilan('v1', { baslangicTarihi: '2025-12-20' }, 'user-1'),
+    ).rejects.toThrow('zaten "BASKA — Başka Güzergah"')
+    expect(mocks.aracVarsayilanUpdate).not.toHaveBeenCalled()
+  })
+
+  it('araç: PASİF kayıtta tarih düzeltmesi çakışma sorgusu yapmaz (geri alınırken kontrol edilir)', async () => {
+    mocks.aracVarsayilanFindUnique.mockResolvedValue(arac({ aktif: false }))
+    mocks.aracVarsayilanUpdate.mockResolvedValue({ id: 'v1' })
+    await guncelleServisGuzergahAracVarsayilan('v1', { baslangicTarihi: '2026-02-01' }, 'user-1')
+    expect(mocks.aracVarsayilanFindFirst).not.toHaveBeenCalled()
+  })
+
+  it('araç: tarih değişmezse (aynı değer gönderildi) çakışma sorgusu ve audit YOK', async () => {
+    mocks.aracVarsayilanFindUnique.mockResolvedValue(arac())
+    mocks.aracVarsayilanUpdate.mockResolvedValue({ id: 'v1' })
+    await guncelleServisGuzergahAracVarsayilan('v1', { baslangicTarihi: '2026-01-01', bitisTarihi: '2026-06-30' }, 'user-1')
+    expect(mocks.aracVarsayilanFindFirst).not.toHaveBeenCalled()
+    expect(mocks.islemGecmisiCreate).not.toHaveBeenCalled()
+  })
+
+  it('şoför: başlangıç düzeltme + çakışma kontrolü + audit', async () => {
+    mocks.soforVarsayilanFindUnique.mockResolvedValue(sofor())
+    mocks.soforVarsayilanFindFirst.mockResolvedValue(null)
+    mocks.soforVarsayilanUpdate.mockResolvedValue({ id: 's1' })
+    await guncelleServisGuzergahSoforVarsayilan('s1', { baslangicTarihi: '2026-02-01' }, 'user-1')
+    expect(mocks.soforVarsayilanFindFirst).toHaveBeenCalled()
+    expect(mocks.islemGecmisiCreate.mock.calls[0][0].data).toMatchObject({
+      hedefTipi: 'GUZERGAH_SOFOR_VARSAYILAN', islem: 'GUNCELLEME', userId: 'user-1',
+    })
+  })
+
+  it('şoför: bitiş < başlangıç ve makul dışı tarih reddedilir', async () => {
+    mocks.soforVarsayilanFindUnique.mockResolvedValue(sofor())
+    await expect(guncelleServisGuzergahSoforVarsayilan('s1', { bitisTarihi: '2025-01-01' }, 'u')).rejects.toThrow('başlangıç tarihinden önce')
+    await expect(guncelleServisGuzergahSoforVarsayilan('s1', { bitisTarihi: '2099-01-01' }, 'u')).rejects.toThrow(/en fazla 1 yıl/)
+    expect(mocks.soforVarsayilanUpdate).not.toHaveBeenCalled()
+  })
+})
+
+describe('A3 — servis sorumlusu düzenleme', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-10-03T09:00:00.000Z'))
+    // Önceki testlerden kalan mockResolvedValueOnce kuyruğu bu testleri bozmasın.
+    for (const m of [
+      mocks.aracVarsayilanFindUnique, mocks.aracVarsayilanFindFirst, mocks.aracVarsayilanUpdate,
+      mocks.soforVarsayilanFindUnique, mocks.soforVarsayilanFindFirst, mocks.soforVarsayilanUpdate,
+      mocks.sorumluFindUnique, mocks.sorumluUpdate,
+      mocks.personelAtamaFindUnique, mocks.personelAtamaFindFirst, mocks.personelAtamaUpdate,
+      mocks.islemGecmisiCreate,
+    ]) m.mockReset()
+  })
+  afterEach(() => vi.useRealTimers())
+
+  const sorumlu = () => ({
+    id: 'sr1', personnelId: 'p1', rol: 'ANA', aktif: true,
+    baslangicTarihi: new Date('2026-01-01'), bitisTarihi: null, neden: null, aciklama: null,
+  })
+
+  it('başlangıç, bitiş, neden, açıklama düzenlenir ve her biri audit\'e eski → yeni yazılır', async () => {
+    mocks.sorumluFindUnique.mockResolvedValue(sorumlu())
+    mocks.sorumluUpdate.mockResolvedValue({ id: 'sr1' })
+    await guncelleServisSorumlusu(
+      'sr1',
+      { baslangicTarihi: '2026-02-01', bitisTarihi: '2026-12-31', neden: 'Görev değişikliği', aciklama: 'Not' },
+      'user-1',
+    )
+    const audit = mocks.islemGecmisiCreate.mock.calls[0][0].data
+    expect(audit).toMatchObject({ hedefTipi: 'SORUMLUSU', islem: 'GUNCELLEME', userId: 'user-1' })
+    expect(Object.keys(audit.yeniDeger).sort()).toEqual(['aciklama', 'baslangicTarihi', 'bitisTarihi', 'neden'])
+  })
+
+  it('personel kimliği düzenlenemez: update verisinde personnelId/rol yok', async () => {
+    mocks.sorumluFindUnique.mockResolvedValue(sorumlu())
+    mocks.sorumluUpdate.mockResolvedValue({ id: 'sr1' })
+    await guncelleServisSorumlusu('sr1', { neden: 'x', personnelId: 'p-baska', rol: 'YEDEK' } as never, 'user-1')
+    const data = mocks.sorumluUpdate.mock.calls[0][0].data
+    expect(data).not.toHaveProperty('personnelId')
+    expect(data).not.toHaveProperty('rol')
+  })
+
+  it('bitiş < başlangıç ve geçersiz tarih reddedilir', async () => {
+    mocks.sorumluFindUnique.mockResolvedValue(sorumlu())
+    await expect(guncelleServisSorumlusu('sr1', { bitisTarihi: '2025-12-31' }, 'u')).rejects.toThrow('başlangıç tarihinden önce')
+    await expect(guncelleServisSorumlusu('sr1', { baslangicTarihi: 'abc' }, 'u')).rejects.toThrow(/Başlangıç tarihi geçersiz/)
+    expect(mocks.sorumluUpdate).not.toHaveBeenCalled()
+  })
+
+  it('çakışma kontrolü YOK (bilinçli: bir personel birden çok güzergâhta sorumlu olabilir)', async () => {
+    mocks.sorumluFindUnique.mockResolvedValue(sorumlu())
+    mocks.sorumluUpdate.mockResolvedValue({ id: 'sr1' })
+    await guncelleServisSorumlusu('sr1', { baslangicTarihi: '2026-03-01' }, 'u')
+    expect(mocks.sorumluUpdate).toHaveBeenCalled()
+  })
+})
+
+describe('A3 — personel ataması bitiş tarihi düzeltme', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-10-03T09:00:00.000Z'))
+    // Önceki testlerden kalan mockResolvedValueOnce kuyruğu bu testleri bozmasın.
+    for (const m of [
+      mocks.aracVarsayilanFindUnique, mocks.aracVarsayilanFindFirst, mocks.aracVarsayilanUpdate,
+      mocks.soforVarsayilanFindUnique, mocks.soforVarsayilanFindFirst, mocks.soforVarsayilanUpdate,
+      mocks.sorumluFindUnique, mocks.sorumluUpdate,
+      mocks.personelAtamaFindUnique, mocks.personelAtamaFindFirst, mocks.personelAtamaUpdate,
+      mocks.islemGecmisiCreate,
+    ]) m.mockReset()
+  })
+  afterEach(() => vi.useRealTimers())
+
+  const atama = (ek: Record<string, unknown> = {}) => ({
+    id: 'a1', personnelId: 'p1', aktif: true,
+    baslangicTarihi: new Date('2026-01-01'), bitisTarihi: null, ...ek,
+  })
+
+  it('bitiş düzeltilir, çakışma kontrolü kendi kaydını dışlar, audit yazılır', async () => {
+    mocks.personelAtamaFindUnique.mockResolvedValue(atama())
+    mocks.personelAtamaFindFirst.mockResolvedValue(null)
+    mocks.personelAtamaUpdate.mockResolvedValue({ id: 'a1' })
+    await guncelleServisPersonelAtama('a1', { bitisTarihi: '2026-09-30' }, 'user-1')
+    expect(mocks.personelAtamaUpdate.mock.calls[0][0].data.bitisTarihi).toEqual(new Date('2026-09-30T00:00:00.000Z'))
+    expect(mocks.islemGecmisiCreate.mock.calls[0][0].data).toMatchObject({
+      hedefTipi: 'PERSONEL_ATAMA', islem: 'GUNCELLEME', userId: 'user-1',
+    })
+  })
+
+  it('başlangıçtan önceki, makul dışı ve geçersiz bitiş reddedilir', async () => {
+    mocks.personelAtamaFindUnique.mockResolvedValue(atama())
+    await expect(guncelleServisPersonelAtama('a1', { bitisTarihi: '2025-12-31' }, 'u')).rejects.toThrow('başlangıç tarihinden önce')
+    await expect(guncelleServisPersonelAtama('a1', { bitisTarihi: '2062-01-01' }, 'u')).rejects.toThrow(/en fazla 1 yıl/)
+    await expect(guncelleServisPersonelAtama('a1', { bitisTarihi: 'abc' }, 'u')).rejects.toThrow(/Bitiş tarihi geçersiz/)
+    expect(mocks.personelAtamaUpdate).not.toHaveBeenCalled()
+  })
+
+  it('bitiş boşaltılırsa süresiz olur', async () => {
+    mocks.personelAtamaFindUnique.mockResolvedValue(atama({ bitisTarihi: new Date('2026-06-30') }))
+    mocks.personelAtamaFindFirst.mockResolvedValue(null)
+    mocks.personelAtamaUpdate.mockResolvedValue({ id: 'a1' })
+    await guncelleServisPersonelAtama('a1', { bitisTarihi: '' }, 'user-1')
+    expect(mocks.personelAtamaUpdate.mock.calls[0][0].data.bitisTarihi).toBeNull()
+  })
+})
+
+describe('A3 — kapatma (pasifleştirme) tarihi bugünden ileri olamaz', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-10-03T09:00:00.000Z'))
+    // Önceki testlerden kalan mockResolvedValueOnce kuyruğu bu testleri bozmasın.
+    for (const m of [
+      mocks.aracVarsayilanFindUnique, mocks.aracVarsayilanFindFirst, mocks.aracVarsayilanUpdate,
+      mocks.soforVarsayilanFindUnique, mocks.soforVarsayilanFindFirst, mocks.soforVarsayilanUpdate,
+      mocks.sorumluFindUnique, mocks.sorumluUpdate,
+      mocks.personelAtamaFindUnique, mocks.personelAtamaFindFirst, mocks.personelAtamaUpdate,
+      mocks.islemGecmisiCreate,
+    ]) m.mockReset()
+  })
+  afterEach(() => vi.useRealTimers())
+
+  const kayit = { id: 'k1', aktif: true, baslangicTarihi: new Date('2026-01-01'), bitisTarihi: null }
+  const durumlar: [string, () => void, (b: string) => Promise<unknown>][] = [
+    ['araç varsayılan', () => mocks.aracVarsayilanFindUnique.mockResolvedValue(kayit), (b) => pasiflestirServisGuzergahAracVarsayilan('k1', b, 'u')],
+    ['şoför varsayılan', () => mocks.soforVarsayilanFindUnique.mockResolvedValue(kayit), (b) => pasiflestirServisGuzergahSoforVarsayilan('k1', b, 'u')],
+    ['sorumlu', () => mocks.sorumluFindUnique.mockResolvedValue(kayit), (b) => pasiflestirServisSorumlusu('k1', b, 'u')],
+    ['personel ataması', () => mocks.personelAtamaFindUnique.mockResolvedValue(kayit), (b) => pasiflestirServisPersonelAtama('k1', b, 'u')],
+  ]
+
+  it.each(durumlar)('%s: ileri tarihli kapatma reddedilir, yazma/audit olmaz', async (_ad, kur, kapat) => {
+    kur()
+    await expect(kapat('2026-12-31')).rejects.toThrow(/bugünden ileri olamaz/)
+    expect(mocks.islemGecmisiCreate).not.toHaveBeenCalled()
+  })
+
+  it.each(durumlar)('%s: başlangıçtan önceki ve geçersiz kapatma reddedilir', async (_ad, kur, kapat) => {
+    kur()
+    await expect(kapat('2025-12-31')).rejects.toThrow('başlangıç tarihinden önce')
+    await expect(kapat('abc')).rejects.toThrow(/Kapatma tarihi geçersiz/)
+    await expect(kapat('')).rejects.toThrow('Kapatma tarihi zorunludur')
+    expect(mocks.islemGecmisiCreate).not.toHaveBeenCalled()
+  })
+})

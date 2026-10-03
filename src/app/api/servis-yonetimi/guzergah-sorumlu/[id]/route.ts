@@ -7,7 +7,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (error) return error
   try {
     const { id } = await params
-    const body = (await request.json()) as { bitisTarihi?: string | null; neden?: string | null; aciklama?: string | null }
+    const body = (await request.json()) as { baslangicTarihi?: string; bitisTarihi?: string | null; neden?: string | null; aciklama?: string | null }
     const data = await guncelleServisSorumlusu(id, body, userId)
     return NextResponse.json({ ok: true, message: 'Servis sorumlusu ataması güncellendi.', data })
   } catch (err) {

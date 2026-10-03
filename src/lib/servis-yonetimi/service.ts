@@ -34,6 +34,7 @@ import {
   type ServisPersonelAtamaForm,
 } from './validation'
 import { kaydetIslemGecmisi, degisenAlanlar } from './audit'
+import { aralikDogrula, baslangicTarihiCoz, bitisTarihiCoz, kapatmaTarihiCoz } from './tarih-kurallari'
 
 // ============================================================================
 // ServisFirma
@@ -1281,31 +1282,38 @@ export async function createServisGuzergahAracVarsayilan(
   })
 }
 
-const ARAC_VARSAYILAN_GUNCELLENEBILIR_ALANLAR = ['bitisTarihi', 'neden', 'aciklama'] as const
+const ARAC_VARSAYILAN_GUNCELLENEBILIR_ALANLAR = ['baslangicTarihi', 'bitisTarihi', 'neden', 'aciklama'] as const
 
 export async function guncelleServisGuzergahAracVarsayilan(
   id: string,
-  form: { bitisTarihi?: string | null; neden?: string | null; aciklama?: string | null },
+  form: { baslangicTarihi?: string; bitisTarihi?: string | null; neden?: string | null; aciklama?: string | null },
   updatedById: string,
 ) {
   const existing = await prisma.servisGuzergahAracVarsayilan.findUnique({ where: { id } })
   if (!existing) throw new Error('Varsayılan araç ataması bulunamadı.')
 
-  const data: { bitisTarihi?: Date | null; neden?: string | null; aciklama?: string | null; updatedById: string } = {
-    updatedById,
-  }
+  const data: {
+    baslangicTarihi?: Date
+    bitisTarihi?: Date | null
+    neden?: string | null
+    aciklama?: string | null
+    updatedById: string
+  } = { updatedById }
 
-  if (form.bitisTarihi !== undefined) {
-    const bitis = dateOnlyOrNull(form.bitisTarihi)
-    if (form.bitisTarihi?.trim() && !bitis) throw new Error('Bitiş tarihi geçersiz.')
-    if (bitis && bitis < existing.baslangicTarihi) throw new Error('Bitiş tarihi başlangıç tarihinden önce olamaz.')
+  // Başlangıç/bitiş (A3): geçerli + makul aralık + bitiş >= başlangıç. Kayıt
+  // silinmez; her değişiklik eski → yeni olarak audit'lenir (tarihçe).
+  const baslangic = form.baslangicTarihi !== undefined ? baslangicTarihiCoz(form.baslangicTarihi) : existing.baslangicTarihi
+  const bitis = form.bitisTarihi !== undefined ? bitisTarihiCoz(form.bitisTarihi) : existing.bitisTarihi
+  aralikDogrula(baslangic, bitis)
+  const baslangicDegisti = baslangic.getTime() !== existing.baslangicTarihi.getTime()
+  const bitisDegisti = (bitis?.getTime() ?? null) !== (existing.bitisTarihi?.getTime() ?? null)
 
-    if (existing.rol === 'ANA' && existing.aktif && bitis?.getTime() !== existing.bitisTarihi?.getTime()) {
-      const cakisan = await anaAracCakismasi(existing.aracId, existing.dilimId, existing.baslangicTarihi, bitis, id)
-      if (cakisan) throw new Error(aracCakismaMesaji(cakisan))
-    }
-    data.bitisTarihi = bitis
+  if (existing.rol === 'ANA' && existing.aktif && (baslangicDegisti || bitisDegisti)) {
+    const cakisan = await anaAracCakismasi(existing.aracId, existing.dilimId, baslangic, bitis, id)
+    if (cakisan) throw new Error(aracCakismaMesaji(cakisan))
   }
+  if (form.baslangicTarihi !== undefined) data.baslangicTarihi = baslangic
+  if (form.bitisTarihi !== undefined) data.bitisTarihi = bitis
   if (form.neden !== undefined) data.neden = form.neden?.trim() || null
   if (form.aciklama !== undefined) data.aciklama = form.aciklama?.trim() || null
 
@@ -1325,9 +1333,7 @@ export async function pasiflestirServisGuzergahAracVarsayilan(id: string, bitisT
   if (!existing) throw new Error('Varsayılan araç ataması bulunamadı.')
   if (!existing.aktif) throw new Error('Bu atama zaten pasif.')
 
-  const bitis = dateOnlyOrNull(bitisTarihi)
-  if (!bitisTarihi?.trim() || !bitis) throw new Error('Kapatma tarihi zorunludur ve geçerli olmalıdır.')
-  if (bitis < existing.baslangicTarihi) throw new Error('Kapatma tarihi başlangıç tarihinden önce olamaz.')
+  const bitis = kapatmaTarihiCoz(bitisTarihi, existing.baslangicTarihi)
 
   return prisma.$transaction(async (tx) => {
     const guncel = await tx.servisGuzergahAracVarsayilan.update({
@@ -1440,31 +1446,38 @@ export async function createServisGuzergahSoforVarsayilan(
   })
 }
 
-const SOFOR_VARSAYILAN_GUNCELLENEBILIR_ALANLAR = ['bitisTarihi', 'neden', 'aciklama'] as const
+const SOFOR_VARSAYILAN_GUNCELLENEBILIR_ALANLAR = ['baslangicTarihi', 'bitisTarihi', 'neden', 'aciklama'] as const
 
 export async function guncelleServisGuzergahSoforVarsayilan(
   id: string,
-  form: { bitisTarihi?: string | null; neden?: string | null; aciklama?: string | null },
+  form: { baslangicTarihi?: string; bitisTarihi?: string | null; neden?: string | null; aciklama?: string | null },
   updatedById: string,
 ) {
   const existing = await prisma.servisGuzergahSoforVarsayilan.findUnique({ where: { id } })
   if (!existing) throw new Error('Varsayılan şoför ataması bulunamadı.')
 
-  const data: { bitisTarihi?: Date | null; neden?: string | null; aciklama?: string | null; updatedById: string } = {
-    updatedById,
-  }
+  const data: {
+    baslangicTarihi?: Date
+    bitisTarihi?: Date | null
+    neden?: string | null
+    aciklama?: string | null
+    updatedById: string
+  } = { updatedById }
 
-  if (form.bitisTarihi !== undefined) {
-    const bitis = dateOnlyOrNull(form.bitisTarihi)
-    if (form.bitisTarihi?.trim() && !bitis) throw new Error('Bitiş tarihi geçersiz.')
-    if (bitis && bitis < existing.baslangicTarihi) throw new Error('Bitiş tarihi başlangıç tarihinden önce olamaz.')
+  // Başlangıç/bitiş (A3): geçerli + makul aralık + bitiş >= başlangıç. Kayıt
+  // silinmez; her değişiklik eski → yeni olarak audit'lenir (tarihçe).
+  const baslangic = form.baslangicTarihi !== undefined ? baslangicTarihiCoz(form.baslangicTarihi) : existing.baslangicTarihi
+  const bitis = form.bitisTarihi !== undefined ? bitisTarihiCoz(form.bitisTarihi) : existing.bitisTarihi
+  aralikDogrula(baslangic, bitis)
+  const baslangicDegisti = baslangic.getTime() !== existing.baslangicTarihi.getTime()
+  const bitisDegisti = (bitis?.getTime() ?? null) !== (existing.bitisTarihi?.getTime() ?? null)
 
-    if (existing.rol === 'ANA' && existing.aktif && bitis?.getTime() !== existing.bitisTarihi?.getTime()) {
-      const cakisan = await anaSoforCakismasi(existing.soforId, existing.dilimId, existing.baslangicTarihi, bitis, id)
-      if (cakisan) throw new Error(soforCakismaMesaji(cakisan))
-    }
-    data.bitisTarihi = bitis
+  if (existing.rol === 'ANA' && existing.aktif && (baslangicDegisti || bitisDegisti)) {
+    const cakisan = await anaSoforCakismasi(existing.soforId, existing.dilimId, baslangic, bitis, id)
+    if (cakisan) throw new Error(soforCakismaMesaji(cakisan))
   }
+  if (form.baslangicTarihi !== undefined) data.baslangicTarihi = baslangic
+  if (form.bitisTarihi !== undefined) data.bitisTarihi = bitis
   if (form.neden !== undefined) data.neden = form.neden?.trim() || null
   if (form.aciklama !== undefined) data.aciklama = form.aciklama?.trim() || null
 
@@ -1484,9 +1497,7 @@ export async function pasiflestirServisGuzergahSoforVarsayilan(id: string, bitis
   if (!existing) throw new Error('Varsayılan şoför ataması bulunamadı.')
   if (!existing.aktif) throw new Error('Bu atama zaten pasif.')
 
-  const bitis = dateOnlyOrNull(bitisTarihi)
-  if (!bitisTarihi?.trim() || !bitis) throw new Error('Kapatma tarihi zorunludur ve geçerli olmalıdır.')
-  if (bitis < existing.baslangicTarihi) throw new Error('Kapatma tarihi başlangıç tarihinden önce olamaz.')
+  const bitis = kapatmaTarihiCoz(bitisTarihi, existing.baslangicTarihi)
 
   return prisma.$transaction(async (tx) => {
     const guncel = await tx.servisGuzergahSoforVarsayilan.update({
@@ -1601,26 +1612,29 @@ export async function createServisSorumlusu(form: ServisSorumlusuForm, createdBy
   })
 }
 
-const SORUMLUSU_GUNCELLENEBILIR_ALANLAR = ['bitisTarihi', 'neden', 'aciklama'] as const
+const SORUMLUSU_GUNCELLENEBILIR_ALANLAR = ['baslangicTarihi', 'bitisTarihi', 'neden', 'aciklama'] as const
 
 export async function guncelleServisSorumlusu(
   id: string,
-  form: { bitisTarihi?: string | null; neden?: string | null; aciklama?: string | null },
+  form: { baslangicTarihi?: string; bitisTarihi?: string | null; neden?: string | null; aciklama?: string | null },
   updatedById: string,
 ) {
   const existing = await prisma.servisSorumlusu.findUnique({ where: { id } })
   if (!existing) throw new Error('Servis sorumlusu ataması bulunamadı.')
 
-  const data: { bitisTarihi?: Date | null; neden?: string | null; aciklama?: string | null; updatedById: string } = {
-    updatedById,
-  }
+  const data: {
+    baslangicTarihi?: Date
+    bitisTarihi?: Date | null
+    neden?: string | null
+    aciklama?: string | null
+    updatedById: string
+  } = { updatedById }
 
-  if (form.bitisTarihi !== undefined) {
-    const bitis = dateOnlyOrNull(form.bitisTarihi)
-    if (form.bitisTarihi?.trim() && !bitis) throw new Error('Bitiş tarihi geçersiz.')
-    if (bitis && bitis < existing.baslangicTarihi) throw new Error('Bitiş tarihi başlangıç tarihinden önce olamaz.')
-    data.bitisTarihi = bitis
-  }
+  const baslangic = form.baslangicTarihi !== undefined ? baslangicTarihiCoz(form.baslangicTarihi) : existing.baslangicTarihi
+  const bitis = form.bitisTarihi !== undefined ? bitisTarihiCoz(form.bitisTarihi) : existing.bitisTarihi
+  aralikDogrula(baslangic, bitis)
+  if (form.baslangicTarihi !== undefined) data.baslangicTarihi = baslangic
+  if (form.bitisTarihi !== undefined) data.bitisTarihi = bitis
   if (form.neden !== undefined) data.neden = form.neden?.trim() || null
   if (form.aciklama !== undefined) data.aciklama = form.aciklama?.trim() || null
 
@@ -1640,9 +1654,7 @@ export async function pasiflestirServisSorumlusu(id: string, bitisTarihi: string
   if (!existing) throw new Error('Servis sorumlusu ataması bulunamadı.')
   if (!existing.aktif) throw new Error('Bu atama zaten pasif.')
 
-  const bitis = dateOnlyOrNull(bitisTarihi)
-  if (!bitisTarihi?.trim() || !bitis) throw new Error('Kapatma tarihi zorunludur ve geçerli olmalıdır.')
-  if (bitis < existing.baslangicTarihi) throw new Error('Kapatma tarihi başlangıç tarihinden önce olamaz.')
+  const bitis = kapatmaTarihiCoz(bitisTarihi, existing.baslangicTarihi)
 
   return prisma.$transaction(async (tx) => {
     const guncel = await tx.servisSorumlusu.update({
@@ -2019,9 +2031,8 @@ export async function guncelleServisPersonelAtama(
   const data: { bitisTarihi?: Date | null; updatedById: string } = { updatedById }
 
   if (form.bitisTarihi !== undefined) {
-    const bitis = dateOnlyOrNull(form.bitisTarihi)
-    if (form.bitisTarihi?.trim() && !bitis) throw new Error('Bitiş tarihi geçersiz.')
-    if (bitis && bitis < existing.baslangicTarihi) throw new Error('Bitiş tarihi başlangıç tarihinden önce olamaz.')
+    const bitis = bitisTarihiCoz(form.bitisTarihi)
+    aralikDogrula(existing.baslangicTarihi, bitis)
 
     if (existing.aktif && bitis?.getTime() !== existing.bitisTarihi?.getTime()) {
       const cakisan = await personelAtamaCakismasi(existing.personnelId, existing.baslangicTarihi, bitis, id)
@@ -2046,9 +2057,7 @@ export async function pasiflestirServisPersonelAtama(id: string, bitisTarihi: st
   if (!existing) throw new Error('Personel ataması bulunamadı.')
   if (!existing.aktif) throw new Error('Bu atama zaten pasif.')
 
-  const bitis = dateOnlyOrNull(bitisTarihi)
-  if (!bitisTarihi?.trim() || !bitis) throw new Error('Kapatma tarihi zorunludur ve geçerli olmalıdır.')
-  if (bitis < existing.baslangicTarihi) throw new Error('Kapatma tarihi başlangıç tarihinden önce olamaz.')
+  const bitis = kapatmaTarihiCoz(bitisTarihi, existing.baslangicTarihi)
 
   return prisma.$transaction(async (tx) => {
     const guncel = await tx.servisPersonelAtama.update({

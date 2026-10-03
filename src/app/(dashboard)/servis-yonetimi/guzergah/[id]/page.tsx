@@ -38,6 +38,7 @@ import {
 } from '@/components/ui/dialog'
 import { ServisGecmisDialog, GecmisButonu } from '../../_components/ServisGecmisDialog'
 import { SaatlerDialog } from './SaatlerDialog'
+import { TarihDuzenleDialog } from '../../_components/TarihDuzenleDialog'
 import { KapasitePanel } from './KapasitePanel'
 import type { GuzergahDurak, SeferDilimi } from './types'
 import { apiHataMesaji, jsonIstek, servisIstek } from '../../_lib/servis-istek'
@@ -119,6 +120,7 @@ export default function GuzergahDetayPage() {
   const canManage = permissions.includes('servis.tanim.manage')
   const canSorumluManage = permissions.includes('servis.sorumlu.manage')
   const canPersonelAtamaManage = permissions.includes('servis.create')
+  const canPersonelAtamaEdit = permissions.includes('servis.edit')
   const canPassive = permissions.includes('servis.passive')
   const canRestore = permissions.includes('servis.restore')
   const canHistory = permissions.includes('servis.history')
@@ -407,6 +409,7 @@ export default function GuzergahDetayPage() {
               aktifDuraklar={aktifDuraklar}
               dilimler={dilimler}
               canManage={canPersonelAtamaManage}
+              canEdit={canPersonelAtamaEdit}
               canPassive={canPassive}
               canRestore={canRestore}
               canHistory={canHistory}
@@ -617,6 +620,7 @@ function VarsayilanAraclarPanel({
   const [kapatilan, setKapatilan] = useState<AracVarsayilan | null>(null)
   const [kapatmaTarihi, setKapatmaTarihi] = useState('')
   const [gecmisVarsayilan, setGecmisVarsayilan] = useState<AracVarsayilan | null>(null)
+  const [duzenlenen, setDuzenlenen] = useState<AracVarsayilan | null>(null)
 
   const yukle = useCallback(async () => {
     setYukleniyor(true)
@@ -726,13 +730,13 @@ function VarsayilanAraclarPanel({
               <TableHead>Başlangıç</TableHead>
               <TableHead>Bitiş</TableHead>
               <TableHead>Durum</TableHead>
-              {(canPassive || canRestore || canHistory) && <TableHead className="text-right">İşlem</TableHead>}
+              {(canManage || canPassive || canRestore || canHistory) && <TableHead className="text-right">İşlem</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
             {liste.length === 0 && (
               <TableRow>
-                <TableCell colSpan={canPassive || canRestore || canHistory ? 7 : 6} className="text-center text-muted-foreground">
+                <TableCell colSpan={canManage || canPassive || canRestore || canHistory ? 7 : 6} className="text-center text-muted-foreground">
                   Kayıt yok.
                 </TableCell>
               </TableRow>
@@ -745,9 +749,10 @@ function VarsayilanAraclarPanel({
                 <TableCell>{tarihGoster(v.baslangicTarihi)}</TableCell>
                 <TableCell>{tarihGoster(v.bitisTarihi)}</TableCell>
                 <TableCell><Badge variant={v.aktif ? 'default' : 'secondary'}>{v.aktif ? 'Aktif' : 'Pasif'}</Badge></TableCell>
-                {(canPassive || canRestore || canHistory) && (
+                {(canManage || canPassive || canRestore || canHistory) && (
                   <TableCell className="text-right space-x-2">
                     {canHistory && <GecmisButonu onClick={() => setGecmisVarsayilan(v)} />}
+                    {canManage && <Button size="sm" variant="outline" onClick={() => setDuzenlenen(v)}>Düzenle</Button>}
                     {v.aktif && canPassive && (
                       <Button size="sm" variant="destructive" onClick={() => kapatmaAc(v)}>Kapat</Button>
                     )}
@@ -820,6 +825,32 @@ function VarsayilanAraclarPanel({
         </DialogContent>
       </Dialog>
 
+      {duzenlenen && (
+        <TarihDuzenleDialog
+          key={duzenlenen.id}
+          baslik="Varsayılan Araç Ataması — Düzenle"
+          ozet={`${duzenlenen.dilim.kod} — ${duzenlenen.arac.plaka} (${duzenlenen.rol})`}
+          baslangic={duzenlenen.baslangicTarihi}
+          bitis={duzenlenen.bitisTarihi}
+          neden={duzenlenen.neden}
+          aciklama={duzenlenen.aciklama}
+          nedenGoster
+          aciklamaGoster
+          onKapat={() => setDuzenlenen(null)}
+          onKaydet={async (degerler) => {
+            const sonuc = await servisIstek(
+              `/api/servis-yonetimi/guzergah-arac-varsayilan/${duzenlenen.id}`,
+              jsonIstek('PATCH', degerler),
+              'Kaydedilemedi.',
+            )
+            if (!sonuc.ok) return sonuc.mesaj
+            setDuzenlenen(null)
+            yukle()
+            return null
+          }}
+        />
+      )}
+
       <Dialog open={!!kapatilan} onOpenChange={(o) => !o && setKapatilan(null)}>
         <DialogContent>
           <DialogHeader><DialogTitle>Atamayı Kapat</DialogTitle></DialogHeader>
@@ -865,6 +896,7 @@ function VarsayilanSoforlerPanel({
   const [kapatilan, setKapatilan] = useState<SoforVarsayilan | null>(null)
   const [kapatmaTarihi, setKapatmaTarihi] = useState('')
   const [gecmisVarsayilan, setGecmisVarsayilan] = useState<SoforVarsayilan | null>(null)
+  const [duzenlenen, setDuzenlenen] = useState<SoforVarsayilan | null>(null)
 
   const yukle = useCallback(async () => {
     setYukleniyor(true)
@@ -974,13 +1006,13 @@ function VarsayilanSoforlerPanel({
               <TableHead>Başlangıç</TableHead>
               <TableHead>Bitiş</TableHead>
               <TableHead>Durum</TableHead>
-              {(canPassive || canRestore || canHistory) && <TableHead className="text-right">İşlem</TableHead>}
+              {(canManage || canPassive || canRestore || canHistory) && <TableHead className="text-right">İşlem</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
             {liste.length === 0 && (
               <TableRow>
-                <TableCell colSpan={canPassive || canRestore || canHistory ? 7 : 6} className="text-center text-muted-foreground">
+                <TableCell colSpan={canManage || canPassive || canRestore || canHistory ? 7 : 6} className="text-center text-muted-foreground">
                   Kayıt yok.
                 </TableCell>
               </TableRow>
@@ -993,9 +1025,10 @@ function VarsayilanSoforlerPanel({
                 <TableCell>{tarihGoster(v.baslangicTarihi)}</TableCell>
                 <TableCell>{tarihGoster(v.bitisTarihi)}</TableCell>
                 <TableCell><Badge variant={v.aktif ? 'default' : 'secondary'}>{v.aktif ? 'Aktif' : 'Pasif'}</Badge></TableCell>
-                {(canPassive || canRestore || canHistory) && (
+                {(canManage || canPassive || canRestore || canHistory) && (
                   <TableCell className="text-right space-x-2">
                     {canHistory && <GecmisButonu onClick={() => setGecmisVarsayilan(v)} />}
+                    {canManage && <Button size="sm" variant="outline" onClick={() => setDuzenlenen(v)}>Düzenle</Button>}
                     {v.aktif && canPassive && (
                       <Button size="sm" variant="destructive" onClick={() => kapatmaAc(v)}>Kapat</Button>
                     )}
@@ -1067,6 +1100,32 @@ function VarsayilanSoforlerPanel({
           <DialogFooter><Button onClick={kaydet}>Kaydet</Button></DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {duzenlenen && (
+        <TarihDuzenleDialog
+          key={duzenlenen.id}
+          baslik="Varsayılan Şoför Ataması — Düzenle"
+          ozet={`${duzenlenen.dilim.kod} — ${duzenlenen.sofor.adSoyad} (${duzenlenen.rol})`}
+          baslangic={duzenlenen.baslangicTarihi}
+          bitis={duzenlenen.bitisTarihi}
+          neden={duzenlenen.neden}
+          aciklama={duzenlenen.aciklama}
+          nedenGoster
+          aciklamaGoster
+          onKapat={() => setDuzenlenen(null)}
+          onKaydet={async (degerler) => {
+            const sonuc = await servisIstek(
+              `/api/servis-yonetimi/guzergah-sofor-varsayilan/${duzenlenen.id}`,
+              jsonIstek('PATCH', degerler),
+              'Kaydedilemedi.',
+            )
+            if (!sonuc.ok) return sonuc.mesaj
+            setDuzenlenen(null)
+            yukle()
+            return null
+          }}
+        />
+      )}
 
       <Dialog open={!!kapatilan} onOpenChange={(o) => !o && setKapatilan(null)}>
         <DialogContent>
@@ -1184,6 +1243,7 @@ function SorumlularPanel({
   const [kapatilan, setKapatilan] = useState<Sorumlu | null>(null)
   const [kapatmaTarihi, setKapatmaTarihi] = useState('')
   const [gecmisSorumlu, setGecmisSorumlu] = useState<Sorumlu | null>(null)
+  const [duzenlenen, setDuzenlenen] = useState<Sorumlu | null>(null)
 
   const yukle = useCallback(async () => {
     setYukleniyor(true)
@@ -1286,13 +1346,13 @@ function SorumlularPanel({
               <TableHead>Başlangıç</TableHead>
               <TableHead>Bitiş</TableHead>
               <TableHead>Durum</TableHead>
-              {(canPassive || canRestore || canHistory) && <TableHead className="text-right">İşlem</TableHead>}
+              {(canSorumluManage || canPassive || canRestore || canHistory) && <TableHead className="text-right">İşlem</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
             {liste.length === 0 && (
               <TableRow>
-                <TableCell colSpan={canPassive || canRestore || canHistory ? 6 : 5} className="text-center text-muted-foreground">
+                <TableCell colSpan={canSorumluManage || canPassive || canRestore || canHistory ? 6 : 5} className="text-center text-muted-foreground">
                   Kayıt yok.
                 </TableCell>
               </TableRow>
@@ -1304,9 +1364,10 @@ function SorumlularPanel({
                 <TableCell>{tarihGoster(v.baslangicTarihi)}</TableCell>
                 <TableCell>{tarihGoster(v.bitisTarihi)}</TableCell>
                 <TableCell><Badge variant={v.aktif ? 'default' : 'secondary'}>{v.aktif ? 'Aktif' : 'Pasif'}</Badge></TableCell>
-                {(canPassive || canRestore || canHistory) && (
+                {(canSorumluManage || canPassive || canRestore || canHistory) && (
                   <TableCell className="text-right space-x-2">
                     {canHistory && <GecmisButonu onClick={() => setGecmisSorumlu(v)} />}
+                    {canSorumluManage && <Button size="sm" variant="outline" onClick={() => setDuzenlenen(v)}>Düzenle</Button>}
                     {v.aktif && canPassive && (
                       <Button size="sm" variant="destructive" onClick={() => kapatmaAc(v)}>Kapat</Button>
                     )}
@@ -1374,6 +1435,32 @@ function SorumlularPanel({
         </DialogContent>
       </Dialog>
 
+      {duzenlenen && (
+        <TarihDuzenleDialog
+          key={duzenlenen.id}
+          baslik="Servis Sorumlusu — Düzenle"
+          ozet={`${duzenlenen.personnel.adSoyad} (${duzenlenen.rol})`}
+          baslangic={duzenlenen.baslangicTarihi}
+          bitis={duzenlenen.bitisTarihi}
+          neden={duzenlenen.neden}
+          aciklama={duzenlenen.aciklama}
+          nedenGoster
+          aciklamaGoster
+          onKapat={() => setDuzenlenen(null)}
+          onKaydet={async (degerler) => {
+            const sonuc = await servisIstek(
+              `/api/servis-yonetimi/guzergah-sorumlu/${duzenlenen.id}`,
+              jsonIstek('PATCH', degerler),
+              'Kaydedilemedi.',
+            )
+            if (!sonuc.ok) return sonuc.mesaj
+            setDuzenlenen(null)
+            yukle()
+            return null
+          }}
+        />
+      )}
+
       <Dialog open={!!kapatilan} onOpenChange={(o) => !o && setKapatilan(null)}>
         <DialogContent>
           <DialogHeader><DialogTitle>Atamayı Kapat</DialogTitle></DialogHeader>
@@ -1404,6 +1491,7 @@ function PersonelAtamalarPanel({
   aktifDuraklar,
   dilimler,
   canManage,
+  canEdit,
   canPassive,
   canRestore,
   canHistory,
@@ -1412,6 +1500,7 @@ function PersonelAtamalarPanel({
   aktifDuraklar: GuzergahDurak[]
   dilimler: SeferDilimi[]
   canManage: boolean
+  canEdit: boolean
   canPassive: boolean
   canRestore: boolean
   canHistory: boolean
@@ -1422,6 +1511,7 @@ function PersonelAtamalarPanel({
   const [dialogAcik, setDialogAcik] = useState(false)
   const [secilenPersonel, setSecilenPersonel] = useState<SorumluPickedPersonel | null>(null)
   const [gecmisAtama, setGecmisAtama] = useState<PersonelAtama | null>(null)
+  const [duzenlenen, setDuzenlenen] = useState<PersonelAtama | null>(null)
   const [form, setForm] = useState({
     personnelId: '', durakId: '', baslangicTarihi: bugun(), bitisTarihi: '', dilimIdleri: [] as string[],
   })
@@ -1541,13 +1631,13 @@ function PersonelAtamalarPanel({
               <TableHead>Başlangıç</TableHead>
               <TableHead>Bitiş</TableHead>
               <TableHead>Durum</TableHead>
-              {(canPassive || canRestore || canHistory) && <TableHead className="text-right">İşlem</TableHead>}
+              {(canEdit || canPassive || canRestore || canHistory) && <TableHead className="text-right">İşlem</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
             {liste.length === 0 && (
               <TableRow>
-                <TableCell colSpan={canPassive || canRestore || canHistory ? 7 : 6} className="text-center text-muted-foreground">
+                <TableCell colSpan={canEdit || canPassive || canRestore || canHistory ? 7 : 6} className="text-center text-muted-foreground">
                   Kayıt yok.
                 </TableCell>
               </TableRow>
@@ -1560,9 +1650,10 @@ function PersonelAtamalarPanel({
                 <TableCell>{tarihGoster(v.baslangicTarihi)}</TableCell>
                 <TableCell>{tarihGoster(v.bitisTarihi)}</TableCell>
                 <TableCell><Badge variant={v.aktif ? 'default' : 'secondary'}>{v.aktif ? 'Aktif' : 'Pasif'}</Badge></TableCell>
-                {(canPassive || canRestore || canHistory) && (
+                {(canEdit || canPassive || canRestore || canHistory) && (
                   <TableCell className="text-right space-x-2">
                     {canHistory && <GecmisButonu onClick={() => setGecmisAtama(v)} />}
+                    {canEdit && <Button size="sm" variant="outline" onClick={() => setDuzenlenen(v)}>Düzenle</Button>}
                     {v.aktif && canPassive && canManage && (
                       <Button size="sm" variant="outline" onClick={() => setAlternatifIcinAtama(v)}>
                         Alternatif Servis Öner
@@ -1650,6 +1741,29 @@ function PersonelAtamalarPanel({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {duzenlenen && (
+        <TarihDuzenleDialog
+          key={duzenlenen.id}
+          baslik="Personel Ataması — Bitiş Tarihini Düzelt"
+          ozet={`${duzenlenen.personnel.adSoyad} — ${duzenlenen.durak ? duzenlenen.durak.kod + ' — ' + duzenlenen.durak.ad : 'durak yok'}`}
+          baslangic={duzenlenen.baslangicTarihi}
+          bitis={duzenlenen.bitisTarihi}
+          baslangicDuzenlenebilir={false}
+          onKapat={() => setDuzenlenen(null)}
+          onKaydet={async (degerler) => {
+            const sonuc = await servisIstek(
+              `/api/servis-yonetimi/guzergah-personel-atama/${duzenlenen.id}`,
+              jsonIstek('PATCH', degerler),
+              'Kaydedilemedi.',
+            )
+            if (!sonuc.ok) return sonuc.mesaj
+            setDuzenlenen(null)
+            yukle()
+            return null
+          }}
+        />
+      )}
 
       <Dialog open={!!kapatilan} onOpenChange={(o) => !o && setKapatilan(null)}>
         <DialogContent>

@@ -41,7 +41,9 @@ import { SaatlerDialog } from './SaatlerDialog'
 import { TarihDuzenleDialog } from '../../_components/TarihDuzenleDialog'
 import { KapasitePanel } from './KapasitePanel'
 import { KapasiteKartlari } from './KapasiteKartlari'
-import { DilimDuzenleDialog, DilimSutunu, TopluDilimAtaDialog } from './AtamaDilimDialoglari'
+import { AsimUyarisi, DilimDuzenleDialog, DilimSutunu, TopluDilimAtaDialog } from './AtamaDilimDialoglari'
+import { SerbestTransferDialog } from './SerbestTransferDialog'
+import type { KapasiteEtkisiSatiri } from '@/lib/servis-yonetimi/kapasite-asim'
 import { TOPLU_DILIM_ATAMA_LIMITI } from './atama-dilim-sabitleri'
 import type { GuzergahDurak, SeferDilimi } from './types'
 import { apiHataMesaji, jsonIstek, servisIstek } from '../../_lib/servis-istek'
@@ -1552,6 +1554,10 @@ function PersonelAtamalarPanel({
   const [topluAcik, setTopluAcik] = useState(false)
   const [bilgi, setBilgi] = useState<string | null>(null)
   const dilimsizFiltreUygulandi = useRef(false)
+  // C0: Yeni Atama kapasite aşımı uyarısı + onayı; C1: serbest hedefli transfer
+  const [asimUyarisi, setAsimUyarisi] = useState<KapasiteEtkisiSatiri[] | null>(null)
+  const [asimOnayi, setAsimOnayi] = useState(false)
+  const [serbestTransferAtama, setSerbestTransferAtama] = useState<PersonelAtama | null>(null)
 
   const yukle = useCallback(async () => {
     setYukleniyor(true)
@@ -1604,10 +1610,14 @@ function PersonelAtamalarPanel({
     setSecilenPersonel(null)
     setForm({ personnelId: '', durakId: '', baslangicTarihi: bugun(), bitisTarihi: '', dilimIdleri: [] })
     setHata(null)
+    setAsimUyarisi(null)
+    setAsimOnayi(false)
     setDialogAcik(true)
   }
 
   function dilimSecimDegistir(dilimId: string, secili: boolean) {
+    setAsimUyarisi(null)
+    setAsimOnayi(false)
     setForm((f) => ({
       ...f,
       dilimIdleri: secili ? [...f.dilimIdleri, dilimId] : f.dilimIdleri.filter((id) => id !== dilimId),
@@ -1619,9 +1629,15 @@ function PersonelAtamalarPanel({
     const res = await fetch(`/api/servis-yonetimi/guzergah/${guzergahId}/personel-atama`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(form),
+      body: JSON.stringify({ ...form, asimOnayi: asimUyarisi ? asimOnayi : undefined }),
     })
     const json = await res.json()
+    // C0: kapasite aşımı olacaksa sunucu 409 döner → uyarı + onay kutusu, onaysız kayıt YOK
+    if (res.status === 409 && json?.kod === 'ASIM_ONAYI_GEREKLI') {
+      setAsimUyarisi(json.ayrinti?.etki ?? [])
+      setAsimOnayi(false)
+      return
+    }
     if (!res.ok || !json.ok) {
       setHata(apiHataMesaji(res.status, json, 'Kaydedilemedi.'))
       return
@@ -1761,6 +1777,11 @@ function PersonelAtamalarPanel({
                         Alternatif Servis Öner
                       </Button>
                     )}
+                    {v.aktif && canPassive && canManage && (
+                      <Button size="sm" variant="outline" onClick={() => setSerbestTransferAtama(v)}>
+                        Başka Güzergâha Taşı
+                      </Button>
+                    )}
                     {v.aktif && canPassive && (
                       <Button size="sm" variant="destructive" onClick={() => kapatmaAc(v)}>Kapat</Button>
                     )}
@@ -1836,9 +1857,13 @@ function PersonelAtamalarPanel({
               </div>
             </div>
           </div>
+          {asimUyarisi && <AsimUyarisi satirlar={asimUyarisi} onay={asimOnayi} onOnay={setAsimOnayi} />}
           <DialogFooter>
-            <Button onClick={kaydet} disabled={!form.personnelId || form.dilimIdleri.length === 0 || !form.baslangicTarihi}>
-              Kaydet
+            <Button
+              onClick={kaydet}
+              disabled={!form.personnelId || form.dilimIdleri.length === 0 || !form.baslangicTarihi || (!!asimUyarisi && !asimOnayi)}
+            >
+              {asimUyarisi ? 'Onayla ve Kaydet' : 'Kaydet'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1907,6 +1932,16 @@ function PersonelAtamalarPanel({
           <DialogFooter><Button variant="destructive" onClick={kapat}>Kapat</Button></DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {serbestTransferAtama && (
+        <SerbestTransferDialog
+          key={serbestTransferAtama.id}
+          atama={serbestTransferAtama}
+          dilimler={dilimler}
+          onKapat={() => setSerbestTransferAtama(null)}
+          onTransferEdildi={() => { setSerbestTransferAtama(null); yukle() }}
+        />
+      )}
 
       <AlternatifServisDialog
         atama={alternatifIcinAtama}

@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { requirePermission } from '@/lib/auth/require-permission'
 import { transferServisPersonelAtama } from '@/lib/servis-yonetimi/service'
+import { AtamaDilimHatasi } from '@/lib/servis-yonetimi/kapasite-asim'
+import { atamaDilimHataYaniti } from '@/lib/servis-yonetimi/atama-dilim-http'
 import type { ServisPersonelAtamaTransferForm } from '@/lib/servis-yonetimi/validation'
 
 // Transfer = eski atamayı kapatma (servis.passive) + yeni atama açma
@@ -19,6 +21,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const data = await transferServisPersonelAtama(id, body, createCheck.userId)
     return NextResponse.json({ ok: true, message: 'Personel yeni servise transfer edildi.', data })
   } catch (err) {
+    // Kapasite aşımı onayı gerekli → 409 (istemci uyarıyı gösterip asimOnayi:true ile yeniden gönderir)
+    if (err instanceof AtamaDilimHatasi) return atamaDilimHataYaniti(err, 'Transfer gerçekleştirilemedi.')
     const message = err instanceof Error ? err.message : 'Transfer gerçekleştirilemedi.'
     return NextResponse.json({ ok: false, message }, { status: 400 })
   }

@@ -427,6 +427,8 @@ export type ServisPersonelAtamaForm = {
   baslangicTarihi: string
   bitisTarihi?: string | null
   dilimIdleri: string[]
+  /** Kapasite aşımı uyarısı gösterildikten sonra kullanıcı onayladıysa true (C0). */
+  asimOnayi?: boolean
 }
 
 export function validateServisPersonelAtamaForm(form: ServisPersonelAtamaForm): ServisValidationResult {
@@ -462,6 +464,8 @@ export type ServisPersonelAtamaTransferForm = {
   durakId?: string | null
   dilimIdleri: string[]
   transferTarihi: string
+  /** Kapasite aşımı uyarısı gösterildikten sonra kullanıcı onayladıysa true (C0). */
+  asimOnayi?: boolean
 }
 
 export function validateServisPersonelAtamaTransferForm(form: ServisPersonelAtamaTransferForm): ServisValidationResult {

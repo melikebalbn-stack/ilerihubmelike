@@ -1,7 +1,19 @@
 import { prisma } from '@/lib/prisma'
 import { kaydetIslemGecmisi } from './audit'
-import { servisKapasiteOzetiGetir } from './kapasite'
+import {
+  AtamaDilimHatasi,
+  asimOnayiKontrol,
+  atamaGunuKapsar,
+  etkiSatiriOlustur,
+  kapasiteEtkisiHesapla,
+  type AtamaDilimHataKodu,
+  type KapasiteEtkisiSatiri,
+} from './kapasite-asim'
 import { bugunTR } from './tarih-kurallari'
+
+// C0: ortak kapasite aşımı kuralı kapasite-asim.ts'te; geriye dönük import yolları korunur.
+export { AtamaDilimHatasi, atamaGunuKapsar, etkiSatiriOlustur }
+export type { AtamaDilimHataKodu, KapasiteEtkisiSatiri }
 
 // ============================================================================
 // Personel atamasına SEFER DİLİMİ ekleme / çıkarma (B5) — tek ve toplu.
@@ -30,22 +42,6 @@ import { bugunTR } from './tarih-kurallari'
 /** Toplu işlemde tek seferde en fazla atama (öneri: 63 atamalık göç + pay; aşırı büyük işlemi önler). */
 export const TOPLU_DILIM_ATAMA_LIMITI = 200
 
-export type AtamaDilimHataKodu =
-  | 'ASIM_ONAYI_GEREKLI'
-  | 'DILIMSIZ_ONAYI_GEREKLI'
-  | 'DOGRULAMA'
-
-export class AtamaDilimHatasi extends Error {
-  constructor(
-    message: string,
-    public readonly kod: AtamaDilimHataKodu = 'DOGRULAMA',
-    public readonly ayrinti?: unknown,
-  ) {
-    super(message)
-    this.name = 'AtamaDilimHatasi'
-  }
-}
-
 type Dilim = { id: string; kod: string; ad: string }
 
 type AtamaOzeti = {
@@ -55,21 +51,6 @@ type AtamaOzeti = {
   baslangicTarihi: Date
   bitisTarihi: Date | null
   dilimler: { dilimId: string }[]
-}
-
-export type KapasiteEtkisiSatiri = {
-  dilimId: string
-  dilimKod: string
-  dilimAd: string
-  /** Bu dilimde şu an sayılan personel (motor). */
-  once: number
-  /** Ekleme sonrası. */
-  sonra: number
-  /** Koltuk; aracı olmayan dilimde null. */
-  koltuk: number | null
-  aracYok: boolean
-  asim: boolean
-  fazla: number
 }
 
 export type DilimOnizlemeSonucu = {
@@ -93,28 +74,6 @@ export function dilimFarki(onceki: string[], ekle: string[], cikar: string[]) {
   const cikarilan = [...new Set(cikar)].filter((d) => mevcut.has(d))
   const sonraki = [...onceki.filter((d) => !cikarilan.includes(d)), ...eklenen]
   return { eklenen, cikarilan, sonraki }
-}
-
-/** Atama, verilen gün için kapasiteye giriyor mu (motorun tarih filtresiyle aynı mantık). */
-export function atamaGunuKapsar(a: { baslangicTarihi: Date; bitisTarihi: Date | null }, gun: string): boolean {
-  const g = new Date(`${gun}T00:00:00.000Z`)
-  return a.baslangicTarihi.getTime() <= g.getTime() && (a.bitisTarihi === null || a.bitisTarihi.getTime() >= g.getTime())
-}
-
-export function etkiSatiriOlustur(
-  dilim: Dilim,
-  motor: { atananPersonelSayisi: number; kapasite: number; durum: string },
-  eklenenKisi: number,
-): KapasiteEtkisiSatiri {
-  const aracYok = motor.durum === 'ARAC_YOK'
-  const sonra = motor.atananPersonelSayisi + eklenenKisi
-  const asim = !aracYok && eklenenKisi > 0 && sonra > motor.kapasite
-  return {
-    dilimId: dilim.id, dilimKod: dilim.kod, dilimAd: dilim.ad,
-    once: motor.atananPersonelSayisi, sonra,
-    koltuk: aracYok ? null : motor.kapasite, aracYok,
-    asim, fazla: asim ? sonra - motor.kapasite : 0,
-  }
 }
 
 const tekil = (l: string[] | undefined) => [...new Set((l ?? []).map((x) => x.trim()).filter(Boolean))]
@@ -170,15 +129,11 @@ async function kapasiteEtkisi(
   dilimler: Dilim[],
   gun: string,
 ): Promise<KapasiteEtkisiSatiri[]> {
-  const hesapTarihi = new Date(`${gun}T00:00:00.000Z`)
-  const satirlar: KapasiteEtkisiSatiri[] = []
-  for (const dilim of dilimler) {
-    // Yalnız bugün kapasiteye girecek (tarihi kapsayan) ve bu dilimi KAZANAN atamalar etkiler.
-    const eklenenKisi = planlar.filter((p) => p.eklenen.includes(dilim.id) && atamaGunuKapsar(p.atama, gun)).length
-    const motor = await servisKapasiteOzetiGetir(guzergahId, dilim.id, hesapTarihi)
-    satirlar.push(etkiSatiriOlustur(dilim, motor, eklenenKisi))
-  }
-  return satirlar
+  // Yalnız bugün kapasiteye girecek (tarihi kapsayan) ve bu dilimi KAZANAN atamalar etkiler.
+  const eklenen = new Map(
+    dilimler.map((d) => [d.id, planlar.filter((p) => p.eklenen.includes(d.id) && atamaGunuKapsar(p.atama, gun)).length] as const),
+  )
+  return kapasiteEtkisiHesapla({ id: guzergahId }, dilimler, eklenen, gun)
 }
 
 function atamaIdleriniDogrula(atamaIdleri: string[] | undefined): string[] {
@@ -273,13 +228,7 @@ export async function topluDilimAta(
   if (onizleme.degisecek === 0) {
     throw new AtamaDilimHatasi('Seçilen atamaların hepsinde bu dilimler zaten var; değişiklik yok.')
   }
-  if (onizleme.asimVar && !girdi.asimOnayi) {
-    throw new AtamaDilimHatasi(
-      'Bu işlem bir veya daha fazla dilimde kapasiteyi aşacak. Devam etmek için aşım onayı gerekir.',
-      'ASIM_ONAYI_GEREKLI',
-      { etki: onizleme.etki.filter((e) => e.asim) },
-    )
-  }
+  asimOnayiKontrol(onizleme.etki, girdi.asimOnayi, 'Bu işlem bir veya daha fazla dilimde kapasiteyi aşacak. Devam etmek için aşım onayı gerekir.')
   const atamalar = await atamalariYukle(guzergahId, atamaIdleriniDogrula(girdi.atamaIdleri))
   const planlar = planlaAtamalar(atamalar, tekil(girdi.dilimIdleri), [])
   const topluIslemId = crypto.randomUUID()
@@ -312,13 +261,7 @@ export async function atamaDilimleriniGuncelle(
 
   const eklenenDilimler = dilimler.filter((d) => plan.eklenen.includes(d.id))
   const etki = await kapasiteEtkisi(atama.guzergahId, [plan], eklenenDilimler, gun)
-  if (etki.some((e) => e.asim) && !girdi.asimOnayi) {
-    throw new AtamaDilimHatasi(
-      'Bu işlem bir dilimde kapasiteyi aşacak. Devam etmek için aşım onayı gerekir.',
-      'ASIM_ONAYI_GEREKLI',
-      { etki: etki.filter((e) => e.asim) },
-    )
-  }
+  asimOnayiKontrol(etki, girdi.asimOnayi, 'Bu işlem bir dilimde kapasiteyi aşacak. Devam etmek için aşım onayı gerekir.')
 
   const sonuc = await planiYaz([plan], yapanId, 'Dilim düzenleme', null)
   return { ...sonuc, sonraki: plan.sonraki }

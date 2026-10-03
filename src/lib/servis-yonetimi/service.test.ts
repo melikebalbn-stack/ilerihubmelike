@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
+  // C0: ortak kapasite aşımı kuralı kapasite motorunu okur; varsayılan = geniş boş kapasite (aşım yok)
+  kapasiteOzeti: vi.fn(),
   firmaFindMany: vi.fn(),
   firmaFindUnique: vi.fn(),
   firmaCreate: vi.fn(),
@@ -81,6 +83,11 @@ const mocks = vi.hoisted(() => ({
   zincirGeriAl: vi.fn(),
   zincirOnizleme: vi.fn(),
   zincirSonId: vi.fn(async () => null as string | null),
+}))
+
+vi.mock('./kapasite', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./kapasite')>()),
+  servisKapasiteOzetiGetir: mocks.kapasiteOzeti,
 }))
 
 vi.mock('./firma-zincir', async (importOriginal) => ({
@@ -292,10 +299,12 @@ import {
   pasiflestirServisPersonelAtama,
   geriAlServisPersonelAtama,
   transferServisPersonelAtama,
+  transferKapasiteOnizle,
 } from './service'
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mocks.kapasiteOzeti.mockResolvedValue({ kapasite: 50, atananPersonelSayisi: 0, bosKoltuk: 50, dolulukOrani: 0, aracSayisi: 1, durum: 'UYGUN', asimMiktari: 0 })
 })
 
 describe('ServisFirma — view', () => {
@@ -4151,5 +4160,139 @@ describe('A7 — araç tipi seçim listesi', () => {
     mocks.aracUpdate.mockResolvedValue({ id: 'a1' })
     await updateServisArac('a1', form(''))
     expect(mocks.aracUpdate.mock.calls[0][0].data.aracTipi).toBeNull()
+  })
+})
+
+// ============================================================================
+// C0 — ORTAK KAPASİTE AŞIMI KURALI: Yeni Atama ve Transfer (B5 mantığıyla AYNI yardımcı)
+// ============================================================================
+describe('C0 — Yeni Atama: kapasite aşımı onayı', () => {
+  const DOLU = { kapasite: 10, atananPersonelSayisi: 10, bosKoltuk: 0, dolulukOrani: 100, aracSayisi: 1, durum: 'UYGUN', asimMiktari: 0 }
+  beforeEach(() => {
+    mocks.personnelFindUnique.mockResolvedValue({ id: 'personel-1', aktif: true })
+    mocks.guzergahFindUnique.mockResolvedValue({ id: 'guzergah-1', kod: 'DARICA', aktif: true })
+    mocks.seferDilimiFindMany.mockResolvedValue([{ id: 'dilim-1', kod: 'SABAH_GIDIŞ', ad: 'Sabah', aktif: true }])
+    mocks.personelAtamaFindFirst.mockResolvedValue(null)
+    mocks.personelAtamaCreate.mockResolvedValue({ id: 'pa1' })
+    mocks.personelAtamaDilimCreateMany.mockResolvedValue({ count: 1 })
+    mocks.personelAtamaFindUnique.mockResolvedValue({ id: 'pa1', ...gecerliPersonelAtama })
+  })
+
+  it('🔴 tam dolu dilimde atama → ASIM_ONAYI_GEREKLI (409), KAYIT YOK', async () => {
+    mocks.kapasiteOzeti.mockResolvedValue(DOLU)
+    const e = await createServisPersonelAtama(gecerliPersonelAtama, 'user-1').catch((x: unknown) => x) as { kod?: string; ayrinti?: { etki: { dilimKod: string; fazla: number }[] } }
+    expect(e.kod).toBe('ASIM_ONAYI_GEREKLI')
+    expect(e.ayrinti?.etki[0]).toMatchObject({ dilimKod: 'SABAH_GIDIŞ', fazla: 1 })
+    expect(mocks.personelAtamaCreate).not.toHaveBeenCalled()
+    expect(mocks.personelAtamaDilimCreateMany).not.toHaveBeenCalled()
+    expect(mocks.islemGecmisiCreate).not.toHaveBeenCalled()
+  })
+
+  it('onay (asimOnayi:true) ile aşımda da kaydedilir', async () => {
+    mocks.kapasiteOzeti.mockResolvedValue(DOLU)
+    await createServisPersonelAtama({ ...gecerliPersonelAtama, asimOnayi: true }, 'user-1')
+    expect(mocks.personelAtamaCreate).toHaveBeenCalledTimes(1)
+  })
+
+  it('aşım yoksa onay istenmez', async () => {
+    mocks.kapasiteOzeti.mockResolvedValue({ ...DOLU, atananPersonelSayisi: 9 })
+    await createServisPersonelAtama(gecerliPersonelAtama, 'user-1')
+    expect(mocks.personelAtamaCreate).toHaveBeenCalledTimes(1)
+  })
+
+  it('araçsız dilimde aşım sayılmaz (motorla aynı kural)', async () => {
+    mocks.kapasiteOzeti.mockResolvedValue({ ...DOLU, kapasite: 0, atananPersonelSayisi: 5, durum: 'ARAC_YOK' })
+    await createServisPersonelAtama(gecerliPersonelAtama, 'user-1')
+    expect(mocks.personelAtamaCreate).toHaveBeenCalledTimes(1)
+  })
+
+  it('🔴 yalnız bugünün kapasitesine girenler sayılır: başlangıcı İLERİ tarihli atama aşım uyarısı üretmez', async () => {
+    mocks.kapasiteOzeti.mockResolvedValue(DOLU)
+    await createServisPersonelAtama({ ...gecerliPersonelAtama, baslangicTarihi: '2027-06-01' }, 'user-1')
+    expect(mocks.personelAtamaCreate).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('C0 + C1 — Transfer: serbest hedef ve kapasite aşımı onayı', () => {
+  const DOLU = { kapasite: 10, atananPersonelSayisi: 10, bosKoltuk: 0, dolulukOrani: 100, aracSayisi: 1, durum: 'UYGUN', asimMiktari: 0 }
+  const eski = { id: 'pa1', aktif: true, personnelId: 'personel-1', guzergahId: 'guzergah-1', baslangicTarihi: new Date('2026-01-01'), bitisTarihi: null }
+  // Hedef: ÖNERİ LİSTESİNDE olması gerekmeyen herhangi aktif güzergâh + durak + dilim
+  const form = { guzergahId: 'guzergah-77', durakId: 'durak-5', dilimIdleri: ['dilim-1', 'dilim-2'], transferTarihi: '2026-03-01' }
+
+  beforeEach(() => {
+    mocks.personelAtamaFindUnique.mockReset()
+    mocks.personelAtamaFindUnique.mockResolvedValueOnce(eski)
+    mocks.personnelFindUnique.mockResolvedValue({ id: 'personel-1', aktif: true })
+    mocks.guzergahFindUnique.mockResolvedValue({ id: 'guzergah-77', kod: 'SERBEST', aktif: true })
+    mocks.guzergahDurakFindUnique.mockResolvedValue({ id: 'gd1' })
+    mocks.seferDilimiFindMany.mockResolvedValue([
+      { id: 'dilim-1', kod: 'SABAH_GIDIŞ', ad: 'Sabah', aktif: true },
+      { id: 'dilim-2', kod: 'AKŞAM_DÖNÜŞ', ad: 'Akşam', aktif: true },
+    ])
+    mocks.personelAtamaFindFirst.mockResolvedValue(null)
+    mocks.personelAtamaUpdate.mockResolvedValue({ id: 'pa1' })
+    mocks.personelAtamaCreate.mockResolvedValue({ id: 'pa2' })
+    mocks.personelAtamaDilimCreateMany.mockResolvedValue({ count: 2 })
+    mocks.personelAtamaFindUnique.mockResolvedValueOnce({ id: 'pa2' })
+  })
+
+  it('C1: önerilen aday olmayan herhangi aktif güzergâh+durak+dilim seçilerek transfer edilir (eski kapanır, yeni açılır)', async () => {
+    await transferServisPersonelAtama('pa1', form, 'user-9')
+    expect(mocks.personelAtamaUpdate).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ aktif: false }) }))
+    expect(mocks.personelAtamaCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ guzergahId: 'guzergah-77', durakId: 'durak-5' }),
+    }))
+    expect(mocks.personelAtamaDilimCreateMany).toHaveBeenCalledWith({
+      data: [{ atamaId: 'pa2', dilimId: 'dilim-1' }, { atamaId: 'pa2', dilimId: 'dilim-2' }],
+    })
+  })
+
+  it('🔴 C1: dilimsiz transfer üretilemez (dilim zorunlu)', async () => {
+    await expect(transferServisPersonelAtama('pa1', { ...form, dilimIdleri: [] }, 'user-9')).rejects.toThrow('En az bir sefer dilimi')
+    expect(mocks.personelAtamaUpdate).not.toHaveBeenCalled()
+  })
+
+  it('C1: hedef durak o güzergâhın durağı değilse hata, hiçbir şey yazılmaz', async () => {
+    mocks.guzergahDurakFindUnique.mockResolvedValue(null)
+    await expect(transferServisPersonelAtama('pa1', form, 'user-9')).rejects.toThrow('güzergahın bir durağı değil')
+    expect(mocks.personelAtamaUpdate).not.toHaveBeenCalled()
+  })
+
+  it('🔴 C0: hedefte aşım → ASIM_ONAYI_GEREKLI, eski atama KAPANMAZ, yenisi AÇILMAZ', async () => {
+    mocks.kapasiteOzeti.mockResolvedValue(DOLU) // her iki dilim de dolu
+    const e = await transferServisPersonelAtama('pa1', form, 'user-9').catch((x: unknown) => x) as { kod?: string; ayrinti?: { etki: unknown[] } }
+    expect(e.kod).toBe('ASIM_ONAYI_GEREKLI')
+    expect(e.ayrinti?.etki).toHaveLength(2)
+    expect(mocks.personelAtamaUpdate).not.toHaveBeenCalled()
+    expect(mocks.personelAtamaCreate).not.toHaveBeenCalled()
+    expect(mocks.islemGecmisiCreate).not.toHaveBeenCalled()
+  })
+
+  it('C0: onayla → transfer tamamlanır; transfer tarihi İLERİ ise bugünün kapasitesine girmez (aşım uyarısı yok)', async () => {
+    mocks.kapasiteOzeti.mockResolvedValue(DOLU)
+    await transferServisPersonelAtama('pa1', { ...form, asimOnayi: true }, 'user-9')
+    expect(mocks.personelAtamaCreate).toHaveBeenCalledTimes(1)
+
+    vi.clearAllMocks()
+    mocks.kapasiteOzeti.mockResolvedValue(DOLU)
+    mocks.personelAtamaFindUnique.mockResolvedValueOnce(eski).mockResolvedValueOnce({ id: 'pa2' })
+    mocks.personnelFindUnique.mockResolvedValue({ id: 'personel-1', aktif: true })
+    mocks.guzergahFindUnique.mockResolvedValue({ id: 'guzergah-77', kod: 'SERBEST', aktif: true })
+    mocks.guzergahDurakFindUnique.mockResolvedValue({ id: 'gd1' })
+    mocks.seferDilimiFindMany.mockResolvedValue([{ id: 'dilim-1', kod: 'S', ad: 'S', aktif: true }])
+    mocks.personelAtamaFindFirst.mockResolvedValue(null)
+    mocks.personelAtamaCreate.mockResolvedValue({ id: 'pa2' })
+    await transferServisPersonelAtama('pa1', { ...form, dilimIdleri: ['dilim-1'], transferTarihi: '2027-05-01' }, 'user-9')
+    expect(mocks.personelAtamaCreate).toHaveBeenCalledTimes(1)
+  })
+
+  it('transferKapasiteOnizle YAZMAZ: etki + asimVar döner', async () => {
+    mocks.kapasiteOzeti.mockResolvedValue(DOLU)
+    const o = await transferKapasiteOnizle('pa1', form)
+    expect(o.asimVar).toBe(true)
+    expect(o.etki.map((e) => [e.dilimKod, e.once, e.sonra, e.koltuk])).toEqual([['SABAH_GIDIŞ', 10, 11, 10], ['AKŞAM_DÖNÜŞ', 10, 11, 10]])
+    expect(mocks.personelAtamaUpdate).not.toHaveBeenCalled()
+    expect(mocks.personelAtamaCreate).not.toHaveBeenCalled()
+    expect(mocks.islemGecmisiCreate).not.toHaveBeenCalled()
   })
 })

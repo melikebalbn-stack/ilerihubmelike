@@ -20,12 +20,12 @@ export type AtamaDilimSatiri = {
   dilimler: { dilimId: string; dilim: { id: string; kod: string; ad: string } }[]
 }
 
-function etkiMetni(e: KapasiteEtkisiSatiri): string {
+export function etkiMetni(e: KapasiteEtkisiSatiri): string {
   const koltuk = e.koltuk === null ? 'araç yok' : `koltuk ${e.koltuk}`
   return `${e.dilimKod}: personel ${e.once} → ${e.sonra} / ${koltuk}`
 }
 
-function AsimUyarisi({ satirlar, onay, onOnay }: { satirlar: KapasiteEtkisiSatiri[]; onay: boolean; onOnay: (v: boolean) => void }) {
+export function AsimUyarisi({ satirlar, onay, onOnay }: { satirlar: KapasiteEtkisiSatiri[]; onay: boolean; onOnay: (v: boolean) => void }) {
   return (
     <div role="alert" className="space-y-2 rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-800 dark:bg-red-950/20">
       <p className="flex items-center gap-2 font-medium">

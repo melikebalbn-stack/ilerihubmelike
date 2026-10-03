@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { AtamaDilimHatasi } from './atama-dilim'
+import { AtamaDilimHatasi } from './kapasite-asim'
 
 // Dilim ekleme/çıkarma uçlarının ORTAK hata → yanıt eşlemesi.
 // Onay gerektiren durumlar 409 (istemci uyarı + onayla yeniden gönderir), diğerleri 400.

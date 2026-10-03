@@ -43,9 +43,11 @@ import {
   plakaKontrol,
 } from './plaka'
 import { ARAC_TIPI_HATASI, aracTipiGecerliMi } from './arac-tipleri'
+import { asimOnayiKontrol, atamaGunuKapsar, kapasiteEtkisiHesapla, type KapasiteEtkisiSatiri } from './kapasite-asim'
 import {
   aralikDogrula,
   baslangicTarihiCoz,
+  bugunTR,
   bitisTarihiCoz,
   gecerlilikTarihleriniDogrula,
   kapatmaTarihiCoz,
@@ -2148,6 +2150,14 @@ export async function createServisPersonelAtama(form: ServisPersonelAtamaForm, c
   const cakisan = await personelAtamaCakismasi(personnelId, baslangic, bitis)
   if (cakisan) throw new Error(personelAtamaCakismaMesaji(cakisan))
 
+  // C0 — ortak kapasite aşımı kuralı: aşım olacaksa onay olmadan kayıt YOK (409).
+  const bugun = bugunTR()
+  const kapsar = atamaGunuKapsar({ baslangicTarihi: baslangic, bitisTarihi: bitis }, bugun) ? 1 : 0
+  const etki = await kapasiteEtkisiHesapla(
+    { id: guzergahId, kod: guzergah.kod }, dilimler, new Map(dilimler.map((d) => [d.id, kapsar] as const)), bugun,
+  )
+  asimOnayiKontrol(etki, form.asimOnayi, 'Bu atama seçilen dilimlerde kapasiteyi aşacak. Devam etmek için aşım onayı gerekir.')
+
   return prisma.$transaction(async (tx) => {
     const atama = await tx.servisPersonelAtama.create({
       data: {
@@ -2273,11 +2283,10 @@ export async function geriAlServisPersonelAtama(id: string, updatedById: string)
 // açık bir aciklama yazılır.
 const ALTERNATIF_SERVIS_TRANSFER_ACIKLAMASI = 'Alternatif Servis Önerisi ile transfer'
 
-export async function transferServisPersonelAtama(
-  eskiAtamaId: string,
-  form: ServisPersonelAtamaTransferForm,
-  yapanId: string,
-) {
+// Transfer doğrulaması (hem uygulama hem önizleme AYNI kuralları kullanır). Hedef güzergâh/durak/dilim
+// SERBEST: herhangi aktif güzergâh + o güzergâhın durağı + aktif dilim seçilebilir (önerilen aday
+// olması gerekmez — öneri yalnız kısayoldur). Dilim zorunlu: dilimsiz atama üretilmez.
+async function transferBaglami(eskiAtamaId: string, form: ServisPersonelAtamaTransferForm) {
   const { valid, errors } = validateServisPersonelAtamaTransferForm(form)
   if (!valid) throw new Error(errors.join(' '))
 
@@ -2317,6 +2326,34 @@ export async function transferServisPersonelAtama(
 
   const cakisan = await personelAtamaCakismasi(eskiAtama.personnelId, transferTarihi, null, eskiAtamaId)
   if (cakisan) throw new Error(personelAtamaCakismaMesaji(cakisan))
+
+  // C0 — hedefteki kapasite etkisi (yeni atama bugünün kapasitesine yalnız transfer tarihi bugün ya
+  // da geçmişse girer; ortak kural: kapasite-asim.ts).
+  const bugun = bugunTR()
+  const kapsar = atamaGunuKapsar({ baslangicTarihi: transferTarihi, bitisTarihi: null }, bugun) ? 1 : 0
+  const etki = await kapasiteEtkisiHesapla(
+    { id: guzergahId, kod: guzergah.kod }, dilimler, new Map(dilimler.map((d) => [d.id, kapsar] as const)), bugun,
+  )
+  return { eskiAtama, guzergahId, durakId, transferTarihi, dilimIdleri, etki }
+}
+
+/** Transfer ÖNİZLEMESİ (yazmaz): hedefte kapasite etkisi + aşım var mı. */
+export async function transferKapasiteOnizle(
+  eskiAtamaId: string,
+  form: ServisPersonelAtamaTransferForm,
+): Promise<{ etki: KapasiteEtkisiSatiri[]; asimVar: boolean }> {
+  const { etki } = await transferBaglami(eskiAtamaId, form)
+  return { etki, asimVar: etki.some((e) => e.asim) }
+}
+
+export async function transferServisPersonelAtama(
+  eskiAtamaId: string,
+  form: ServisPersonelAtamaTransferForm,
+  yapanId: string,
+) {
+  const { eskiAtama, guzergahId, durakId, transferTarihi, dilimIdleri, etki } = await transferBaglami(eskiAtamaId, form)
+  // Aşım olacaksa onay olmadan transfer YOK (409).
+  asimOnayiKontrol(etki, form.asimOnayi, 'Hedef güzergâh seçilen dilimlerde kapasiteyi aşacak. Devam etmek için aşım onayı gerekir.')
 
   return prisma.$transaction(async (tx) => {
     await tx.servisPersonelAtama.update({

@@ -30,6 +30,7 @@ import {
 // Paylaşılan tarihçe dialogu — 13 tanım modeliyle AYNI bileşen (rule 6).
 import { ServisGecmisDialog, GecmisButonu } from '../_components/ServisGecmisDialog'
 import { SikayetciSecici } from './_components/SikayetciSecici'
+import { apiHataMesaji } from '../_lib/servis-istek'
 
 type Durum = 'ACIK' | 'AKSIYON_ALINDI' | 'KAPANDI' | 'REDDEDILDI'
 
@@ -180,7 +181,7 @@ export default function SikayetListesiPage() {
       const res = await fetch(`/api/servis-yonetimi/sikayet${sorguDizesi ? `?${sorguDizesi}` : ''}`)
       const json = await res.json()
       if (!res.ok || !json.ok) {
-        setHata(json.message || 'Şikâyet listesi alınamadı.')
+        setHata(apiHataMesaji(res.status, json, 'Şikâyet listesi alınamadı.'))
         setSatirlar([])
         return
       }
@@ -230,7 +231,7 @@ export default function SikayetListesiPage() {
       })
       const json = await res.json()
       if (!res.ok || !json.ok) {
-        setFormHata(json.message || 'Şikâyet kaydedilemedi.')
+        setFormHata(apiHataMesaji(res.status, json, 'Şikâyet kaydedilemedi.'))
         return
       }
       formuSifirla()
@@ -266,7 +267,7 @@ export default function SikayetListesiPage() {
       })
       const json = await res.json()
       if (!res.ok || !json.ok) {
-        setGecisHata(json.message || 'Durum güncellenemedi.')
+        setGecisHata(apiHataMesaji(res.status, json, 'Durum güncellenemedi.'))
         return
       }
       setGecisKaydi(null); setGecisHedef(null); setGecisAksiyon(''); setGecisNot('')

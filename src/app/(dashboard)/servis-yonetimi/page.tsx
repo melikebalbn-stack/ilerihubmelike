@@ -20,6 +20,9 @@ import {
 } from '@/components/ui/dialog'
 import { Plus } from 'lucide-react'
 import { ServisGecmisDialog, GecmisButonu } from './_components/ServisGecmisDialog'
+import { PasifGeriAlButonlari } from './_components/PasifGeriAlButonlari'
+import { usePasifGeriAl } from './_lib/usePasifGeriAl'
+import { apiHataMesaji } from './_lib/servis-istek'
 import { normalizeTr } from '@/lib/normalize-tr'
 
 type ServisFirma = {
@@ -138,7 +141,7 @@ function AktifBadge({ aktif }: { aktif: boolean }) {
   )
 }
 
-function ServisFirmaPanel({ canManage, canHistory }: { canManage: boolean; canHistory: boolean }) {
+function ServisFirmaPanel({ canManage, canPassive, canRestore, canHistory }: { canManage: boolean; canPassive: boolean; canRestore: boolean; canHistory: boolean }) {
   const [firmalar, setFirmalar] = useState<ServisFirma[]>([])
   const [arama, setArama] = useState('')
   const [yukleniyor, setYukleniyor] = useState(true)
@@ -155,7 +158,7 @@ function ServisFirmaPanel({ canManage, canHistory }: { canManage: boolean; canHi
       const res = await fetch('/api/servis-yonetimi/firma')
       const json = await res.json()
       if (!res.ok || !json.ok) {
-        setHata(json.message || 'Firma listesi alınamadı.')
+        setHata(apiHataMesaji(res.status, json, 'Firma listesi alınamadı.'))
         return
       }
       setFirmalar(json.data)
@@ -204,22 +207,14 @@ function ServisFirmaPanel({ canManage, canHistory }: { canManage: boolean; canHi
     })
     const json = await res.json()
     if (!res.ok || !json.ok) {
-      setHata(json.message || 'Kaydedilemedi.')
+      setHata(apiHataMesaji(res.status, json, 'Kaydedilemedi.'))
       return
     }
     setDialogAcik(false)
     yukle()
   }
 
-  async function pasiflestir(id: string) {
-    await fetch(`/api/servis-yonetimi/firma/${id}/pasiflestir`, { method: 'POST' })
-    yukle()
-  }
-
-  async function geriAl(id: string) {
-    await fetch(`/api/servis-yonetimi/firma/${id}/geri-al`, { method: 'POST' })
-    yukle()
-  }
+  const { pasiflestir, geriAl } = usePasifGeriAl({ yol: 'firma', yukle, setHata })
 
   return (
     <div className="space-y-4">
@@ -248,13 +243,13 @@ function ServisFirmaPanel({ canManage, canHistory }: { canManage: boolean; canHi
               <TableHead>Yetkili</TableHead>
               <TableHead>Telefon</TableHead>
               <TableHead>Durum</TableHead>
-              {(canManage || canHistory) && <TableHead className="text-right">İşlem</TableHead>}
+              {(canManage || canPassive || canRestore || canHistory) && <TableHead className="text-right">İşlem</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
             {filtreliFirmalar.length === 0 && (
               <TableRow>
-                <TableCell colSpan={canManage || canHistory ? 5 : 4} className="text-center text-muted-foreground">
+                <TableCell colSpan={canManage || canPassive || canRestore || canHistory ? 5 : 4} className="text-center text-muted-foreground">
                   {arama.trim() ? 'Aramayla eşleşen firma yok.' : 'Kayıt yok.'}
                 </TableCell>
               </TableRow>
@@ -265,25 +260,21 @@ function ServisFirmaPanel({ canManage, canHistory }: { canManage: boolean; canHi
                 <TableCell>{firma.yetkiliAdi || '-'}</TableCell>
                 <TableCell>{firma.telefon || '-'}</TableCell>
                 <TableCell><AktifBadge aktif={firma.aktif} /></TableCell>
-                {(canManage || canHistory) && (
+                {(canManage || canPassive || canRestore || canHistory) && (
                   <TableCell className="text-right space-x-2">
                     {canHistory && <GecmisButonu onClick={() => setGecmisFirma(firma)} />}
                     {canManage && (
-                      <>
-                        <Button size="sm" variant="outline" onClick={() => duzenleAc(firma)}>
-                          Düzenle
-                        </Button>
-                        {firma.aktif ? (
-                          <Button size="sm" variant="destructive" onClick={() => pasiflestir(firma.id)}>
-                            Pasifleştir
-                          </Button>
-                        ) : (
-                          <Button size="sm" variant="outline" onClick={() => geriAl(firma.id)}>
-                            Geri Al
-                          </Button>
-                        )}
-                      </>
+                      <Button size="sm" variant="outline" onClick={() => duzenleAc(firma)}>
+                        Düzenle
+                      </Button>
                     )}
+                    <PasifGeriAlButonlari
+                      aktif={firma.aktif}
+                      canPassive={canPassive}
+                      canRestore={canRestore}
+                      onPasiflestir={() => pasiflestir(firma.id)}
+                      onGeriAl={() => geriAl(firma.id)}
+                    />
                   </TableCell>
                 )}
               </TableRow>
@@ -338,7 +329,7 @@ function ServisFirmaPanel({ canManage, canHistory }: { canManage: boolean; canHi
   )
 }
 
-function ServisYerleskePanel({ canManage, canHistory }: { canManage: boolean; canHistory: boolean }) {
+function ServisYerleskePanel({ canManage, canPassive, canRestore, canHistory }: { canManage: boolean; canPassive: boolean; canRestore: boolean; canHistory: boolean }) {
   const [yerleskeler, setYerleskeler] = useState<ServisYerleske[]>([])
   const [arama, setArama] = useState('')
   const [yukleniyor, setYukleniyor] = useState(true)
@@ -355,7 +346,7 @@ function ServisYerleskePanel({ canManage, canHistory }: { canManage: boolean; ca
       const res = await fetch('/api/servis-yonetimi/yerleske')
       const json = await res.json()
       if (!res.ok || !json.ok) {
-        setHata(json.message || 'Yerleşke listesi alınamadı.')
+        setHata(apiHataMesaji(res.status, json, 'Yerleşke listesi alınamadı.'))
         return
       }
       setYerleskeler(json.data)
@@ -411,22 +402,14 @@ function ServisYerleskePanel({ canManage, canHistory }: { canManage: boolean; ca
     })
     const json = await res.json()
     if (!res.ok || !json.ok) {
-      setHata(json.message || 'Kaydedilemedi.')
+      setHata(apiHataMesaji(res.status, json, 'Kaydedilemedi.'))
       return
     }
     setDialogAcik(false)
     yukle()
   }
 
-  async function pasiflestir(id: string) {
-    await fetch(`/api/servis-yonetimi/yerleske/${id}/pasiflestir`, { method: 'POST' })
-    yukle()
-  }
-
-  async function geriAl(id: string) {
-    await fetch(`/api/servis-yonetimi/yerleske/${id}/geri-al`, { method: 'POST' })
-    yukle()
-  }
+  const { pasiflestir, geriAl } = usePasifGeriAl({ yol: 'yerleske', yukle, setHata })
 
   return (
     <div className="space-y-4">
@@ -455,13 +438,13 @@ function ServisYerleskePanel({ canManage, canHistory }: { canManage: boolean; ca
               <TableHead>Ad</TableHead>
               <TableHead>Adres</TableHead>
               <TableHead>Durum</TableHead>
-              {(canManage || canHistory) && <TableHead className="text-right">İşlem</TableHead>}
+              {(canManage || canPassive || canRestore || canHistory) && <TableHead className="text-right">İşlem</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
             {filtreliYerleskeler.length === 0 && (
               <TableRow>
-                <TableCell colSpan={canManage || canHistory ? 5 : 4} className="text-center text-muted-foreground">
+                <TableCell colSpan={canManage || canPassive || canRestore || canHistory ? 5 : 4} className="text-center text-muted-foreground">
                   {arama.trim() ? 'Aramayla eşleşen yerleşke yok.' : 'Kayıt yok.'}
                 </TableCell>
               </TableRow>
@@ -472,25 +455,21 @@ function ServisYerleskePanel({ canManage, canHistory }: { canManage: boolean; ca
                 <TableCell>{yerleske.ad}</TableCell>
                 <TableCell>{yerleske.adres || '-'}</TableCell>
                 <TableCell><AktifBadge aktif={yerleske.aktif} /></TableCell>
-                {(canManage || canHistory) && (
+                {(canManage || canPassive || canRestore || canHistory) && (
                   <TableCell className="text-right space-x-2">
                     {canHistory && <GecmisButonu onClick={() => setGecmisYerleske(yerleske)} />}
                     {canManage && (
-                      <>
-                        <Button size="sm" variant="outline" onClick={() => duzenleAc(yerleske)}>
-                          Düzenle
-                        </Button>
-                        {yerleske.aktif ? (
-                          <Button size="sm" variant="destructive" onClick={() => pasiflestir(yerleske.id)}>
-                            Pasifleştir
-                          </Button>
-                        ) : (
-                          <Button size="sm" variant="outline" onClick={() => geriAl(yerleske.id)}>
-                            Geri Al
-                          </Button>
-                        )}
-                      </>
+                      <Button size="sm" variant="outline" onClick={() => duzenleAc(yerleske)}>
+                        Düzenle
+                      </Button>
                     )}
+                    <PasifGeriAlButonlari
+                      aktif={yerleske.aktif}
+                      canPassive={canPassive}
+                      canRestore={canRestore}
+                      onPasiflestir={() => pasiflestir(yerleske.id)}
+                      onGeriAl={() => geriAl(yerleske.id)}
+                    />
                   </TableCell>
                 )}
               </TableRow>
@@ -561,7 +540,7 @@ function tarihInputDegeri(value: string | null): string {
   return value ? value.slice(0, 10) : ''
 }
 
-function ServisGuzergahPanel({ canManage, canHistory }: { canManage: boolean; canHistory: boolean }) {
+function ServisGuzergahPanel({ canManage, canPassive, canRestore, canHistory }: { canManage: boolean; canPassive: boolean; canRestore: boolean; canHistory: boolean }) {
   const [guzergahlar, setGuzergahlar] = useState<ServisGuzergah[]>([])
   const [yerleskeler, setYerleskeler] = useState<ServisYerleske[]>([])
   const [arama, setArama] = useState('')
@@ -638,22 +617,14 @@ function ServisGuzergahPanel({ canManage, canHistory }: { canManage: boolean; ca
     })
     const json = await res.json()
     if (!res.ok || !json.ok) {
-      setHata(json.message || 'Kaydedilemedi.')
+      setHata(apiHataMesaji(res.status, json, 'Kaydedilemedi.'))
       return
     }
     setDialogAcik(false)
     yukle()
   }
 
-  async function pasiflestir(id: string) {
-    await fetch(`/api/servis-yonetimi/guzergah/${id}/pasiflestir`, { method: 'POST' })
-    yukle()
-  }
-
-  async function geriAl(id: string) {
-    await fetch(`/api/servis-yonetimi/guzergah/${id}/geri-al`, { method: 'POST' })
-    yukle()
-  }
+  const { pasiflestir, geriAl } = usePasifGeriAl({ yol: 'guzergah', yukle, setHata })
 
   return (
     <div className="space-y-4">
@@ -687,13 +658,13 @@ function ServisGuzergahPanel({ canManage, canHistory }: { canManage: boolean; ca
               <TableHead>Yerleşke</TableHead>
               <TableHead>Geçerlilik</TableHead>
               <TableHead>Durum</TableHead>
-              {(canManage || canHistory) && <TableHead className="text-right">İşlem</TableHead>}
+              {(canManage || canPassive || canRestore || canHistory) && <TableHead className="text-right">İşlem</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
             {filtreliGuzergahlar.length === 0 && (
               <TableRow>
-                <TableCell colSpan={canManage || canHistory ? 7 : 6} className="text-center text-muted-foreground">
+                <TableCell colSpan={canManage || canPassive || canRestore || canHistory ? 7 : 6} className="text-center text-muted-foreground">
                   {arama.trim() ? 'Aramayla eşleşen güzergâh yok.' : 'Kayıt yok.'}
                 </TableCell>
               </TableRow>
@@ -708,7 +679,7 @@ function ServisGuzergahPanel({ canManage, canHistory }: { canManage: boolean; ca
                   {tarihInputDegeri(guzergah.gecerlilikBaslangici) || '-'} / {tarihInputDegeri(guzergah.gecerlilikBitisi) || '-'}
                 </TableCell>
                 <TableCell><AktifBadge aktif={guzergah.aktif} /></TableCell>
-                {(canManage || canHistory) && (
+                {(canManage || canPassive || canRestore || canHistory) && (
                   <TableCell className="space-x-2 text-right">
                     {canHistory && <GecmisButonu onClick={() => setGecmisGuzergah(guzergah)} />}
                     {canManage && (
@@ -717,13 +688,15 @@ function ServisGuzergahPanel({ canManage, canHistory }: { canManage: boolean; ca
                           <Link href={`/servis-yonetimi/guzergah/${guzergah.id}`}>Duraklar</Link>
                         </Button>
                         <Button size="sm" variant="outline" onClick={() => duzenleAc(guzergah)}>Düzenle</Button>
-                        {guzergah.aktif ? (
-                          <Button size="sm" variant="destructive" onClick={() => pasiflestir(guzergah.id)}>Pasifleştir</Button>
-                        ) : (
-                          <Button size="sm" variant="outline" onClick={() => geriAl(guzergah.id)}>Geri Al</Button>
-                        )}
                       </>
                     )}
+                    <PasifGeriAlButonlari
+                      aktif={guzergah.aktif}
+                      canPassive={canPassive}
+                      canRestore={canRestore}
+                      onPasiflestir={() => pasiflestir(guzergah.id)}
+                      onGeriAl={() => geriAl(guzergah.id)}
+                    />
                   </TableCell>
                 )}
               </TableRow>
@@ -811,7 +784,7 @@ const bosDurakForm = {
   boylam: '',
 }
 
-function ServisDurakPanel({ canManage, canHistory }: { canManage: boolean; canHistory: boolean }) {
+function ServisDurakPanel({ canManage, canPassive, canRestore, canHistory }: { canManage: boolean; canPassive: boolean; canRestore: boolean; canHistory: boolean }) {
   const [duraklar, setDuraklar] = useState<ServisDurak[]>([])
   const [arama, setArama] = useState('')
   const [yukleniyor, setYukleniyor] = useState(true)
@@ -828,7 +801,7 @@ function ServisDurakPanel({ canManage, canHistory }: { canManage: boolean; canHi
       const res = await fetch('/api/servis-yonetimi/durak')
       const json = await res.json()
       if (!res.ok || !json.ok) {
-        setHata(json.message || 'Durak listesi alınamadı.')
+        setHata(apiHataMesaji(res.status, json, 'Durak listesi alınamadı.'))
         return
       }
       setDuraklar(json.data)
@@ -886,22 +859,14 @@ function ServisDurakPanel({ canManage, canHistory }: { canManage: boolean; canHi
     })
     const json = await res.json()
     if (!res.ok || !json.ok) {
-      setHata(json.message || 'Kaydedilemedi.')
+      setHata(apiHataMesaji(res.status, json, 'Kaydedilemedi.'))
       return
     }
     setDialogAcik(false)
     yukle()
   }
 
-  async function pasiflestir(id: string) {
-    await fetch(`/api/servis-yonetimi/durak/${id}/pasiflestir`, { method: 'POST' })
-    yukle()
-  }
-
-  async function geriAl(id: string) {
-    await fetch(`/api/servis-yonetimi/durak/${id}/geri-al`, { method: 'POST' })
-    yukle()
-  }
+  const { pasiflestir, geriAl } = usePasifGeriAl({ yol: 'durak', yukle, setHata })
 
   return (
     <div className="space-y-4">
@@ -932,13 +897,13 @@ function ServisDurakPanel({ canManage, canHistory }: { canManage: boolean; canHi
               <TableHead>Adres Etiketi</TableHead>
               <TableHead>Koordinat</TableHead>
               <TableHead>Durum</TableHead>
-              {(canManage || canHistory) && <TableHead className="text-right">İşlem</TableHead>}
+              {(canManage || canPassive || canRestore || canHistory) && <TableHead className="text-right">İşlem</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
             {filtreliDuraklar.length === 0 && (
               <TableRow>
-                <TableCell colSpan={canManage || canHistory ? 7 : 6} className="text-center text-muted-foreground">
+                <TableCell colSpan={canManage || canPassive || canRestore || canHistory ? 7 : 6} className="text-center text-muted-foreground">
                   {arama.trim() ? 'Aramayla eşleşen durak yok.' : 'Kayıt yok.'}
                 </TableCell>
               </TableRow>
@@ -951,19 +916,17 @@ function ServisDurakPanel({ canManage, canHistory }: { canManage: boolean; canHi
                 <TableCell>{durak.adresEtiketi || '-'}</TableCell>
                 <TableCell>{durak.enlem && durak.boylam ? `${durak.enlem}, ${durak.boylam}` : '-'}</TableCell>
                 <TableCell><AktifBadge aktif={durak.aktif} /></TableCell>
-                {(canManage || canHistory) && (
+                {(canManage || canPassive || canRestore || canHistory) && (
                   <TableCell className="space-x-2 text-right">
                     {canHistory && <GecmisButonu onClick={() => setGecmisDurak(durak)} />}
-                    {canManage && (
-                      <>
-                        <Button size="sm" variant="outline" onClick={() => duzenleAc(durak)}>Düzenle</Button>
-                        {durak.aktif ? (
-                          <Button size="sm" variant="destructive" onClick={() => pasiflestir(durak.id)}>Pasifleştir</Button>
-                        ) : (
-                          <Button size="sm" variant="outline" onClick={() => geriAl(durak.id)}>Geri Al</Button>
-                        )}
-                      </>
-                    )}
+                    {canManage && <Button size="sm" variant="outline" onClick={() => duzenleAc(durak)}>Düzenle</Button>}
+                    <PasifGeriAlButonlari
+                      aktif={durak.aktif}
+                      canPassive={canPassive}
+                      canRestore={canRestore}
+                      onPasiflestir={() => pasiflestir(durak.id)}
+                      onGeriAl={() => geriAl(durak.id)}
+                    />
                   </TableCell>
                 )}
               </TableRow>
@@ -1045,7 +1008,7 @@ const bosAracForm = {
   gecerlilikBitisi: '',
 }
 
-function ServisAracPanel({ canManage, canHistory }: { canManage: boolean; canHistory: boolean }) {
+function ServisAracPanel({ canManage, canPassive, canRestore, canHistory }: { canManage: boolean; canPassive: boolean; canRestore: boolean; canHistory: boolean }) {
   const [araclar, setAraclar] = useState<ServisArac[]>([])
   const [firmalar, setFirmalar] = useState<ServisFirma[]>([])
   const [arama, setArama] = useState('')
@@ -1121,22 +1084,14 @@ function ServisAracPanel({ canManage, canHistory }: { canManage: boolean; canHis
     })
     const json = await res.json()
     if (!res.ok || !json.ok) {
-      setHata(json.message || 'Kaydedilemedi.')
+      setHata(apiHataMesaji(res.status, json, 'Kaydedilemedi.'))
       return
     }
     setDialogAcik(false)
     yukle()
   }
 
-  async function pasiflestir(id: string) {
-    await fetch(`/api/servis-yonetimi/arac/${id}/pasiflestir`, { method: 'POST' })
-    yukle()
-  }
-
-  async function geriAl(id: string) {
-    await fetch(`/api/servis-yonetimi/arac/${id}/geri-al`, { method: 'POST' })
-    yukle()
-  }
+  const { pasiflestir, geriAl } = usePasifGeriAl({ yol: 'arac', yukle, setHata })
 
   return (
     <div className="space-y-4">
@@ -1170,13 +1125,13 @@ function ServisAracPanel({ canManage, canHistory }: { canManage: boolean; canHis
               <TableHead>Araç Tipi</TableHead>
               <TableHead>Geçerlilik</TableHead>
               <TableHead>Durum</TableHead>
-              {(canManage || canHistory) && <TableHead className="text-right">İşlem</TableHead>}
+              {(canManage || canPassive || canRestore || canHistory) && <TableHead className="text-right">İşlem</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
             {filtreliAraclar.length === 0 && (
               <TableRow>
-                <TableCell colSpan={canManage || canHistory ? 7 : 6} className="text-center text-muted-foreground">
+                <TableCell colSpan={canManage || canPassive || canRestore || canHistory ? 7 : 6} className="text-center text-muted-foreground">
                   {arama.trim() ? 'Aramayla eşleşen araç yok.' : 'Kayıt yok.'}
                 </TableCell>
               </TableRow>
@@ -1191,19 +1146,17 @@ function ServisAracPanel({ canManage, canHistory }: { canManage: boolean; canHis
                   {tarihInputDegeri(arac.gecerlilikBaslangici) || '-'} / {tarihInputDegeri(arac.gecerlilikBitisi) || '-'}
                 </TableCell>
                 <TableCell><AktifBadge aktif={arac.aktif} /></TableCell>
-                {(canManage || canHistory) && (
+                {(canManage || canPassive || canRestore || canHistory) && (
                   <TableCell className="space-x-2 text-right">
                     {canHistory && <GecmisButonu onClick={() => setGecmisArac(arac)} />}
-                    {canManage && (
-                      <>
-                        <Button size="sm" variant="outline" onClick={() => duzenleAc(arac)}>Düzenle</Button>
-                        {arac.aktif ? (
-                          <Button size="sm" variant="destructive" onClick={() => pasiflestir(arac.id)}>Pasifleştir</Button>
-                        ) : (
-                          <Button size="sm" variant="outline" onClick={() => geriAl(arac.id)}>Geri Al</Button>
-                        )}
-                      </>
-                    )}
+                    {canManage && <Button size="sm" variant="outline" onClick={() => duzenleAc(arac)}>Düzenle</Button>}
+                    <PasifGeriAlButonlari
+                      aktif={arac.aktif}
+                      canPassive={canPassive}
+                      canRestore={canRestore}
+                      onPasiflestir={() => pasiflestir(arac.id)}
+                      onGeriAl={() => geriAl(arac.id)}
+                    />
                   </TableCell>
                 )}
               </TableRow>
@@ -1358,7 +1311,7 @@ type SoforKimlikTuru = 'FIRMA' | 'PERSONEL'
 
 const bosSoforForm = { adSoyad: '', telefon: '', kimlikTuru: 'FIRMA' as SoforKimlikTuru, firmaId: '', personnelId: '' }
 
-function ServisSoforPanel({ canManage, canHistory }: { canManage: boolean; canHistory: boolean }) {
+function ServisSoforPanel({ canManage, canPassive, canRestore, canHistory }: { canManage: boolean; canPassive: boolean; canRestore: boolean; canHistory: boolean }) {
   const [soforler, setSoforler] = useState<ServisSofor[]>([])
   const [firmalar, setFirmalar] = useState<ServisFirma[]>([])
   const [arama, setArama] = useState('')
@@ -1441,17 +1394,14 @@ function ServisSoforPanel({ canManage, canHistory }: { canManage: boolean; canHi
     })
     const json = await res.json()
     if (!res.ok || !json.ok) {
-      setHata(json.message || 'Kaydedilemedi.')
+      setHata(apiHataMesaji(res.status, json, 'Kaydedilemedi.'))
       return
     }
     setDialogAcik(false)
     yukle()
   }
 
-  async function durumDegistir(id: string, aktif: boolean) {
-    await fetch(`/api/servis-yonetimi/sofor/${id}/${aktif ? 'pasiflestir' : 'geri-al'}`, { method: 'POST' })
-    yukle()
-  }
+  const { pasiflestir, geriAl } = usePasifGeriAl({ yol: 'sofor', yukle, setHata })
 
   return (
     <div className="space-y-4">
@@ -1462,9 +1412,9 @@ function ServisSoforPanel({ canManage, canHistory }: { canManage: boolean; canHi
       {hata && <p className="text-sm text-red-600">{hata}</p>}
       {yukleniyor ? <p className="text-sm text-muted-foreground">Yükleniyor...</p> : (
         <Table>
-          <TableHeader><TableRow><TableHead>Ad Soyad</TableHead><TableHead>Telefon</TableHead><TableHead>Tür</TableHead><TableHead>Bağlı Olduğu</TableHead><TableHead>Durum</TableHead>{(canManage || canHistory) && <TableHead className="text-right">İşlem</TableHead>}</TableRow></TableHeader>
+          <TableHeader><TableRow><TableHead>Ad Soyad</TableHead><TableHead>Telefon</TableHead><TableHead>Tür</TableHead><TableHead>Bağlı Olduğu</TableHead><TableHead>Durum</TableHead>{(canManage || canPassive || canRestore || canHistory) && <TableHead className="text-right">İşlem</TableHead>}</TableRow></TableHeader>
           <TableBody>
-            {filtreliSoforler.length === 0 && <TableRow><TableCell colSpan={canManage || canHistory ? 6 : 5} className="text-center text-muted-foreground">{query ? 'Aramayla eşleşen şoför yok.' : 'Kayıt yok.'}</TableCell></TableRow>}
+            {filtreliSoforler.length === 0 && <TableRow><TableCell colSpan={canManage || canPassive || canRestore || canHistory ? 6 : 5} className="text-center text-muted-foreground">{query ? 'Aramayla eşleşen şoför yok.' : 'Kayıt yok.'}</TableCell></TableRow>}
             {filtreliSoforler.map((sofor) => (
               <TableRow key={sofor.id}>
                 <TableCell>{sofor.adSoyad}</TableCell><TableCell>{sofor.telefon || '-'}</TableCell>
@@ -1475,15 +1425,17 @@ function ServisSoforPanel({ canManage, canHistory }: { canManage: boolean; canHi
                     : `${sofor.firma?.ad || '-'}${sofor.firma && !sofor.firma.aktif ? ' (Pasif)' : ''}`}
                 </TableCell>
                 <TableCell><AktifBadge aktif={sofor.aktif} /></TableCell>
-                {(canManage || canHistory) && (
+                {(canManage || canPassive || canRestore || canHistory) && (
                   <TableCell className="space-x-2 text-right">
                     {canHistory && <GecmisButonu onClick={() => setGecmisSofor(sofor)} />}
-                    {canManage && (
-                      <>
-                        <Button size="sm" variant="outline" onClick={() => duzenleAc(sofor)}>Düzenle</Button>
-                        {sofor.aktif ? <Button size="sm" variant="destructive" onClick={() => durumDegistir(sofor.id, true)}>Pasifleştir</Button> : <Button size="sm" variant="outline" onClick={() => durumDegistir(sofor.id, false)}>Geri Al</Button>}
-                      </>
-                    )}
+                    {canManage && <Button size="sm" variant="outline" onClick={() => duzenleAc(sofor)}>Düzenle</Button>}
+                    <PasifGeriAlButonlari
+                      aktif={sofor.aktif}
+                      canPassive={canPassive}
+                      canRestore={canRestore}
+                      onPasiflestir={() => pasiflestir(sofor.id)}
+                      onGeriAl={() => geriAl(sofor.id)}
+                    />
                   </TableCell>
                 )}
               </TableRow>
@@ -1555,7 +1507,7 @@ function ServisSoforPanel({ canManage, canHistory }: { canManage: boolean; canHi
 
 const bosSeferDilimiForm = { kod: '', ad: '', yon: 'GIDIS' as ServisSeferDilimiYon, grupKodu: '', sira: '1' }
 
-function ServisSeferDilimiPanel({ canManage, canHistory }: { canManage: boolean; canHistory: boolean }) {
+function ServisSeferDilimiPanel({ canManage, canPassive, canRestore, canHistory }: { canManage: boolean; canPassive: boolean; canRestore: boolean; canHistory: boolean }) {
   const [dilimler, setDilimler] = useState<ServisSeferDilimi[]>([])
   const [arama, setArama] = useState('')
   const [yukleniyor, setYukleniyor] = useState(true)
@@ -1572,7 +1524,7 @@ function ServisSeferDilimiPanel({ canManage, canHistory }: { canManage: boolean;
       const res = await fetch('/api/servis-yonetimi/sefer-dilimi')
       const json = await res.json()
       if (!res.ok || !json.ok) {
-        setHata(json.message || 'Sefer dilimi listesi alınamadı.')
+        setHata(apiHataMesaji(res.status, json, 'Sefer dilimi listesi alınamadı.'))
         return
       }
       setDilimler(json.data)
@@ -1627,22 +1579,14 @@ function ServisSeferDilimiPanel({ canManage, canHistory }: { canManage: boolean;
     })
     const json = await res.json()
     if (!res.ok || !json.ok) {
-      setHata(json.message || 'Kaydedilemedi.')
+      setHata(apiHataMesaji(res.status, json, 'Kaydedilemedi.'))
       return
     }
     setDialogAcik(false)
     yukle()
   }
 
-  async function pasiflestir(id: string) {
-    await fetch(`/api/servis-yonetimi/sefer-dilimi/${id}/pasiflestir`, { method: 'POST' })
-    yukle()
-  }
-
-  async function geriAl(id: string) {
-    await fetch(`/api/servis-yonetimi/sefer-dilimi/${id}/geri-al`, { method: 'POST' })
-    yukle()
-  }
+  const { pasiflestir, geriAl } = usePasifGeriAl({ yol: 'sefer-dilimi', yukle, setHata })
 
   return (
     <div className="space-y-4">
@@ -1673,13 +1617,13 @@ function ServisSeferDilimiPanel({ canManage, canHistory }: { canManage: boolean;
               <TableHead>Vardiya Etiketi</TableHead>
               <TableHead>Sıra</TableHead>
               <TableHead>Durum</TableHead>
-              {(canManage || canHistory) && <TableHead className="text-right">İşlem</TableHead>}
+              {(canManage || canPassive || canRestore || canHistory) && <TableHead className="text-right">İşlem</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
             {filtreliDilimler.length === 0 && (
               <TableRow>
-                <TableCell colSpan={canManage || canHistory ? 7 : 6} className="text-center text-muted-foreground">
+                <TableCell colSpan={canManage || canPassive || canRestore || canHistory ? 7 : 6} className="text-center text-muted-foreground">
                   {arama.trim() ? 'Aramayla eşleşen sefer dilimi yok.' : 'Kayıt yok.'}
                 </TableCell>
               </TableRow>
@@ -1692,25 +1636,21 @@ function ServisSeferDilimiPanel({ canManage, canHistory }: { canManage: boolean;
                 <TableCell>{dilim.grupKodu || '-'}</TableCell>
                 <TableCell>{dilim.sira}</TableCell>
                 <TableCell><AktifBadge aktif={dilim.aktif} /></TableCell>
-                {(canManage || canHistory) && (
+                {(canManage || canPassive || canRestore || canHistory) && (
                   <TableCell className="text-right space-x-2">
                     {canHistory && <GecmisButonu onClick={() => setGecmisDilim(dilim)} />}
                     {canManage && (
-                      <>
-                        <Button size="sm" variant="outline" onClick={() => duzenleAc(dilim)}>
-                          Düzenle
-                        </Button>
-                        {dilim.aktif ? (
-                          <Button size="sm" variant="destructive" onClick={() => pasiflestir(dilim.id)}>
-                            Pasifleştir
-                          </Button>
-                        ) : (
-                          <Button size="sm" variant="outline" onClick={() => geriAl(dilim.id)}>
-                            Geri Al
-                          </Button>
-                        )}
-                      </>
+                      <Button size="sm" variant="outline" onClick={() => duzenleAc(dilim)}>
+                        Düzenle
+                      </Button>
                     )}
+                    <PasifGeriAlButonlari
+                      aktif={dilim.aktif}
+                      canPassive={canPassive}
+                      canRestore={canRestore}
+                      onPasiflestir={() => pasiflestir(dilim.id)}
+                      onGeriAl={() => geriAl(dilim.id)}
+                    />
                   </TableCell>
                 )}
               </TableRow>
@@ -1831,7 +1771,7 @@ function ServisPersonelDurumPanel({
       const res = await fetch('/api/servis-yonetimi/personel-durum')
       const json = await res.json()
       if (!res.ok || !json.ok) {
-        setHata(json.message || 'Servis kullanım durumu listesi alınamadı.')
+        setHata(apiHataMesaji(res.status, json, 'Servis kullanım durumu listesi alınamadı.'))
         return
       }
       setListe(json.data)
@@ -1860,7 +1800,7 @@ function ServisPersonelDurumPanel({
     })
     const json = await res.json()
     if (!res.ok || !json.ok) {
-      setHata(json.message || 'Kaydedilemedi.')
+      setHata(apiHataMesaji(res.status, json, 'Kaydedilemedi.'))
       return
     }
     setDialogAcik(false)
@@ -1889,7 +1829,7 @@ function ServisPersonelDurumPanel({
     })
     const json = await res.json()
     if (!res.ok || !json.ok) {
-      setHata(json.message || 'Güncellenemedi.')
+      setHata(apiHataMesaji(res.status, json, 'Güncellenemedi.'))
       return
     }
     setDuzenlenen(null)
@@ -1906,7 +1846,7 @@ function ServisPersonelDurumPanel({
     })
     const json = await res.json()
     if (!res.ok || !json.ok) {
-      setHata(json.message || 'Kayıt kapatılamadı.')
+      setHata(apiHataMesaji(res.status, json, 'Kayıt kapatılamadı.'))
       return
     }
     setKapatilan(null)
@@ -1918,7 +1858,7 @@ function ServisPersonelDurumPanel({
     const res = await fetch(`/api/servis-yonetimi/personel-durum/${id}/geri-al`, { method: 'POST' })
     const json = await res.json()
     if (!res.ok || !json.ok) {
-      setHata(json.message || 'Geri alınamadı.')
+      setHata(apiHataMesaji(res.status, json, 'Geri alınamadı.'))
       return
     }
     yukle()
@@ -2115,25 +2055,25 @@ export default function ServisYonetimiPage() {
           <TabsTrigger value="personel-durum">Personel Durumları</TabsTrigger>
         </TabsList>
         <TabsContent value="firma">
-          <ServisFirmaPanel canManage={canManage} canHistory={canHistory} />
+          <ServisFirmaPanel canManage={canManage} canPassive={canPassive} canRestore={canRestore} canHistory={canHistory} />
         </TabsContent>
         <TabsContent value="yerleske">
-          <ServisYerleskePanel canManage={canManage} canHistory={canHistory} />
+          <ServisYerleskePanel canManage={canManage} canPassive={canPassive} canRestore={canRestore} canHistory={canHistory} />
         </TabsContent>
         <TabsContent value="guzergah">
-          <ServisGuzergahPanel canManage={canManage} canHistory={canHistory} />
+          <ServisGuzergahPanel canManage={canManage} canPassive={canPassive} canRestore={canRestore} canHistory={canHistory} />
         </TabsContent>
         <TabsContent value="durak">
-          <ServisDurakPanel canManage={canManage} canHistory={canHistory} />
+          <ServisDurakPanel canManage={canManage} canPassive={canPassive} canRestore={canRestore} canHistory={canHistory} />
         </TabsContent>
         <TabsContent value="arac">
-          <ServisAracPanel canManage={canManage} canHistory={canHistory} />
+          <ServisAracPanel canManage={canManage} canPassive={canPassive} canRestore={canRestore} canHistory={canHistory} />
         </TabsContent>
         <TabsContent value="sofor">
-          <ServisSoforPanel canManage={canManage} canHistory={canHistory} />
+          <ServisSoforPanel canManage={canManage} canPassive={canPassive} canRestore={canRestore} canHistory={canHistory} />
         </TabsContent>
         <TabsContent value="sefer-dilimi">
-          <ServisSeferDilimiPanel canManage={canManage} canHistory={canHistory} />
+          <ServisSeferDilimiPanel canManage={canManage} canPassive={canPassive} canRestore={canRestore} canHistory={canHistory} />
         </TabsContent>
         <TabsContent value="personel-durum">
           <ServisPersonelDurumPanel

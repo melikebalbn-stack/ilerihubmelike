@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import type { GuzergahDurak, GuzergahDurakSaat, SeferDilimi } from './types'
+import { apiHataMesaji } from '../../_lib/servis-istek'
 
 export function SaatlerDialog({
   guzergahId,
@@ -76,7 +77,7 @@ export function SaatlerDialog({
     })
     const json = await res.json()
     if (!res.ok || !json.ok) {
-      setHata(json.message || 'Saat kaydedilemedi.')
+      setHata(apiHataMesaji(res.status, json, 'Saat kaydedilemedi.'))
       return
     }
     if (pasifleriGoster) yukleTumSaatler()
@@ -88,7 +89,7 @@ export function SaatlerDialog({
     const res = await fetch(`/api/servis-yonetimi/guzergah-durak-saat/${saatId}/pasiflestir`, { method: 'POST' })
     const json = await res.json()
     if (!res.ok || !json.ok) {
-      setHata(json.message || 'Saat kaydı pasifleştirilemedi.')
+      setHata(apiHataMesaji(res.status, json, 'Saat kaydı pasifleştirilemedi.'))
       return
     }
     setSaatler((s) => ({ ...s, [dilimId]: '' }))
@@ -101,7 +102,7 @@ export function SaatlerDialog({
     const res = await fetch(`/api/servis-yonetimi/guzergah-durak-saat/${saatId}/geri-al`, { method: 'POST' })
     const json = await res.json()
     if (!res.ok || !json.ok) {
-      setHata(json.message || 'Saat kaydı geri alınamadı.')
+      setHata(apiHataMesaji(res.status, json, 'Saat kaydı geri alınamadı.'))
       return
     }
     await yukleTumSaatler()

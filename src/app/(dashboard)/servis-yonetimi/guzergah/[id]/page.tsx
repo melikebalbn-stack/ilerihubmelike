@@ -40,6 +40,8 @@ import { ServisGecmisDialog, GecmisButonu } from '../../_components/ServisGecmis
 import { SaatlerDialog } from './SaatlerDialog'
 import { KapasitePanel } from './KapasitePanel'
 import type { GuzergahDurak, SeferDilimi } from './types'
+import { apiHataMesaji, jsonIstek, servisIstek } from '../../_lib/servis-istek'
+import { usePasifGeriAl } from '../../_lib/usePasifGeriAl'
 
 type Guzergah = { id: string; kod: string; ad: string; aktif: boolean }
 type SecilebilirDurak = { id: string; kod: string; ad: string }
@@ -208,7 +210,7 @@ export default function GuzergahDetayPage() {
     })
     const json = await res.json()
     if (!res.ok || !json.ok) {
-      setHata(json.message || 'Durak eklenemedi.')
+      setHata(apiHataMesaji(res.status, json, 'Durak eklenemedi.'))
       return
     }
     setDurakEkleAcik(false)
@@ -218,13 +220,13 @@ export default function GuzergahDetayPage() {
   async function siraDegistir(guzergahDurakId: string, yon: 'YUKARI' | 'ASAGI') {
     setSiralamaDegisiyor(guzergahDurakId)
     try {
-      const res = await fetch(`/api/servis-yonetimi/guzergah/${guzergahId}/durak/reorder`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ guzergahDurakId, yon }),
-      })
-      if (!res.ok) {
-        setHata('Sıralama değiştirilemedi.')
+      const sonuc = await servisIstek(
+        `/api/servis-yonetimi/guzergah/${guzergahId}/durak/reorder`,
+        jsonIstek('POST', { guzergahDurakId, yon }),
+        'Sıralama değiştirilemedi.',
+      )
+      if (!sonuc.ok) {
+        setHata(sonuc.mesaj)
         return
       }
       await yukle()
@@ -243,26 +245,18 @@ export default function GuzergahDetayPage() {
     const yeniSirali = arrayMove(aktifDuraklar, eskiIndex, yeniIndex)
     setDuraklar([...yeniSirali, ...pasifDuraklar])
 
-    const res = await fetch(`/api/servis-yonetimi/guzergah/${guzergahId}/durak/reorder-bulk`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ guzergahDurakIdleri: yeniSirali.map((d) => d.id) }),
-    })
-    if (!res.ok) {
-      setHata('Sıralama kaydedilemedi.')
+    const sonuc = await servisIstek(
+      `/api/servis-yonetimi/guzergah/${guzergahId}/durak/reorder-bulk`,
+      jsonIstek('POST', { guzergahDurakIdleri: yeniSirali.map((d) => d.id) }),
+      'Sıralama kaydedilemedi.',
+    )
+    if (!sonuc.ok) {
+      setHata(sonuc.mesaj)
     }
     await yukle()
   }
 
-  async function pasiflestir(id: string) {
-    await fetch(`/api/servis-yonetimi/guzergah-durak/${id}/pasiflestir`, { method: 'POST' })
-    yukle()
-  }
-
-  async function geriAl(id: string) {
-    await fetch(`/api/servis-yonetimi/guzergah-durak/${id}/geri-al`, { method: 'POST' })
-    yukle()
-  }
+  const { pasiflestir, geriAl } = usePasifGeriAl({ yol: 'guzergah-durak', yukle, setHata })
 
   return (
     <div className="p-6 space-y-6">
@@ -641,7 +635,7 @@ function VarsayilanAraclarPanel({
     })
     const json = await res.json()
     if (!res.ok || !json.ok) {
-      setHata(json.message || 'Kaydedilemedi.')
+      setHata(apiHataMesaji(res.status, json, 'Kaydedilemedi.'))
       return
     }
     setDialogAcik(false)
@@ -664,7 +658,7 @@ function VarsayilanAraclarPanel({
     })
     const json = await res.json()
     if (!res.ok || !json.ok) {
-      setHata(json.message || 'Atama kapatılamadı.')
+      setHata(apiHataMesaji(res.status, json, 'Atama kapatılamadı.'))
       return
     }
     setKapatilan(null)
@@ -676,7 +670,7 @@ function VarsayilanAraclarPanel({
     const res = await fetch(`/api/servis-yonetimi/guzergah-arac-varsayilan/${id}/geri-al`, { method: 'POST' })
     const json = await res.json()
     if (!res.ok || !json.ok) {
-      setHata(json.message || 'Geri alınamadı.')
+      setHata(apiHataMesaji(res.status, json, 'Geri alınamadı.'))
       return
     }
     yukle()
@@ -889,7 +883,7 @@ function VarsayilanSoforlerPanel({
     })
     const json = await res.json()
     if (!res.ok || !json.ok) {
-      setHata(json.message || 'Kaydedilemedi.')
+      setHata(apiHataMesaji(res.status, json, 'Kaydedilemedi.'))
       return
     }
     setDialogAcik(false)
@@ -912,7 +906,7 @@ function VarsayilanSoforlerPanel({
     })
     const json = await res.json()
     if (!res.ok || !json.ok) {
-      setHata(json.message || 'Atama kapatılamadı.')
+      setHata(apiHataMesaji(res.status, json, 'Atama kapatılamadı.'))
       return
     }
     setKapatilan(null)
@@ -924,7 +918,7 @@ function VarsayilanSoforlerPanel({
     const res = await fetch(`/api/servis-yonetimi/guzergah-sofor-varsayilan/${id}/geri-al`, { method: 'POST' })
     const json = await res.json()
     if (!res.ok || !json.ok) {
-      setHata(json.message || 'Geri alınamadı.')
+      setHata(apiHataMesaji(res.status, json, 'Geri alınamadı.'))
       return
     }
     yukle()
@@ -1174,7 +1168,7 @@ function SorumlularPanel({
       const res = await fetch(`/api/servis-yonetimi/guzergah/${guzergahId}/sorumlu`)
       const json = await res.json()
       if (!res.ok || !json.ok) {
-        setHata(json.message || 'Servis sorumluları alınamadı.')
+        setHata(apiHataMesaji(res.status, json, 'Servis sorumluları alınamadı.'))
         return
       }
       setListe(json.data)
@@ -1205,7 +1199,7 @@ function SorumlularPanel({
     })
     const json = await res.json()
     if (!res.ok || !json.ok) {
-      setHata(json.message || 'Kaydedilemedi.')
+      setHata(apiHataMesaji(res.status, json, 'Kaydedilemedi.'))
       return
     }
     setDialogAcik(false)
@@ -1228,7 +1222,7 @@ function SorumlularPanel({
     })
     const json = await res.json()
     if (!res.ok || !json.ok) {
-      setHata(json.message || 'Atama kapatılamadı.')
+      setHata(apiHataMesaji(res.status, json, 'Atama kapatılamadı.'))
       return
     }
     setKapatilan(null)
@@ -1240,7 +1234,7 @@ function SorumlularPanel({
     const res = await fetch(`/api/servis-yonetimi/guzergah-sorumlu/${id}/geri-al`, { method: 'POST' })
     const json = await res.json()
     if (!res.ok || !json.ok) {
-      setHata(json.message || 'Geri alınamadı.')
+      setHata(apiHataMesaji(res.status, json, 'Geri alınamadı.'))
       return
     }
     yukle()
@@ -1418,7 +1412,7 @@ function PersonelAtamalarPanel({
       const res = await fetch(`/api/servis-yonetimi/guzergah/${guzergahId}/personel-atama`)
       const json = await res.json()
       if (!res.ok || !json.ok) {
-        setHata(json.message || 'Personel atamaları alınamadı.')
+        setHata(apiHataMesaji(res.status, json, 'Personel atamaları alınamadı.'))
         return
       }
       setListe(json.data)
@@ -1456,7 +1450,7 @@ function PersonelAtamalarPanel({
     })
     const json = await res.json()
     if (!res.ok || !json.ok) {
-      setHata(json.message || 'Kaydedilemedi.')
+      setHata(apiHataMesaji(res.status, json, 'Kaydedilemedi.'))
       return
     }
     setDialogAcik(false)
@@ -1479,7 +1473,7 @@ function PersonelAtamalarPanel({
     })
     const json = await res.json()
     if (!res.ok || !json.ok) {
-      setHata(json.message || 'Atama kapatılamadı.')
+      setHata(apiHataMesaji(res.status, json, 'Atama kapatılamadı.'))
       return
     }
     setKapatilan(null)
@@ -1491,7 +1485,7 @@ function PersonelAtamalarPanel({
     const res = await fetch(`/api/servis-yonetimi/guzergah-personel-atama/${id}/geri-al`, { method: 'POST' })
     const json = await res.json()
     if (!res.ok || !json.ok) {
-      setHata(json.message || 'Geri alınamadı.')
+      setHata(apiHataMesaji(res.status, json, 'Geri alınamadı.'))
       return
     }
     yukle()
@@ -1709,7 +1703,7 @@ function AlternatifServisDialog({
       .then(({ res, json }) => {
         if (iptal) return
         if (!res.ok || !json.ok) {
-          setHata(json.message || 'Alternatif servis önerileri alınamadı.')
+          setHata(apiHataMesaji(res.status, json, 'Alternatif servis önerileri alınamadı.'))
           return
         }
         setOneriler(json.data)
@@ -1751,7 +1745,7 @@ function AlternatifServisDialog({
     })
     const json = await res.json()
     if (!res.ok || !json.ok) {
-      setHata(json.message || 'Transfer gerçekleştirilemedi.')
+      setHata(apiHataMesaji(res.status, json, 'Transfer gerçekleştirilemedi.'))
       return
     }
     onTransferEdildi()

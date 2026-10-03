@@ -37,6 +37,8 @@ type ServisFirma = {
   eposta: string | null
   adres: string | null
   aktif: boolean
+  /** B0: aktif araç / aktif şoför SAYISI (şoför için yalnız sayı — KVKK). */
+  _count?: { araclar: number; soforler: number }
 }
 
 type ServisYerleske = {
@@ -248,32 +250,36 @@ function ServisFirmaPanel({ canManage, canPassive, canRestore, canHistory }: { c
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Ad</TableHead>
-              <TableHead>Yetkili</TableHead>
-              <TableHead>Telefon</TableHead>
-              <TableHead>Durum</TableHead>
-              {(canManage || canPassive || canRestore || canHistory) && <TableHead className="text-right">İşlem</TableHead>}
+              <TableHead className="h-9">Ad</TableHead>
+              <TableHead className="h-9">Yetkili</TableHead>
+              <TableHead className="h-9">Telefon</TableHead>
+              <TableHead className="h-9 text-right" title="Firmaya bağlı aktif araç sayısı">Aktif Araç</TableHead>
+              <TableHead className="h-9 text-right" title="Firmaya bağlı aktif şoför sayısı (yalnız sayı)">Aktif Şoför</TableHead>
+              <TableHead className="h-9">Durum</TableHead>
+              {(canManage || canPassive || canRestore || canHistory) && <TableHead className="h-9 text-right">İşlem</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
             {filtreliFirmalar.length === 0 && (
               <TableRow>
-                <TableCell colSpan={canManage || canPassive || canRestore || canHistory ? 5 : 4} className="text-center text-muted-foreground">
+                <TableCell colSpan={canManage || canPassive || canRestore || canHistory ? 7 : 6} className="py-1.5 text-center text-muted-foreground">
                   {arama.trim() ? 'Aramayla eşleşen firma yok.' : 'Kayıt yok.'}
                 </TableCell>
               </TableRow>
             )}
             {filtreliFirmalar.map((firma) => (
               <TableRow key={firma.id}>
-                <TableCell>{firma.ad}</TableCell>
-                <TableCell>{firma.yetkiliAdi || '-'}</TableCell>
-                <TableCell>{firma.telefon || '-'}</TableCell>
-                <TableCell><AktifBadge aktif={firma.aktif} /></TableCell>
+                <TableCell className="py-1.5">{firma.ad}</TableCell>
+                <TableCell className="py-1.5">{firma.yetkiliAdi || '-'}</TableCell>
+                <TableCell className="py-1.5">{firma.telefon || '-'}</TableCell>
+                <TableCell className="py-1.5 text-right tabular-nums">{firma._count?.araclar ?? 0}</TableCell>
+                <TableCell className="py-1.5 text-right tabular-nums">{firma._count?.soforler ?? 0}</TableCell>
+                <TableCell className="py-1.5"><AktifBadge aktif={firma.aktif} /></TableCell>
                 {(canManage || canPassive || canRestore || canHistory) && (
-                  <TableCell className="text-right space-x-2">
+                  <TableCell className="py-1.5 text-right space-x-2">
                     {canHistory && <GecmisButonu onClick={() => setGecmisFirma(firma)} />}
                     {canManage && (
-                      <Button size="sm" variant="outline" onClick={() => duzenleAc(firma)}>
+                      <Button size="sm" className="h-7 px-2" variant="outline" onClick={() => duzenleAc(firma)}>
                         Düzenle
                       </Button>
                     )}
@@ -447,32 +453,32 @@ function ServisYerleskePanel({ canManage, canPassive, canRestore, canHistory }: 
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Kod</TableHead>
-              <TableHead>Ad</TableHead>
-              <TableHead>Adres</TableHead>
-              <TableHead>Durum</TableHead>
-              {(canManage || canPassive || canRestore || canHistory) && <TableHead className="text-right">İşlem</TableHead>}
+              <TableHead className="h-9">Kod</TableHead>
+              <TableHead className="h-9">Ad</TableHead>
+              <TableHead className="h-9">Adres</TableHead>
+              <TableHead className="h-9">Durum</TableHead>
+              {(canManage || canPassive || canRestore || canHistory) && <TableHead className="h-9 text-right">İşlem</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
             {filtreliYerleskeler.length === 0 && (
               <TableRow>
-                <TableCell colSpan={canManage || canPassive || canRestore || canHistory ? 5 : 4} className="text-center text-muted-foreground">
+                <TableCell colSpan={canManage || canPassive || canRestore || canHistory ? 5 : 4} className="py-1.5 text-center text-muted-foreground">
                   {arama.trim() ? 'Aramayla eşleşen yerleşke yok.' : 'Kayıt yok.'}
                 </TableCell>
               </TableRow>
             )}
             {filtreliYerleskeler.map((yerleske) => (
               <TableRow key={yerleske.id}>
-                <TableCell className="font-mono">{yerleske.kod}</TableCell>
-                <TableCell>{yerleske.ad}</TableCell>
-                <TableCell>{yerleske.adres || '-'}</TableCell>
-                <TableCell><AktifBadge aktif={yerleske.aktif} /></TableCell>
+                <TableCell className="py-1.5 font-mono">{yerleske.kod}</TableCell>
+                <TableCell className="py-1.5">{yerleske.ad}</TableCell>
+                <TableCell className="py-1.5">{yerleske.adres || '-'}</TableCell>
+                <TableCell className="py-1.5"><AktifBadge aktif={yerleske.aktif} /></TableCell>
                 {(canManage || canPassive || canRestore || canHistory) && (
-                  <TableCell className="text-right space-x-2">
+                  <TableCell className="py-1.5 text-right space-x-2">
                     {canHistory && <GecmisButonu onClick={() => setGecmisYerleske(yerleske)} />}
                     {canManage && (
-                      <Button size="sm" variant="outline" onClick={() => duzenleAc(yerleske)}>
+                      <Button size="sm" className="h-7 px-2" variant="outline" onClick={() => duzenleAc(yerleske)}>
                         Düzenle
                       </Button>
                     )}
@@ -668,42 +674,42 @@ function ServisGuzergahPanel({ canManage, canPassive, canRestore, canHistory }: 
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Kod</TableHead>
-              <TableHead>Ad</TableHead>
-              <TableHead>Bölge</TableHead>
-              <TableHead>Yerleşke</TableHead>
-              <TableHead>Geçerlilik</TableHead>
-              <TableHead>Durum</TableHead>
-              {(canManage || canPassive || canRestore || canHistory) && <TableHead className="text-right">İşlem</TableHead>}
+              <TableHead className="h-9">Kod</TableHead>
+              <TableHead className="h-9">Ad</TableHead>
+              <TableHead className="h-9">Bölge</TableHead>
+              <TableHead className="h-9">Yerleşke</TableHead>
+              <TableHead className="h-9">Geçerlilik</TableHead>
+              <TableHead className="h-9">Durum</TableHead>
+              {(canManage || canPassive || canRestore || canHistory) && <TableHead className="h-9 text-right">İşlem</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
             {filtreliGuzergahlar.length === 0 && (
               <TableRow>
-                <TableCell colSpan={canManage || canPassive || canRestore || canHistory ? 7 : 6} className="text-center text-muted-foreground">
+                <TableCell colSpan={canManage || canPassive || canRestore || canHistory ? 7 : 6} className="py-1.5 text-center text-muted-foreground">
                   {arama.trim() ? 'Aramayla eşleşen güzergâh yok.' : 'Kayıt yok.'}
                 </TableCell>
               </TableRow>
             )}
             {filtreliGuzergahlar.map((guzergah) => (
               <TableRow key={guzergah.id}>
-                <TableCell className="font-mono">{guzergah.kod}</TableCell>
-                <TableCell>{guzergah.ad}</TableCell>
-                <TableCell>{guzergah.bolge || '-'}</TableCell>
-                <TableCell>{guzergah.yerleske.kod} — {guzergah.yerleske.ad}</TableCell>
-                <TableCell>
+                <TableCell className="py-1.5 font-mono">{guzergah.kod}</TableCell>
+                <TableCell className="py-1.5">{guzergah.ad}</TableCell>
+                <TableCell className="py-1.5">{guzergah.bolge || '-'}</TableCell>
+                <TableCell className="py-1.5">{guzergah.yerleske.kod} — {guzergah.yerleske.ad}</TableCell>
+                <TableCell className="py-1.5">
                   {tarihInputDegeri(guzergah.gecerlilikBaslangici) || '-'} / {tarihInputDegeri(guzergah.gecerlilikBitisi) || '-'}
                 </TableCell>
-                <TableCell><AktifBadge aktif={guzergah.aktif} /></TableCell>
+                <TableCell className="py-1.5"><AktifBadge aktif={guzergah.aktif} /></TableCell>
                 {(canManage || canPassive || canRestore || canHistory) && (
-                  <TableCell className="space-x-2 text-right">
+                  <TableCell className="py-1.5 space-x-2 text-right">
                     {canHistory && <GecmisButonu onClick={() => setGecmisGuzergah(guzergah)} />}
                     {canManage && (
                       <>
-                        <Button size="sm" variant="outline" asChild>
+                        <Button size="sm" className="h-7 px-2" variant="outline" asChild>
                           <Link href={`/servis-yonetimi/guzergah/${guzergah.id}`}>Duraklar</Link>
                         </Button>
-                        <Button size="sm" variant="outline" onClick={() => duzenleAc(guzergah)}>Düzenle</Button>
+                        <Button size="sm" className="h-7 px-2" variant="outline" onClick={() => duzenleAc(guzergah)}>Düzenle</Button>
                       </>
                     )}
                     <PasifGeriAlButonlari
@@ -910,35 +916,35 @@ function ServisDurakPanel({ canManage, canPassive, canRestore, canHistory }: { c
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Kod</TableHead>
-              <TableHead>Ad</TableHead>
-              <TableHead>Konum</TableHead>
-              <TableHead>Adres Etiketi</TableHead>
-              <TableHead>Koordinat</TableHead>
-              <TableHead>Durum</TableHead>
-              {(canManage || canPassive || canRestore || canHistory) && <TableHead className="text-right">İşlem</TableHead>}
+              <TableHead className="h-9">Kod</TableHead>
+              <TableHead className="h-9">Ad</TableHead>
+              <TableHead className="h-9">Konum</TableHead>
+              <TableHead className="h-9">Adres Etiketi</TableHead>
+              <TableHead className="h-9">Koordinat</TableHead>
+              <TableHead className="h-9">Durum</TableHead>
+              {(canManage || canPassive || canRestore || canHistory) && <TableHead className="h-9 text-right">İşlem</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
             {filtreliDuraklar.length === 0 && (
               <TableRow>
-                <TableCell colSpan={canManage || canPassive || canRestore || canHistory ? 7 : 6} className="text-center text-muted-foreground">
+                <TableCell colSpan={canManage || canPassive || canRestore || canHistory ? 7 : 6} className="py-1.5 text-center text-muted-foreground">
                   {arama.trim() ? 'Aramayla eşleşen durak yok.' : 'Kayıt yok.'}
                 </TableCell>
               </TableRow>
             )}
             {filtreliDuraklar.map((durak) => (
               <TableRow key={durak.id}>
-                <TableCell className="font-mono">{durak.kod}</TableCell>
-                <TableCell>{durak.ad}</TableCell>
-                <TableCell>{[durak.il, durak.ilce, durak.mahalle].filter(Boolean).join(' / ') || '-'}</TableCell>
-                <TableCell>{durak.adresEtiketi || '-'}</TableCell>
-                <TableCell>{durak.enlem && durak.boylam ? `${durak.enlem}, ${durak.boylam}` : '-'}</TableCell>
-                <TableCell><AktifBadge aktif={durak.aktif} /></TableCell>
+                <TableCell className="py-1.5 font-mono">{durak.kod}</TableCell>
+                <TableCell className="py-1.5">{durak.ad}</TableCell>
+                <TableCell className="py-1.5">{[durak.il, durak.ilce, durak.mahalle].filter(Boolean).join(' / ') || '-'}</TableCell>
+                <TableCell className="py-1.5">{durak.adresEtiketi || '-'}</TableCell>
+                <TableCell className="py-1.5">{durak.enlem && durak.boylam ? `${durak.enlem}, ${durak.boylam}` : '-'}</TableCell>
+                <TableCell className="py-1.5"><AktifBadge aktif={durak.aktif} /></TableCell>
                 {(canManage || canPassive || canRestore || canHistory) && (
-                  <TableCell className="space-x-2 text-right">
+                  <TableCell className="py-1.5 space-x-2 text-right">
                     {canHistory && <GecmisButonu onClick={() => setGecmisDurak(durak)} />}
-                    {canManage && <Button size="sm" variant="outline" onClick={() => duzenleAc(durak)}>Düzenle</Button>}
+                    {canManage && <Button size="sm" className="h-7 px-2" variant="outline" onClick={() => duzenleAc(durak)}>Düzenle</Button>}
                     <PasifGeriAlButonlari
                       aktif={durak.aktif}
                       canPassive={canPassive}
@@ -1148,37 +1154,37 @@ function ServisAracPanel({ canManage, canPassive, canRestore, canHistory }: { ca
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Plaka</TableHead>
-              <TableHead>Kapasite</TableHead>
-              <TableHead>Firma</TableHead>
-              <TableHead>Araç Tipi</TableHead>
-              <TableHead>Geçerlilik</TableHead>
-              <TableHead>Durum</TableHead>
-              {(canManage || canPassive || canRestore || canHistory) && <TableHead className="text-right">İşlem</TableHead>}
+              <TableHead className="h-9">Plaka</TableHead>
+              <TableHead className="h-9">Kapasite</TableHead>
+              <TableHead className="h-9">Firma</TableHead>
+              <TableHead className="h-9">Araç Tipi</TableHead>
+              <TableHead className="h-9">Geçerlilik</TableHead>
+              <TableHead className="h-9">Durum</TableHead>
+              {(canManage || canPassive || canRestore || canHistory) && <TableHead className="h-9 text-right">İşlem</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
             {filtreliAraclar.length === 0 && (
               <TableRow>
-                <TableCell colSpan={canManage || canPassive || canRestore || canHistory ? 7 : 6} className="text-center text-muted-foreground">
+                <TableCell colSpan={canManage || canPassive || canRestore || canHistory ? 7 : 6} className="py-1.5 text-center text-muted-foreground">
                   {arama.trim() ? 'Aramayla eşleşen araç yok.' : 'Kayıt yok.'}
                 </TableCell>
               </TableRow>
             )}
             {filtreliAraclar.map((arac) => (
               <TableRow key={arac.id}>
-                <TableCell className="font-mono">{arac.plaka}</TableCell>
-                <TableCell>{arac.kapasite}</TableCell>
-                <TableCell>{arac.firma.ad}{arac.firma.aktif ? '' : ' (Pasif)'}</TableCell>
-                <TableCell>{arac.aracTipi || '-'}</TableCell>
-                <TableCell>
+                <TableCell className="py-1.5 font-mono">{arac.plaka}</TableCell>
+                <TableCell className="py-1.5">{arac.kapasite}</TableCell>
+                <TableCell className="py-1.5">{arac.firma.ad}{arac.firma.aktif ? '' : ' (Pasif)'}</TableCell>
+                <TableCell className="py-1.5">{arac.aracTipi || '-'}</TableCell>
+                <TableCell className="py-1.5">
                   {tarihInputDegeri(arac.gecerlilikBaslangici) || '-'} / {tarihInputDegeri(arac.gecerlilikBitisi) || '-'}
                 </TableCell>
-                <TableCell><AktifBadge aktif={arac.aktif} /></TableCell>
+                <TableCell className="py-1.5"><AktifBadge aktif={arac.aktif} /></TableCell>
                 {(canManage || canPassive || canRestore || canHistory) && (
-                  <TableCell className="space-x-2 text-right">
+                  <TableCell className="py-1.5 space-x-2 text-right">
                     {canHistory && <GecmisButonu onClick={() => setGecmisArac(arac)} />}
-                    {canManage && <Button size="sm" variant="outline" onClick={() => duzenleAc(arac)}>Düzenle</Button>}
+                    {canManage && <Button size="sm" className="h-7 px-2" variant="outline" onClick={() => duzenleAc(arac)}>Düzenle</Button>}
                     <PasifGeriAlButonlari
                       aktif={arac.aktif}
                       canPassive={canPassive}
@@ -1485,23 +1491,23 @@ function ServisSoforPanel({ canManage, canPassive, canRestore, canHistory }: { c
       {hata && <p className="text-sm text-red-600">{hata}</p>}
       {yukleniyor ? <p className="text-sm text-muted-foreground">Yükleniyor...</p> : (
         <Table>
-          <TableHeader><TableRow><TableHead>Ad Soyad</TableHead><TableHead>Telefon</TableHead><TableHead>Tür</TableHead><TableHead>Bağlı Olduğu</TableHead><TableHead>Durum</TableHead>{(canManage || canPassive || canRestore || canHistory) && <TableHead className="text-right">İşlem</TableHead>}</TableRow></TableHeader>
+          <TableHeader><TableRow><TableHead className="h-9">Ad Soyad</TableHead><TableHead className="h-9">Telefon</TableHead><TableHead className="h-9">Tür</TableHead><TableHead className="h-9">Bağlı Olduğu</TableHead><TableHead className="h-9">Durum</TableHead>{(canManage || canPassive || canRestore || canHistory) && <TableHead className="h-9 text-right">İşlem</TableHead>}</TableRow></TableHeader>
           <TableBody>
-            {filtreliSoforler.length === 0 && <TableRow><TableCell colSpan={canManage || canPassive || canRestore || canHistory ? 6 : 5} className="text-center text-muted-foreground">{query ? 'Aramayla eşleşen şoför yok.' : 'Kayıt yok.'}</TableCell></TableRow>}
+            {filtreliSoforler.length === 0 && <TableRow><TableCell colSpan={canManage || canPassive || canRestore || canHistory ? 6 : 5} className="py-1.5 text-center text-muted-foreground">{query ? 'Aramayla eşleşen şoför yok.' : 'Kayıt yok.'}</TableCell></TableRow>}
             {filtreliSoforler.map((sofor) => (
               <TableRow key={sofor.id}>
-                <TableCell>{sofor.adSoyad}</TableCell><TableCell>{sofor.telefon || '-'}</TableCell>
-                <TableCell>{sofor.personnelId ? 'İç Personel' : 'Taşeron Firma'}</TableCell>
-                <TableCell>
+                <TableCell className="py-1.5">{sofor.adSoyad}</TableCell><TableCell className="py-1.5">{sofor.telefon || '-'}</TableCell>
+                <TableCell className="py-1.5">{sofor.personnelId ? 'İç Personel' : 'Taşeron Firma'}</TableCell>
+                <TableCell className="py-1.5">
                   {sofor.personnelId
                     ? `${sofor.personnel?.adSoyad || '-'}${sofor.personnel && !sofor.personnel.aktif ? ' (Pasif)' : ''}`
                     : `${sofor.firma?.ad || '-'}${sofor.firma && !sofor.firma.aktif ? ' (Pasif)' : ''}`}
                 </TableCell>
-                <TableCell><AktifBadge aktif={sofor.aktif} /></TableCell>
+                <TableCell className="py-1.5"><AktifBadge aktif={sofor.aktif} /></TableCell>
                 {(canManage || canPassive || canRestore || canHistory) && (
-                  <TableCell className="space-x-2 text-right">
+                  <TableCell className="py-1.5 space-x-2 text-right">
                     {canHistory && <GecmisButonu onClick={() => setGecmisSofor(sofor)} />}
-                    {canManage && <Button size="sm" variant="outline" onClick={() => duzenleAc(sofor)}>Düzenle</Button>}
+                    {canManage && <Button size="sm" className="h-7 px-2" variant="outline" onClick={() => duzenleAc(sofor)}>Düzenle</Button>}
                     <PasifGeriAlButonlari
                       aktif={sofor.aktif}
                       canPassive={canPassive}
@@ -1687,36 +1693,36 @@ function ServisSeferDilimiPanel({ canManage, canPassive, canRestore, canHistory 
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Kod</TableHead>
-              <TableHead>Ad</TableHead>
-              <TableHead>Yön</TableHead>
-              <TableHead>Vardiya Etiketi</TableHead>
-              <TableHead>Sıra</TableHead>
-              <TableHead>Durum</TableHead>
-              {(canManage || canPassive || canRestore || canHistory) && <TableHead className="text-right">İşlem</TableHead>}
+              <TableHead className="h-9">Kod</TableHead>
+              <TableHead className="h-9">Ad</TableHead>
+              <TableHead className="h-9">Yön</TableHead>
+              <TableHead className="h-9">Vardiya Etiketi</TableHead>
+              <TableHead className="h-9">Sıra</TableHead>
+              <TableHead className="h-9">Durum</TableHead>
+              {(canManage || canPassive || canRestore || canHistory) && <TableHead className="h-9 text-right">İşlem</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
             {filtreliDilimler.length === 0 && (
               <TableRow>
-                <TableCell colSpan={canManage || canPassive || canRestore || canHistory ? 7 : 6} className="text-center text-muted-foreground">
+                <TableCell colSpan={canManage || canPassive || canRestore || canHistory ? 7 : 6} className="py-1.5 text-center text-muted-foreground">
                   {arama.trim() ? 'Aramayla eşleşen sefer dilimi yok.' : 'Kayıt yok.'}
                 </TableCell>
               </TableRow>
             )}
             {filtreliDilimler.map((dilim) => (
               <TableRow key={dilim.id}>
-                <TableCell className="font-mono">{dilim.kod}</TableCell>
-                <TableCell>{dilim.ad}</TableCell>
-                <TableCell>{dilim.yon === 'GIDIS' ? 'Gidiş' : 'Dönüş'}</TableCell>
-                <TableCell>{dilim.grupKodu || '-'}</TableCell>
-                <TableCell>{dilim.sira}</TableCell>
-                <TableCell><AktifBadge aktif={dilim.aktif} /></TableCell>
+                <TableCell className="py-1.5 font-mono">{dilim.kod}</TableCell>
+                <TableCell className="py-1.5">{dilim.ad}</TableCell>
+                <TableCell className="py-1.5">{dilim.yon === 'GIDIS' ? 'Gidiş' : 'Dönüş'}</TableCell>
+                <TableCell className="py-1.5">{dilim.grupKodu || '-'}</TableCell>
+                <TableCell className="py-1.5">{dilim.sira}</TableCell>
+                <TableCell className="py-1.5"><AktifBadge aktif={dilim.aktif} /></TableCell>
                 {(canManage || canPassive || canRestore || canHistory) && (
-                  <TableCell className="text-right space-x-2">
+                  <TableCell className="py-1.5 text-right space-x-2">
                     {canHistory && <GecmisButonu onClick={() => setGecmisDilim(dilim)} />}
                     {canManage && (
-                      <Button size="sm" variant="outline" onClick={() => duzenleAc(dilim)}>
+                      <Button size="sm" className="h-7 px-2" variant="outline" onClick={() => duzenleAc(dilim)}>
                         Düzenle
                       </Button>
                     )}
@@ -1948,7 +1954,7 @@ function ServisPersonelDurumPanel({
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-medium">Personel Servis Kullanım Durumları</h2>
         {canCreate && (
-          <Button size="sm" onClick={yeniAc}>
+          <Button size="sm" className="h-7 px-2" onClick={yeniAc}>
             <Plus className="mr-2 h-4 w-4" /> Yeni Kayıt
           </Button>
         )}
@@ -1960,42 +1966,42 @@ function ServisPersonelDurumPanel({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Personel</TableHead>
-              <TableHead>Bölüm</TableHead>
-              <TableHead>Durum</TableHead>
-              <TableHead>Başlangıç</TableHead>
-              <TableHead>Bitiş</TableHead>
-              <TableHead>Kayıt Durumu</TableHead>
-              {(canEdit || canPassive || canRestore || canHistory) && <TableHead className="text-right">İşlem</TableHead>}
+              <TableHead className="h-9">Personel</TableHead>
+              <TableHead className="h-9">Bölüm</TableHead>
+              <TableHead className="h-9">Durum</TableHead>
+              <TableHead className="h-9">Başlangıç</TableHead>
+              <TableHead className="h-9">Bitiş</TableHead>
+              <TableHead className="h-9">Kayıt Durumu</TableHead>
+              {(canEdit || canPassive || canRestore || canHistory) && <TableHead className="h-9 text-right">İşlem</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
             {liste.length === 0 && (
               <TableRow>
-                <TableCell colSpan={canEdit || canPassive || canRestore || canHistory ? 7 : 6} className="text-center text-muted-foreground">
+                <TableCell colSpan={canEdit || canPassive || canRestore || canHistory ? 7 : 6} className="py-1.5 text-center text-muted-foreground">
                   Kayıt yok.
                 </TableCell>
               </TableRow>
             )}
             {liste.map((v) => (
               <TableRow key={v.id}>
-                <TableCell>{v.personnel.adSoyad}{!v.personnel.aktif ? ' (Pasif)' : ''}</TableCell>
-                <TableCell>{v.personnel.bolum || '-'}</TableCell>
-                <TableCell>{durumEtiketiGoster(v.durum)}</TableCell>
-                <TableCell>{v.baslangicTarihi.slice(0, 10)}</TableCell>
-                <TableCell>{v.bitisTarihi ? v.bitisTarihi.slice(0, 10) : '-'}</TableCell>
-                <TableCell><AktifBadge aktif={v.aktif} /></TableCell>
+                <TableCell className="py-1.5">{v.personnel.adSoyad}{!v.personnel.aktif ? ' (Pasif)' : ''}</TableCell>
+                <TableCell className="py-1.5">{v.personnel.bolum || '-'}</TableCell>
+                <TableCell className="py-1.5">{durumEtiketiGoster(v.durum)}</TableCell>
+                <TableCell className="py-1.5">{v.baslangicTarihi.slice(0, 10)}</TableCell>
+                <TableCell className="py-1.5">{v.bitisTarihi ? v.bitisTarihi.slice(0, 10) : '-'}</TableCell>
+                <TableCell className="py-1.5"><AktifBadge aktif={v.aktif} /></TableCell>
                 {(canEdit || canPassive || canRestore || canHistory) && (
-                  <TableCell className="text-right space-x-2">
+                  <TableCell className="py-1.5 text-right space-x-2">
                     {canHistory && <GecmisButonu onClick={() => setGecmisKayit(v)} />}
                     {canEdit && (
-                      <Button size="sm" variant="outline" onClick={() => duzenlemeAc(v)}>Düzenle</Button>
+                      <Button size="sm" className="h-7 px-2" variant="outline" onClick={() => duzenlemeAc(v)}>Düzenle</Button>
                     )}
                     {v.aktif && canPassive && (
-                      <Button size="sm" variant="destructive" onClick={() => kapatmaAc(v)}>Kapat</Button>
+                      <Button size="sm" className="h-7 px-2" variant="destructive" onClick={() => kapatmaAc(v)}>Kapat</Button>
                     )}
                     {!v.aktif && canRestore && (
-                      <Button size="sm" variant="outline" onClick={() => geriAl(v.id)}>Geri Al</Button>
+                      <Button size="sm" className="h-7 px-2" variant="outline" onClick={() => geriAl(v.id)}>Geri Al</Button>
                     )}
                   </TableCell>
                 )}
@@ -2119,7 +2125,8 @@ export default function ServisYonetimiPage() {
       <div>
         <h1 className="text-2xl font-semibold">Servis Yönetimi</h1>
         <p className="text-sm text-muted-foreground">
-          FAZ 1/A — servis tanım verileri.
+          Firma, yerleşke, güzergâh, durak, araç, şoför ve sefer dilimi tanımlarını yönetin. Atama ve kapasite
+          takibi güzergâh detayından yapılır.
         </p>
       </div>
       <Tabs defaultValue="firma">

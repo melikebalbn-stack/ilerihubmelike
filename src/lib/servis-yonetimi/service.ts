@@ -83,6 +83,16 @@ import {
 export async function listServisFirmalar(filtre?: { aktif?: boolean }) {
   return prisma.servisFirma.findMany({
     where: filtre?.aktif !== undefined ? { aktif: filtre.aktif } : undefined,
+    // B0: firma tablosunda "Aktif araç" / "Aktif şoför" sütunları. Şoför (kişi) için
+    // YALNIZ SAYI döner (KVKK); ad/telefon bu sorguda yok.
+    include: {
+      _count: {
+        select: {
+          araclar: { where: { aktif: true } },
+          soforler: { where: { aktif: true } },
+        },
+      },
+    },
     orderBy: { ad: 'asc' },
   })
 }

@@ -307,6 +307,16 @@ describe('ServisFirma — view', () => {
     )
     expect(data).toHaveLength(1)
   })
+
+  it('🔴 B0: yalnız AKTİF araç/şoför SAYISI döner (filtreli _count; şoför için başka alan yok)', async () => {
+    mocks.firmaFindMany.mockResolvedValue([])
+    await listServisFirmalar()
+    expect(mocks.firmaFindMany).toHaveBeenCalledWith(expect.objectContaining({
+      include: {
+        _count: { select: { araclar: { where: { aktif: true } }, soforler: { where: { aktif: true } } } },
+      },
+    }))
+  })
 })
 
 describe('ServisFirma — create', () => {

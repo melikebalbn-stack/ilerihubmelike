@@ -21,13 +21,13 @@ export function PasifGeriAlButonlari({
 }) {
   if (aktif) {
     return canPassive ? (
-      <Button size="sm" variant="destructive" onClick={onPasiflestir}>
+      <Button size="sm" className="h-7 px-2" variant="destructive" onClick={onPasiflestir}>
         Pasifleştir
       </Button>
     ) : null
   }
   return canRestore ? (
-    <Button size="sm" variant="outline" onClick={onGeriAl}>
+    <Button size="sm" className="h-7 px-2" variant="outline" onClick={onGeriAl}>
       Geri Al
     </Button>
   ) : null

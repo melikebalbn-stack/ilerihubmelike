@@ -9,7 +9,7 @@ afterEach(() => vi.unstubAllGlobals())
 
 describe('KapasiteKartlari (güzergâh detayı)', () => {
   it('motor çıktısını 4 kart olarak gösterir; çağrı guzergahId ile', async () => {
-    const f = vi.fn(async () => yanit([satir({ kapasite: 16, atananPersonelSayisi: 12, bosKoltuk: 4, dolulukOrani: 75, aracSayisi: 1, durum: 'UYGUN', asimMiktari: 0 })]))
+    const f = vi.fn(async (_url: string) => yanit([satir({ kapasite: 16, atananPersonelSayisi: 12, bosKoltuk: 4, dolulukOrani: 75, aracSayisi: 1, durum: 'UYGUN', asimMiktari: 0 })]))
     vi.stubGlobal('fetch', f)
     render(<KapasiteKartlari guzergahId="g1" />)
     await waitFor(() => expect(screen.getByTestId('guzergah-kart-Koltuk').textContent).toBe('16'))

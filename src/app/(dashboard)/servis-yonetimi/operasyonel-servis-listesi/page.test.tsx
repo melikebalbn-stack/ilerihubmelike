@@ -88,6 +88,14 @@ describe('OperasyonelServisListesiPage — export butonu yetkisi', () => {
     expect(screen.queryByText('PDF')).not.toBeInTheDocument()
   })
 
+  it('🔴 YALNIZ servis.export (view yok) → Excel/PDF butonları render EDİLMEZ', () => {
+    mockSession(['servis.export'])
+    fetchMockKur()
+    render(<OperasyonelServisListesiPage />)
+    expect(screen.queryByText('Excel')).not.toBeInTheDocument()
+    expect(screen.queryByText('PDF')).not.toBeInTheDocument()
+  })
+
   it('servis.export izni VARKEN Excel/PDF butonları o anki filtrelerle render edilir', async () => {
     mockSession(['servis.view', 'servis.export'])
     fetchMockKur()

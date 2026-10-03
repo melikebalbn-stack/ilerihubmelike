@@ -169,7 +169,7 @@ export default function VeriKaliteMerkeziPage() {
   const canView = permissions.includes('servis.view')
   // Dışa aktarım AYRI eksen: sayfayı görebilen herkes dosyayı indirememeli.
   // Uç de aynı ikiliyi AND ile istiyor (requireAllPermissions).
-  const canExport = permissions.includes('servis.export')
+  const canExport = permissions.includes('servis.view') && permissions.includes('servis.export')
 
   const [satirlar, setSatirlar] = useState<VeriKaliteSatiri[]>([])
   const [yukleniyor, setYukleniyor] = useState(true)

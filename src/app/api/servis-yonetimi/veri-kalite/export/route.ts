@@ -1,5 +1,9 @@
 import { NextResponse } from 'next/server'
-import { requireAllPermissions } from '@/lib/auth/require-permission'
+import {
+  exportDenetimiHatasi,
+  exportDenetimiYaz,
+  exportYetkisiIste,
+} from '@/lib/servis-yonetimi/export-denetim'
 import { veriKaliteRaporuGetir } from '@/lib/servis-yonetimi/veri-kalite'
 import {
   veriKaliteExcelDosyaAdi,
@@ -21,16 +25,18 @@ export const dynamic = 'force-dynamic'
 // (tam liste) sessizce eksik çıkar. Davranışsal koruma testte:
 // "200'den fazla kayıt export'ta kesilmiyor".
 //
-// AUDIT İZİ YOK (karar): veri yüzeyi ekranla birebir aynı ve audit-log.ts'e
-// 'SERVIS' hedef tipini ekleme işi madde 49 dalında duruyor; burada
-// tekrarlanırsa birleştirmede çakışır.
+// DENETİM (B3): 'SERVIS' hedef tipi artık var; export izi fail-closed yazılır
+// (export-denetim.ts) — kayıt yazılamazsa dosya verilmez.
 export async function GET() {
-  const { error } = await requireAllPermissions(['servis.view', 'servis.export'])
+  const { error, userId } = await exportYetkisiIste()
   if (error) return error
 
   try {
     const rapor = await veriKaliteRaporuGetir()
     const buf = veriKaliteExcelOlustur(raporSiraliOlustur(rapor))
+    if (!(await exportDenetimiYaz(userId, { rapor: 'VERI_KALITE_EXCEL', format: 'XLSX', satirSayisi: rapor.reduce((t, r) => t + r.adet, 0) }))) {
+      return exportDenetimiHatasi()
+    }
 
     return new NextResponse(new Uint8Array(buf), {
       headers: {

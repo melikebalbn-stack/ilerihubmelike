@@ -2,14 +2,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { NextResponse } from 'next/server'
 
 const mocks = vi.hoisted(() => ({
-  requirePermission: vi.fn(),
+  requireAllPermissions: vi.fn(),
+  logAuditEvent: vi.fn(async (_p: unknown) => ({ ok: true })),
   guzergahFindUnique: vi.fn(),
   guzergahDurakFindMany: vi.fn(),
   aracVarsayilanFindMany: vi.fn(),
   soforVarsayilanFindMany: vi.fn(),
 }))
 
-vi.mock('@/lib/auth/require-permission', () => ({ requirePermission: mocks.requirePermission }))
+vi.mock('@/lib/auth/require-permission', () => ({ requireAllPermissions: mocks.requireAllPermissions }))
+vi.mock('@/lib/audit-log', () => ({ logAuditEvent: mocks.logAuditEvent }))
 vi.mock('@/lib/prisma', () => ({
   prisma: {
     servisGuzergah: { findUnique: mocks.guzergahFindUnique },
@@ -44,14 +46,14 @@ beforeEach(() => {
 
 describe('GET /api/servis-yonetimi/export/guzergah-detay/[id]', () => {
   it('servis.export izni olmayan kullanıcı 403 alır', async () => {
-    mocks.requirePermission.mockResolvedValue(permissionResult(false))
+    mocks.requireAllPermissions.mockResolvedValue(permissionResult(false))
     const res = await GET(new Request('http://localhost/x'), context)
     expect(res.status).toBe(403)
     expect(mocks.guzergahFindUnique).not.toHaveBeenCalled()
   })
 
   it('güzergah bulunamazsa 404 + mesaj döner', async () => {
-    mocks.requirePermission.mockResolvedValue(permissionResult(true))
+    mocks.requireAllPermissions.mockResolvedValue(permissionResult(true))
     mocks.guzergahFindUnique.mockResolvedValue(null)
     const res = await GET(new Request('http://localhost/x'), context)
     const json = await res.json()
@@ -60,7 +62,7 @@ describe('GET /api/servis-yonetimi/export/guzergah-detay/[id]', () => {
   })
 
   it('servis.export izni olan kullanıcı geçerli bir PDF alır (doğru header\'lar, %PDF magic byte)', async () => {
-    mocks.requirePermission.mockResolvedValue(permissionResult(true))
+    mocks.requireAllPermissions.mockResolvedValue(permissionResult(true))
     mocks.guzergahFindUnique.mockResolvedValue(gecerliGuzergah)
 
     const res = await GET(new Request('http://localhost/x'), context)
@@ -73,7 +75,7 @@ describe('GET /api/servis-yonetimi/export/guzergah-detay/[id]', () => {
   })
 
   it('yalnız AKTİF durak/saat/araç/şoför atamalarını sorgular (aktif:true filtresi)', async () => {
-    mocks.requirePermission.mockResolvedValue(permissionResult(true))
+    mocks.requireAllPermissions.mockResolvedValue(permissionResult(true))
     mocks.guzergahFindUnique.mockResolvedValue(gecerliGuzergah)
 
     await GET(new Request('http://localhost/x'), context)
@@ -90,12 +92,42 @@ describe('GET /api/servis-yonetimi/export/guzergah-detay/[id]', () => {
   })
 
   it('dosya adındaki güvensiz karakterleri temizler', async () => {
-    mocks.requirePermission.mockResolvedValue(permissionResult(true))
+    mocks.requireAllPermissions.mockResolvedValue(permissionResult(true))
     mocks.guzergahFindUnique.mockResolvedValue({ ...gecerliGuzergah, kod: 'G/1:X' })
 
     const res = await GET(new Request('http://localhost/x'), context)
 
     expect(res.headers.get('Content-Disposition')).not.toContain('/')
     expect(res.headers.get('Content-Disposition')).not.toContain(':')
+  })
+})
+
+describe('GET /api/servis-yonetimi/export/guzergah-detay/[id] — denetim (fail-closed)', () => {
+  it('başarılı indirmede SERVIS_EXPORT denetimi yazılır (rapor=GUZERGAH_DETAY_PDF)', async () => {
+    mocks.requireAllPermissions.mockResolvedValue(permissionResult(true))
+    mocks.guzergahFindUnique.mockResolvedValue(gecerliGuzergah)
+    const res = await GET(new Request('http://localhost/x'), context)
+    expect(res.status).toBe(200)
+    expect(mocks.logAuditEvent).toHaveBeenCalledTimes(1)
+    const arg = mocks.logAuditEvent.mock.calls[0][0] as { action: string; actorId: string; targetType: string; details: Record<string, unknown> }
+    expect(arg).toMatchObject({ action: 'SERVIS_EXPORT', actorId: 'user-1', targetType: 'SERVIS' })
+    expect(arg.details).toMatchObject({ rapor: 'GUZERGAH_DETAY_PDF', format: 'PDF' })
+    // KVKK: denetim içinde kişi adı/sicil/telefon yok
+    expect(JSON.stringify(arg.details)).not.toMatch(/Ahmet|Yılmaz|5551112233/)
+  })
+
+  it('🔴 denetim yazılamazsa dosya VERİLMEZ (500, Content-Disposition yok)', async () => {
+    mocks.requireAllPermissions.mockResolvedValue(permissionResult(true))
+    mocks.guzergahFindUnique.mockResolvedValue(gecerliGuzergah)
+    mocks.logAuditEvent.mockResolvedValueOnce({ ok: false })
+    const res = await GET(new Request('http://localhost/x'), context)
+    expect(res.status).toBe(500)
+    expect(res.headers.get('Content-Disposition')).toBeNull()
+  })
+
+  it('yetki reddinde denetim yazılmaz', async () => {
+    mocks.requireAllPermissions.mockResolvedValue(permissionResult(false))
+    await GET(new Request('http://localhost/x'), context)
+    expect(mocks.logAuditEvent).not.toHaveBeenCalled()
   })
 })

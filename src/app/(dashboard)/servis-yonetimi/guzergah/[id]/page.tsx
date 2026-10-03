@@ -21,10 +21,10 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { ArrowLeft, ChevronDown, ChevronUp, Clock, GripVertical, Plus, Trash2 } from 'lucide-react'
+import { ArrowLeft, ChevronDown, ChevronUp, Clock, FileText, GripVertical, Plus, Trash2 } from 'lucide-react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -125,6 +125,8 @@ export default function GuzergahDetayPage() {
   const canPassive = permissions.includes('servis.passive')
   const canRestore = permissions.includes('servis.restore')
   const canHistory = permissions.includes('servis.history')
+  // Dışa aktarma: görüntüleme VE export izni birlikte (API de AND ister).
+  const canExport = canView && permissions.includes('servis.export')
 
   const [guzergah, setGuzergah] = useState<Guzergah | null>(null)
   const [duraklar, setDuraklar] = useState<GuzergahDurak[]>([])
@@ -278,6 +280,14 @@ export default function GuzergahDetayPage() {
               {guzergah.kod} — {guzergah.ad}
             </h1>
             <AktifRozet aktif={guzergah.aktif} />
+            {canExport && (
+              <a
+                href={`/api/servis-yonetimi/export/guzergah-detay/${guzergahId}`}
+                className={buttonVariants({ variant: 'outline', size: 'sm', className: 'ml-auto' })}
+              >
+                <FileText className="mr-2 h-4 w-4" /> Güzergâh Detayı (PDF)
+              </a>
+            )}
           </div>
         )}
         <p className="text-sm text-muted-foreground">

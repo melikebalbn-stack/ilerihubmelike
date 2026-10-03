@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requirePermission } from '@/lib/auth/require-permission'
+import {
+  exportDenetimiHatasi,
+  exportDenetimiYaz,
+  exportYetkisiIste,
+} from '@/lib/servis-yonetimi/export-denetim'
 import {
   guzergahDetayAracAtamalariniHazirla,
   guzergahDetayDuraklariniHazirla,
@@ -11,11 +15,11 @@ import { generateGuzergahDetayPdfBuffer } from '@/lib/pdf/guzergah-detay-pdf'
 
 export const dynamic = 'force-dynamic'
 
-// GET /api/servis-yonetimi/export/guzergah-detay/[id] — PDF. servis.export izni.
+// GET /api/servis-yonetimi/export/guzergah-detay/[id] — PDF. servis.view VE servis.export; denetim fail-closed.
 // Yalnız AKTİF durak/saat/araç/şoför ataması gösterilir (pasif geçmiş kayıtlar
 // bu raporun kapsamı dışında — geçmiş için "Geçmiş" (audit) ekranları var).
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { error } = await requirePermission('servis.export')
+  const { error, userId } = await exportYetkisiIste()
   if (error) return error
 
   const { id } = await params
@@ -75,6 +79,9 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   }
 
   const pdfBuffer = generateGuzergahDetayPdfBuffer(data)
+  if (!(await exportDenetimiYaz(userId, { rapor: 'GUZERGAH_DETAY_PDF', format: 'PDF', satirSayisi: data.duraklar.length, hedefId: id, filtre: { guzergahKod: guzergah.kod } }))) {
+    return exportDenetimiHatasi()
+  }
   const fileName = `Guzergah-Detay-${guzergah.kod}.pdf`.replace(/[/\\?%*:|"<>]/g, '-')
 
   return new NextResponse(new Uint8Array(pdfBuffer), {

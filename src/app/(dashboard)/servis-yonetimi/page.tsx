@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -18,7 +18,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Plus } from 'lucide-react'
+import { FileSpreadsheet, Plus } from 'lucide-react'
 import { ServisGecmisDialog, GecmisButonu } from './_components/ServisGecmisDialog'
 import { PasifGeriAlButonlari } from './_components/PasifGeriAlButonlari'
 import { BagimlilikOnayDialog } from './_components/BagimlilikOnayDialog'
@@ -2111,6 +2111,8 @@ export default function ServisYonetimiPage() {
   const canPassive = permissions.includes('servis.passive')
   const canRestore = permissions.includes('servis.restore')
   const canHistory = permissions.includes('servis.history')
+  // Dışa aktarma: görüntüleme VE export izni birlikte (API de AND ister).
+  const canExport = canView && permissions.includes('servis.export')
 
   if (!canView) {
     return (
@@ -2131,6 +2133,16 @@ export default function ServisYonetimiPage() {
         <Link href="/servis-yonetimi/panel" className="text-sm text-blue-700 hover:underline">
           Bugünkü kapasite ve doluluk için Servis Paneli →
         </Link>
+        {canExport && (
+          <div className="mt-2 flex flex-wrap gap-2">
+            <a href="/api/servis-yonetimi/export/guzergah-listesi" className={buttonVariants({ variant: 'outline', size: 'sm' })}>
+              <FileSpreadsheet className="mr-2 h-4 w-4" /> Güzergâh Listesi (Excel)
+            </a>
+            <a href="/api/servis-yonetimi/export/personel-atama-listesi" className={buttonVariants({ variant: 'outline', size: 'sm' })}>
+              <FileSpreadsheet className="mr-2 h-4 w-4" /> Personel Atama Listesi (Excel)
+            </a>
+          </div>
+        )}
       </div>
       <Tabs defaultValue="firma">
         <TabsList>

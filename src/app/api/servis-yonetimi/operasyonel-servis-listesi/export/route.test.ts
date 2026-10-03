@@ -2,11 +2,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { NextRequest, NextResponse } from 'next/server'
 
 const mocks = vi.hoisted(() => ({
-  requirePermission: vi.fn(),
+  requireAllPermissions: vi.fn(),
+  logAuditEvent: vi.fn(async (_p: unknown) => ({ ok: true })),
   operasyonelServisListesiGetir: vi.fn(),
 }))
 
-vi.mock('@/lib/auth/require-permission', () => ({ requirePermission: mocks.requirePermission }))
+vi.mock('@/lib/auth/require-permission', () => ({ requireAllPermissions: mocks.requireAllPermissions }))
+vi.mock('@/lib/audit-log', () => ({ logAuditEvent: mocks.logAuditEvent }))
 vi.mock('@/lib/servis-yonetimi/operasyonel-servis-listesi', () => ({
   operasyonelServisListesiGetir: mocks.operasyonelServisListesiGetir,
 }))
@@ -14,7 +16,7 @@ vi.mock('@/lib/servis-yonetimi/operasyonel-servis-listesi', () => ({
 import { GET } from './route'
 
 function permissionResult(allowed: boolean) {
-  return { error: allowed ? null : NextResponse.json({ error: 'Yetkisiz erişim' }, { status: 403 }) }
+  return { error: allowed ? null : NextResponse.json({ error: 'Yetkisiz erişim' }, { status: 403 }), userId: allowed ? 'user-1' : null }
 }
 
 const ORNEK_SONUC = {
@@ -37,20 +39,21 @@ const ORNEK_SONUC = {
 }
 
 beforeEach(() => {
-  mocks.requirePermission.mockReset()
+  mocks.requireAllPermissions.mockReset()
+  mocks.logAuditEvent.mockClear()
   mocks.operasyonelServisListesiGetir.mockReset()
   mocks.operasyonelServisListesiGetir.mockResolvedValue(ORNEK_SONUC)
 })
 
 describe('GET .../operasyonel-servis-listesi/export — yetkilendirme', () => {
   it('servis.export ister (servis.view DEĞİL)', async () => {
-    mocks.requirePermission.mockResolvedValue(permissionResult(true))
+    mocks.requireAllPermissions.mockResolvedValue(permissionResult(true))
     await GET(new NextRequest('http://localhost/x'))
-    expect(mocks.requirePermission).toHaveBeenCalledWith('servis.export')
+    expect(mocks.requireAllPermissions).toHaveBeenCalledWith(['servis.view', 'servis.export'])
   })
 
   it('servis.export izni yoksa 403 döner, dosya üretilmez', async () => {
-    mocks.requirePermission.mockResolvedValue(permissionResult(false))
+    mocks.requireAllPermissions.mockResolvedValue(permissionResult(false))
     const res = await GET(new NextRequest('http://localhost/x'))
     expect(res.status).toBe(403)
     expect(mocks.operasyonelServisListesiGetir).not.toHaveBeenCalled()
@@ -59,7 +62,7 @@ describe('GET .../operasyonel-servis-listesi/export — yetkilendirme', () => {
 
 describe('GET .../operasyonel-servis-listesi/export — dosya üretimi', () => {
   it('yetkili kullanıcı için 200 + doğru içerik/dosya adı başlıkları', async () => {
-    mocks.requirePermission.mockResolvedValue(permissionResult(true))
+    mocks.requireAllPermissions.mockResolvedValue(permissionResult(true))
     const res = await GET(new NextRequest('http://localhost/x'))
 
     expect(res.status).toBe(200)
@@ -74,20 +77,20 @@ describe('GET .../operasyonel-servis-listesi/export — dosya üretimi', () => {
   })
 
   it('geçersiz tarih 400 döner, sorgu hiç çalışmaz', async () => {
-    mocks.requirePermission.mockResolvedValue(permissionResult(true))
+    mocks.requireAllPermissions.mockResolvedValue(permissionResult(true))
     const res = await GET(new NextRequest('http://localhost/x?tarih=gecersiz'))
     expect(res.status).toBe(400)
     expect(mocks.operasyonelServisListesiGetir).not.toHaveBeenCalled()
   })
 
   it('filtreler liste ucuyla AYNI operasyonelServisListesiGetir() fonksiyonuna iletilir (rule 6)', async () => {
-    mocks.requirePermission.mockResolvedValue(permissionResult(true))
+    mocks.requireAllPermissions.mockResolvedValue(permissionResult(true))
     await GET(new NextRequest('http://localhost/x?guzergahId=g1&firmaId=f1'))
     expect(mocks.operasyonelServisListesiGetir).toHaveBeenCalledWith({ guzergahId: 'g1', firmaId: 'f1' })
   })
 
   it('gecmisTarihSecildi=true iken üretilen Excel içeriğinde uyarı notu satırı bulunur', async () => {
-    mocks.requirePermission.mockResolvedValue(permissionResult(true))
+    mocks.requireAllPermissions.mockResolvedValue(permissionResult(true))
     mocks.operasyonelServisListesiGetir.mockResolvedValue({
       tarih: '2020-01-01',
       gecmisTarihSecildi: true,
@@ -110,7 +113,7 @@ describe('GET .../operasyonel-servis-listesi/export — dosya üretimi', () => {
   })
 
   it('gecmisTarihSecildi=false iken Excel içinde uyarı notu OLMAZ, ilk satır doğrudan başlık', async () => {
-    mocks.requirePermission.mockResolvedValue(permissionResult(true))
+    mocks.requireAllPermissions.mockResolvedValue(permissionResult(true))
     const res = await GET(new NextRequest('http://localhost/x'))
 
     const XLSX = await import('xlsx')
@@ -130,17 +133,45 @@ describe('GET .../operasyonel-servis-listesi/export — dosya üretimi', () => {
 // ----------------------------------------------------------------------------
 describe('GET .../operasyonel-servis-listesi/export — servis.view/servis.export ayrımı', () => {
   it('yalnız servis.view izni olan kullanıcı (idari-isler) export ucundan 403 alır', async () => {
-    // idari-isler: servis.view VAR, servis.export YOK — requirePermission bu
+    // idari-isler: servis.view VAR, servis.export YOK — requireAllPermissions bu
     // ayrımı gerçek yetki matrisinden yapıyor; burada yalnız route'un doğru
     // anahtarı (servis.export) istediğini ve reddedilince 403 döndüğünü
     // kanıtlıyoruz — mockun kendisi "servis.export" anahtarına özel deny
     // dönerek bu spesifik senaryoyu simüle ediyor.
-    mocks.requirePermission.mockImplementation(async (key: string) =>
-      key === 'servis.export' ? permissionResult(false) : permissionResult(true),
+    mocks.requireAllPermissions.mockImplementation(async (keys: string[]) =>
+      keys.includes('servis.export') ? permissionResult(false) : permissionResult(true),
     )
 
     const res = await GET(new NextRequest('http://localhost/x'))
     expect(res.status).toBe(403)
     expect(mocks.operasyonelServisListesiGetir).not.toHaveBeenCalled()
+  })
+})
+
+describe('GET .../operasyonel-servis-listesi/export — denetim (fail-closed)', () => {
+  it('başarılı indirmede SERVIS_EXPORT denetimi yazılır (rapor=OPERASYONEL_SERVIS_LISTESI_EXCEL)', async () => {
+    mocks.requireAllPermissions.mockResolvedValue(permissionResult(true))
+    const res = await GET(new NextRequest('http://localhost/x'))
+    expect(res.status).toBe(200)
+    expect(mocks.logAuditEvent).toHaveBeenCalledTimes(1)
+    const arg = mocks.logAuditEvent.mock.calls[0][0] as { action: string; actorId: string; targetType: string; details: Record<string, unknown> }
+    expect(arg).toMatchObject({ action: 'SERVIS_EXPORT', actorId: 'user-1', targetType: 'SERVIS' })
+    expect(arg.details).toMatchObject({ rapor: 'OPERASYONEL_SERVIS_LISTESI_EXCEL', format: 'XLSX' })
+    // KVKK: denetim içinde kişi adı/sicil/telefon yok
+    expect(JSON.stringify(arg.details)).not.toMatch(/Ahmet|Yılmaz|5551112233/)
+  })
+
+  it('🔴 denetim yazılamazsa dosya VERİLMEZ (500, Content-Disposition yok)', async () => {
+    mocks.requireAllPermissions.mockResolvedValue(permissionResult(true))
+    mocks.logAuditEvent.mockResolvedValueOnce({ ok: false })
+    const res = await GET(new NextRequest('http://localhost/x'))
+    expect(res.status).toBe(500)
+    expect(res.headers.get('Content-Disposition')).toBeNull()
+  })
+
+  it('yetki reddinde denetim yazılmaz', async () => {
+    mocks.requireAllPermissions.mockResolvedValue(permissionResult(false))
+    await GET(new NextRequest('http://localhost/x'))
+    expect(mocks.logAuditEvent).not.toHaveBeenCalled()
   })
 })

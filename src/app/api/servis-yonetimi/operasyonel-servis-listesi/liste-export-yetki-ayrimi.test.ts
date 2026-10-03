@@ -7,10 +7,16 @@ import { NextRequest, NextResponse } from 'next/server'
 
 const mocks = vi.hoisted(() => ({
   requirePermission: vi.fn(),
+  requireAllPermissions: vi.fn(),
+  logAuditEvent: vi.fn(async (_p: unknown) => ({ ok: true })),
   operasyonelServisListesiGetir: vi.fn(),
 }))
 
-vi.mock('@/lib/auth/require-permission', () => ({ requirePermission: mocks.requirePermission }))
+vi.mock('@/lib/auth/require-permission', () => ({
+  requirePermission: mocks.requirePermission,
+  requireAllPermissions: mocks.requireAllPermissions,
+}))
+vi.mock('@/lib/audit-log', () => ({ logAuditEvent: mocks.logAuditEvent }))
 vi.mock('@/lib/servis-yonetimi/operasyonel-servis-listesi', () => ({
   operasyonelServisListesiGetir: mocks.operasyonelServisListesiGetir,
 }))
@@ -21,14 +27,18 @@ import { GET as exportPdfGET } from './export-pdf/route'
 
 beforeEach(() => {
   mocks.requirePermission.mockReset()
+  mocks.requireAllPermissions.mockReset()
   mocks.operasyonelServisListesiGetir.mockReset()
   mocks.operasyonelServisListesiGetir.mockResolvedValue({ tarih: '2026-09-22', gecmisTarihSecildi: false, satirlar: [] })
 
   // idari-isler simülasyonu: servis.view VAR, servis.export YOK.
-  mocks.requirePermission.mockImplementation(async (key: string) =>
-    key === 'servis.view'
-      ? { error: null }
-      : { error: NextResponse.json({ error: 'Yetkisiz erişim' }, { status: 403 }) },
+  // Liste ucu requirePermission('servis.view'); export uçları requireAllPermissions
+  // (view VE export) — export izni yok → 403.
+  mocks.requirePermission.mockResolvedValue({ error: null })
+  mocks.requireAllPermissions.mockImplementation(async (keys: string[]) =>
+    keys.includes('servis.export')
+      ? { error: NextResponse.json({ error: 'Yetkisiz erişim' }, { status: 403 }), userId: null }
+      : { error: null, userId: 'u1' },
   )
 })
 

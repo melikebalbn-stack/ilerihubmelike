@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import * as XLSX from 'xlsx'
-import { requirePermission } from '@/lib/auth/require-permission'
+import {
+  exportDenetimiHatasi,
+  exportDenetimiYaz,
+  exportYetkisiIste,
+} from '@/lib/servis-yonetimi/export-denetim'
 import { operasyonelServisListesiGetir } from '@/lib/servis-yonetimi/operasyonel-servis-listesi'
 import {
   gecmisTarihNotuOlustur,
@@ -10,12 +14,12 @@ import { operasyonelListeFiltreleriniAyikla } from '../_filtre'
 
 export const dynamic = 'force-dynamic'
 
-// MASTER Madde 29 — Excel export. Permission KASITLI OLARAK servis.export
-// (servis.view DEĞİL) — dışa aktarma ekranı görüntülemeden daha hassas.
+// MASTER Madde 29 — Excel export. Yetki: servis.view VE servis.export (B3: AND) —
+// dışa aktarma ekranı görüntülemeden daha hassas ama ekrandan bağımsız değildir.
 // Sorgu mantığı burada TEKRARLANMAZ (rule 6) — liste ucuyla AYNI
 // operasyonelServisListesiGetir() çağrılır.
 export async function GET(request: NextRequest) {
-  const { error } = await requirePermission('servis.export')
+  const { error, userId } = await exportYetkisiIste()
   if (error) return error
 
   const ayiklama = operasyonelListeFiltreleriniAyikla(request.nextUrl.searchParams)
@@ -35,6 +39,9 @@ export async function GET(request: NextRequest) {
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Servis Listesi')
     const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'buffer' }) as Buffer
+    if (!(await exportDenetimiYaz(userId, { rapor: 'OPERASYONEL_SERVIS_LISTESI_EXCEL', format: 'XLSX', satirSayisi: sonuc.satirlar.length, filtre: { tarih: sonuc.tarih } }))) {
+      return exportDenetimiHatasi()
+    }
 
     return new NextResponse(new Uint8Array(buf), {
       headers: {

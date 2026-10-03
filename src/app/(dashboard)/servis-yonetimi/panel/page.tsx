@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, FileSpreadsheet, FileText, Loader2 } from 'lucide-react'
-import { Badge } from '@/components/ui/badge'
 import { buttonVariants } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -12,14 +11,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import type { KapasiteGuzergahSatiri, ServisKapasiteToplu } from '@/lib/servis-yonetimi/kapasite'
 import type { ServisPaneliOzeti } from '@/lib/servis-yonetimi/panel'
 import { cn } from '@/lib/utils'
-import {
-  TIRE,
-  bosKoltukMetni,
-  dolulukCubugu,
-  dolulukMetni,
-  durumEtiketi,
-  koltukMetni,
-} from '../_lib/kapasite-gosterim'
+import { TIRE, bosKoltukMetni, koltukMetni } from '../_lib/kapasite-gosterim'
+import { DolulukCubugu, DurumRozeti } from '../_components/KapasiteRozetleri'
 import { servisIstek } from '../_lib/servis-istek'
 import {
   panelSatirlariFiltreleSirala,
@@ -39,34 +32,6 @@ const bugunMetni = () =>
   new Date().toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric', weekday: 'long' })
 
 const AY_ADLARI = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık']
-
-function DurumRozeti({ ozet }: { ozet: KapasiteGuzergahSatiri['ozet'] }) {
-  const etiket = durumEtiketi(ozet)
-  if (ozet.durum === 'ASIM') return <Badge variant="destructive">{etiket}</Badge>
-  if (ozet.durum === 'ARAC_YOK') return <Badge variant="outline">{etiket}</Badge>
-  if (ozet.durum === 'DOLMAK_UZERE') return <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100">{etiket}</Badge>
-  return <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100">{etiket}</Badge>
-}
-
-function DolulukCubugu({ ozet }: { ozet: KapasiteGuzergahSatiri['ozet'] }) {
-  const renk =
-    ozet.durum === 'ASIM' ? 'bg-red-500' : ozet.durum === 'DOLMAK_UZERE' ? 'bg-amber-500' : 'bg-[#1B4F72]'
-  return (
-    <div className="flex items-center gap-2">
-      <div
-        className="h-2 w-24 overflow-hidden rounded-full bg-muted"
-        role="progressbar"
-        aria-label="Doluluk"
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={Math.round(dolulukCubugu(ozet.dolulukOrani))}
-      >
-        <div className={cn('h-full rounded-full', renk)} style={{ width: `${dolulukCubugu(ozet.dolulukOrani)}%` }} />
-      </div>
-      <span className="w-14 text-right tabular-nums">{dolulukMetni(ozet.dolulukOrani)}</span>
-    </div>
-  )
-}
 
 function KpiKarti({ baslik, deger, alt, vurgu }: { baslik: string; deger: string; alt?: string; vurgu?: 'kirmizi' }) {
   return (

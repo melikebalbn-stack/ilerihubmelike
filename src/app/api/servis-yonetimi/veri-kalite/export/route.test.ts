@@ -4,6 +4,7 @@ import * as XLSX from 'xlsx'
 const mocks = vi.hoisted(() => ({
   getServerSession: vi.fn(),
   getUserPermissions: vi.fn(),
+  logAuditEvent: vi.fn(async (_p: unknown) => ({ ok: true })),
   personnelFindMany: vi.fn(),
   personelAtamaFindMany: vi.fn(),
   personelAtamaGroupBy: vi.fn(),
@@ -24,6 +25,7 @@ const mocks = vi.hoisted(() => ({
 // Bunun yerine bir alt katman (oturum + kullanıcı izinleri) mock'lanıyor.
 vi.mock('next-auth', () => ({ getServerSession: mocks.getServerSession }))
 vi.mock('@/lib/auth/get-user-permissions', () => ({ getUserPermissions: mocks.getUserPermissions }))
+vi.mock('@/lib/audit-log', () => ({ logAuditEvent: mocks.logAuditEvent }))
 
 // veri-kalite.ts ve veri-kalite-excel.ts MOCK'LANMIYOR — gerçek sorgu
 // katmanı ve gerçek xlsx baytları üretilsin (mevcut route.test.ts deseni).
@@ -135,6 +137,35 @@ describe('GET .../veri-kalite/export — yetkilendirme (AND)', () => {
     const res = await GET()
     expect(res.status).toBe(401)
     expect(mocks.personnelFindMany).not.toHaveBeenCalled()
+  })
+})
+
+describe('GET .../veri-kalite/export — denetim (fail-closed)', () => {
+  it('başarılı indirmede SERVIS_EXPORT denetimi yazılır (kişi verisi YOK)', async () => {
+    oturumKur(['servis.view', 'servis.export'])
+    tumKontrolleriBosSonuclaKur()
+    const res = await GET()
+    expect(res.status).toBe(200)
+    expect(mocks.logAuditEvent).toHaveBeenCalledTimes(1)
+    const arg = mocks.logAuditEvent.mock.calls[0][0] as { details: unknown }
+    expect(arg).toMatchObject({ action: 'SERVIS_EXPORT', actorId: 'u1', targetType: 'SERVIS' })
+    expect(arg.details).toMatchObject({ rapor: 'VERI_KALITE_EXCEL', format: 'XLSX' })
+  })
+
+  it('🔴 denetim yazılamazsa dosya VERİLMEZ (500)', async () => {
+    oturumKur(['servis.view', 'servis.export'])
+    tumKontrolleriBosSonuclaKur()
+    mocks.logAuditEvent.mockResolvedValueOnce({ ok: false })
+    const res = await GET()
+    expect(res.status).toBe(500)
+    expect(res.headers.get('Content-Disposition')).toBeNull()
+    expect((await res.json()).message).toContain('denetim')
+  })
+
+  it('yetki reddinde denetim yazılmaz', async () => {
+    oturumKur(['servis.view'])
+    await GET()
+    expect(mocks.logAuditEvent).not.toHaveBeenCalled()
   })
 })
 

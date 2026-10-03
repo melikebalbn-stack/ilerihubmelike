@@ -58,7 +58,7 @@ export default function OperasyonelServisListesiPage() {
   const canView = permissions.includes('servis.view')
   // İndirme görüntülemeden ayrı yetki: idari-isler listeyi görür ama
   // dosya indiremez (yetki matrisi). Butonlar bu yüzden koşullu.
-  const canExport = permissions.includes('servis.export')
+  const canExport = permissions.includes('servis.view') && permissions.includes('servis.export')
 
   const [tarih, setTarih] = useState(bugunIso)
   const [guzergahId, setGuzergahId] = useState('')

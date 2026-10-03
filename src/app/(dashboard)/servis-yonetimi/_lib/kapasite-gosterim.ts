@@ -1,7 +1,11 @@
 // Kapasite GÖSTERİM yardımcıları (yalnız biçimlendirme/etiket). SAYILAR kapasite
 // motorundan (src/lib/servis-yonetimi/kapasite.ts) gelir; burada koltuk, boş koltuk
 // ya da doluluk YENİDEN HESAPLANMAZ.
-import type { KapasiteDurumu } from '@/lib/servis-yonetimi/kapasite'
+import {
+  KAPASITE_DURUM_ETIKETLERI,
+  kapasiteDurumEtiketi,
+  type KapasiteDurumu,
+} from '@/lib/servis-yonetimi/kapasite'
 
 export type KapasiteOzetiGosterim = {
   kapasite: number
@@ -13,16 +17,10 @@ export type KapasiteOzetiGosterim = {
   asimMiktari: number
 }
 
-export const DURUM_ETIKETLERI: Record<KapasiteDurumu, string> = {
-  ARAC_YOK: 'Araç yok',
-  ASIM: 'Aşım',
-  DOLMAK_UZERE: 'Dolmak üzere',
-  UYGUN: 'Uygun',
-}
+export const DURUM_ETIKETLERI = KAPASITE_DURUM_ETIKETLERI
 
-export function durumEtiketi(ozet: Pick<KapasiteOzetiGosterim, 'durum' | 'asimMiktari'>): string {
-  return ozet.durum === 'ASIM' ? `${DURUM_ETIKETLERI.ASIM} +${ozet.asimMiktari}` : DURUM_ETIKETLERI[ozet.durum]
-}
+export const durumEtiketi = (ozet: Pick<KapasiteOzetiGosterim, 'durum' | 'asimMiktari'>): string =>
+  kapasiteDurumEtiketi(ozet)
 
 export const TIRE = '—'
 

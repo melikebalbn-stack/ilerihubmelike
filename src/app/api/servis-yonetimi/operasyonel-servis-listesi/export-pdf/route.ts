@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requirePermission } from '@/lib/auth/require-permission'
+import {
+  exportDenetimiHatasi,
+  exportDenetimiYaz,
+  exportYetkisiIste,
+} from '@/lib/servis-yonetimi/export-denetim'
 import { operasyonelServisListesiGetir } from '@/lib/servis-yonetimi/operasyonel-servis-listesi'
 import { gecmisTarihNotuOlustur } from '@/lib/servis-yonetimi/operasyonel-servis-listesi-excel'
 import { generateOperasyonelServisListesiPdfBuffer } from '@/lib/pdf/operasyonel-servis-listesi-pdf'
@@ -7,11 +11,11 @@ import { operasyonelListeFiltreleriniAyikla } from '../_filtre'
 
 export const dynamic = 'force-dynamic'
 
-// MASTER Madde 29 — PDF export. Permission Excel ile AYNI (servis.export).
+// MASTER Madde 29 — PDF export. Yetki Excel ile AYNI (servis.view VE servis.export).
 // Sorgu/filtre mantığı ÜÇÜNCÜ KEZ yazılmaz (rule 6) — liste ve Excel
 // uçlarıyla AYNI operasyonelServisListesiGetir() + _filtre.ts kullanılır.
 export async function GET(request: NextRequest) {
-  const { error } = await requirePermission('servis.export')
+  const { error, userId } = await exportYetkisiIste()
   if (error) return error
 
   const ayiklama = operasyonelListeFiltreleriniAyikla(request.nextUrl.searchParams)
@@ -25,6 +29,10 @@ export async function GET(request: NextRequest) {
     // gerekçeyle (dosya firmaya gidiyor, uygulama dışında okunuyor).
     const not = sonuc.gecmisTarihSecildi ? gecmisTarihNotuOlustur(sonuc.tarih) : undefined
     const buf = generateOperasyonelServisListesiPdfBuffer({ tarih: sonuc.tarih, satirlar: sonuc.satirlar, not })
+
+    if (!(await exportDenetimiYaz(userId, { rapor: 'OPERASYONEL_SERVIS_LISTESI_PDF', format: 'PDF', satirSayisi: sonuc.satirlar.length, filtre: { tarih: sonuc.tarih } }))) {
+      return exportDenetimiHatasi()
+    }
 
     return new NextResponse(new Uint8Array(buf), {
       headers: {

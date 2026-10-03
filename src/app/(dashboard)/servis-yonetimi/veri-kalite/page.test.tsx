@@ -192,6 +192,13 @@ describe('VeriKaliteMerkeziPage — Excel export butonu', () => {
     expect(document.querySelector(`a[href="${EXPORT_YOLU}"]`)).toBeNull()
   })
 
+  it('🔴 YALNIZ servis.export (view yok) → ne sayfa ne buton (export görüntülemeye bağlı)', () => {
+    mockSession(['servis.export'])
+    render(<VeriKaliteMerkeziPage />)
+    expect(screen.queryByText('Excel indir')).not.toBeInTheDocument()
+    expect(document.querySelector(`a[href="${EXPORT_YOLU}"]`)).toBeNull()
+  })
+
   it('hiç izni olmayan kullanıcıda ne sayfa ne buton render edilir', () => {
     mockSession([])
     render(<VeriKaliteMerkeziPage />)

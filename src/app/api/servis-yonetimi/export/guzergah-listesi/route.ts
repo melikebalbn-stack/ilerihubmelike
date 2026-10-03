@@ -1,15 +1,20 @@
 import { NextResponse } from 'next/server'
 import * as XLSX from 'xlsx'
 import { prisma } from '@/lib/prisma'
-import { requirePermission } from '@/lib/auth/require-permission'
+import {
+  exportDenetimiHatasi,
+  exportDenetimiYaz,
+  exportYetkisiIste,
+} from '@/lib/servis-yonetimi/export-denetim'
 import { GUZERGAH_LISTESI_HEADERS, guzergahListesiSatirlariOlustur } from '@/lib/servis-yonetimi/export'
 
 export const dynamic = 'force-dynamic'
 
 // GET /api/servis-yonetimi/export/guzergah-listesi — Excel (.xlsx).
 // Tüm güzergahlar (aktif+pasif) — desen: quality/uygunsuzluk/export/route.ts.
+// Yetki: servis.view VE servis.export; denetim fail-closed (export-denetim.ts).
 export async function GET() {
-  const { error } = await requirePermission('servis.export')
+  const { error, userId } = await exportYetkisiIste()
   if (error) return error
 
   const guzergahlar = await prisma.servisGuzergah.findMany({
@@ -28,6 +33,9 @@ export async function GET() {
   XLSX.utils.book_append_sheet(wb, ws, 'Servis Listesi')
 
   const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'buffer' }) as Buffer
+  if (!(await exportDenetimiYaz(userId, { rapor: 'GUZERGAH_LISTESI_EXCEL', format: 'XLSX', satirSayisi: rows.length - 1 }))) {
+    return exportDenetimiHatasi()
+  }
   const stamp = new Date().toISOString().slice(0, 10)
 
   return new NextResponse(new Uint8Array(buf), {

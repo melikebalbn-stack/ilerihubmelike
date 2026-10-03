@@ -5,7 +5,7 @@ import {
   KAPASITE_DURUM_ETIKETLERI,
   kapasiteDurumEtiketi,
   type KapasiteDurumu,
-} from '@/lib/servis-yonetimi/kapasite'
+} from '@/lib/servis-yonetimi/kapasite-etiket'
 
 export type KapasiteOzetiGosterim = {
   kapasite: number

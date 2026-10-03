@@ -48,6 +48,7 @@ import {
   ListChecks,
   MessageSquareWarning,
   Siren,
+  FileSpreadsheet,
   GitBranch,
   FileWarning,
   MessageCircle,
@@ -329,6 +330,9 @@ const strategicHrMenuItems = [
   // dizisi OR olduğu için burada KULLANILAMAZ: servis.view'i olup
   // servis.kvkk.view'i olmayan kullanıcı menüde görür, sayfada 403 yerdi.
   { name: "Acil Durum Servis Listesi", icon: Siren, href: "/servis-yonetimi/acil-durum-listesi", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"], permissionsAll: ["servis.view", "servis.kvkk.view"], subgroup: "servis" as StrategicHrAltGrup, modul: "servis-yonetimi" },
+  // Paket C2 — Excel'den Toplu Atama. 🔴 permissionsAll (AND): sayfa/API servis.view VE servis.edit ister;
+  // `permission` dizisi OR olurdu (view'i olup edit'i olmayan menüde görür, sayfada 403 yerdi).
+  { name: "Excel'den Toplu Atama", icon: FileSpreadsheet, href: "/servis-yonetimi/personel-atama-excel", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"], permissionsAll: ["servis.view", "servis.edit"], subgroup: "servis" as StrategicHrAltGrup, modul: "servis-yonetimi" },
   { name: "Organizasyon Şeması", icon: Network, href: "/strategic-hr/org-chart", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"] },
   // VIEW gate = YILLIK_TAKVIM_VIEW_PERMISSIONS (yilliktakvim.view | yilliktakvim.admin, OR).
   // admin eklendi — yalnız admin izinli kullanıcı sayfayı açabildiği hâlde menüde göremiyordu.

@@ -181,3 +181,18 @@ describe('C1 — Başka Güzergâha Taşı (serbest hedef)', () => {
     expect((screen.getByRole('button', { name: 'Transferi Uygula' }) as HTMLButtonElement).disabled).toBe(true)
   })
 })
+
+describe('C2 — Personel sekmesinde "Excel\'den Toplu Atama" düğmesi', () => {
+  it('servis.edit ile görünür ve toplu atama sayfasına gider', async () => {
+    render(<GuzergahDetayPage />)
+    await personelSekmesi()
+    expect(screen.getByRole('link', { name: "Excel'den Toplu Atama" }).getAttribute('href')).toBe('/servis-yonetimi/personel-atama-excel')
+  })
+
+  it('🔴 yalnız servis.view → düğme YOK', async () => {
+    oturum(['servis.view'])
+    render(<GuzergahDetayPage />)
+    await personelSekmesi()
+    expect(screen.queryByRole('link', { name: "Excel'den Toplu Atama" })).toBeNull()
+  })
+})

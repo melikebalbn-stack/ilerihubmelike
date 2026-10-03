@@ -476,6 +476,7 @@ describe('Sidebar — Stratejik İK "Servis" alt-başlığı (Formlar deseninin 
             'Servis Şikâyetleri',
             'Operasyonel Servis Listesi',
             'Acil Durum Servis Listesi',
+            "Excel'den Toplu Atama",
           ].includes(ad),
       )
     expect(duzAdlar).toEqual(digerOgeler)
@@ -588,5 +589,37 @@ describe('Sidebar — "Acil Durum Servis Listesi" menü öğesi için permission
     renderSidebar()
     acIvGrubunu()
     expect(screen.getByText('Acil Durum Servis Listesi')).toBeInTheDocument()
+  })
+})
+
+describe('Sidebar — "Excel\'den Toplu Atama" menü öğesi için permission testi (C2, AND: servis.view VE servis.edit)', () => {
+  it('🔴 yalnız servis.view → satırı GÖRMEZ (OR olsaydı görünür, sayfada 403 yerdi); kardeş satır görünür', () => {
+    mockSession({ role: 'KULLANICI', department: 'Üretim', permissions: ['servis.view'] })
+    renderSidebar()
+    acIvGrubunu()
+    expect(screen.getByText('Operasyonel Servis Listesi')).toBeInTheDocument()
+    expect(screen.queryByText("Excel'den Toplu Atama")).not.toBeInTheDocument()
+  })
+
+  it('yalnız servis.edit (view yok) → satırı GÖRMEZ', () => {
+    mockSession({ role: 'KULLANICI', department: 'Üretim', permissions: ['servis.edit', 'yilliktakvim.view'] })
+    renderSidebar()
+    acIvGrubunu()
+    expect(screen.getByText('Yıllık Çalışma Takvimi')).toBeInTheDocument()
+    expect(screen.queryByText("Excel'den Toplu Atama")).not.toBeInTheDocument()
+  })
+
+  it('servis.view + servis.edit → satırı GÖRÜR ve doğru adrese gider', () => {
+    mockSession({ role: 'KULLANICI', department: 'Üretim', permissions: ['servis.view', 'servis.edit'] })
+    renderSidebar()
+    acIvGrubunu()
+    expect(screen.getByText("Excel'den Toplu Atama").closest('a')).toHaveAttribute('href', '/servis-yonetimi/personel-atama-excel')
+  })
+
+  it('legacy admin rolü ama RBAC izni yok → görmez', () => {
+    mockSession({ role: 'HR_MANAGER', department: 'İnsan Varlıkları', permissions: [] })
+    renderSidebar()
+    acIvGrubunu()
+    expect(screen.queryByText("Excel'den Toplu Atama")).not.toBeInTheDocument()
   })
 })

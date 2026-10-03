@@ -47,6 +47,11 @@ const OPERASYONEL = [
   'guzergah-personel-atama/[id]/dilimler/route.ts',
   'guzergah/[id]/personel-atama/dilim-onizle/route.ts',
   'guzergah/[id]/personel-atama/dilim-ata/route.ts',
+  // C2 — Excel'den toplu atama (view VE edit; satır bazında create/passive ayrıca kontrol edilir)
+  'personel-atama-excel/sablon/route.ts',
+  'personel-atama-excel/onizleme/route.ts',
+  'personel-atama-excel/uygula/route.ts',
+  'personel-atama-excel/hata-raporu/route.ts',
 ]
 
 /** servis.tanim.manage ile korunan uçlar — TANIM kayıtları. */

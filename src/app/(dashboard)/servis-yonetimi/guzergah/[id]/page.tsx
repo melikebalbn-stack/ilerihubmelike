@@ -1685,6 +1685,11 @@ function PersonelAtamalarPanel({
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-medium">Personel Atamaları</h2>
         <div className="flex flex-wrap gap-2">
+          {canEdit && (
+            <Link href="/servis-yonetimi/personel-atama-excel" className={buttonVariants({ variant: 'outline', size: 'sm' })}>
+              Excel&apos;den Toplu Atama
+            </Link>
+          )}
           {canEdit && dilimsizAtamalar.length > 0 && (
             <Button size="sm" variant="outline" onClick={dilimsizlariSec}>
               Dilimsiz atamaları seç ({dilimsizAtamalar.length})

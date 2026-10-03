@@ -34,6 +34,14 @@ import {
   type ServisPersonelAtamaForm,
 } from './validation'
 import { kaydetIslemGecmisi, degisenAlanlar } from './audit'
+import {
+  BenzerPlakaHatasi,
+  ayniPlakaMesaji,
+  benzerPlakaOnayAciklamasi,
+  normalizePlaka,
+  plakaBicimHatasi,
+  plakaKontrol,
+} from './plaka'
 import { aralikDogrula, baslangicTarihiCoz, bitisTarihiCoz, kapatmaTarihiCoz } from './tarih-kurallari'
 import {
   firmaSonZincirIslemId,
@@ -507,7 +515,7 @@ export async function geriAlServisDurak(id: string, yapanId?: string | null) {
 // ============================================================================
 
 export function normalizeServisAracPlaka(plaka: string): string {
-  return plaka.replace(/\s+/g, '').toLocaleUpperCase('tr-TR')
+  return normalizePlaka(plaka)
 }
 
 export async function listServisAraclar(filtre?: { aktif?: boolean }) {
@@ -536,11 +544,16 @@ export async function createServisArac(form: ServisAracForm, yapanId?: string | 
   if (!valid) throw new Error(errors.join(' '))
 
   const data = servisAracData(form)
-  const [plakaCakismasi, firma] = await Promise.all([
-    prisma.servisArac.findUnique({ where: { plaka: data.plaka } }),
+  const bicimHatasi = plakaBicimHatasi(data.plaka)
+  if (bicimHatasi) throw new Error(bicimHatasi)
+  const [mevcutPlakalar, firma] = await Promise.all([
+    prisma.servisArac.findMany({ select: { id: true, plaka: true, aktif: true } }),
     prisma.servisFirma.findUnique({ where: { id: data.firmaId } }),
   ])
-  if (plakaCakismasi) throw new Error(`"${data.plaka}" plakası zaten kullanılıyor.`)
+  // A6: aynı normalize plaka (aktif ya da PASİF) reddedilir; benzer plaka onay ister.
+  const kontrol = plakaKontrol(data.plaka, mevcutPlakalar)
+  if (kontrol.tur === 'AYNI') throw new Error(ayniPlakaMesaji(kontrol.mevcut))
+  if (kontrol.tur === 'BENZER' && !form.benzerPlakaOnayi) throw new BenzerPlakaHatasi(kontrol.benzerler)
   if (!firma) throw new Error('Firma bulunamadı.')
   if (!firma.aktif) throw new Error('Pasif firmaya araç bağlanamaz.')
 
@@ -549,7 +562,10 @@ export async function createServisArac(form: ServisAracForm, yapanId?: string | 
       data,
       include: { firma: { select: { id: true, ad: true, aktif: true } } },
     })
-    await kaydetIslemGecmisi({ tx, hedefTipi: 'ARAC', hedefId: arac.id, islem: 'OLUSTURMA', yapanId, yeniDeger: data })
+    await kaydetIslemGecmisi({
+      tx, hedefTipi: 'ARAC', hedefId: arac.id, islem: 'OLUSTURMA', yapanId, yeniDeger: data,
+      aciklama: kontrol.tur === 'BENZER' ? benzerPlakaOnayAciklamasi(kontrol.benzerler) : undefined,
+    })
     return arac
   })
 }
@@ -562,13 +578,22 @@ export async function updateServisArac(id: string, form: ServisAracForm, yapanId
   if (!existing) throw new Error('Araç bulunamadı.')
 
   const data = servisAracData(form)
-  const [plakaCakismasi, firma] = await Promise.all([
-    data.plaka !== existing.plaka
-      ? prisma.servisArac.findUnique({ where: { plaka: data.plaka } })
-      : Promise.resolve(null),
-    prisma.servisFirma.findUnique({ where: { id: data.firmaId } }),
-  ])
-  if (plakaCakismasi) throw new Error(`"${data.plaka}" plakası zaten kullanılıyor.`)
+  // Plaka DEĞİŞMİYORSA biçim/benzerlik denetlenmez: eski (kural öncesi) kayıtların
+  // diğer alanları düzenlenebilsin. Değişiyorsa A6 kuralları geçerli.
+  const plakaDegisti = data.plaka !== normalizePlaka(existing.plaka)
+  let benzerAciklama: string | undefined
+  if (plakaDegisti) {
+    const bicimHatasi = plakaBicimHatasi(data.plaka)
+    if (bicimHatasi) throw new Error(bicimHatasi)
+    const mevcutPlakalar = await prisma.servisArac.findMany({ select: { id: true, plaka: true, aktif: true } })
+    const kontrol = plakaKontrol(data.plaka, mevcutPlakalar, id)
+    if (kontrol.tur === 'AYNI') throw new Error(ayniPlakaMesaji(kontrol.mevcut))
+    if (kontrol.tur === 'BENZER') {
+      if (!form.benzerPlakaOnayi) throw new BenzerPlakaHatasi(kontrol.benzerler)
+      benzerAciklama = benzerPlakaOnayAciklamasi(kontrol.benzerler)
+    }
+  }
+  const firma = await prisma.servisFirma.findUnique({ where: { id: data.firmaId } })
   if (!firma) throw new Error('Firma bulunamadı.')
   if (!firma.aktif) throw new Error('Pasif firmaya araç bağlanamaz.')
 
@@ -581,7 +606,9 @@ export async function updateServisArac(id: string, form: ServisAracForm, yapanId
       include: { firma: { select: { id: true, ad: true, aktif: true } } },
     })
     if (fark) {
-      await kaydetIslemGecmisi({ tx, hedefTipi: 'ARAC', hedefId: id, islem: 'GUNCELLEME', yapanId, ...fark })
+      await kaydetIslemGecmisi({
+        tx, hedefTipi: 'ARAC', hedefId: id, islem: 'GUNCELLEME', yapanId, ...fark, aciklama: benzerAciklama,
+      })
     }
     return guncel
   })

@@ -24,7 +24,7 @@ import { PasifGeriAlButonlari } from './_components/PasifGeriAlButonlari'
 import { BagimlilikOnayDialog } from './_components/BagimlilikOnayDialog'
 import { ZincirGeriAlDialog } from './_components/ZincirGeriAlDialog'
 import { usePasifGeriAl } from './_lib/usePasifGeriAl'
-import { apiHataMesaji } from './_lib/servis-istek'
+import { apiHataMesaji, jsonIstek, servisIstek } from './_lib/servis-istek'
 import { normalizeTr } from '@/lib/normalize-tr'
 
 type ServisFirma = {
@@ -1036,6 +1036,8 @@ function ServisAracPanel({ canManage, canPassive, canRestore, canHistory }: { ca
   const [duzenlenen, setDuzenlenen] = useState<ServisArac | null>(null)
   const [form, setForm] = useState(bosAracForm)
   const [gecmisArac, setGecmisArac] = useState<ServisArac | null>(null)
+  // A6: sunucu "benzer plaka var" derse kayıt DURUR; kullanıcı onaylarsa benzerPlakaOnayi ile yeniden gönderilir.
+  const [benzerUyari, setBenzerUyari] = useState<{ mesaj: string; benzerler: { plaka: string; aktif: boolean }[] } | null>(null)
 
   const yukle = useCallback(async () => {
     setYukleniyor(true)
@@ -1075,6 +1077,7 @@ function ServisAracPanel({ canManage, canPassive, canRestore, canHistory }: { ca
   function yeniAc() {
     setDuzenlenen(null)
     setForm({ ...bosAracForm, firmaId: firmalar[0]?.id || '' })
+    setBenzerUyari(null)
     setDialogAcik(true)
   }
 
@@ -1088,23 +1091,29 @@ function ServisAracPanel({ canManage, canPassive, canRestore, canHistory }: { ca
       gecerlilikBaslangici: tarihInputDegeri(arac.gecerlilikBaslangici),
       gecerlilikBitisi: tarihInputDegeri(arac.gecerlilikBitisi),
     })
+    setBenzerUyari(null)
     setDialogAcik(true)
   }
 
-  async function kaydet() {
+  async function kaydet(benzerPlakaOnayi = false) {
     setHata(null)
     const url = duzenlenen ? `/api/servis-yonetimi/arac/${duzenlenen.id}` : '/api/servis-yonetimi/arac'
     const method = duzenlenen ? 'PATCH' : 'POST'
-    const res = await fetch(url, {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...form, kapasite: Number(form.kapasite) }),
-    })
-    const json = await res.json()
-    if (!res.ok || !json.ok) {
-      setHata(apiHataMesaji(res.status, json, 'Kaydedilemedi.'))
+    const sonuc = await servisIstek(
+      url,
+      jsonIstek(method, { ...form, kapasite: Number(form.kapasite), ...(benzerPlakaOnayi ? { benzerPlakaOnayi: true } : {}) }),
+      'Kaydedilemedi.',
+    )
+    if (!sonuc.ok) {
+      const govde = sonuc.json as { kod?: unknown; benzerler?: unknown } | null
+      if (sonuc.status === 409 && govde?.kod === 'BENZER_PLAKA' && Array.isArray(govde.benzerler)) {
+        setBenzerUyari({ mesaj: sonuc.mesaj, benzerler: govde.benzerler as { plaka: string; aktif: boolean }[] })
+        return
+      }
+      setHata(sonuc.mesaj)
       return
     }
+    setBenzerUyari(null)
     setDialogAcik(false)
     yukle()
   }
@@ -1204,7 +1213,18 @@ function ServisAracPanel({ canManage, canPassive, canRestore, canHistory }: { ca
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label htmlFor="arac-plaka">Plaka *</Label>
-                <Input id="arac-plaka" value={form.plaka} onChange={(e) => setForm({ ...form, plaka: e.target.value })} />
+                <Input
+                  id="arac-plaka"
+                  value={form.plaka}
+                  placeholder="41P0145"
+                  onChange={(e) => {
+                    setForm({ ...form, plaka: e.target.value })
+                    setBenzerUyari(null) // plaka değişti: önceki benzer-plaka uyarısı geçersiz
+                  }}
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  İl kodu + harf + rakam (örn. 41P0145). Boşluk ve tire otomatik temizlenir.
+                </p>
               </div>
               <div>
                 <Label htmlFor="arac-kapasite">Kapasite *</Label>
@@ -1239,8 +1259,23 @@ function ServisAracPanel({ canManage, canPassive, canRestore, canHistory }: { ca
             </div>
           </div>
           {hata && <p role="alert" className="text-sm text-red-600">{hata}</p>}
+          {benzerUyari && (
+            <div role="alert" className="space-y-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+              <p>{benzerUyari.mesaj}</p>
+              <ul className="text-xs">
+                {benzerUyari.benzerler.map((b) => (
+                  <li key={b.plaka}>{b.plaka}{b.aktif ? '' : ' (pasif)'}</li>
+                ))}
+              </ul>
+              <p className="text-xs">Aynı araç değilse onaylayıp devam edebilirsiniz; onay işlem geçmişine yazılır.</p>
+            </div>
+          )}
           <DialogFooter>
-            <Button onClick={kaydet}>Kaydet</Button>
+            {benzerUyari ? (
+              <Button variant="destructive" onClick={() => kaydet(true)}>Aynı araç değil, yine de kaydet</Button>
+            ) : (
+              <Button onClick={() => kaydet()}>Kaydet</Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

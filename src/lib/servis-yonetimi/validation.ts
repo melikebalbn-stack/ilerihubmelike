@@ -129,6 +129,8 @@ export function validateServisDurakForm(form: ServisDurakForm): ServisValidation
 
 export type ServisAracForm = {
   plaka: string
+  /** A6: benzer plaka uyarısı kullanıcı tarafından onaylandı (yalnız true sayılır). */
+  benzerPlakaOnayi?: boolean
   kapasite: number
   firmaId: string
   aracTipi?: string | null

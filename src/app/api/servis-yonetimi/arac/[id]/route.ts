@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/auth/require-permission'
+import { BenzerPlakaHatasi } from '@/lib/servis-yonetimi/plaka'
 import { updateServisArac } from '@/lib/servis-yonetimi/service'
 import type { ServisAracForm } from '@/lib/servis-yonetimi/validation'
 
@@ -32,6 +33,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const data = await updateServisArac(id, body, userId)
     return NextResponse.json({ ok: true, message: 'Araç güncellendi.', data })
   } catch (err) {
+    if (err instanceof BenzerPlakaHatasi) {
+      return NextResponse.json({ ok: false, kod: 'BENZER_PLAKA', message: err.message, benzerler: err.benzerler }, { status: 409 })
+    }
     const message = err instanceof Error ? err.message : 'Araç güncellenemedi.'
     return NextResponse.json({ ok: false, message }, { status: 400 })
   }

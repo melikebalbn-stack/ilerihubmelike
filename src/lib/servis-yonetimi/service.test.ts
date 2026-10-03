@@ -855,7 +855,7 @@ describe('ServisArac — view', () => {
 
 describe('ServisArac — create/edit', () => {
   it('plakayı boşluksuz büyük harfe çevirip tüm scalar alanları kaydeder', async () => {
-    mocks.aracFindUnique.mockResolvedValue(null)
+    mocks.aracFindMany.mockResolvedValue([])
     mocks.firmaFindUnique.mockResolvedValue({ id: 'firma-1', aktif: true })
     mocks.aracCreate.mockResolvedValue({ id: 'a1', plaka: '41ABC123' })
 
@@ -874,7 +874,7 @@ describe('ServisArac — create/edit', () => {
   })
 
   it('boşluk ve harf farkıyla aynı plakayı ikinci kez oluşturmaz', async () => {
-    mocks.aracFindUnique.mockResolvedValue({ id: 'baska', plaka: '41ABC123' })
+    mocks.aracFindMany.mockResolvedValue([{ id: 'baska', plaka: '41ABC123', aktif: true }])
     mocks.firmaFindUnique.mockResolvedValue({ id: 'firma-1', aktif: true })
     await expect(createServisArac({ ...gecerliArac, plaka: ' 41 AbC 123 ' })).rejects.toThrow('zaten kullanılıyor')
     expect(mocks.aracCreate).not.toHaveBeenCalled()
@@ -882,18 +882,18 @@ describe('ServisArac — create/edit', () => {
 
   it.each([0, -1, 1.5])('geçersiz kapasite %s değerini reddeder', async (kapasite) => {
     await expect(createServisArac({ ...gecerliArac, kapasite })).rejects.toThrow('pozitif tam sayı')
-    expect(mocks.aracFindUnique).not.toHaveBeenCalled()
+    expect(mocks.aracFindMany).not.toHaveBeenCalled()
   })
 
   it('pasif firmaya yeni araç bağlamaz', async () => {
-    mocks.aracFindUnique.mockResolvedValue(null)
+    mocks.aracFindMany.mockResolvedValue([])
     mocks.firmaFindUnique.mockResolvedValue({ id: 'firma-1', aktif: false })
     await expect(createServisArac(gecerliArac)).rejects.toThrow('Pasif firmaya')
     expect(mocks.aracCreate).not.toHaveBeenCalled()
   })
 
   it('olmayan firmaya araç bağlamaz', async () => {
-    mocks.aracFindUnique.mockResolvedValue(null)
+    mocks.aracFindMany.mockResolvedValue([])
     mocks.firmaFindUnique.mockResolvedValue(null)
     await expect(createServisArac(gecerliArac)).rejects.toThrow('Firma bulunamadı')
   })
@@ -914,7 +914,7 @@ describe('ServisArac — create/edit', () => {
   })
 
   it('oluşturma ServisIslemGecmisi kaydı yazar (ARAC/OLUSTURMA)', async () => {
-    mocks.aracFindUnique.mockResolvedValue(null)
+    mocks.aracFindMany.mockResolvedValue([])
     mocks.firmaFindUnique.mockResolvedValue({ id: 'firma-1', aktif: true })
     mocks.aracCreate.mockResolvedValue({ id: 'a1', plaka: '41ABC123' })
     await createServisArac(gecerliArac, 'user-9')
@@ -3833,5 +3833,148 @@ describe('A5 — firma geri alma (seçici)', () => {
     await expect(firmaGeriAlOnizleme('f1')).rejects.toThrow('Firma zaten aktif.')
     mocks.firmaFindUnique.mockResolvedValueOnce(null)
     await expect(firmaGeriAlOnizleme('yok')).rejects.toThrow('Firma bulunamadı.')
+  })
+})
+
+// ============================================================================
+// A6 — plaka doğrulama
+// ============================================================================
+import { BenzerPlakaHatasi } from './plaka'
+
+describe('A6 — araç plakası: normalize + biçim + aynı/benzer kontrolü', () => {
+  const arac = (ek: Record<string, unknown> = {}) => ({ ...gecerliArac, plaka: '41P0145', gecerlilikBaslangici: null, gecerlilikBitisi: null, ...ek })
+  beforeEach(() => {
+    mocks.aracFindMany.mockReset()
+    mocks.aracFindUnique.mockReset()
+    mocks.aracCreate.mockReset()
+    mocks.aracUpdate.mockReset()
+    mocks.islemGecmisiCreate.mockReset()
+    mocks.firmaFindUnique.mockResolvedValue({ id: 'firma-1', aktif: true })
+    mocks.aracCreate.mockResolvedValue({ id: 'a-yeni' })
+  })
+
+  it('normalize: " 41 p-0145 " → "41P0145" olarak kaydedilir', async () => {
+    mocks.aracFindMany.mockResolvedValue([])
+    await createServisArac(arac({ plaka: ' 41 p-0145 ' }))
+    expect(mocks.aracCreate.mock.calls[0][0].data.plaka).toBe('41P0145')
+  })
+
+  it.each(['99A123', '41', 'ABC123', '41ŞAA123', '41P01451'])('🔴 geçersiz biçim "%s" reddedilir; DB sorgusu/yazma YOK', async (plaka) => {
+    await expect(createServisArac(arac({ plaka }))).rejects.toThrow(/Geçersiz plaka biçimi|en az 5 karakter/)
+    expect(mocks.aracFindMany).not.toHaveBeenCalled()
+    expect(mocks.aracCreate).not.toHaveBeenCalled()
+  })
+
+  it('biçim hatası açık Türkçe mesaj taşır', async () => {
+    await expect(createServisArac(arac({ plaka: '99 ABC 123' }))).rejects.toThrow(
+      'Geçersiz plaka biçimi: "99ABC123". Plaka il kodu (01-81), 1-3 harf ve 2-4 rakamdan oluşmalıdır (örn. 41P0145).',
+    )
+  })
+
+  it('aynı plaka AKTİF araçta varsa reddedilir', async () => {
+    mocks.aracFindMany.mockResolvedValue([{ id: 'a1', plaka: '41P0145', aktif: true }])
+    await expect(createServisArac(arac({ plaka: '41 P 0145' }))).rejects.toThrow('"41P0145" plakası zaten kullanılıyor.')
+    expect(mocks.aracCreate).not.toHaveBeenCalled()
+  })
+
+  it('🔴 aynı plaka PASİF araçta varsa reddedilir ve "Geri Al ile etkinleştirin" önerilir', async () => {
+    mocks.aracFindMany.mockResolvedValue([{ id: 'a1', plaka: '41P0145', aktif: false }])
+    await expect(createServisArac(arac())).rejects.toThrow(/pasif bir araç olarak kayıtlı.*Geri Al ile etkinleştirin/)
+    expect(mocks.aracCreate).not.toHaveBeenCalled()
+  })
+
+  it('🔴 benzer plaka (41PO145 ↔ 41P0145): onaysız → BenzerPlakaHatasi, KAYIT YOK', async () => {
+    mocks.aracFindMany.mockResolvedValue([{ id: 'a1', plaka: '41P0145', aktif: true }])
+    const hata = await createServisArac(arac({ plaka: '41PO145' })).catch((e) => e)
+    expect(hata).toBeInstanceOf(BenzerPlakaHatasi)
+    expect(hata.message).toBe('Benzer plaka var: 41P0145 — aynı araç mı?')
+    expect(mocks.aracCreate).not.toHaveBeenCalled()
+    expect(mocks.islemGecmisiCreate).not.toHaveBeenCalled()
+  })
+
+  it('🔴 benzer plaka (41PO0145 ↔ 41P0145) — fazladan O/0 yazımı da yakalanır', async () => {
+    mocks.aracFindMany.mockResolvedValue([{ id: 'a1', plaka: '41P0145', aktif: true }])
+    await expect(createServisArac(arac({ plaka: '41PO0145' }))).rejects.toBeInstanceOf(BenzerPlakaHatasi)
+  })
+
+  it('benzer plaka PASİF kayıtla da uyarır', async () => {
+    mocks.aracFindMany.mockResolvedValue([{ id: 'a1', plaka: '41P0145', aktif: false }])
+    await expect(createServisArac(arac({ plaka: '41PO145' }))).rejects.toBeInstanceOf(BenzerPlakaHatasi)
+  })
+
+  it('🔴 benzer plaka + onay (benzerPlakaOnayi: true): kaydedilir, ONAY audit açıklamasına yazılır', async () => {
+    mocks.aracFindMany.mockResolvedValue([{ id: 'a1', plaka: '41P0145', aktif: true }])
+    await createServisArac(arac({ plaka: '41PO145', benzerPlakaOnayi: true }), 'user-1')
+    expect(mocks.aracCreate).toHaveBeenCalled()
+    expect(mocks.aracCreate.mock.calls[0][0].data).not.toHaveProperty('benzerPlakaOnayi') // DB'ye yazılmaz
+    expect(mocks.islemGecmisiCreate.mock.calls[0][0].data.aciklama).toBe(
+      'Benzer plaka uyarısı kullanıcı onayıyla geçildi: 41P0145.',
+    )
+  })
+
+  it('onay yalnız benzer plakayı geçer: AYNI plaka onayla da reddedilir', async () => {
+    mocks.aracFindMany.mockResolvedValue([{ id: 'a1', plaka: '41P0145', aktif: true }])
+    await expect(createServisArac(arac({ benzerPlakaOnayi: true }))).rejects.toThrow('zaten kullanılıyor')
+  })
+
+  it('benzemeyen plaka (34LAC828 ↔ 34LAC829): uyarısız kaydedilir, audit açıklaması yok', async () => {
+    mocks.aracFindMany.mockResolvedValue([{ id: 'a1', plaka: '34LAC829', aktif: true }])
+    await createServisArac(arac({ plaka: '34LAC828' }), 'user-1')
+    expect(mocks.aracCreate).toHaveBeenCalled()
+    expect(mocks.islemGecmisiCreate.mock.calls[0][0].data.aciklama).toBeNull()
+  })
+
+  // ---- güncelleme ----
+  const mevcut = (ek: Record<string, unknown> = {}) => ({
+    id: 'a1', plaka: '41P0145', kapasite: 16, firmaId: 'firma-1', aracTipi: 'Minibüs',
+    gecerlilikBaslangici: null, gecerlilikBitisi: null, ...ek,
+  })
+
+  it('güncelleme: plaka DEĞİŞİYORSA biçim denetlenir', async () => {
+    mocks.aracFindUnique.mockResolvedValue(mevcut())
+    await expect(updateServisArac('a1', arac({ plaka: '99X123' }))).rejects.toThrow(/Geçersiz plaka biçimi/)
+    expect(mocks.aracUpdate).not.toHaveBeenCalled()
+  })
+
+  it('🔴 güncelleme: plaka DEĞİŞMİYORSA eski (kural öncesi) geçersiz plakalı kayıt yine de düzenlenebilir; plaka sorgusu yok', async () => {
+    mocks.aracFindUnique.mockResolvedValue(mevcut({ plaka: 'ESKI-PLAKA9' }))
+    mocks.aracUpdate.mockResolvedValue({ id: 'a1' })
+    await updateServisArac('a1', arac({ plaka: 'ESKI-PLAKA9', kapasite: 20 }))
+    expect(mocks.aracFindMany).not.toHaveBeenCalled()
+    expect(mocks.aracUpdate).toHaveBeenCalled()
+  })
+
+  it('güncelleme: başka bir araçla aynı plakaya değiştirme reddedilir (kendisi hariç)', async () => {
+    mocks.aracFindUnique.mockResolvedValue(mevcut())
+    mocks.aracFindMany.mockResolvedValue([
+      { id: 'a1', plaka: '41P0145', aktif: true }, // kendisi
+      { id: 'a2', plaka: '34LAC828', aktif: false },
+    ])
+    await expect(updateServisArac('a1', arac({ plaka: '34 lac 828' }))).rejects.toThrow(/pasif bir araç olarak kayıtlı/)
+  })
+
+  it('güncelleme: plakayı kendi benzerine çevirme (41P0145 → 41PO145) KENDİSİYLE uyarmaz', async () => {
+    mocks.aracFindUnique.mockResolvedValue(mevcut())
+    mocks.aracFindMany.mockResolvedValue([{ id: 'a1', plaka: '41P0145', aktif: true }])
+    mocks.aracUpdate.mockResolvedValue({ id: 'a1' })
+    await updateServisArac('a1', arac({ plaka: '41PO145' }), 'user-1')
+    expect(mocks.aracUpdate).toHaveBeenCalled()
+  })
+
+  it('güncelleme: başka araca benzer plaka → onaysız BenzerPlakaHatasi; onayla geçer + audit açıklaması', async () => {
+    mocks.aracFindUnique.mockResolvedValue(mevcut())
+    mocks.aracFindMany.mockResolvedValue([
+      { id: 'a1', plaka: '41P0145', aktif: true },
+      { id: 'a2', plaka: '06AB123', aktif: true },
+    ])
+    mocks.aracUpdate.mockResolvedValue({ id: 'a1' })
+    await expect(updateServisArac('a1', arac({ plaka: '06A8123' }))).rejects.toBeInstanceOf(BenzerPlakaHatasi)
+    expect(mocks.aracUpdate).not.toHaveBeenCalled()
+
+    await updateServisArac('a1', arac({ plaka: '06A8123', benzerPlakaOnayi: true }), 'user-1')
+    expect(mocks.aracUpdate).toHaveBeenCalled()
+    const audit = mocks.islemGecmisiCreate.mock.calls[0][0].data
+    expect(audit).toMatchObject({ hedefTipi: 'ARAC', islem: 'GUNCELLEME', userId: 'user-1' })
+    expect(audit.aciklama).toBe('Benzer plaka uyarısı kullanıcı onayıyla geçildi: 06AB123.')
   })
 })

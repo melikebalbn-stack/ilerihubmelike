@@ -653,6 +653,29 @@ export async function personelAtamasiDilimsiz(): Promise<VeriKaliteBulgu> {
   }
 }
 
+// ----------------------------------------------------------------------------
+// Pasif güzergâha bağlı aktif atama (C4)
+// ----------------------------------------------------------------------------
+// Güzergâh pasife alındığında aktif personel ataması açık kalmış olabilir: personel hiçbir aktif servis
+// ekranında/kapasitede görünmez (kapasite motoru yalnız aktif güzergâhları sayar) ama atama "aktif" durur.
+// Kayıt personel kimliği taşımaz (KVKK): atama kimliği + güzergâh + başlangıç + kaynak.
+export async function pasifGuzergahaAktifAtama(): Promise<VeriKaliteBulgu> {
+  const atamalar = await prisma.servisPersonelAtama.findMany({
+    where: { aktif: true, guzergah: { aktif: false } },
+    select: { id: true, baslangicTarihi: true, atamaKaynagi: true, guzergah: { select: { id: true, kod: true, ad: true } } },
+    orderBy: [{ guzergah: { kod: 'asc' } }, { baslangicTarihi: 'asc' }],
+  })
+  const kayitlar = atamalar.map((a) => ({
+    atamaId: a.id,
+    guzergahId: a.guzergah.id,
+    guzergahKod: a.guzergah.kod,
+    guzergahAd: a.guzergah.ad,
+    baslangicTarihi: a.baslangicTarihi.toISOString().slice(0, 10),
+    kaynak: a.atamaKaynagi,
+  }))
+  return { kod: 'pasif-guzergah-aktif-atama', baslik: 'Pasif güzergâha bağlı aktif atama', adet: kayitlar.length, kayitlar }
+}
+
 interface KontrolTanimi {
   kod: string
   baslik: string
@@ -684,6 +707,7 @@ const KONTROLLER: KontrolTanimi[] = [
   { kod: 'kapasite-asimi', baslik: 'Kapasite aşımı', calistir: kapasiteAsimi },
   { kod: 'guzergah-arac-yok', baslik: 'Güzergâhın aracı yok', calistir: guzergahAracYok },
   { kod: 'personel-atamasi-dilimsiz', baslik: 'Sefer dilimi bağlantısı olmayan personel ataması', calistir: personelAtamasiDilimsiz },
+  { kod: 'pasif-guzergah-aktif-atama', baslik: 'Pasif güzergâha bağlı aktif atama', calistir: pasifGuzergahaAktifAtama },
   { kod: 'tarih-cakismasi-arac-sofor', baslik: 'Tarih çakışması (araç/şoför)', calistir: tarihCakismasiAracSofor },
   { kod: 'aktif-arac-pasif-firma', baslik: 'Eksik firma ilişkisi (a)', calistir: aktifAracPasifFirma },
   { kod: 'dis-firma-soforu-firmasiz', baslik: 'Eksik firma ilişkisi (b)', calistir: disFirmaSoforuFirmasiz },

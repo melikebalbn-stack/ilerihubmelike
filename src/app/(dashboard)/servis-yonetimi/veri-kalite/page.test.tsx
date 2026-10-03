@@ -236,3 +236,28 @@ describe('VeriKaliteMerkeziPage — dilimsiz personel ataması kartı (B4)', () 
     expect(screen.getByText('Sorun bulunmadı.')).toBeInTheDocument()
   })
 })
+
+describe('VeriKaliteMerkeziPage — pasif güzergâha bağlı aktif atama kartı (C4)', () => {
+  const kontrol = (adet: number) =>
+    satir({
+      kod: 'pasif-guzergah-aktif-atama', baslik: 'Pasif güzergâha bağlı aktif atama', adet,
+      kayitlar: adet === 0 ? [] : [{ atamaId: 'a1', guzergahId: 'g7', guzergahKod: 'ESKİ_ÜSKÜDAR', guzergahAd: 'Eski Üsküdar', baslangicTarihi: '2026-09-27', kaynak: 'IMPORT' }],
+    })
+
+  it('N > 0: Türkçe başlık, kayıt etiketi ve güzergâh bağlantısı', async () => {
+    mockSession(['servis.view'])
+    global.fetch = vi.fn().mockResolvedValue(fetchOkYanit([kontrol(2)])) as unknown as typeof fetch
+    render(<VeriKaliteMerkeziPage />)
+    await waitFor(() => expect(screen.getByText('Pasif güzergâha bağlı aktif atama')).toBeInTheDocument())
+    const kayit = screen.getByText('ESKİ_ÜSKÜDAR — Eski Üsküdar (pasif güzergâh, IMPORT, 2026-09-27 başlangıçlı)')
+    expect(kayit.closest('a')?.getAttribute('href')).toBe('/servis-yonetimi/guzergah/g7')
+  })
+
+  it('N = 0: olumlu boş durum', async () => {
+    mockSession(['servis.view'])
+    global.fetch = vi.fn().mockResolvedValue(fetchOkYanit([kontrol(0)])) as unknown as typeof fetch
+    render(<VeriKaliteMerkeziPage />)
+    await waitFor(() => expect(screen.getByText('Pasif güzergâha bağlı aktif atama')).toBeInTheDocument())
+    expect(screen.getByText('Sorun bulunmadı.')).toBeInTheDocument()
+  })
+})

@@ -49,6 +49,7 @@ function bulguLinki(kod: string, kayit: VeriKaliteKayit): string {
     case 'guzergah-sefer-dilimi-tanimsiz':
     case 'kapasite-asimi':
     case 'guzergah-arac-yok':
+    case 'pasif-guzergah-aktif-atama':
       return `/servis-yonetimi/guzergah/${kayit.guzergahId}`
     // Dilimsiz atama: doğrudan Personel Atamaları sekmesi, dilimsizler seçili (toplu "Dilim Ata").
     case 'personel-atamasi-dilimsiz':
@@ -78,6 +79,8 @@ function kayitEtiketi(kod: string, kayit: VeriKaliteKayit): string {
       return `${kayit.guzergahKod} — ${kayit.guzergahAd} / ${kayit.dilimKod}: ${kayit.personel} kişi / ${kayit.koltuk} koltuk (+${kayit.fazla})`
     case 'guzergah-arac-yok':
       return `${kayit.guzergahKod} — ${kayit.guzergahAd} (${kayit.personelSayisi} personel)`
+    case 'pasif-guzergah-aktif-atama':
+      return `${kayit.guzergahKod} — ${kayit.guzergahAd} (pasif güzergâh, ${kayit.kaynak ?? '—'}, ${kayit.baslangicTarihi ?? '—'} başlangıçlı)`
     case 'personel-atamasi-dilimsiz':
       return `${kayit.guzergahKod} — ${kayit.guzergahAd} (${kayit.kaynak ?? '—'}, ${kayit.baslangicTarihi ?? '—'} başlangıçlı)`
     case 'kapasitesi-eksik-arac':

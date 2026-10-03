@@ -201,11 +201,11 @@ describe('GET .../veri-kalite/export — dosya', () => {
     expect(cd).toMatch(/\d{4}-\d{2}-\d{2}/)
   })
 
-  it("Özet'te 18 satır bulunur (16 kontrol + 2 yer tutucu)", async () => {
+  it("Özet'te 19 satır bulunur (17 kontrol + 2 yer tutucu)", async () => {
     tumKontrolleriBosSonuclaKur()
     const { wb } = await wbOku(await GET())
     const satirlar = sayfaSatirlari(wb, 'Özet')
-    expect(satirlar).toHaveLength(19) // 1 başlık + 18
+    expect(satirlar).toHaveLength(20) // 1 başlık + 19
   })
 })
 

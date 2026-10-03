@@ -51,7 +51,7 @@ const ALAN_ETIKET: Record<string, string> = {
   ad: 'Ad', yetkiliAdi: 'Yetkili', telefon: 'Telefon', eposta: 'E-posta', adres: 'Adres',
   aktif: 'Durum', personnelId: 'Personel ID', guzergahId: 'Güzergâh ID', durakId: 'Durak ID',
   baslangicTarihi: 'Başlangıç', bitisTarihi: 'Bitiş', atamaKaynagi: 'Atama Kaynağı',
-  dilimIdleri: 'Sefer Dilimleri',
+  dilimIdleri: 'Sefer Dilimleri', sira: 'Sıra',
 }
 
 function alanDegeriGoster(alan: string, deger: unknown): string {
@@ -148,6 +148,7 @@ export function ServisGecmisDialog({
                   </time>
                 </div>
                 <p className="text-xs text-muted-foreground">{k.user?.name || 'Sistem'}</p>
+                {k.aciklama && <p className="mt-1 text-xs italic text-muted-foreground">{k.aciklama}</p>}
                 <DegerSatirlari oncekiDeger={k.oncekiDeger} yeniDeger={k.yeniDeger} />
               </div>
             ))}

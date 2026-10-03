@@ -13,8 +13,8 @@ vi.mock('@/lib/servis-yonetimi/service', () => ({
 
 import { POST } from './route'
 
-function permissionResult(allowed: boolean) {
-  return { error: allowed ? null : NextResponse.json({ error: 'Yetkisiz erisim' }, { status: 403 }) }
+function permissionResult(allowed: boolean, userId = 'user-1') {
+  return { error: allowed ? null : NextResponse.json({ error: 'Yetkisiz erisim' }, { status: 403 }), userId: allowed ? userId : null }
 }
 
 beforeEach(() => {
@@ -52,6 +52,6 @@ describe('POST /api/servis-yonetimi/guzergah/[id]/durak/reorder-bulk', () => {
       body: JSON.stringify({ guzergahDurakIdleri: ['b', 'a'] }),
     }), context)
     expect(res.status).toBe(200)
-    expect(mocks.yenidenSiralaServisGuzergahDuraklar).toHaveBeenCalledWith('guzergah-1', ['b', 'a'])
+    expect(mocks.yenidenSiralaServisGuzergahDuraklar).toHaveBeenCalledWith('guzergah-1', ['b', 'a'], 'user-1')
   })
 })

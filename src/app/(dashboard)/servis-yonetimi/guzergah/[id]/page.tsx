@@ -133,6 +133,8 @@ export default function GuzergahDetayPage() {
 
   const [durakEkleAcik, setDurakEkleAcik] = useState(false)
   const [eklenecekDurakId, setEklenecekDurakId] = useState('')
+  // Araya ekleme: '' = sona ekle, 'k' = k. sıraya (k. duraktan ÖNCE) ekle.
+  const [eklenecekKonum, setEklenecekKonum] = useState('')
 
   const [saatDuzenlenen, setSaatDuzenlenen] = useState<GuzergahDurak | null>(null)
   const [gecmisDurak, setGecmisDurak] = useState<GuzergahDurak | null>(null)
@@ -198,19 +200,22 @@ export default function GuzergahDetayPage() {
 
   function durakEkleAc() {
     setEklenecekDurakId(eklenebilirDuraklar[0]?.id || '')
+    setEklenecekKonum('')
     setDurakEkleAcik(true)
   }
 
   async function durakEkle() {
     setHata(null)
-    const res = await fetch(`/api/servis-yonetimi/guzergah/${guzergahId}/durak`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ durakId: eklenecekDurakId }),
-    })
-    const json = await res.json()
-    if (!res.ok || !json.ok) {
-      setHata(apiHataMesaji(res.status, json, 'Durak eklenemedi.'))
+    const sonuc = await servisIstek(
+      `/api/servis-yonetimi/guzergah/${guzergahId}/durak`,
+      jsonIstek('POST', {
+        durakId: eklenecekDurakId,
+        ...(eklenecekKonum ? { konum: Number(eklenecekKonum) } : {}),
+      }),
+      'Durak eklenemedi.',
+    )
+    if (!sonuc.ok) {
+      setHata(sonuc.mesaj)
       return
     }
     setDurakEkleAcik(false)
@@ -433,6 +438,25 @@ export default function GuzergahDetayPage() {
                   <option key={durak.id} value={durak.id}>{durak.kod} — {durak.ad}</option>
                 ))}
               </select>
+            </div>
+            <div>
+              <Label htmlFor="durak-ekle-konum">Konum</Label>
+              <select
+                id="durak-ekle-konum"
+                value={eklenecekKonum}
+                onChange={(e) => setEklenecekKonum(e.target.value)}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              >
+                <option value="">Sona ekle</option>
+                {aktifDuraklar.map((d, index) => (
+                  <option key={d.id} value={String(index + 1)}>
+                    {index + 1}. sıraya ekle — &quot;{d.durak.ad}&quot; durağının önüne
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Araya eklenince sonraki durakların yalnız sırası kayar; durak kodları değişmez.
+              </p>
             </div>
           </div>
           <DialogFooter>

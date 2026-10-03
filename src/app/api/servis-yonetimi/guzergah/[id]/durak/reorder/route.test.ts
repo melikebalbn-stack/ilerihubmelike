@@ -13,8 +13,8 @@ vi.mock('@/lib/servis-yonetimi/service', () => ({
 
 import { POST } from './route'
 
-function permissionResult(allowed: boolean) {
-  return { error: allowed ? null : NextResponse.json({ error: 'Yetkisiz erisim' }, { status: 403 }) }
+function permissionResult(allowed: boolean, userId = 'user-1') {
+  return { error: allowed ? null : NextResponse.json({ error: 'Yetkisiz erisim' }, { status: 403 }), userId: allowed ? userId : null }
 }
 
 beforeEach(() => {
@@ -44,6 +44,16 @@ describe('POST /api/servis-yonetimi/guzergah/[id]/durak/reorder', () => {
     expect(mocks.siraDegistirServisGuzergahDurak).not.toHaveBeenCalled()
   })
 
+  it('🔴 oturum yoksa (401) servis HİÇ çağrılmaz — guard fonksiyonun ilk ifadesi', async () => {
+    mocks.requirePermission.mockResolvedValue({ error: NextResponse.json({ error: 'Yetkisiz: oturum bulunamadı' }, { status: 401 }), userId: null })
+    const res = await POST(new NextRequest('http://localhost/x', {
+      method: 'POST',
+      body: JSON.stringify({ guzergahDurakId: 'gd1', yon: 'ASAGI' }),
+    }), context)
+    expect(res.status).toBe(401)
+    expect(mocks.siraDegistirServisGuzergahDurak).not.toHaveBeenCalled()
+  })
+
   it('geçerli istekte servisi doğru parametrelerle çağırır', async () => {
     mocks.requirePermission.mockResolvedValue(permissionResult(true))
     mocks.siraDegistirServisGuzergahDurak.mockResolvedValue([{ id: 'gd1', sira: 1 }])
@@ -52,6 +62,6 @@ describe('POST /api/servis-yonetimi/guzergah/[id]/durak/reorder', () => {
       body: JSON.stringify({ guzergahDurakId: 'gd1', yon: 'ASAGI' }),
     }), context)
     expect(res.status).toBe(200)
-    expect(mocks.siraDegistirServisGuzergahDurak).toHaveBeenCalledWith('guzergah-1', 'gd1', 'ASAGI')
+    expect(mocks.siraDegistirServisGuzergahDurak).toHaveBeenCalledWith('guzergah-1', 'gd1', 'ASAGI', 'user-1')
   })
 })

@@ -66,6 +66,7 @@ const mocks = vi.hoisted(() => ({
   personelAtamaDilimCreateMany: vi.fn(),
   islemGecmisiCreate: vi.fn(),
   transaction: vi.fn((ops: unknown[]) => Promise.all(ops)),
+  executeRaw: vi.fn(),
 }))
 
 // $transaction hem dizi formunu (guzergah-durak yeniden sıralama) hem de
@@ -172,10 +173,12 @@ vi.mock('@/lib/prisma', () => {
     servisIslemGecmisi: {
       create: mocks.islemGecmisiCreate,
     },
+    $executeRaw: mocks.executeRaw,
   }
   return {
     prisma: {
       ...prismaMock,
+      $executeRaw: mocks.executeRaw,
       $transaction: (arg: unknown) =>
         typeof arg === 'function'
           ? (arg as (tx: typeof prismaMock) => unknown)(prismaMock)
@@ -1356,7 +1359,11 @@ describe('ServisGuzergahDurak — durak ekleme', () => {
     mocks.guzergahFindUnique.mockResolvedValue({ id: 'guzergah-1', aktif: true })
     mocks.durakFindUnique.mockResolvedValue({ id: 'durak-1', aktif: true })
     mocks.guzergahDurakFindUnique.mockResolvedValue(null)
-    mocks.guzergahDurakFindFirst.mockResolvedValue({ sira: 3 })
+    mocks.guzergahDurakFindMany.mockResolvedValue([
+      { id: 'gd-a', sira: 1, aktif: true },
+      { id: 'gd-b', sira: 2, aktif: true },
+      { id: 'gd-c', sira: 3, aktif: true },
+    ])
     mocks.guzergahDurakCreate.mockResolvedValue({ id: 'gd1', sira: 4 })
 
     await createServisGuzergahDurak('guzergah-1', { durakId: 'durak-1' })
@@ -1370,7 +1377,7 @@ describe('ServisGuzergahDurak — durak ekleme', () => {
     mocks.guzergahFindUnique.mockResolvedValue({ id: 'guzergah-1', aktif: true })
     mocks.durakFindUnique.mockResolvedValue({ id: 'durak-1', aktif: true })
     mocks.guzergahDurakFindUnique.mockResolvedValue(null)
-    mocks.guzergahDurakFindFirst.mockResolvedValue(null)
+    mocks.guzergahDurakFindMany.mockResolvedValue([])
     mocks.guzergahDurakCreate.mockResolvedValue({ id: 'gd1', sira: 1 })
 
     await createServisGuzergahDurak('guzergah-1', { durakId: 'durak-1' })
@@ -1420,7 +1427,7 @@ describe('ServisGuzergahDurak — durak ekleme', () => {
     mocks.guzergahFindUnique.mockResolvedValue({ id: 'guzergah-1', aktif: true })
     mocks.durakFindUnique.mockResolvedValue({ id: 'durak-1', aktif: true })
     mocks.guzergahDurakFindUnique.mockResolvedValue(null)
-    mocks.guzergahDurakFindFirst.mockResolvedValue(null)
+    mocks.guzergahDurakFindMany.mockResolvedValue([])
     mocks.guzergahDurakCreate.mockResolvedValue({ id: 'gd1', sira: 1 })
     await createServisGuzergahDurak('guzergah-1', { durakId: 'durak-1' }, 'user-9')
     expect(mocks.islemGecmisiCreate).toHaveBeenCalledWith(expect.objectContaining({
@@ -1514,6 +1521,17 @@ function siraKisitliSahteDB(baslangic: { id: string; sira: number; aktif: boolea
     Object.assign(kayit, data)
     return Promise.resolve({ ...kayit })
   }
+  function create({ data }: { data: { sira: number; id?: string } & Record<string, unknown> }) {
+    const cakisan = [...kayitlar.values()].find((k) => k.sira === data.sira)
+    if (cakisan) {
+      throw new Error(
+        `Unique constraint failed on the fields: (\`guzergahId\`,\`sira\`) — yeni kayıt sira=${data.sira} zaten id=${cakisan.id} tarafından kullanılıyor.`,
+      )
+    }
+    const kayit = { id: data.id ?? 'gd-yeni', sira: data.sira, aktif: true }
+    kayitlar.set(kayit.id, kayit)
+    return Promise.resolve({ ...kayit })
+  }
   // Gerçek Prisma findMany'nin döndürdüğü objeler DB'den taze snapshot'tır —
   // sonraki update() çağrıları onları GERİYE DÖNÜP mutasyona uğratmaz. Burada
   // da KLON döndürülür; aksi halde servis kodunun elinde tuttuğu referanslar
@@ -1523,7 +1541,7 @@ function siraKisitliSahteDB(baslangic: { id: string; sira: number; aktif: boolea
   function bul() {
     return [...kayitlar.values()].map((k) => ({ ...k })).sort((a, b) => a.sira - b.sira)
   }
-  return { kayitlar, update, bul }
+  return { kayitlar, update, create, bul }
 }
 
 describe('ServisGuzergahDurak — yukarı/aşağı sıralama (unique-constraint güvenliği)', () => {
@@ -1604,6 +1622,215 @@ describe('ServisGuzergahDurak — sürükle-bırak toplu yeniden sıralama (uniq
 
     const nihaiSira = sahteDB.bul().map((k) => k.id)
     expect(nihaiSira).toEqual(['gd3', 'gd1', 'gd2'])
+  })
+})
+
+describe('ServisGuzergahDurak — A2: araya ekleme (kaydırma, kod değişmez, audit)', () => {
+  function kurAraya(baslangic: { id: string; sira: number; aktif: boolean }[]) {
+    const sahteDB = siraKisitliSahteDB(baslangic)
+    mocks.guzergahFindUnique.mockResolvedValue({ id: 'guzergah-1', aktif: true })
+    mocks.durakFindUnique.mockResolvedValue({ id: 'durak-yeni', aktif: true })
+    mocks.guzergahDurakFindUnique.mockResolvedValue(null)
+    mocks.guzergahDurakFindMany.mockImplementation(() => Promise.resolve(sahteDB.bul()))
+    mocks.guzergahDurakUpdate.mockImplementation(sahteDB.update)
+    mocks.guzergahDurakCreate.mockImplementation((arg: { data: { sira: number } }) =>
+      sahteDB.create({ data: { ...arg.data, id: 'gd-yeni' } }),
+    )
+    return sahteDB
+  }
+  const bes = () => [1, 2, 3, 4, 5].map((n) => ({ id: `gd${n}`, sira: n, aktif: true }))
+  const auditler = () => mocks.islemGecmisiCreate.mock.calls.map((c) => c[0].data)
+
+  it('3. ile 4. arasına (konum 4) ekleme: sonraki duraklar kayar, yeni durak 4. sırada, çakışma yok', async () => {
+    const sahteDB = kurAraya(bes())
+    await createServisGuzergahDurak('guzergah-1', { durakId: 'durak-yeni', konum: 4 }, 'user-1')
+    expect(sahteDB.bul().map((k) => k.id)).toEqual(['gd1', 'gd2', 'gd3', 'gd-yeni', 'gd4', 'gd5'])
+    expect(sahteDB.bul().map((k) => k.sira)).toEqual([1, 2, 3, 4, 5, 6])
+  })
+
+  it('kaydırma EN YÜKSEK sira\'dan başlar (geçici ofset gerekmez), yalnız sira yazılır', async () => {
+    kurAraya(bes())
+    await createServisGuzergahDurak('guzergah-1', { durakId: 'durak-yeni', konum: 4 }, 'user-1')
+    const guncellemeler = mocks.guzergahDurakUpdate.mock.calls.map((c) => ({ id: c[0].where.id, data: c[0].data }))
+    expect(guncellemeler).toEqual([
+      { id: 'gd5', data: { sira: 6 } },
+      { id: 'gd4', data: { sira: 5 } },
+    ])
+  })
+
+  it('🔴 mevcut durak KODLARI değişmez: ServisDurak hiç güncellenmez', async () => {
+    kurAraya(bes())
+    await createServisGuzergahDurak('guzergah-1', { durakId: 'durak-yeni', konum: 2 }, 'user-1')
+    expect(mocks.durakUpdate).not.toHaveBeenCalled()
+    expect(mocks.durakCreate).not.toHaveBeenCalled()
+  })
+
+  it('audit: her kaydırılan satır için GUNCELLEME (eski sira → yeni sira) + yeni satır için OLUSTURMA, yapan kullanıcıyla', async () => {
+    kurAraya(bes())
+    await createServisGuzergahDurak('guzergah-1', { durakId: 'durak-yeni', konum: 4 }, 'user-1')
+    const a = auditler()
+    expect(a).toHaveLength(3)
+    expect(a.filter((x) => x.islem === 'GUNCELLEME').map((x) => [x.hedefId, x.oncekiDeger, x.yeniDeger])).toEqual([
+      ['gd5', { sira: 5 }, { sira: 6 }],
+      ['gd4', { sira: 4 }, { sira: 5 }],
+    ])
+    expect(a.every((x) => x.hedefTipi === 'GUZERGAH_DURAK' && x.userId === 'user-1')).toBe(true)
+    expect(a.find((x) => x.islem === 'OLUSTURMA')).toMatchObject({
+      hedefId: 'gd-yeni',
+      yeniDeger: { guzergahId: 'guzergah-1', durakId: 'durak-yeni', sira: 4 },
+      aciklama: 'Araya eklendi (konum 4).',
+    })
+    expect(a.find((x) => x.islem === 'GUNCELLEME')!.aciklama).toMatch(/Araya durak eklendi/)
+  })
+
+  it('konum 1: başa ekler, hepsi kayar', async () => {
+    const sahteDB = kurAraya(bes())
+    await createServisGuzergahDurak('guzergah-1', { durakId: 'durak-yeni', konum: 1 }, 'user-1')
+    expect(sahteDB.bul().map((k) => k.id)).toEqual(['gd-yeni', 'gd1', 'gd2', 'gd3', 'gd4', 'gd5'])
+    expect(auditler().filter((x) => x.islem === 'GUNCELLEME')).toHaveLength(5)
+  })
+
+  it('konum = aktif sayısı + 1 ve konum verilmemesi: sona ekler, kaydırma/GUNCELLEME yok', async () => {
+    for (const form of [{ durakId: 'durak-yeni', konum: 6 }, { durakId: 'durak-yeni' }]) {
+      vi.clearAllMocks()
+      const sahteDB = kurAraya(bes())
+      await createServisGuzergahDurak('guzergah-1', form, 'user-1')
+      expect(sahteDB.bul().map((k) => k.id)).toEqual(['gd1', 'gd2', 'gd3', 'gd4', 'gd5', 'gd-yeni'])
+      expect(mocks.guzergahDurakUpdate).not.toHaveBeenCalled()
+      expect(auditler()).toHaveLength(1)
+      expect(auditler()[0].aciklama ?? null).toBeNull()
+    }
+  })
+
+  it('pasif duraklar da kayar (unique için) ve aktif sıralama doğru kalır', async () => {
+    const sahteDB = kurAraya([
+      { id: 'a', sira: 1, aktif: true },
+      { id: 'p', sira: 2, aktif: false },
+      { id: 'b', sira: 3, aktif: true },
+      { id: 'c', sira: 4, aktif: true },
+    ])
+    // aktifler: a(1), b(2), c(3) → konum 2 = b'den önce
+    await createServisGuzergahDurak('guzergah-1', { durakId: 'durak-yeni', konum: 2 }, 'user-1')
+    expect(sahteDB.bul().filter((k) => k.aktif).map((k) => k.id)).toEqual(['a', 'gd-yeni', 'b', 'c'])
+    expect(new Set(sahteDB.bul().map((k) => k.sira)).size).toBe(5) // hepsi benzersiz
+  })
+
+  it('aralık dışı konum reddedilir, hiçbir yazma olmaz', async () => {
+    kurAraya(bes())
+    await expect(createServisGuzergahDurak('guzergah-1', { durakId: 'durak-yeni', konum: 8 })).rejects.toThrow(
+      'Konum 1 ile 6 arasında olmalıdır.',
+    )
+    expect(mocks.guzergahDurakUpdate).not.toHaveBeenCalled()
+    expect(mocks.guzergahDurakCreate).not.toHaveBeenCalled()
+    expect(mocks.islemGecmisiCreate).not.toHaveBeenCalled()
+  })
+
+  it('geçersiz konum (0, -1, 2.5) validasyonda reddedilir', async () => {
+    for (const konum of [0, -1, 2.5]) {
+      await expect(createServisGuzergahDurak('guzergah-1', { durakId: 'durak-yeni', konum })).rejects.toThrow('Konum')
+    }
+    expect(mocks.guzergahDurakCreate).not.toHaveBeenCalled()
+  })
+
+  it('🔴 audit fail-closed: audit yazılamazsa işlem hata ile biter', async () => {
+    kurAraya(bes())
+    mocks.islemGecmisiCreate.mockRejectedValueOnce(new Error('audit yazılamadı'))
+    await expect(
+      createServisGuzergahDurak('guzergah-1', { durakId: 'durak-yeni', konum: 4 }, 'user-1'),
+    ).rejects.toThrow('audit yazılamadı')
+  })
+
+  it('sıra işlemi güzergâh bazlı advisory lock alır', async () => {
+    kurAraya(bes())
+    await createServisGuzergahDurak('guzergah-1', { durakId: 'durak-yeni', konum: 4 }, 'user-1')
+    expect(mocks.executeRaw).toHaveBeenCalledTimes(1)
+    const [parcalar, deger] = mocks.executeRaw.mock.calls[0]
+    expect(parcalar.join('')).toContain('pg_advisory_xact_lock')
+    expect(deger).toBe('servis-durak-sira:guzergah-1')
+  })
+})
+
+describe('ServisGuzergahDurak — A2: sıra değişikliği audit (yukarı/aşağı + toplu)', () => {
+  const auditler = () => mocks.islemGecmisiCreate.mock.calls.map((c) => c[0].data)
+  function kurSira(baslangic: { id: string; sira: number; aktif: boolean }[]) {
+    const sahteDB = siraKisitliSahteDB(baslangic)
+    mocks.guzergahDurakFindMany.mockImplementation(() => Promise.resolve(sahteDB.bul()))
+    mocks.guzergahDurakUpdate.mockImplementation(sahteDB.update)
+    return sahteDB
+  }
+  const uc = () => [1, 2, 3].map((n) => ({ id: `gd${n}`, sira: n, aktif: true }))
+
+  it('yukarı/aşağı: İKİ kayıt için eski sira → yeni sira audit satırı, yapan kullanıcıyla', async () => {
+    kurSira(uc())
+    await siraDegistirServisGuzergahDurak('guzergah-1', 'gd3', 'YUKARI', 'user-7')
+    const a = auditler()
+    expect(a).toHaveLength(2)
+    expect(a.map((x) => [x.hedefId, x.islem, x.oncekiDeger, x.yeniDeger, x.userId])).toEqual([
+      ['gd3', 'GUNCELLEME', { sira: 3 }, { sira: 2 }, 'user-7'],
+      ['gd2', 'GUNCELLEME', { sira: 2 }, { sira: 3 }, 'user-7'],
+    ])
+    expect(a[0]).toMatchObject({ hedefTipi: 'GUZERGAH_DURAK', aciklama: 'Sıra değiştirildi (yukarı).' })
+  })
+
+  it('uçtaki durak (no-op): audit yazılmaz', async () => {
+    kurSira(uc())
+    await siraDegistirServisGuzergahDurak('guzergah-1', 'gd1', 'YUKARI', 'user-7')
+    expect(mocks.islemGecmisiCreate).not.toHaveBeenCalled()
+    expect(mocks.guzergahDurakUpdate).not.toHaveBeenCalled()
+  })
+
+  it('pasif/yok durak: hata, audit yok', async () => {
+    kurSira(uc())
+    await expect(siraDegistirServisGuzergahDurak('guzergah-1', 'yok', 'YUKARI', 'u')).rejects.toThrow('bulunamadı veya pasif')
+    expect(mocks.islemGecmisiCreate).not.toHaveBeenCalled()
+  })
+
+  it('🔴 audit fail-closed (yukarı/aşağı)', async () => {
+    kurSira(uc())
+    mocks.islemGecmisiCreate.mockRejectedValueOnce(new Error('audit yazılamadı'))
+    await expect(siraDegistirServisGuzergahDurak('guzergah-1', 'gd3', 'YUKARI', 'u')).rejects.toThrow('audit yazılamadı')
+  })
+
+  it('toplu sıralama: yalnız sırası DEĞİŞEN kayıtlar için audit (eski → yeni)', async () => {
+    kurSira(uc())
+    await yenidenSiralaServisGuzergahDuraklar('guzergah-1', ['gd1', 'gd3', 'gd2'], 'user-7') // gd1 aynı kaldı
+    const a = auditler()
+    expect(a.map((x) => [x.hedefId, x.oncekiDeger, x.yeniDeger]).sort()).toEqual([
+      ['gd2', { sira: 2 }, { sira: 3 }],
+      ['gd3', { sira: 3 }, { sira: 2 }],
+    ])
+    expect(a.every((x) => x.userId === 'user-7' && x.islem === 'GUNCELLEME')).toBe(true)
+  })
+
+  it('toplu sıralama: aynı sıra gönderilirse yazma da audit de YOK', async () => {
+    kurSira(uc())
+    await yenidenSiralaServisGuzergahDuraklar('guzergah-1', ['gd1', 'gd2', 'gd3'], 'user-7')
+    expect(mocks.guzergahDurakUpdate).not.toHaveBeenCalled()
+    expect(mocks.islemGecmisiCreate).not.toHaveBeenCalled()
+  })
+
+  it('toplu sıralama: pasif kayıt sona kayarsa onun sirası da audit\'lenir', async () => {
+    kurSira([
+      { id: 'gd1', sira: 1, aktif: true },
+      { id: 'gd2', sira: 2, aktif: false },
+      { id: 'gd3', sira: 3, aktif: true },
+    ])
+    await yenidenSiralaServisGuzergahDuraklar('guzergah-1', ['gd1', 'gd3'], 'user-7')
+    const a = auditler()
+    expect(a.map((x) => x.hedefId).sort()).toEqual(['gd2', 'gd3'])
+  })
+
+  it('🔴 audit fail-closed (toplu)', async () => {
+    kurSira(uc())
+    mocks.islemGecmisiCreate.mockRejectedValueOnce(new Error('audit yazılamadı'))
+    await expect(yenidenSiralaServisGuzergahDuraklar('guzergah-1', ['gd3', 'gd2', 'gd1'], 'u')).rejects.toThrow('audit yazılamadı')
+  })
+
+  it('uyuşmayan liste: hata, yazma/audit yok', async () => {
+    kurSira(uc())
+    await expect(yenidenSiralaServisGuzergahDuraklar('guzergah-1', ['gd1'], 'u')).rejects.toThrow('birebir eşleşmiyor')
+    expect(mocks.guzergahDurakUpdate).not.toHaveBeenCalled()
+    expect(mocks.islemGecmisiCreate).not.toHaveBeenCalled()
   })
 })
 

@@ -150,3 +150,43 @@ describe('ServisGecmisDialog — boş ve hata hâlleri ayrı', () => {
     expect(new Set(metinler).size).toBe(3)
   })
 })
+
+describe('ServisGecmisDialog — durak sırası işlemleri tarihçede görünür (A2)', () => {
+  const SIRA_KAYDI = {
+    id: 'k1',
+    islem: 'GUNCELLEME' as const,
+    oncekiDeger: { sira: 3 },
+    yeniDeger: { sira: 4 },
+    aciklama: 'Araya durak eklendi (konum 3): sıra kaydırıldı.',
+    tarih: '2026-10-03T08:30:00.000Z',
+    user: { name: 'Elif Yıldırım' },
+  }
+
+  it('sıra değişikliği "Sıra: 3 → 4" olarak (ham alan adı DEĞİL) gösterilir', async () => {
+    fetchMockKur({ ok: true, body: { ok: true, data: [SIRA_KAYDI] } })
+    ac({ hedefTipi: 'GUZERGAH_DURAK', hedefId: 'gd4', baslik: 'Işık Market' })
+
+    await waitFor(() => expect(screen.getByText('Güncellendi')).toBeInTheDocument())
+    expect(screen.getByText(/Sıra:/)).toBeInTheDocument()
+    expect(screen.queryByText(/^sira:/)).not.toBeInTheDocument()
+    expect(screen.getByText('3')).toBeInTheDocument() // eski değer
+    expect(screen.getByText('4')).toBeInTheDocument() // yeni değer
+  })
+
+  it('işlem açıklaması (neden araya ekleme/sıra değişti) gösterilir', async () => {
+    fetchMockKur({ ok: true, body: { ok: true, data: [SIRA_KAYDI] } })
+    ac({ hedefTipi: 'GUZERGAH_DURAK', hedefId: 'gd4', baslik: 'Işık Market' })
+
+    await waitFor(() =>
+      expect(screen.getByText('Araya durak eklendi (konum 3): sıra kaydırıldı.')).toBeInTheDocument(),
+    )
+  })
+
+  it('açıklaması olmayan kayıtta boş açıklama satırı çıkmaz', async () => {
+    fetchMockKur({ ok: true, body: { ok: true, data: [{ ...SIRA_KAYDI, aciklama: null }] } })
+    ac({ hedefTipi: 'GUZERGAH_DURAK', hedefId: 'gd4', baslik: 'Işık Market' })
+
+    await waitFor(() => expect(screen.getByText('Güncellendi')).toBeInTheDocument())
+    expect(screen.queryByText(/Araya durak/)).not.toBeInTheDocument()
+  })
+})

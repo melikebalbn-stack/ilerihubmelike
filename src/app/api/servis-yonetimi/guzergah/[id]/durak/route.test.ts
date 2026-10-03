@@ -78,4 +78,26 @@ describe('POST /api/servis-yonetimi/guzergah/[id]/durak — permission guard', (
     expect(json.ok).toBe(true)
     expect(mocks.createServisGuzergahDurak).toHaveBeenCalledWith('guzergah-1', body, 'user-1')
   })
+
+  it('araya ekleme: konum servise AYNEN iletilir', async () => {
+    mocks.requirePermission.mockResolvedValue(permissionResult(true))
+    mocks.createServisGuzergahDurak.mockResolvedValue({ id: 'gd1', sira: 4 })
+    const res = await POST(new NextRequest('http://localhost/x', {
+      method: 'POST',
+      body: JSON.stringify({ durakId: 'durak-1', konum: 4 }),
+    }), context)
+    expect(res.status).toBe(201)
+    expect(mocks.createServisGuzergahDurak).toHaveBeenCalledWith('guzergah-1', { durakId: 'durak-1', konum: 4 }, 'user-1')
+  })
+
+  it('aralık dışı konum: servis hatası 400 ve Türkçe mesajla döner', async () => {
+    mocks.requirePermission.mockResolvedValue(permissionResult(true))
+    mocks.createServisGuzergahDurak.mockRejectedValue(new Error('Konum 1 ile 6 arasında olmalıdır.'))
+    const res = await POST(new NextRequest('http://localhost/x', {
+      method: 'POST',
+      body: JSON.stringify({ durakId: 'durak-1', konum: 9 }),
+    }), context)
+    expect(res.status).toBe(400)
+    expect((await res.json()).message).toBe('Konum 1 ile 6 arasında olmalıdır.')
+  })
 })

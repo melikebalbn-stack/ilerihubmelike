@@ -228,6 +228,11 @@ export function validateServisSeferDilimiForm(form: ServisSeferDilimiForm): Serv
 
 export type ServisGuzergahDurakForm = {
   durakId: string
+  /**
+   * Araya ekleme: 1-tabanlı konum (AKTİF duraklar arasında). Verilmezse sona
+   * eklenir. Üst sınır (aktif sayısı + 1) serviste, güncel listeyle doğrulanır.
+   */
+  konum?: number | null
 }
 
 export function validateServisGuzergahDurakForm(form: ServisGuzergahDurakForm): ServisValidationResult {
@@ -235,6 +240,9 @@ export function validateServisGuzergahDurakForm(form: ServisGuzergahDurakForm): 
 
   if (!form.durakId?.trim()) {
     errors.push('Durak seçimi zorunludur.')
+  }
+  if (form.konum !== undefined && form.konum !== null && (!Number.isInteger(form.konum) || form.konum < 1)) {
+    errors.push('Konum 1 veya daha büyük bir tam sayı olmalıdır.')
   }
 
   return { valid: errors.length === 0, errors }

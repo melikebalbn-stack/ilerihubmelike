@@ -67,6 +67,27 @@ const mocks = vi.hoisted(() => ({
   islemGecmisiCreate: vi.fn(),
   transaction: vi.fn((ops: unknown[]) => Promise.all(ops)),
   executeRaw: vi.fn(),
+  // A4 bağımlılık okuyucuları: varsayılan "bağlı kayıt yok"; testler Once ile değiştirir.
+  bagYerleske: vi.fn(async () => [] as unknown[]),
+  bagFirma: vi.fn(async () => [] as unknown[]),
+  bagGuzergah: vi.fn(async () => [] as unknown[]),
+  bagArac: vi.fn(async () => [] as unknown[]),
+  bagSofor: vi.fn(async () => [] as unknown[]),
+  bagDilim: vi.fn(async () => [] as unknown[]),
+  kodGuzergah: vi.fn(async () => [] as unknown[]),
+  kodDurak: vi.fn(async () => [] as unknown[]),
+}))
+
+vi.mock('./bagimlilik', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./bagimlilik')>()),
+  yerleskeBagimliliklari: mocks.bagYerleske,
+  firmaBagimliliklari: mocks.bagFirma,
+  guzergahBagimliliklari: mocks.bagGuzergah,
+  aracBagimliliklari: mocks.bagArac,
+  soforBagimliliklari: mocks.bagSofor,
+  seferDilimiBagimliliklari: mocks.bagDilim,
+  guzergahKodKullanimi: mocks.kodGuzergah,
+  durakKodKullanimi: mocks.kodDurak,
 }))
 
 // $transaction hem dizi formunu (guzergah-durak yeniden sıralama) hem de
@@ -3506,5 +3527,168 @@ describe('A3 — kapatma (pasifleştirme) tarihi bugünden ileri olamaz', () => 
     await expect(kapat('abc')).rejects.toThrow(/Kapatma tarihi geçersiz/)
     await expect(kapat('')).rejects.toThrow('Kapatma tarihi zorunludur')
     expect(mocks.islemGecmisiCreate).not.toHaveBeenCalled()
+  })
+})
+
+// ============================================================================
+// A4 — bağımlılık korumaları
+// ============================================================================
+import { BagliKayitHatasi } from './bagimlilik'
+
+describe('A4 — pasifleştirmede bağlı AKTİF kayıt: onaysız reddedilir, onaylı audit\'e yazılır', () => {
+  const BAG = [
+    { tur: 'ARAC', etiket: 'Aktif araç', sayi: 2, ornekler: ['41P0145', '41P0327'] },
+    { tur: 'SOFOR', etiket: 'Aktif şoför', sayi: 1, ornekler: [] },
+  ]
+  type Durum = {
+    ad: string
+    hedefTipi: string
+    kur: () => void
+    bag: ReturnType<typeof vi.fn>
+    update: ReturnType<typeof vi.fn>
+    pasiflestir: (onay?: boolean) => Promise<unknown>
+  }
+  const durumlar: Durum[] = [
+    { ad: 'yerleşke', hedefTipi: 'YERLESKE', bag: mocks.bagYerleske, update: mocks.yerleskeUpdate,
+      kur: () => mocks.yerleskeFindUnique.mockResolvedValue({ id: 'k1', aktif: true }),
+      pasiflestir: (onay) => pasiflestirServisYerleske('k1', 'user-1', { onay }) },
+    { ad: 'firma', hedefTipi: 'FIRMA', bag: mocks.bagFirma, update: mocks.firmaUpdate,
+      kur: () => mocks.firmaFindUnique.mockResolvedValue({ id: 'k1', aktif: true }),
+      pasiflestir: (onay) => pasiflestirServisFirma('k1', 'user-1', { onay }) },
+    { ad: 'güzergâh', hedefTipi: 'GUZERGAH', bag: mocks.bagGuzergah, update: mocks.guzergahUpdate,
+      kur: () => mocks.guzergahFindUnique.mockResolvedValue({ id: 'k1', aktif: true }),
+      pasiflestir: (onay) => pasiflestirServisGuzergah('k1', 'user-1', { onay }) },
+    { ad: 'araç', hedefTipi: 'ARAC', bag: mocks.bagArac, update: mocks.aracUpdate,
+      kur: () => mocks.aracFindUnique.mockResolvedValue({ id: 'k1', aktif: true }),
+      pasiflestir: (onay) => pasiflestirServisArac('k1', 'user-1', { onay }) },
+    { ad: 'şoför', hedefTipi: 'SOFOR', bag: mocks.bagSofor, update: mocks.soforUpdate,
+      kur: () => mocks.soforFindUnique.mockResolvedValue({ id: 'k1', aktif: true }),
+      pasiflestir: (onay) => pasiflestirServisSofor('k1', 'user-1', { onay }) },
+    { ad: 'sefer dilimi', hedefTipi: 'SEFER_DILIMI', bag: mocks.bagDilim, update: mocks.seferDilimiUpdate,
+      kur: () => mocks.seferDilimiFindUnique.mockResolvedValue({ id: 'k1', aktif: true }),
+      pasiflestir: (onay) => pasiflestirServisSeferDilimi('k1', 'user-1', { onay }) },
+  ]
+
+  it.each(durumlar)('🔴 %s: bağlı kayıt varken onaysız istek BagliKayitHatasi ile reddedilir, yazma/audit YOK', async (d) => {
+    d.kur()
+    d.bag.mockResolvedValueOnce(BAG)
+    const hata = await d.pasiflestir().catch((e) => e)
+    expect(hata).toBeInstanceOf(BagliKayitHatasi)
+    expect((hata as BagliKayitHatasi).bagimliliklar).toEqual(BAG)
+    expect((hata as Error).message).toMatch(/bağlı aktif kayıtlar var \(2 aktif araç, 1 aktif şoför\)/)
+    expect((hata as Error).message).toMatch(/otomatik kapatılmaz/)
+    expect(d.update).not.toHaveBeenCalled()
+    expect(mocks.islemGecmisiCreate).not.toHaveBeenCalled()
+  })
+
+  it.each(durumlar)('%s: onay=false açıkça verilse de reddedilir', async (d) => {
+    d.kur()
+    d.bag.mockResolvedValueOnce(BAG)
+    await expect(d.pasiflestir(false)).rejects.toBeInstanceOf(BagliKayitHatasi)
+    expect(d.update).not.toHaveBeenCalled()
+  })
+
+  it.each(durumlar)('🔴 %s: onaylı istek pasifleştirir ve ONAY + özet audit aciklamasına yazılır', async (d) => {
+    d.kur()
+    d.bag.mockResolvedValueOnce(BAG)
+    d.update.mockResolvedValue({ id: 'k1', aktif: false })
+    await d.pasiflestir(true)
+    expect(d.update).toHaveBeenCalledWith(expect.objectContaining({ data: { aktif: false } }))
+    const audit = mocks.islemGecmisiCreate.mock.calls[0][0].data
+    expect(audit).toMatchObject({
+      hedefTipi: d.hedefTipi, hedefId: 'k1', islem: 'PASIFLESTIRME', userId: 'user-1',
+      oncekiDeger: { aktif: true }, yeniDeger: { aktif: false },
+    })
+    expect(audit.aciklama).toMatch(/kullanıcı onayıyla pasifleştirildi: 2 aktif araç, 1 aktif şoför/)
+    expect(audit.aciklama).toMatch(/otomatik kapatılmadı/)
+  })
+
+  it.each(durumlar)('%s: bağlı kayıt yoksa onaysız pasifleştirme normal çalışır, audit aciklama içermez', async (d) => {
+    d.kur()
+    d.bag.mockResolvedValueOnce([])
+    d.update.mockResolvedValue({ id: 'k1', aktif: false })
+    await d.pasiflestir()
+    expect(d.update).toHaveBeenCalled()
+    expect(mocks.islemGecmisiCreate.mock.calls[0][0].data.aciklama).toBeNull()
+  })
+
+  it.each(durumlar)('%s: bağlı kayıt okuması mutasyonla AYNI transaction (tx) üzerinde yapılır', async (d) => {
+    d.kur()
+    d.bag.mockResolvedValueOnce([])
+    d.update.mockResolvedValue({ id: 'k1', aktif: false })
+    await d.pasiflestir()
+    const [dbArg, idArg] = d.bag.mock.calls[0]
+    expect(idArg).toBe('k1')
+    expect(typeof dbArg.servisIslemGecmisi.create).toBe('function') // tx nesnesi (prisma mock'u ile aynı delegeler)
+  })
+})
+
+describe('A4 — güzergâh / durak KODU kimliktir: kullanım kaydı varsa değiştirilemez', () => {
+  const kullanim = [
+    { tur: 'PERSONEL_ATAMA', etiket: 'personel ataması', sayi: 3, ornekler: [] },
+    { tur: 'SIKAYET', etiket: 'şikâyet', sayi: 1, ornekler: [] },
+  ]
+
+  it('🔴 güzergâh: kod değişiyor + kullanım var → reddedilir (ad serbest notuyla), yazma yok', async () => {
+    mocks.guzergahFindUnique.mockReset()
+    mocks.guzergahFindUnique.mockResolvedValueOnce({ id: 'g1', kod: 'ESKI-KOD' }).mockResolvedValueOnce(null)
+    mocks.yerleskeFindUnique.mockResolvedValue({ id: 'yer-1' })
+    mocks.kodGuzergah.mockResolvedValueOnce(kullanim)
+    await expect(updateServisGuzergah('g1', { ...gecerliGuzergah, kod: 'yeni-kod' }, 'u')).rejects.toThrow(
+      'Bu güzergâhın kodu değiştirilemez: 3 personel ataması, 1 şikâyet bu kodla ilişkili. Ad serbestçe değiştirilebilir.',
+    )
+    expect(mocks.guzergahUpdate).not.toHaveBeenCalled()
+    expect(mocks.islemGecmisiCreate).not.toHaveBeenCalled()
+  })
+
+  it('güzergâh: kullanım kaydı VARKEN yalnız ad (kod aynı) serbestçe değişir; kullanım sorgusu hiç yapılmaz', async () => {
+    mocks.guzergahFindUnique.mockReset()
+    mocks.guzergahFindUnique.mockResolvedValue({ id: 'g1', kod: 'DAR-1' })
+    mocks.yerleskeFindUnique.mockResolvedValue({ id: 'yer-1' })
+    mocks.guzergahUpdate.mockResolvedValue({ id: 'g1', ad: 'Yeni Ad' })
+    mocks.kodGuzergah.mockClear()
+    await updateServisGuzergah('g1', { ...gecerliGuzergah, kod: 'dar-1', ad: 'Yeni Ad' }, 'u')
+    expect(mocks.kodGuzergah).not.toHaveBeenCalled()
+    expect(mocks.guzergahUpdate).toHaveBeenCalled()
+  })
+
+  it('güzergâh: kullanım kaydı YOKSA kod değiştirilebilir', async () => {
+    mocks.guzergahFindUnique.mockReset()
+    mocks.guzergahFindUnique.mockResolvedValueOnce({ id: 'g1', kod: 'ESKI-KOD' }).mockResolvedValueOnce(null)
+    mocks.yerleskeFindUnique.mockResolvedValue({ id: 'yer-1' })
+    mocks.kodGuzergah.mockResolvedValueOnce([])
+    mocks.guzergahUpdate.mockResolvedValue({ id: 'g1', kod: 'YENI-KOD' })
+    await updateServisGuzergah('g1', { ...gecerliGuzergah, kod: 'yeni-kod' }, 'u')
+    expect(mocks.kodGuzergah).toHaveBeenCalledTimes(1)
+    expect(mocks.guzergahUpdate).toHaveBeenCalled()
+  })
+
+  it('🔴 durak: kod değişiyor + kullanım var → reddedilir', async () => {
+    mocks.durakFindUnique.mockReset()
+    mocks.durakFindUnique.mockResolvedValueOnce({ id: 'd1', kod: 'ESKI' }).mockResolvedValueOnce(null)
+    mocks.kodDurak.mockResolvedValueOnce([{ tur: 'PERSONEL_ATAMA', etiket: 'personel ataması', sayi: 2, ornekler: [] }])
+    await expect(updateServisDurak('d1', { ...gecerliDurak, kod: 'yeni' }, 'u')).rejects.toThrow(
+      'Bu durağın kodu değiştirilemez: 2 personel ataması bu kodla ilişkili. Ad serbestçe değiştirilebilir.',
+    )
+    expect(mocks.durakUpdate).not.toHaveBeenCalled()
+  })
+
+  it('durak: kullanım kaydı VARKEN ad serbestçe değişir (kod aynı)', async () => {
+    mocks.durakFindUnique.mockReset()
+    mocks.durakFindUnique.mockResolvedValue({ id: 'd1', kod: 'DRK-01' })
+    mocks.durakUpdate.mockResolvedValue({ id: 'd1', ad: 'Yeni Ad' })
+    mocks.kodDurak.mockClear()
+    await updateServisDurak('d1', { ...gecerliDurak, kod: 'drk-01', ad: 'Yeni Ad' }, 'u')
+    expect(mocks.kodDurak).not.toHaveBeenCalled()
+    expect(mocks.durakUpdate).toHaveBeenCalled()
+  })
+
+  it('durak: kullanım kaydı YOKSA kod değiştirilebilir', async () => {
+    mocks.durakFindUnique.mockReset()
+    mocks.durakFindUnique.mockResolvedValueOnce({ id: 'd1', kod: 'ESKI' }).mockResolvedValueOnce(null)
+    mocks.kodDurak.mockResolvedValueOnce([])
+    mocks.durakUpdate.mockResolvedValue({ id: 'd1', kod: 'YENI' })
+    await updateServisDurak('d1', { ...gecerliDurak, kod: 'yeni' }, 'u')
+    expect(mocks.durakUpdate).toHaveBeenCalled()
   })
 })

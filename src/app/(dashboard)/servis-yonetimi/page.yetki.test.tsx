@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { useSession } from 'next-auth/react'
 import ServisYonetimiPage from './page'
 
@@ -135,5 +135,118 @@ describe('Servis ekranı — mutasyon hata gösterimi', () => {
     expect(screen.queryByText('IŞIK Servis')).toBeNull()
     fireEvent.change(screen.getByLabelText('Firma ara'), { target: { value: 'ışık' } })
     expect(screen.getByText('IŞIK Servis')).toBeTruthy()
+  })
+})
+
+describe('Servis ekranı — A4: bağlı aktif kayıt onayı', () => {
+  const BAG = [
+    { tur: 'ARAC', etiket: 'Aktif araç', sayi: 7, ornekler: ['41P0145', '41P0327', '41P4607', '41P5093', '41P5573'] },
+    { tur: 'SOFOR', etiket: 'Aktif şoför', sayi: 2, ornekler: [] },
+  ]
+  const GOVDE409 = { ok: false, kod: 'BAGLI_KAYIT_VAR', message: 'Firma pasifleştirilemez: bağlı aktif kayıtlar var.', bagimliliklar: BAG }
+
+  function fetchSirali(postYanitlari: { ok: boolean; status: number; body: unknown }[]) {
+    const sira = [...postYanitlari]
+    fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === 'POST') {
+        const y = sira.shift() ?? { ok: true, status: 200, body: { ok: true } }
+        return { ok: y.ok, status: y.status, json: async () => y.body }
+      }
+      return { ok: true, status: 200, json: async () => ({ ok: true, data: url.includes('/firma') ? FIRMALAR : [] }) }
+    })
+    vi.stubGlobal('fetch', fetchMock)
+  }
+  const postlar = () => fetchMock.mock.calls.filter(([, i]) => i?.method === 'POST')
+
+  async function pasiflestirTikla() {
+    oturum(HR_YONETICISI)
+    render(<ServisYonetimiPage />)
+    await waitFor(() => expect(screen.getByText('ŞAHİN Taşımacılık')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Pasifleştir' }))
+    await waitFor(() => expect(screen.getByText('Bağlı aktif kayıtlar var')).toBeTruthy())
+  }
+
+  it('🔴 409: bağlı kayıt listesi gösterilir, pasifleştirme HENÜZ yapılmaz (tek POST)', async () => {
+    fetchSirali([{ ok: false, status: 409, body: GOVDE409 }])
+    await pasiflestirTikla()
+    const liste = screen.getByRole('list', { name: 'Bağlı aktif kayıtlar' })
+    expect(within(liste).getByText('Aktif araç: 7')).toBeTruthy()
+    expect(within(liste).getByText(/41P0145, 41P0327, 41P4607, 41P5093, 41P5573 ve 2 tane daha/)).toBeTruthy()
+    expect(within(liste).getByText('Aktif şoför: 2')).toBeTruthy()
+    expect(screen.getByText(/aktif kalır/)).toBeTruthy()
+    expect(postlar()).toHaveLength(1)
+    expect(JSON.parse(String(postlar()[0][1].body ?? 'null'))).toBeNull() // ilk istek gövdesiz = onaysız
+  })
+
+  it('🔴 KVKK: şoför grubunda örnek (ad) satırı çıkmaz, yalnız sayı', async () => {
+    fetchSirali([{ ok: false, status: 409, body: GOVDE409 }])
+    await pasiflestirTikla()
+    const soforSatiri = screen.getByText('Aktif şoför: 2').closest('li')!
+    expect(soforSatiri.textContent).toBe('Aktif şoför: 2')
+  })
+
+  it('"Yine de Pasifleştir": { onay: true } ile ikinci POST, ardından liste yenilenir', async () => {
+    fetchSirali([
+      { ok: false, status: 409, body: GOVDE409 },
+      { ok: true, status: 200, body: { ok: true } },
+    ])
+    await pasiflestirTikla()
+    const once = fetchMock.mock.calls.filter(([u, i]) => String(u).endsWith('/firma') && !i).length
+    fireEvent.click(screen.getByRole('button', { name: 'Yine de Pasifleştir' }))
+    await waitFor(() => expect(postlar()).toHaveLength(2))
+    expect(postlar()[1][0]).toBe('/api/servis-yonetimi/firma/f1/pasiflestir')
+    expect(JSON.parse(postlar()[1][1].body)).toEqual({ onay: true })
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.filter(([u, i]) => String(u).endsWith('/firma') && !i).length).toBe(once + 1),
+    )
+    expect(screen.queryByText('Bağlı aktif kayıtlar var')).toBeNull()
+  })
+
+  it('"Vazgeç": ikinci istek atılmaz, diyalog kapanır', async () => {
+    fetchSirali([{ ok: false, status: 409, body: GOVDE409 }])
+    await pasiflestirTikla()
+    fireEvent.click(screen.getByRole('button', { name: 'Vazgeç' }))
+    await waitFor(() => expect(screen.queryByText('Bağlı aktif kayıtlar var')).toBeNull())
+    expect(postlar()).toHaveLength(1)
+  })
+
+  it('bağlı kayıt yoksa diyalog hiç çıkmaz (tek POST, doğrudan pasifleştirir)', async () => {
+    fetchSirali([{ ok: true, status: 200, body: { ok: true } }])
+    oturum(HR_YONETICISI)
+    render(<ServisYonetimiPage />)
+    await waitFor(() => expect(screen.getByText('ŞAHİN Taşımacılık')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Pasifleştir' }))
+    await waitFor(() => expect(postlar()).toHaveLength(1))
+    expect(screen.queryByText('Bağlı aktif kayıtlar var')).toBeNull()
+  })
+})
+
+describe('Servis ekranı — A4: kod değişikliği engeli kullanıcıya diyalogda gösterilir', () => {
+  const GUZERGAH = {
+    id: 'g1', kod: 'DARICA', ad: 'Darıca Hattı', aciklama: null, bolge: null, yerleskeId: 'y1',
+    yerleske: { id: 'y1', kod: 'Y1', ad: 'Merkez' }, aktif: true,
+    gecerlilikBaslangici: null, gecerlilikBitisi: null, createdAt: '2026-01-01', updatedAt: '2026-01-01',
+  }
+  const KOD_MESAJI = 'Bu güzergâhın kodu değiştirilemez: 3 personel ataması, 1 şikâyet bu kodla ilişkili. Ad serbestçe değiştirilebilir.'
+
+  it('🔴 PUT 400: engel mesajı düzenleme diyaloğunun İÇİNDE (role=alert) görünür ve diyalog açık kalır', async () => {
+    fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === 'PUT') {
+        return { ok: false, status: 400, json: async () => ({ ok: false, message: KOD_MESAJI }) }
+      }
+      const veri = url.includes('/guzergah') ? [GUZERGAH] : url.includes('/yerleske') ? [{ id: 'y1', kod: 'Y1', ad: 'Merkez', aktif: true }] : []
+      return { ok: true, status: 200, json: async () => ({ ok: true, data: veri }) }
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    oturum(IDARI_ISLER)
+    render(<ServisYonetimiPage />)
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Güzergâhlar' }), { button: 0 })
+    await waitFor(() => expect(screen.getByText('Darıca Hattı')).toBeTruthy())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Düzenle' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Kaydet' }))
+    const uyari = await screen.findByRole('alert')
+    expect(uyari.textContent).toBe(KOD_MESAJI)
+    expect(screen.getByText('Güzergâhı Düzenle')).toBeTruthy()
   })
 })

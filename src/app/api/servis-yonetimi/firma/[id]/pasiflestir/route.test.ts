@@ -35,6 +35,6 @@ describe('POST /api/servis-yonetimi/firma/[id]/pasiflestir', () => {
     mocks.pasiflestirServisFirma.mockResolvedValue({ id: 'f1', aktif: false })
     const res = await POST(new NextRequest('http://localhost/x', { method: 'POST' }), context)
     expect(res.status).toBe(200)
-    expect(mocks.pasiflestirServisFirma).toHaveBeenCalledWith('f1', 'user-42')
+    expect(mocks.pasiflestirServisFirma).toHaveBeenCalledWith('f1', 'user-42', { onay: false })
   })
 })

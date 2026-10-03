@@ -35,6 +35,21 @@ import {
 } from './validation'
 import { kaydetIslemGecmisi, degisenAlanlar } from './audit'
 import { aralikDogrula, baslangicTarihiCoz, bitisTarihiCoz, kapatmaTarihiCoz } from './tarih-kurallari'
+import {
+  BagliKayitHatasi,
+  aracBagimliliklari,
+  bagimlilikToplami,
+  bagliKayitMesaji,
+  durakKodKullanimi,
+  firmaBagimliliklari,
+  guzergahBagimliliklari,
+  guzergahKodKullanimi,
+  kodDegistirilemezMesaji,
+  onayAciklamasi,
+  seferDilimiBagimliliklari,
+  soforBagimliliklari,
+  yerleskeBagimliliklari,
+} from './bagimlilik'
 
 // ============================================================================
 // ServisFirma
@@ -91,16 +106,23 @@ export async function updateServisFirma(id: string, form: ServisFirmaForm, yapan
   })
 }
 
-export async function pasiflestirServisFirma(id: string, yapanId?: string | null) {
+export async function pasiflestirServisFirma(id: string, yapanId?: string | null, secenek?: { onay?: boolean }) {
   const existing = await prisma.servisFirma.findUnique({ where: { id } })
   if (!existing) throw new Error('Firma bulunamadı.')
   if (!existing.aktif) throw new Error('Firma zaten pasif.')
 
   return prisma.$transaction(async (tx) => {
+    // A4: bağlı AKTİF kayıtlar varsa açık onay olmadan pasifleştirilmez.
+    const bagimliliklar = await firmaBagimliliklari(tx, id)
+    const bagliSayi = bagimlilikToplami(bagimliliklar)
+    if (bagliSayi > 0 && !secenek?.onay) {
+      throw new BagliKayitHatasi(bagliKayitMesaji('Firma', bagimliliklar), bagimliliklar)
+    }
     const guncel = await tx.servisFirma.update({ where: { id }, data: { aktif: false } })
     await kaydetIslemGecmisi({
       tx, hedefTipi: 'FIRMA', hedefId: id, islem: 'PASIFLESTIRME', yapanId,
       oncekiDeger: { aktif: true }, yeniDeger: { aktif: false },
+      aciklama: bagliSayi > 0 ? onayAciklamasi(bagimliliklar) : undefined,
     })
     return guncel
   })
@@ -186,16 +208,23 @@ export async function updateServisYerleske(id: string, form: ServisYerleskeForm,
   })
 }
 
-export async function pasiflestirServisYerleske(id: string, yapanId?: string | null) {
+export async function pasiflestirServisYerleske(id: string, yapanId?: string | null, secenek?: { onay?: boolean }) {
   const existing = await prisma.servisYerleske.findUnique({ where: { id } })
   if (!existing) throw new Error('Yerleşke bulunamadı.')
   if (!existing.aktif) throw new Error('Yerleşke zaten pasif.')
 
   return prisma.$transaction(async (tx) => {
+    // A4: bağlı AKTİF kayıtlar varsa açık onay olmadan pasifleştirilmez.
+    const bagimliliklar = await yerleskeBagimliliklari(tx, id)
+    const bagliSayi = bagimlilikToplami(bagimliliklar)
+    if (bagliSayi > 0 && !secenek?.onay) {
+      throw new BagliKayitHatasi(bagliKayitMesaji('Yerleşke', bagimliliklar), bagimliliklar)
+    }
     const guncel = await tx.servisYerleske.update({ where: { id }, data: { aktif: false } })
     await kaydetIslemGecmisi({
       tx, hedefTipi: 'YERLESKE', hedefId: id, islem: 'PASIFLESTIRME', yapanId,
       oncekiDeger: { aktif: true }, yeniDeger: { aktif: false },
+      aciklama: bagliSayi > 0 ? onayAciklamasi(bagimliliklar) : undefined,
     })
     return guncel
   })
@@ -279,6 +308,12 @@ export async function updateServisGuzergah(id: string, form: ServisGuzergahForm,
   if (kodCakismasi) throw new Error(`"${kod}" kodu zaten kullanılıyor.`)
   if (!yerleske) throw new Error('Yerleşke bulunamadı.')
 
+  // A4: kod KİMLİKTİR — atama/şikâyet kaydı varsa değiştirilemez (ad serbest).
+  if (kod !== existing.kod) {
+    const kullanim = await guzergahKodKullanimi(prisma, id)
+    if (kullanim.length > 0) throw new Error(kodDegistirilemezMesaji('güzergâhın', kullanim))
+  }
+
   const data = {
     kod,
     ad: form.ad.trim(),
@@ -303,16 +338,23 @@ export async function updateServisGuzergah(id: string, form: ServisGuzergahForm,
   })
 }
 
-export async function pasiflestirServisGuzergah(id: string, yapanId?: string | null) {
+export async function pasiflestirServisGuzergah(id: string, yapanId?: string | null, secenek?: { onay?: boolean }) {
   const existing = await prisma.servisGuzergah.findUnique({ where: { id } })
   if (!existing) throw new Error('Güzergâh bulunamadı.')
   if (!existing.aktif) throw new Error('Güzergâh zaten pasif.')
 
   return prisma.$transaction(async (tx) => {
+    // A4: bağlı AKTİF kayıtlar varsa açık onay olmadan pasifleştirilmez.
+    const bagimliliklar = await guzergahBagimliliklari(tx, id)
+    const bagliSayi = bagimlilikToplami(bagimliliklar)
+    if (bagliSayi > 0 && !secenek?.onay) {
+      throw new BagliKayitHatasi(bagliKayitMesaji('Güzergâh', bagimliliklar), bagimliliklar)
+    }
     const guncel = await tx.servisGuzergah.update({ where: { id }, data: { aktif: false } })
     await kaydetIslemGecmisi({
       tx, hedefTipi: 'GUZERGAH', hedefId: id, islem: 'PASIFLESTIRME', yapanId,
       oncekiDeger: { aktif: true }, yeniDeger: { aktif: false },
+      aciklama: bagliSayi > 0 ? onayAciklamasi(bagimliliklar) : undefined,
     })
     return guncel
   })
@@ -383,6 +425,9 @@ export async function updateServisDurak(id: string, form: ServisDurakForm, yapan
   if (data.kod !== existing.kod) {
     const kodCakismasi = await prisma.servisDurak.findUnique({ where: { kod: data.kod } })
     if (kodCakismasi) throw new Error(`"${data.kod}" kodu zaten kullanılıyor.`)
+    // A4: kod KİMLİKTİR — atama/şikâyet kaydı varsa değiştirilemez (ad serbest).
+    const kullanim = await durakKodKullanimi(prisma, id)
+    if (kullanim.length > 0) throw new Error(kodDegistirilemezMesaji('durağın', kullanim))
   }
   const fark = degisenAlanlar(existing, data, ['kod', 'ad', 'adresEtiketi', 'il', 'ilce', 'mahalle', 'enlem', 'boylam'])
 
@@ -510,16 +555,23 @@ export async function updateServisArac(id: string, form: ServisAracForm, yapanId
   })
 }
 
-export async function pasiflestirServisArac(id: string, yapanId?: string | null) {
+export async function pasiflestirServisArac(id: string, yapanId?: string | null, secenek?: { onay?: boolean }) {
   const existing = await prisma.servisArac.findUnique({ where: { id } })
   if (!existing) throw new Error('Araç bulunamadı.')
   if (!existing.aktif) throw new Error('Araç zaten pasif.')
 
   return prisma.$transaction(async (tx) => {
+    // A4: bağlı AKTİF kayıtlar varsa açık onay olmadan pasifleştirilmez.
+    const bagimliliklar = await aracBagimliliklari(tx, id)
+    const bagliSayi = bagimlilikToplami(bagimliliklar)
+    if (bagliSayi > 0 && !secenek?.onay) {
+      throw new BagliKayitHatasi(bagliKayitMesaji('Araç', bagimliliklar), bagimliliklar)
+    }
     const guncel = await tx.servisArac.update({ where: { id }, data: { aktif: false } })
     await kaydetIslemGecmisi({
       tx, hedefTipi: 'ARAC', hedefId: id, islem: 'PASIFLESTIRME', yapanId,
       oncekiDeger: { aktif: true }, yeniDeger: { aktif: false },
+      aciklama: bagliSayi > 0 ? onayAciklamasi(bagimliliklar) : undefined,
     })
     return guncel
   })
@@ -645,16 +697,23 @@ export async function updateServisSofor(id: string, form: ServisSoforForm, yapan
   })
 }
 
-export async function pasiflestirServisSofor(id: string, yapanId?: string | null) {
+export async function pasiflestirServisSofor(id: string, yapanId?: string | null, secenek?: { onay?: boolean }) {
   const existing = await prisma.servisSofor.findUnique({ where: { id } })
   if (!existing) throw new Error('Şoför bulunamadı.')
   if (!existing.aktif) throw new Error('Şoför zaten pasif.')
 
   return prisma.$transaction(async (tx) => {
+    // A4: bağlı AKTİF kayıtlar varsa açık onay olmadan pasifleştirilmez.
+    const bagimliliklar = await soforBagimliliklari(tx, id)
+    const bagliSayi = bagimlilikToplami(bagimliliklar)
+    if (bagliSayi > 0 && !secenek?.onay) {
+      throw new BagliKayitHatasi(bagliKayitMesaji('Şoför', bagimliliklar), bagimliliklar)
+    }
     const guncel = await tx.servisSofor.update({ where: { id }, data: { aktif: false } })
     await kaydetIslemGecmisi({
       tx, hedefTipi: 'SOFOR', hedefId: id, islem: 'PASIFLESTIRME', yapanId,
       oncekiDeger: { aktif: true }, yeniDeger: { aktif: false },
+      aciklama: bagliSayi > 0 ? onayAciklamasi(bagimliliklar) : undefined,
     })
     return guncel
   })
@@ -736,16 +795,23 @@ export async function updateServisSeferDilimi(id: string, form: ServisSeferDilim
   })
 }
 
-export async function pasiflestirServisSeferDilimi(id: string, yapanId?: string | null) {
+export async function pasiflestirServisSeferDilimi(id: string, yapanId?: string | null, secenek?: { onay?: boolean }) {
   const existing = await prisma.servisSeferDilimi.findUnique({ where: { id } })
   if (!existing) throw new Error('Sefer dilimi bulunamadı.')
   if (!existing.aktif) throw new Error('Sefer dilimi zaten pasif.')
 
   return prisma.$transaction(async (tx) => {
+    // A4: bağlı AKTİF kayıtlar varsa açık onay olmadan pasifleştirilmez.
+    const bagimliliklar = await seferDilimiBagimliliklari(tx, id)
+    const bagliSayi = bagimlilikToplami(bagimliliklar)
+    if (bagliSayi > 0 && !secenek?.onay) {
+      throw new BagliKayitHatasi(bagliKayitMesaji('Sefer dilimi', bagimliliklar), bagimliliklar)
+    }
     const guncel = await tx.servisSeferDilimi.update({ where: { id }, data: { aktif: false } })
     await kaydetIslemGecmisi({
       tx, hedefTipi: 'SEFER_DILIMI', hedefId: id, islem: 'PASIFLESTIRME', yapanId,
       oncekiDeger: { aktif: true }, yeniDeger: { aktif: false },
+      aciklama: bagliSayi > 0 ? onayAciklamasi(bagimliliklar) : undefined,
     })
     return guncel
   })

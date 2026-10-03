@@ -51,7 +51,7 @@ describe('ServisSofor route userId → audit', () => {
     mocks.requirePermission.mockResolvedValue(permissionResult())
     mocks.pasiflestirServisSofor.mockResolvedValue({ id: 's1', aktif: false })
     await pasiflestirRoute(new NextRequest('http://localhost/x', { method: 'POST' }), context)
-    expect(mocks.pasiflestirServisSofor).toHaveBeenCalledWith('s1', 'user-42')
+    expect(mocks.pasiflestirServisSofor).toHaveBeenCalledWith('s1', 'user-42', { onay: false })
   })
 
   it('geri-al: userId geriAlServisSofor’a iletilir', async () => {

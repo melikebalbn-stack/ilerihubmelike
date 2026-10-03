@@ -21,6 +21,7 @@ import {
 import { Plus } from 'lucide-react'
 import { ServisGecmisDialog, GecmisButonu } from './_components/ServisGecmisDialog'
 import { PasifGeriAlButonlari } from './_components/PasifGeriAlButonlari'
+import { BagimlilikOnayDialog } from './_components/BagimlilikOnayDialog'
 import { usePasifGeriAl } from './_lib/usePasifGeriAl'
 import { apiHataMesaji } from './_lib/servis-istek'
 import { normalizeTr } from '@/lib/normalize-tr'
@@ -214,7 +215,7 @@ function ServisFirmaPanel({ canManage, canPassive, canRestore, canHistory }: { c
     yukle()
   }
 
-  const { pasiflestir, geriAl } = usePasifGeriAl({ yol: 'firma', yukle, setHata })
+  const { pasiflestir, geriAl, bagimlilikOnay } = usePasifGeriAl({ yol: 'firma', yukle, setHata })
 
   return (
     <div className="space-y-4">
@@ -293,6 +294,8 @@ function ServisFirmaPanel({ canManage, canPassive, canRestore, canHistory }: { c
         />
       )}
 
+      <BagimlilikOnayDialog {...bagimlilikOnay} />
+
       <Dialog open={dialogAcik} onOpenChange={setDialogAcik}>
         <DialogContent>
           <DialogHeader>
@@ -320,6 +323,7 @@ function ServisFirmaPanel({ canManage, canPassive, canRestore, canHistory }: { c
               <Textarea id="firma-adres" value={form.adres} onChange={(e) => setForm({ ...form, adres: e.target.value })} />
             </div>
           </div>
+          {hata && <p role="alert" className="text-sm text-red-600">{hata}</p>}
           <DialogFooter>
             <Button onClick={kaydet}>Kaydet</Button>
           </DialogFooter>
@@ -409,7 +413,7 @@ function ServisYerleskePanel({ canManage, canPassive, canRestore, canHistory }: 
     yukle()
   }
 
-  const { pasiflestir, geriAl } = usePasifGeriAl({ yol: 'yerleske', yukle, setHata })
+  const { pasiflestir, geriAl, bagimlilikOnay } = usePasifGeriAl({ yol: 'yerleske', yukle, setHata })
 
   return (
     <div className="space-y-4">
@@ -488,6 +492,8 @@ function ServisYerleskePanel({ canManage, canPassive, canRestore, canHistory }: 
         />
       )}
 
+      <BagimlilikOnayDialog {...bagimlilikOnay} />
+
       <Dialog open={dialogAcik} onOpenChange={setDialogAcik}>
         <DialogContent>
           <DialogHeader>
@@ -517,6 +523,7 @@ function ServisYerleskePanel({ canManage, canPassive, canRestore, canHistory }: 
               </div>
             </div>
           </div>
+          {hata && <p role="alert" className="text-sm text-red-600">{hata}</p>}
           <DialogFooter>
             <Button onClick={kaydet}>Kaydet</Button>
           </DialogFooter>
@@ -624,7 +631,7 @@ function ServisGuzergahPanel({ canManage, canPassive, canRestore, canHistory }: 
     yukle()
   }
 
-  const { pasiflestir, geriAl } = usePasifGeriAl({ yol: 'guzergah', yukle, setHata })
+  const { pasiflestir, geriAl, bagimlilikOnay } = usePasifGeriAl({ yol: 'guzergah', yukle, setHata })
 
   return (
     <div className="space-y-4">
@@ -715,6 +722,8 @@ function ServisGuzergahPanel({ canManage, canPassive, canRestore, canHistory }: 
         />
       )}
 
+      <BagimlilikOnayDialog {...bagimlilikOnay} />
+
       <Dialog open={dialogAcik} onOpenChange={setDialogAcik}>
         <DialogContent>
           <DialogHeader>
@@ -764,6 +773,7 @@ function ServisGuzergahPanel({ canManage, canPassive, canRestore, canHistory }: 
               </div>
             </div>
           </div>
+          {hata && <p role="alert" className="text-sm text-red-600">{hata}</p>}
           <DialogFooter>
             <Button onClick={kaydet}>Kaydet</Button>
           </DialogFooter>
@@ -990,6 +1000,7 @@ function ServisDurakPanel({ canManage, canPassive, canRestore, canHistory }: { c
               </div>
             </div>
           </div>
+          {hata && <p role="alert" className="text-sm text-red-600">{hata}</p>}
           <DialogFooter>
             <Button onClick={kaydet}>Kaydet</Button>
           </DialogFooter>
@@ -1091,7 +1102,7 @@ function ServisAracPanel({ canManage, canPassive, canRestore, canHistory }: { ca
     yukle()
   }
 
-  const { pasiflestir, geriAl } = usePasifGeriAl({ yol: 'arac', yukle, setHata })
+  const { pasiflestir, geriAl, bagimlilikOnay } = usePasifGeriAl({ yol: 'arac', yukle, setHata })
 
   return (
     <div className="space-y-4">
@@ -1175,6 +1186,8 @@ function ServisAracPanel({ canManage, canPassive, canRestore, canHistory }: { ca
         />
       )}
 
+      <BagimlilikOnayDialog {...bagimlilikOnay} />
+
       <Dialog open={dialogAcik} onOpenChange={setDialogAcik}>
         <DialogContent>
           <DialogHeader>
@@ -1218,6 +1231,7 @@ function ServisAracPanel({ canManage, canPassive, canRestore, canHistory }: { ca
               </div>
             </div>
           </div>
+          {hata && <p role="alert" className="text-sm text-red-600">{hata}</p>}
           <DialogFooter>
             <Button onClick={kaydet}>Kaydet</Button>
           </DialogFooter>
@@ -1401,7 +1415,7 @@ function ServisSoforPanel({ canManage, canPassive, canRestore, canHistory }: { c
     yukle()
   }
 
-  const { pasiflestir, geriAl } = usePasifGeriAl({ yol: 'sofor', yukle, setHata })
+  const { pasiflestir, geriAl, bagimlilikOnay } = usePasifGeriAl({ yol: 'sofor', yukle, setHata })
 
   return (
     <div className="space-y-4">
@@ -1453,6 +1467,8 @@ function ServisSoforPanel({ canManage, canPassive, canRestore, canHistory }: { c
           onOpenChange={(o) => !o && setGecmisSofor(null)}
         />
       )}
+      <BagimlilikOnayDialog {...bagimlilikOnay} />
+
       <Dialog open={dialogAcik} onOpenChange={setDialogAcik}>
         <DialogContent><DialogHeader><DialogTitle>{duzenlenen ? 'Şoförü Düzenle' : 'Yeni Şoför'}</DialogTitle></DialogHeader>
           <div className="space-y-3">
@@ -1498,6 +1514,7 @@ function ServisSoforPanel({ canManage, canPassive, canRestore, canHistory }: { c
               </div>
             )}
           </div>
+          {hata && <p role="alert" className="text-sm text-red-600">{hata}</p>}
           <DialogFooter><Button onClick={kaydet}>Kaydet</Button></DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1586,7 +1603,7 @@ function ServisSeferDilimiPanel({ canManage, canPassive, canRestore, canHistory 
     yukle()
   }
 
-  const { pasiflestir, geriAl } = usePasifGeriAl({ yol: 'sefer-dilimi', yukle, setHata })
+  const { pasiflestir, geriAl, bagimlilikOnay } = usePasifGeriAl({ yol: 'sefer-dilimi', yukle, setHata })
 
   return (
     <div className="space-y-4">
@@ -1669,6 +1686,8 @@ function ServisSeferDilimiPanel({ canManage, canPassive, canRestore, canHistory 
         />
       )}
 
+      <BagimlilikOnayDialog {...bagimlilikOnay} />
+
       <Dialog open={dialogAcik} onOpenChange={setDialogAcik}>
         <DialogContent>
           <DialogHeader>
@@ -1715,6 +1734,7 @@ function ServisSeferDilimiPanel({ canManage, canPassive, canRestore, canHistory 
               />
             </div>
           </div>
+          {hata && <p role="alert" className="text-sm text-red-600">{hata}</p>}
           <DialogFooter>
             <Button onClick={kaydet}>Kaydet</Button>
           </DialogFooter>

@@ -190,3 +190,22 @@ describe('ServisGecmisDialog — durak sırası işlemleri tarihçede görünür
     expect(screen.queryByText(/Araya durak/)).not.toBeInTheDocument()
   })
 })
+
+describe('ServisGecmisDialog — alan etiketleri (ham alan adı yerine Türkçe)', () => {
+  it('kod/plaka/kapasite gibi alanlar Türkçe etiketle gösterilir', async () => {
+    fetchMockKur({
+      ok: true,
+      body: { ok: true, data: [{
+        id: 'k1', islem: 'GUNCELLEME', oncekiDeger: { kod: 'DRK-01', plaka: '41P0145', kapasite: 15 },
+        yeniDeger: { kod: 'DRK-02', plaka: '41P0146', kapasite: 27 }, aciklama: null,
+        tarih: '2026-10-03T08:30:00.000Z', user: { name: 'Elif Yıldırım' },
+      }] },
+    })
+    ac({ hedefTipi: 'ARAC', hedefId: 'a1', baslik: '41P0145' })
+    await waitFor(() => expect(screen.getByText('Güncellendi')).toBeInTheDocument())
+    expect(screen.getByText(/Kod:/)).toBeInTheDocument()
+    expect(screen.getByText(/Plaka:/)).toBeInTheDocument()
+    expect(screen.getByText(/Kapasite:/)).toBeInTheDocument()
+    expect(screen.queryByText(/^kod:/)).not.toBeInTheDocument()
+  })
+})

@@ -22,6 +22,7 @@ import { Plus } from 'lucide-react'
 import { ServisGecmisDialog, GecmisButonu } from './_components/ServisGecmisDialog'
 import { PasifGeriAlButonlari } from './_components/PasifGeriAlButonlari'
 import { BagimlilikOnayDialog } from './_components/BagimlilikOnayDialog'
+import { ZincirGeriAlDialog } from './_components/ZincirGeriAlDialog'
 import { usePasifGeriAl } from './_lib/usePasifGeriAl'
 import { apiHataMesaji } from './_lib/servis-istek'
 import { normalizeTr } from '@/lib/normalize-tr'
@@ -215,7 +216,12 @@ function ServisFirmaPanel({ canManage, canPassive, canRestore, canHistory }: { c
     yukle()
   }
 
-  const { pasiflestir, geriAl, bagimlilikOnay } = usePasifGeriAl({ yol: 'firma', yukle, setHata })
+  const { pasiflestir, geriAl, bagimlilikOnay, zincirGeriAlSecimi } = usePasifGeriAl({
+    yol: 'firma',
+    yukle,
+    setHata,
+    zincirGeriAl: true,
+  })
 
   return (
     <div className="space-y-4">
@@ -295,6 +301,7 @@ function ServisFirmaPanel({ canManage, canPassive, canRestore, canHistory }: { c
       )}
 
       <BagimlilikOnayDialog {...bagimlilikOnay} />
+      <ZincirGeriAlDialog {...zincirGeriAlSecimi} />
 
       <Dialog open={dialogAcik} onOpenChange={setDialogAcik}>
         <DialogContent>

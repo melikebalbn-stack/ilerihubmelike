@@ -250,3 +250,141 @@ describe('Servis ekranı — A4: kod değişikliği engeli kullanıcıya diyalog
     expect(screen.getByText('Güzergâhı Düzenle')).toBeTruthy()
   })
 })
+
+describe('Servis ekranı — A5: firma zinciri (pasifleştirme + seçici geri alma)', () => {
+  const NOT = 'Araçlar yeni firmaya geçiyorsa önce araçların firmasını değiştirin.'
+  const ZINCIR409 = {
+    ok: false, kod: 'BAGLI_KAYIT_VAR', message: 'Firma pasifleştirilirse bağlı aktif kayıtlar birlikte pasifleşir/kapanır.',
+    bagimliliklar: [
+      { tur: 'ARAC', etiket: 'Aktif araç', sayi: 2, ornekler: ['41P0145', '41P0327'] },
+      { tur: 'SOFOR', etiket: 'Aktif şoför', sayi: 1, ornekler: [] },
+      { tur: 'ARAC_VARSAYILAN', etiket: 'Aktif varsayılan araç ataması', sayi: 2, ornekler: ['DARICA — Darıca Hattı (SABAH_GIDIS)'] },
+    ],
+    zincirleme: true, notlar: [NOT],
+  }
+  const ONIZLEME = { zincirIslemId: 'z1', geriAlinabilirArac: 2, geriAlinabilirSofor: 1, kapananAtama: 3 }
+
+  function kurFirma(opts: { post?: { ok: boolean; status: number; body: unknown }[]; onizleme?: unknown }) {
+    const sira = [...(opts.post ?? [])]
+    fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === 'POST') {
+        const y = sira.shift() ?? { ok: true, status: 200, body: { ok: true } }
+        return { ok: y.ok, status: y.status, json: async () => y.body }
+      }
+      if (String(url).endsWith('/geri-al-onizleme')) {
+        return { ok: true, status: 200, json: async () => ({ ok: true, data: opts.onizleme }) }
+      }
+      return { ok: true, status: 200, json: async () => ({ ok: true, data: url.includes('/firma') ? FIRMALAR : [] }) }
+    })
+    vi.stubGlobal('fetch', fetchMock)
+  }
+  const postlar = () => fetchMock.mock.calls.filter(([, i]) => i?.method === 'POST')
+
+  it('🔴 pasifleştirme diyaloğu: birlikte pasifleşecekler + güzergâh adlı atama + şoför yalnız SAYI + yeni firma notu', async () => {
+    kurFirma({ post: [{ ok: false, status: 409, body: ZINCIR409 }] })
+    oturum(HR_YONETICISI)
+    render(<ServisYonetimiPage />)
+    await waitFor(() => expect(screen.getByText('ŞAHİN Taşımacılık')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Pasifleştir' }))
+    await waitFor(() => expect(screen.getByText('Bağlı aktif kayıtlar var')).toBeTruthy())
+
+    expect(screen.getByText(/birlikte pasifleşir \/ kapanır/)).toBeTruthy()
+    const liste = screen.getByRole('list', { name: 'Bağlı aktif kayıtlar' })
+    expect(within(liste).getByText('Aktif araç: 2')).toBeTruthy()
+    expect(within(liste).getByText('41P0145, 41P0327')).toBeTruthy()
+    expect(within(liste).getByText(/DARICA — Darıca Hattı \(SABAH_GIDIS\)/)).toBeTruthy()
+    expect(within(liste).getByText('Aktif şoför: 1').closest('li')!.textContent).toBe('Aktif şoför: 1') // KVKK
+    expect(screen.getByText(NOT)).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Firmayı ve Bağlı Kayıtları Pasifleştir' })).toBeTruthy()
+    expect(postlar()).toHaveLength(1) // henüz hiçbir şey pasifleşmedi
+  })
+
+  it('onay: { onay: true } ile ikinci POST', async () => {
+    kurFirma({ post: [{ ok: false, status: 409, body: ZINCIR409 }, { ok: true, status: 200, body: { ok: true } }] })
+    oturum(HR_YONETICISI)
+    render(<ServisYonetimiPage />)
+    await waitFor(() => expect(screen.getByText('ŞAHİN Taşımacılık')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Pasifleştir' }))
+    await waitFor(() => expect(screen.getByText('Bağlı aktif kayıtlar var')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Firmayı ve Bağlı Kayıtları Pasifleştir' }))
+    await waitFor(() => expect(postlar()).toHaveLength(2))
+    expect(JSON.parse(postlar()[1][1].body)).toEqual({ onay: true })
+  })
+
+  it('🔴 geri al: "Birlikte pasifleşen 3 kayıt da geri alınsın mı?" + atama bilgisi; "Birlikte Geri Al" → zincirGeriAl: true', async () => {
+    kurFirma({ onizleme: ONIZLEME, post: [{ ok: true, status: 200, body: { ok: true } }] })
+    oturum(HR_YONETICISI)
+    render(<ServisYonetimiPage />)
+    await waitFor(() => expect(screen.getByText('IŞIK Servis')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Geri Al' }))
+
+    await waitFor(() => expect(screen.getByText('Birlikte pasifleşen 3 kayıt da geri alınsın mı?')).toBeTruthy())
+    const liste = screen.getByRole('list', { name: 'Birlikte geri alınabilecek kayıtlar' })
+    expect(within(liste).getByText('Araç: 2')).toBeTruthy()
+    expect(within(liste).getByText('Şoför: 1')).toBeTruthy()
+    expect(screen.getByText(/3 varsayılan atama kapatılmıştı/)).toBeTruthy()
+    expect(screen.getByText(/geri alınmaz/)).toBeTruthy()
+    expect(postlar()).toHaveLength(0) // önizleme GET'ti; henüz geri alma yok
+
+    fireEvent.click(screen.getByRole('button', { name: 'Birlikte Geri Al' }))
+    await waitFor(() => expect(postlar()).toHaveLength(1))
+    expect(postlar()[0][0]).toBe('/api/servis-yonetimi/firma/f2/geri-al')
+    expect(JSON.parse(postlar()[0][1].body)).toEqual({ zincirGeriAl: true })
+  })
+
+  it('"Yalnız Firmayı Geri Al": gövdesiz POST', async () => {
+    kurFirma({ onizleme: ONIZLEME, post: [{ ok: true, status: 200, body: { ok: true } }] })
+    oturum(HR_YONETICISI)
+    render(<ServisYonetimiPage />)
+    await waitFor(() => expect(screen.getByText('IŞIK Servis')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Geri Al' }))
+    await waitFor(() => expect(screen.getByText(/geri alınsın mı/)).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Yalnız Firmayı Geri Al' }))
+    await waitFor(() => expect(postlar()).toHaveLength(1))
+    expect(postlar()[0][1]).toEqual({ method: 'POST' })
+  })
+
+  it('birlikte geri alınacak kayıt yoksa diyalog çıkmaz; doğrudan geri alır', async () => {
+    kurFirma({ onizleme: { ...ONIZLEME, geriAlinabilirArac: 0, geriAlinabilirSofor: 0 }, post: [{ ok: true, status: 200, body: { ok: true } }] })
+    oturum(HR_YONETICISI)
+    render(<ServisYonetimiPage />)
+    await waitFor(() => expect(screen.getByText('IŞIK Servis')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Geri Al' }))
+    await waitFor(() => expect(postlar()).toHaveLength(1))
+    expect(screen.queryByText(/geri alınsın mı/)).toBeNull()
+  })
+
+  it('yerleşke/güzergâh pasifinde zincirleme YOK: mevcut "aktif kalır" uyarısı', async () => {
+    const GUZ = {
+      id: 'g1', kod: 'DARICA', ad: 'Darıca Hattı', aciklama: null, bolge: null, yerleskeId: 'y1',
+      yerleske: { id: 'y1', kod: 'Y1', ad: 'Merkez' }, aktif: true, gecerlilikBaslangici: null, gecerlilikBitisi: null,
+      createdAt: '2026-01-01', updatedAt: '2026-01-01',
+    }
+    let ilkPost = true
+    fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === 'POST' && ilkPost) {
+        ilkPost = false
+        return {
+          ok: false, status: 409,
+          json: async () => ({
+            ok: false, kod: 'BAGLI_KAYIT_VAR', message: 'Güzergâh pasifleştirilemez: bağlı aktif kayıtlar var.',
+            bagimliliklar: [{ tur: 'PERSONEL_ATAMA', etiket: 'Aktif personel ataması', sayi: 12, ornekler: [] }],
+            zincirleme: false, notlar: [],
+          }),
+        }
+      }
+      const veri = url.includes('/guzergah') ? [GUZ] : url.includes('/yerleske') ? [{ id: 'y1', kod: 'Y1', ad: 'Merkez', aktif: true }] : []
+      return { ok: true, status: 200, json: async () => ({ ok: true, data: veri }) }
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    oturum(HR_YONETICISI)
+    render(<ServisYonetimiPage />)
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Güzergâhlar' }), { button: 0 })
+    await waitFor(() => expect(screen.getByText('Darıca Hattı')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Pasifleştir' }))
+    await waitFor(() => expect(screen.getByText('Bağlı aktif kayıtlar var')).toBeTruthy())
+    expect(screen.getByText(/aktif kalır/)).toBeTruthy()
+    expect(screen.queryByText(/birlikte pasifleşir/)).toBeNull()
+    expect(screen.getByRole('button', { name: 'Yine de Pasifleştir' })).toBeTruthy()
+  })
+})

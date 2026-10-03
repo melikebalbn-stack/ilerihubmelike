@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   BagliKayitHatasi,
+  FIRMA_ORNEK_LIMITI,
   ORNEK_LIMITI,
   aracBagimliliklari,
   bagimlilikOzeti,
@@ -51,16 +52,27 @@ describe('pasifleştirme bağımlılıkları — yalnız AKTİF kayıtlar', () =
     expect(await seferDilimiBagimliliklari(sahteDb(), 'd1')).toEqual([])
   })
 
-  it('firma → aktif araç (plaka örnekli) + aktif şoför', async () => {
+  it('firma (A5 zinciri) → aktif araç (plaka) + aktif şoför (sayı) + aktif araç atamaları (güzergâh adlı) + şoför atamaları (sayı)', async () => {
     const db = sahteDb({
-      servisArac: { sayi: 2, satirlar: [{ plaka: '41P0145' }, { plaka: '41P0327' }] },
-      servisSofor: { sayi: 4 },
+      servisArac: { sayi: 2, satirlar: [{ id: 'a1', plaka: '41P0145' }, { id: 'a2', plaka: '41P0327' }] },
+      servisSofor: { sayi: 4, satirlar: [{ id: 's1' }] },
+      servisGuzergahAracVarsayilan: {
+        sayi: 2,
+        satirlar: [{ guzergah: { kod: 'DARICA', ad: 'Darıca Hattı' }, dilim: { kod: 'SABAH_GIDIS' } }],
+      },
+      servisGuzergahSoforVarsayilan: { sayi: 1 },
     })
     const g = await firmaBagimliliklari(db, 'f1')
     expect(g.map((x) => [x.tur, x.sayi, x.ornekler])).toEqual([
       ['ARAC', 2, ['41P0145', '41P0327']],
       ['SOFOR', 4, []],
+      ['ARAC_VARSAYILAN', 2, ['DARICA — Darıca Hattı (SABAH_GIDIS)']],
+      ['SOFOR_VARSAYILAN', 1, []],
     ])
+    const m = db as unknown as Record<string, Model>
+    // atamalar firmanın TÜM araç/şoförleri üzerinden (pasif araca bağlı aktif atama da kapanır)
+    expect(m.servisGuzergahAracVarsayilan.count).toHaveBeenCalledWith({ where: { aracId: { in: ['a1', 'a2'] }, aktif: true } })
+    expect(m.servisGuzergahSoforVarsayilan.count).toHaveBeenCalledWith({ where: { soforId: { in: ['s1'] }, aktif: true } })
   })
 
   it('araç → aktif varsayılan araç atamaları (güzergâh / dilim)', async () => {
@@ -106,15 +118,17 @@ describe('pasifleştirme bağımlılıkları — yalnız AKTİF kayıtlar', () =
     expect(m.servisGuzergahDurakSaat.count).toHaveBeenCalledWith({ where: { dilimId: 'd1', aktif: true } })
   })
 
-  it('örnekler ORNEK_LIMITI ile sınırlıdır ve count tam sayıyı verir', async () => {
-    const satirlar = Array.from({ length: 9 }, (_, i) => ({ plaka: `34 X ${i}` }))
-    const db = sahteDb({ servisArac: { sayi: 9, satirlar } })
+  it('örnekler sınırlıdır (varsayılan ORNEK_LIMITI, firma zinciri FIRMA_ORNEK_LIMITI) ve count tam sayıyı verir', async () => {
+    const satirlar = Array.from({ length: 14 }, (_, i) => ({ id: `a${i}`, plaka: `34 X ${i}` }))
+    const db = sahteDb({ servisArac: { sayi: 14, satirlar } })
     const [arac] = await firmaBagimliliklari(db, 'f1')
-    expect(arac.sayi).toBe(9)
-    expect(arac.ornekler).toHaveLength(ORNEK_LIMITI)
-    expect((db as unknown as Record<string, Model>).servisArac.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ take: ORNEK_LIMITI }),
-    )
+    expect(arac.sayi).toBe(14)
+    expect(arac.ornekler).toHaveLength(FIRMA_ORNEK_LIMITI)
+    expect(FIRMA_ORNEK_LIMITI).toBeGreaterThan(ORNEK_LIMITI)
+
+    const dbY = sahteDb({ servisGuzergah: { sayi: 9, satirlar: Array.from({ length: 9 }, (_, i) => ({ kod: `G${i}`, ad: 'x' })) } })
+    const [guz] = await yerleskeBagimliliklari(dbY, 'y1')
+    expect(guz.ornekler.length).toBeLessThanOrEqual(ORNEK_LIMITI)
   })
 
   it('🔴 KVKK: kişi içeren gruplarda (personel atama, şoför) ÖRNEK satır taşınmaz — yalnız sayı', async () => {
@@ -132,8 +146,11 @@ describe('pasifleştirme bağımlılıkları — yalnız AKTİF kayıtlar', () =
     // ve bu modellerde findMany (satır okuma) HİÇ çağrılmaz
     const m = db as unknown as Record<string, Model>
     expect(m.servisPersonelAtama.findMany).not.toHaveBeenCalled()
-    expect(m.servisSofor.findMany).not.toHaveBeenCalled()
     expect(m.servisGuzergahSoforVarsayilan.findMany).not.toHaveBeenCalled()
+    // şoför tablosundan YALNIZ id okunur (firmanın şoför atamalarını bulmak için); ad/telefon seçilmez
+    for (const cagri of m.servisSofor.findMany.mock.calls) {
+      expect(cagri[0].select).toEqual({ id: true })
+    }
   })
 })
 

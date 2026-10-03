@@ -57,6 +57,7 @@ const ALAN_ETIKET: Record<string, string> = {
   aracTipi: 'Araç Tipi', bolge: 'Bölge', il: 'İl', ilce: 'İlçe', mahalle: 'Mahalle',
   adresEtiketi: 'Adres Etiketi', enlem: 'Enlem', boylam: 'Boylam', yon: 'Yön', grupKodu: 'Grup Kodu',
   gecerlilikBaslangici: 'Geçerlilik Başlangıcı', gecerlilikBitisi: 'Geçerlilik Bitişi',
+  zincirIslemId: 'Zincir İşlem No',
 }
 
 function alanDegeriGoster(alan: string, deger: unknown): string {

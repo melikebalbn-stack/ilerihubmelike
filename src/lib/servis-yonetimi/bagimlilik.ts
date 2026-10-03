@@ -25,20 +25,37 @@ export type BagimlilikGrubu = {
 }
 
 export const ORNEK_LIMITI = 5
+/** Firma zinciri: atamalar güzergâh adlarıyla listelenir; biraz daha geniş. */
+export const FIRMA_ORNEK_LIMITI = 10
 
 export class BagliKayitHatasi extends Error {
   readonly bagimliliklar: BagimlilikGrubu[]
-  constructor(mesaj: string, bagimliliklar: BagimlilikGrubu[]) {
+  /** true: onaylanırsa bağlı kayıtlar BİRLİKTE pasifleşir/kapanır (yalnız firma, A5). */
+  readonly zincirleme: boolean
+  readonly notlar: string[]
+  constructor(
+    mesaj: string,
+    bagimliliklar: BagimlilikGrubu[],
+    ek?: { zincirleme?: boolean; notlar?: string[] },
+  ) {
     super(mesaj)
     this.name = 'BagliKayitHatasi'
     this.bagimliliklar = bagimliliklar
+    this.zincirleme = ek?.zincirleme ?? false
+    this.notlar = ek?.notlar ?? []
   }
 }
 
 type Db = Prisma.TransactionClient
 
-function grup(tur: string, etiket: string, sayi: number, ornekler: string[] = []): BagimlilikGrubu | null {
-  return sayi > 0 ? { tur, etiket, sayi, ornekler: ornekler.slice(0, ORNEK_LIMITI) } : null
+function grup(
+  tur: string,
+  etiket: string,
+  sayi: number,
+  ornekler: string[] = [],
+  limit: number = ORNEK_LIMITI,
+): BagimlilikGrubu | null {
+  return sayi > 0 ? { tur, etiket, sayi, ornekler: ornekler.slice(0, limit) } : null
 }
 
 const dolu = (gruplar: (BagimlilikGrubu | null)[]): BagimlilikGrubu[] =>
@@ -66,16 +83,43 @@ export async function yerleskeBagimliliklari(db: Db, id: string): Promise<Bagiml
   return dolu([grup('GUZERGAH', 'Aktif güzergâh', sayi, ornek.map((g) => `${g.kod} — ${g.ad}`))])
 }
 
+/**
+ * Firma (A5 — zincirleme): onaylanırsa PASİFLEŞECEK aktif araç/şoförler ve
+ * KAPANACAK aktif varsayılan araç/şoför atamaları. Şoförlerde (kişi) yalnız sayı.
+ * Atamalar firmanın TÜM araç/şoförleri üzerinden sayılır (pasif araca bağlı aktif
+ * atama da kapanır).
+ */
 export async function firmaBagimliliklari(db: Db, id: string): Promise<BagimlilikGrubu[]> {
-  const where = { firmaId: id, aktif: true }
-  const [aracSayi, aracOrnek, soforSayi] = await Promise.all([
-    db.servisArac.count({ where }),
-    db.servisArac.findMany({ where, select: { plaka: true }, orderBy: { plaka: 'asc' }, take: ORNEK_LIMITI }),
-    db.servisSofor.count({ where }),
+  const aktif = { firmaId: id, aktif: true }
+  const [aracSayi, aracOrnek, soforSayi, tumAraclar, tumSoforler] = await Promise.all([
+    db.servisArac.count({ where: aktif }),
+    db.servisArac.findMany({ where: aktif, select: { plaka: true }, orderBy: { plaka: 'asc' }, take: FIRMA_ORNEK_LIMITI }),
+    db.servisSofor.count({ where: aktif }),
+    db.servisArac.findMany({ where: { firmaId: id }, select: { id: true } }),
+    db.servisSofor.findMany({ where: { firmaId: id }, select: { id: true } }),
+  ])
+  const aracAtama = { aracId: { in: tumAraclar.map((a) => a.id) }, aktif: true }
+  const soforAtama = { soforId: { in: tumSoforler.map((s) => s.id) }, aktif: true }
+  const [aracAtamaSayi, aracAtamaOrnek, soforAtamaSayi] = await Promise.all([
+    db.servisGuzergahAracVarsayilan.count({ where: aracAtama }),
+    db.servisGuzergahAracVarsayilan.findMany({
+      where: aracAtama,
+      select: { guzergah: { select: { kod: true, ad: true } }, dilim: { select: { kod: true } } },
+      take: FIRMA_ORNEK_LIMITI,
+    }),
+    db.servisGuzergahSoforVarsayilan.count({ where: soforAtama }),
   ])
   return dolu([
-    grup('ARAC', 'Aktif araç', aracSayi, aracOrnek.map((a) => a.plaka)),
+    grup('ARAC', 'Aktif araç', aracSayi, aracOrnek.map((a) => a.plaka), FIRMA_ORNEK_LIMITI),
     grup('SOFOR', 'Aktif şoför', soforSayi), // kişi: yalnız sayı
+    grup(
+      'ARAC_VARSAYILAN',
+      'Aktif varsayılan araç ataması',
+      aracAtamaSayi,
+      aracAtamaOrnek.map((v) => `${v.guzergah.kod} — ${v.guzergah.ad} (${v.dilim.kod})`),
+      FIRMA_ORNEK_LIMITI,
+    ),
+    grup('SOFOR_VARSAYILAN', 'Aktif varsayılan şoför ataması', soforAtamaSayi), // kişi: yalnız sayı
   ])
 }
 
@@ -194,4 +238,19 @@ export function bagliKayitMesaji(varlik: string, gruplar: BagimlilikGrubu[]): st
 /** Onaylı pasifleştirmenin audit açıklaması (tarihçede görünür). */
 export function onayAciklamasi(gruplar: BagimlilikGrubu[]): string {
   return `Bağlı aktif kayıtlar varken kullanıcı onayıyla pasifleştirildi: ${bagimlilikOzeti(gruplar)}. Bağlı kayıtlar otomatik kapatılmadı.`
+}
+
+// ----------------------------------------------------------------------------
+// Firma zinciri (A5) — mesajlar
+// ----------------------------------------------------------------------------
+
+export const FIRMA_ZINCIR_NOTU = 'Araçlar yeni firmaya geçiyorsa önce araçların firmasını değiştirin.'
+
+export function firmaZincirMesaji(gruplar: BagimlilikGrubu[]): string {
+  return `Firma pasifleştirilirse bağlı aktif kayıtlar birlikte pasifleşir/kapanır (${bagimlilikOzeti(gruplar)}). ${FIRMA_ZINCIR_NOTU}`
+}
+
+/** Zincirleme pasifleştirmede firmanın audit açıklaması (özet). */
+export function firmaZincirOzetAciklamasi(gruplar: BagimlilikGrubu[]): string {
+  return `Firma kullanıcı onayıyla pasifleştirildi; bağlı kayıtlar birlikte pasifleşti/kapandı: ${bagimlilikOzeti(gruplar)}.`
 }

@@ -76,6 +76,19 @@ const mocks = vi.hoisted(() => ({
   bagDilim: vi.fn(async () => [] as unknown[]),
   kodGuzergah: vi.fn(async () => [] as unknown[]),
   kodDurak: vi.fn(async () => [] as unknown[]),
+  // A5 firma zinciri
+  zincirPasif: vi.fn(),
+  zincirGeriAl: vi.fn(),
+  zincirOnizleme: vi.fn(),
+  zincirSonId: vi.fn(async () => null as string | null),
+}))
+
+vi.mock('./firma-zincir', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./firma-zincir')>()),
+  firmaZincirPasiflestir: mocks.zincirPasif,
+  firmaZincirGeriAl: mocks.zincirGeriAl,
+  firmaZincirOnizleme: mocks.zincirOnizleme,
+  firmaSonZincirIslemId: mocks.zincirSonId,
 }))
 
 vi.mock('./bagimlilik', async (importOriginal) => ({
@@ -3552,9 +3565,7 @@ describe('A4 — pasifleştirmede bağlı AKTİF kayıt: onaysız reddedilir, on
     { ad: 'yerleşke', hedefTipi: 'YERLESKE', bag: mocks.bagYerleske, update: mocks.yerleskeUpdate,
       kur: () => mocks.yerleskeFindUnique.mockResolvedValue({ id: 'k1', aktif: true }),
       pasiflestir: (onay) => pasiflestirServisYerleske('k1', 'user-1', { onay }) },
-    { ad: 'firma', hedefTipi: 'FIRMA', bag: mocks.bagFirma, update: mocks.firmaUpdate,
-      kur: () => mocks.firmaFindUnique.mockResolvedValue({ id: 'k1', aktif: true }),
-      pasiflestir: (onay) => pasiflestirServisFirma('k1', 'user-1', { onay }) },
+    // firma: A5'te ZİNCİRLEME pasif — aşağıdaki A5 bloğunda ayrıca test edilir.
     { ad: 'güzergâh', hedefTipi: 'GUZERGAH', bag: mocks.bagGuzergah, update: mocks.guzergahUpdate,
       kur: () => mocks.guzergahFindUnique.mockResolvedValue({ id: 'k1', aktif: true }),
       pasiflestir: (onay) => pasiflestirServisGuzergah('k1', 'user-1', { onay }) },
@@ -3690,5 +3701,137 @@ describe('A4 — güzergâh / durak KODU kimliktir: kullanım kaydı varsa deği
     mocks.durakUpdate.mockResolvedValue({ id: 'd1', kod: 'YENI' })
     await updateServisDurak('d1', { ...gecerliDurak, kod: 'yeni' }, 'u')
     expect(mocks.durakUpdate).toHaveBeenCalled()
+  })
+})
+
+// ============================================================================
+// A5 — firma pasifinde ZİNCİRLEME pasif + seçici geri alma
+// ============================================================================
+import { firmaGeriAlOnizleme } from './service'
+
+describe('A5 — firma pasifleştirme (zincirleme, onaylı)', () => {
+  const BAG = [
+    { tur: 'ARAC', etiket: 'Aktif araç', sayi: 2, ornekler: ['41P0145', '41P0327'] },
+    { tur: 'SOFOR', etiket: 'Aktif şoför', sayi: 1, ornekler: [] },
+    { tur: 'ARAC_VARSAYILAN', etiket: 'Aktif varsayılan araç ataması', sayi: 2, ornekler: ['DARICA — Darıca Hattı (SABAH_GIDIS)'] },
+  ]
+  const kur = () => {
+    mocks.firmaFindUnique.mockResolvedValue({ id: 'f1', ad: 'Taşeron A', aktif: true })
+    mocks.firmaUpdate.mockResolvedValue({ id: 'f1', aktif: false })
+  }
+
+  it('🔴 bağlı aktif kayıt + onaysız: BagliKayitHatasi zincirleme=true + not; zincir ve firma güncellemesi YOK', async () => {
+    kur()
+    mocks.bagFirma.mockResolvedValueOnce(BAG)
+    const hata = await pasiflestirServisFirma('f1', 'user-1').catch((e) => e)
+    expect(hata).toBeInstanceOf(BagliKayitHatasi)
+    expect(hata.zincirleme).toBe(true)
+    expect(hata.notlar).toEqual(['Araçlar yeni firmaya geçiyorsa önce araçların firmasını değiştirin.'])
+    expect(hata.message).toMatch(/birlikte pasifleşir\/kapanır \(2 aktif araç, 1 aktif şoför, 2 aktif varsayılan araç ataması\)/)
+    expect(mocks.zincirPasif).not.toHaveBeenCalled()
+    expect(mocks.firmaUpdate).not.toHaveBeenCalled()
+    expect(mocks.islemGecmisiCreate).not.toHaveBeenCalled()
+  })
+
+  it('🔴 onaylı: zincir AYNI tx üzerinde çalışır, sonra firma pasif; firma audit\'i zincirIslemId + özet taşır', async () => {
+    kur()
+    mocks.bagFirma.mockResolvedValueOnce(BAG)
+    const sira: string[] = []
+    mocks.zincirPasif.mockImplementationOnce(async () => {
+      sira.push('zincir')
+      return { islemId: 'z-123', arac: 2, sofor: 1, aracAtama: 2, soforAtama: 0 }
+    })
+    mocks.firmaUpdate.mockImplementationOnce(async () => {
+      sira.push('firma')
+      return { id: 'f1', aktif: false }
+    })
+    await pasiflestirServisFirma('f1', 'user-1', { onay: true })
+
+    expect(sira).toEqual(['zincir', 'firma'])
+    const [txArg, firmaArg, yapanArg] = mocks.zincirPasif.mock.calls[0]
+    expect(typeof txArg.servisIslemGecmisi.create).toBe('function') // tx nesnesi
+    expect(firmaArg).toMatchObject({ id: 'f1', ad: 'Taşeron A' })
+    expect(yapanArg).toBe('user-1')
+    const audit = mocks.islemGecmisiCreate.mock.calls.at(-1)![0].data
+    expect(audit).toMatchObject({
+      hedefTipi: 'FIRMA', hedefId: 'f1', islem: 'PASIFLESTIRME', userId: 'user-1',
+      oncekiDeger: { aktif: true }, yeniDeger: { aktif: false, zincirIslemId: 'z-123' },
+    })
+    expect(audit.aciklama).toMatch(/Firma kullanıcı onayıyla pasifleştirildi; bağlı kayıtlar birlikte pasifleşti\/kapandı: 2 aktif araç, 1 aktif şoför/)
+  })
+
+  it('bağlı kayıt YOKSA zincir çalışmaz; firma düz pasifleşir (zincirIslemId yok, açıklama yok)', async () => {
+    kur()
+    mocks.bagFirma.mockResolvedValueOnce([])
+    await pasiflestirServisFirma('f1', 'user-1')
+    expect(mocks.zincirPasif).not.toHaveBeenCalled()
+    const audit = mocks.islemGecmisiCreate.mock.calls.at(-1)![0].data
+    expect(audit.yeniDeger).toEqual({ aktif: false })
+    expect(audit.aciklama).toBeNull()
+  })
+
+  it('🔴 zincir hata verirse (audit/atama) firma pasifleştirilmez', async () => {
+    kur()
+    mocks.bagFirma.mockResolvedValueOnce(BAG)
+    mocks.zincirPasif.mockRejectedValueOnce(new Error('audit yazılamadı'))
+    await expect(pasiflestirServisFirma('f1', 'user-1', { onay: true })).rejects.toThrow('audit yazılamadı')
+    expect(mocks.firmaUpdate).not.toHaveBeenCalled()
+  })
+})
+
+describe('A5 — firma geri alma (seçici)', () => {
+  beforeEach(() => {
+    mocks.firmaFindUnique.mockResolvedValue({ id: 'f1', ad: 'Taşeron A', aktif: false })
+    mocks.firmaUpdate.mockResolvedValue({ id: 'f1', aktif: true })
+    mocks.zincirGeriAl.mockReset()
+    mocks.zincirSonId.mockReset()
+    mocks.zincirOnizleme.mockReset()
+  })
+
+  it('seçenek yok: yalnız firma geri alınır; zincir kimliği hiç sorgulanmaz', async () => {
+    await geriAlServisFirma('f1', 'user-1')
+    expect(mocks.zincirSonId).not.toHaveBeenCalled()
+    expect(mocks.zincirGeriAl).not.toHaveBeenCalled()
+  })
+
+  it('🔴 zincirGeriAl=true + zincir var: firma aktifleşir SONRA zincir geri alınır; sonuç döner', async () => {
+    mocks.zincirSonId.mockResolvedValueOnce('z-123')
+    const sira: string[] = []
+    mocks.firmaUpdate.mockImplementationOnce(async () => {
+      sira.push('firma')
+      return { id: 'f1', aktif: true }
+    })
+    mocks.zincirGeriAl.mockImplementationOnce(async () => {
+      sira.push('zincir')
+      return { arac: 2, sofor: 1, kapananAtama: 3 }
+    })
+    const sonuc = await geriAlServisFirma('f1', 'user-1', { zincirGeriAl: true })
+    expect(sira).toEqual(['firma', 'zincir'])
+    expect(mocks.zincirGeriAl).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ id: 'f1' }), 'z-123', 'user-1')
+    expect((sonuc as { zincirSonucu: unknown }).zincirSonucu).toEqual({ arac: 2, sofor: 1, kapananAtama: 3 })
+  })
+
+  it('zincirGeriAl=true ama son pasifleştirme zincirsiz: yalnız firma, zincirGeriAl çağrılmaz', async () => {
+    mocks.zincirSonId.mockResolvedValueOnce(null)
+    const sonuc = await geriAlServisFirma('f1', 'user-1', { zincirGeriAl: true })
+    expect(mocks.zincirGeriAl).not.toHaveBeenCalled()
+    expect(sonuc).not.toHaveProperty('zincirSonucu')
+  })
+
+  it('firma audit\'i her durumda AKTIFLESTIRME yazar', async () => {
+    mocks.zincirSonId.mockResolvedValueOnce(null)
+    await geriAlServisFirma('f1', 'user-9', { zincirGeriAl: true })
+    expect(mocks.islemGecmisiCreate.mock.calls[0][0].data).toMatchObject({
+      hedefTipi: 'FIRMA', islem: 'AKTIFLESTIRME', userId: 'user-9',
+    })
+  })
+
+  it('önizleme: pasif firma için zincir önizlemesini döner; aktif firmada hata', async () => {
+    mocks.zincirOnizleme.mockResolvedValueOnce({ zincirIslemId: 'z', geriAlinabilirArac: 2, geriAlinabilirSofor: 1, kapananAtama: 3 })
+    expect(await firmaGeriAlOnizleme('f1')).toEqual({ zincirIslemId: 'z', geriAlinabilirArac: 2, geriAlinabilirSofor: 1, kapananAtama: 3 })
+    mocks.firmaFindUnique.mockResolvedValueOnce({ id: 'f1', aktif: true })
+    await expect(firmaGeriAlOnizleme('f1')).rejects.toThrow('Firma zaten aktif.')
+    mocks.firmaFindUnique.mockResolvedValueOnce(null)
+    await expect(firmaGeriAlOnizleme('yok')).rejects.toThrow('Firma bulunamadı.')
   })
 })

@@ -105,6 +105,7 @@ describe.each(UCLAR)('POST pasiflestir — $ad', ({ post, servis }) => {
     expect(res.status).toBe(409)
     expect(await res.json()).toEqual({
       ok: false, kod: 'BAGLI_KAYIT_VAR', message: 'Bağlı aktif kayıtlar var (2 aktif araç).', bagimliliklar: BAG,
+      zincirleme: false, notlar: [],
     })
   })
 

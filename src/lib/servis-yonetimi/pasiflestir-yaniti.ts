@@ -5,10 +5,10 @@ import { BagliKayitHatasi } from './bagimlilik'
 //
 // İstek gövdesi OPSİYONELDİR: eski istemciler gövdesiz POST atar → onay yok.
 // Yalnız `{ "onay": true }` onay sayılır (truthy string/sayı sayılmaz).
-export async function onayBayragiOku(request: Request): Promise<boolean> {
+export async function onayBayragiOku(request: Request, alan = 'onay'): Promise<boolean> {
   try {
-    const govde = (await request.json()) as { onay?: unknown } | null
-    return govde?.onay === true
+    const govde = (await request.json()) as Record<string, unknown> | null
+    return govde?.[alan] === true
   } catch {
     return false
   }
@@ -21,7 +21,14 @@ export async function onayBayragiOku(request: Request): Promise<boolean> {
 export function pasiflestirHataYaniti(err: unknown, varsayilanMesaj: string): NextResponse {
   if (err instanceof BagliKayitHatasi) {
     return NextResponse.json(
-      { ok: false, kod: 'BAGLI_KAYIT_VAR', message: err.message, bagimliliklar: err.bagimliliklar },
+      {
+        ok: false,
+        kod: 'BAGLI_KAYIT_VAR',
+        message: err.message,
+        bagimliliklar: err.bagimliliklar,
+        zincirleme: err.zincirleme,
+        notlar: err.notlar,
+      },
       { status: 409 },
     )
   }

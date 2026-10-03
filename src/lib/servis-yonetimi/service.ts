@@ -36,12 +36,22 @@ import {
 import { kaydetIslemGecmisi, degisenAlanlar } from './audit'
 import { aralikDogrula, baslangicTarihiCoz, bitisTarihiCoz, kapatmaTarihiCoz } from './tarih-kurallari'
 import {
+  firmaSonZincirIslemId,
+  firmaZincirGeriAl,
+  firmaZincirOnizleme,
+  firmaZincirPasiflestir,
+  ZINCIR_ALANI,
+} from './firma-zincir'
+import {
   BagliKayitHatasi,
   aracBagimliliklari,
   bagimlilikToplami,
   bagliKayitMesaji,
   durakKodKullanimi,
   firmaBagimliliklari,
+  firmaZincirMesaji,
+  firmaZincirOzetAciklamasi,
+  FIRMA_ZINCIR_NOTU,
   guzergahBagimliliklari,
   guzergahKodKullanimi,
   kodDegistirilemezMesaji,
@@ -112,35 +122,57 @@ export async function pasiflestirServisFirma(id: string, yapanId?: string | null
   if (!existing.aktif) throw new Error('Firma zaten pasif.')
 
   return prisma.$transaction(async (tx) => {
-    // A4: bağlı AKTİF kayıtlar varsa açık onay olmadan pasifleştirilmez.
+    // A5: firma pasifinde bağlı aktif kayıtlar ZİNCİRLEME pasifleşir/kapanır —
+    // ama yalnız açık onayla. Onaysız istek reddedilir (liste + not döner).
     const bagimliliklar = await firmaBagimliliklari(tx, id)
     const bagliSayi = bagimlilikToplami(bagimliliklar)
     if (bagliSayi > 0 && !secenek?.onay) {
-      throw new BagliKayitHatasi(bagliKayitMesaji('Firma', bagimliliklar), bagimliliklar)
+      throw new BagliKayitHatasi(firmaZincirMesaji(bagimliliklar), bagimliliklar, {
+        zincirleme: true,
+        notlar: [FIRMA_ZINCIR_NOTU],
+      })
     }
+    const zincir = bagliSayi > 0 ? await firmaZincirPasiflestir(tx, existing, yapanId) : null
     const guncel = await tx.servisFirma.update({ where: { id }, data: { aktif: false } })
     await kaydetIslemGecmisi({
       tx, hedefTipi: 'FIRMA', hedefId: id, islem: 'PASIFLESTIRME', yapanId,
-      oncekiDeger: { aktif: true }, yeniDeger: { aktif: false },
-      aciklama: bagliSayi > 0 ? onayAciklamasi(bagimliliklar) : undefined,
+      oncekiDeger: { aktif: true },
+      yeniDeger: zincir ? { aktif: false, [ZINCIR_ALANI]: zincir.islemId } : { aktif: false },
+      aciklama: zincir ? firmaZincirOzetAciklamasi(bagimliliklar) : undefined,
     })
     return guncel
   })
 }
 
-export async function geriAlServisFirma(id: string, yapanId?: string | null) {
+export async function geriAlServisFirma(
+  id: string,
+  yapanId?: string | null,
+  secenek?: { zincirGeriAl?: boolean },
+) {
   const existing = await prisma.servisFirma.findUnique({ where: { id } })
   if (!existing) throw new Error('Firma bulunamadı.')
   if (existing.aktif) throw new Error('Firma zaten aktif.')
 
   return prisma.$transaction(async (tx) => {
+    // Zincir kimliği, firma aktifleştirilmeden ÖNCE (son pasifleştirme satırından) okunur.
+    const zincirIslemId = secenek?.zincirGeriAl ? await firmaSonZincirIslemId(tx, id) : null
     const guncel = await tx.servisFirma.update({ where: { id }, data: { aktif: true } })
     await kaydetIslemGecmisi({
       tx, hedefTipi: 'FIRMA', hedefId: id, islem: 'AKTIFLESTIRME', yapanId,
       oncekiDeger: { aktif: false }, yeniDeger: { aktif: true },
     })
-    return guncel
+    if (!zincirIslemId) return guncel
+    const zincirSonucu = await firmaZincirGeriAl(tx, existing, zincirIslemId, yapanId)
+    return { ...guncel, zincirSonucu }
   })
+}
+
+/** Geri alma diyaloğu için önizleme (yazma yok): kaç kayıt birlikte geri gelebilir. */
+export async function firmaGeriAlOnizleme(id: string) {
+  const existing = await prisma.servisFirma.findUnique({ where: { id } })
+  if (!existing) throw new Error('Firma bulunamadı.')
+  if (existing.aktif) throw new Error('Firma zaten aktif.')
+  return prisma.$transaction(async (tx) => firmaZincirOnizleme(tx, id))
 }
 
 // ============================================================================

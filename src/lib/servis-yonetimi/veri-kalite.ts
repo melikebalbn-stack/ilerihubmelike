@@ -8,8 +8,8 @@
 // link/yönlendirme olarak sunar.
 //
 // 14 madde → 13 kontrol (14, 14a+14b olarak ikiye bölündü; 8 ve 10
-// kurulamıyor, veri kaynağı yok — bkz. keşif raporu B.8/B.10; 12 kapasite
-// motoru main'e girene kadar yer tutucu — bkz. F).
+// kurulamıyor, veri kaynağı yok — bkz. keşif raporu B.8/B.10). B1: 12 (kapasite
+// aşımı) kapasite motoruyla eklendi + 'güzergâhın aracı yok' → 15 kontrol.
 //
 // Tarih aralığı kesişim kontrollerinde (9, 13) POZİTİF AND-of-OR formu
 // kullanılır: (bitis IS NULL OR bitis >= digerBaslangic) AND
@@ -20,6 +20,7 @@
 // adres, e-posta bu ekranda YOK.
 
 import { prisma } from '@/lib/prisma'
+import { servisKapasiteTopluGetir } from './kapasite'
 
 export interface VeriKaliteBulgu {
   kod: string
@@ -587,6 +588,46 @@ export async function disFirmaSoforuFirmasiz(): Promise<VeriKaliteBulgu> {
 // diğer 11'i çalışmaya devam eder, patlayan kendi satırında hata bilgisiyle
 // döner (rule 17, güvenli geri dönüş).
 // ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+// Kapasite aşımı (madde 43/12) — kapasite motoru (TEK KAYNAK) ile
+// ----------------------------------------------------------------------------
+// Personel > koltuk olan (güzergâh × sefer dilimi) çiftleri. Aracı OLMAYAN
+// güzergâh burada aşım SAYILMAZ (ayrı kontrol: guzergah-arac-yok) — koltuk
+// olmadığı için "aşım" anlamsızdır.
+export async function kapasiteAsimi(): Promise<VeriKaliteBulgu> {
+  const toplu = await servisKapasiteTopluGetir()
+  const kayitlar = toplu.asimlar.map((a) => ({
+    guzergahId: a.guzergahId,
+    guzergahKod: a.kod,
+    guzergahAd: a.ad,
+    dilimKod: a.dilimKod,
+    koltuk: a.koltuk,
+    personel: a.personel,
+    fazla: a.fazla,
+  }))
+  return { kod: 'kapasite-asimi', baslik: 'Kapasite aşımı', adet: kayitlar.length, kayitlar }
+}
+
+// ----------------------------------------------------------------------------
+// Güzergâhın aracı yok — hiçbir sefer diliminde aktif ANA aracı olmayan AKTİF güzergâh
+// ----------------------------------------------------------------------------
+// "Servis var / araç yok" (servis-var-arac-yok) personelin atandığı (güzergâh × dilim)
+// çiftlerine bakar; bu kontrol güzergâhın HİÇ aracı olmamasını yakalar (personel
+// atanmamış olsa bile).
+export async function guzergahAracYok(): Promise<VeriKaliteBulgu> {
+  const toplu = await servisKapasiteTopluGetir()
+  const kayitlar = toplu.guzergahlar
+    .filter((g) => g.aracliDilimSayisi === 0)
+    .map((g) => ({
+      guzergahId: g.guzergahId,
+      guzergahKod: g.kod,
+      guzergahAd: g.ad,
+      personelSayisi: g.ozet.atananPersonelSayisi,
+    }))
+    .sort((a, b) => b.personelSayisi - a.personelSayisi || a.guzergahKod.localeCompare(b.guzergahKod, 'tr'))
+  return { kod: 'guzergah-arac-yok', baslik: 'Güzergâhın aracı yok', adet: kayitlar.length, kayitlar }
+}
+
 interface KontrolTanimi {
   kod: string
   baslik: string
@@ -613,9 +654,10 @@ const KONTROLLER: KontrolTanimi[] = [
   // Personnel için izlenebilir bir adres tarihçesi/audit kaynağı yok.
   // Bkz. keşif raporu madde B.10 (madde 31'in aynı açık sorunuyla birlikte).
   { kod: 'suresi-bitmis-gecici-atama', baslik: 'Süresi bitmiş geçici atama', calistir: suresiBitmisGeciciAtama },
-  // TODO: madde 43/12 — "kapasite aşımı". Kapasite motoru
-  // (servisKapasiteOzetiGetir, src/lib/servis-yonetimi/kapasite.ts) main'e
-  // girdiğinde buraya bir kontrol olarak eklenecek.
+  // Madde 43/12 — kapasite aşımı (+ aracı olmayan güzergâh): sayılar kapasite
+  // motorundan (kapasite.ts, TEK KAYNAK) gelir; burada yeniden hesaplanmaz.
+  { kod: 'kapasite-asimi', baslik: 'Kapasite aşımı', calistir: kapasiteAsimi },
+  { kod: 'guzergah-arac-yok', baslik: 'Güzergâhın aracı yok', calistir: guzergahAracYok },
   { kod: 'tarih-cakismasi-arac-sofor', baslik: 'Tarih çakışması (araç/şoför)', calistir: tarihCakismasiAracSofor },
   { kod: 'aktif-arac-pasif-firma', baslik: 'Eksik firma ilişkisi (a)', calistir: aktifAracPasifFirma },
   { kod: 'dis-firma-soforu-firmasiz', baslik: 'Eksik firma ilişkisi (b)', calistir: disFirmaSoforuFirmasiz },

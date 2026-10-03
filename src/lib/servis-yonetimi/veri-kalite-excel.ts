@@ -108,6 +108,8 @@ const SAYFA_ADLARI: Record<string, string> = {
   'servis-var-arac-yok': 'Araç Yok',
   'servis-var-sofor-yok': 'Sürücü Yok',
   'guzergah-sefer-dilimi-tanimsiz': 'Sefer Dilimi Tanımsız',
+  'kapasite-asimi': 'Kapasite Aşımı',
+  'guzergah-arac-yok': 'Güzergâhın Aracı Yok',
   'kapasitesi-eksik-arac': 'Kapasitesi Eksik Araç',
   'koordinatsiz-durak': 'Koordinatsız Durak',
   'cakisan-atamalar': 'Çakışan Atamalar',
@@ -227,6 +229,25 @@ const SAYFA_TANIMLARI: Record<string, SayfaTanimi> = {
     kolonlar: [
       { baslik: 'Güzergah Kod', deger: k => metin(k.guzergahKod) },
       { baslik: 'Güzergah Ad', deger: k => metin(k.guzergahAd) },
+    ],
+  },
+
+  'kapasite-asimi': {
+    kolonlar: [
+      { baslik: 'Güzergah Kod', deger: k => metin(k.guzergahKod) },
+      { baslik: 'Güzergah Ad', deger: k => metin(k.guzergahAd) },
+      { baslik: 'Sefer Dilimi', deger: k => metin(k.dilimKod) },
+      { baslik: 'Koltuk', deger: k => sayi(k.koltuk) },
+      { baslik: 'Personel', deger: k => sayi(k.personel) },
+      { baslik: 'Fazla', deger: k => sayi(k.fazla) },
+    ],
+  },
+
+  'guzergah-arac-yok': {
+    kolonlar: [
+      { baslik: 'Güzergah Kod', deger: k => metin(k.guzergahKod) },
+      { baslik: 'Güzergah Ad', deger: k => metin(k.guzergahAd) },
+      { baslik: 'Atanmış Personel', deger: k => sayi(k.personelSayisi) },
     ],
   },
 

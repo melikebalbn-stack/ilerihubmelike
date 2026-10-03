@@ -1,6 +1,6 @@
 // MASTER Madde 43 — Veri kalite raporunun EKRAN DÜZENİ.
 //
-// Ekran ucu (route.ts) ve Excel export ucu (export/route.ts) AYNI 16 satırı,
+// Ekran ucu (route.ts) ve Excel export ucu (export/route.ts) AYNI 17 satırı,
 // AYNI sırada göstersin diye burada; ikinci kez yazılmasın (rule 6).
 // Next.js route dosyası olarak algılanmasın diye alt çizgiyle başlıyor
 // (_filtre.ts / _erisim-izi.ts deseninin eşi).
@@ -13,8 +13,7 @@
 import type { VeriKaliteRaporSatiri } from '@/lib/servis-yonetimi/veri-kalite'
 
 // MASTER madde 43'ün 14 anomalisinden salt okunur tespiti YAPILAMAYAN
-// üçü (8 vardiya, 10 adres, 12 kapasite — bkz. keşif raporu B.8/B.10/F)
-// burada "Bu Ay Ne Değişti?" API'sindeki kapsamDisi/not deseniyle
+// ikisi (8 vardiya, 10 adres — bkz. keşif raporu B.8/B.10) burada "Bu Ay Ne Değişti?" API'sindeki kapsamDisi/not deseniyle
 // placeholder olarak döner — hata fırlatmaz, ekran normal bir kart
 // olarak render edebilir.
 export type VeriKaliteKapsamDisiSatiri = {
@@ -58,18 +57,6 @@ export const ADRES_DEGISMIS: VeriKaliteKapsamDisiSatiri = {
     'sorun (bkz. keşif raporu madde B.10).',
 }
 
-export const KAPASITE_ASIMI: VeriKaliteKapsamDisiSatiri = {
-  kod: 'kapasite-asimi',
-  baslik: 'Kapasite aşımı',
-  adet: 0,
-  kayitlar: [],
-  kirpildi: false,
-  kapsamDisi: true,
-  not:
-    "Kapasite motoru (servisKapasiteOzetiGetir) henüz main'e girmedi — bu kontrol motor main'e girdiğinde " +
-    'eklenecek (TODO, madde 43/12).',
-}
-
 // Rapor dizisini MASTER'ın 1-14 sırasına göre dizer (kontrat: her kod
 // yalnız bir kez, eksik kod = kod/route arasında bozulmuş bir sözleşme —
 // bilerek fail-loud, salt tespitin "sessiz hata yutma" prensibinden
@@ -95,7 +82,8 @@ export function raporSiraliOlustur(rapor: VeriKaliteRaporSatiri[]): VeriKaliteDu
     al('cakisan-atamalar'),
     ADRES_DEGISMIS,
     al('suresi-bitmis-gecici-atama'),
-    KAPASITE_ASIMI,
+    al('kapasite-asimi'),
+    al('guzergah-arac-yok'),
     al('tarih-cakismasi-arac-sofor'),
     al('aktif-arac-pasif-firma'),
     al('dis-firma-soforu-firmasiz'),

@@ -50,8 +50,7 @@ import {
   raporSiraliOlustur,
   VARDIYA_UYUMSUZLUGU,
   ADRES_DEGISMIS,
-  KAPASITE_ASIMI,
-} from '../_rapor-duzeni'
+  } from '../_rapor-duzeni'
 
 function oturumKur(izinler: string[] | null) {
   if (izinler === null) {
@@ -171,11 +170,11 @@ describe('GET .../veri-kalite/export — dosya', () => {
     expect(cd).toMatch(/\d{4}-\d{2}-\d{2}/)
   })
 
-  it("Özet'te 16 satır bulunur (13 kontrol + 3 yer tutucu)", async () => {
+  it("Özet'te 17 satır bulunur (15 kontrol + 2 yer tutucu)", async () => {
     tumKontrolleriBosSonuclaKur()
     const { wb } = await wbOku(await GET())
     const satirlar = sayfaSatirlari(wb, 'Özet')
-    expect(satirlar).toHaveLength(17) // 1 başlık + 16
+    expect(satirlar).toHaveLength(18) // 1 başlık + 17
   })
 })
 
@@ -222,7 +221,7 @@ describe('GET .../veri-kalite/export — kırpma YOK', () => {
 // 14. kontrol eklenip düzene girmezse bu test PATLAR.
 // ----------------------------------------------------------------------------
 describe('sürüklenme koruması — düzen ile kontrol kümesi birebir', () => {
-  it('_rapor-duzeni.ts kod kümesi == veriKaliteRaporuGetir() kodları + 3 yer tutucu', async () => {
+  it('_rapor-duzeni.ts kod kümesi == veriKaliteRaporuGetir() kodları + 2 yer tutucu', async () => {
     tumKontrolleriBosSonuclaKur()
 
     // Kaynak 1: veri-kalite.ts'in KENDİ KONTROLLER tanımı (çalıştırarak türetildi;
@@ -233,7 +232,7 @@ describe('sürüklenme koruması — düzen ile kontrol kümesi birebir', () => 
     // Kaynak 2: ortak düzen dosyası
     const duzenKodlari = raporSiraliOlustur(rapor).map(s => s.kod)
 
-    const yerTutucuKodlari = [VARDIYA_UYUMSUZLUGU, ADRES_DEGISMIS, KAPASITE_ASIMI].map(y => y.kod)
+    const yerTutucuKodlari = [VARDIYA_UYUMSUZLUGU, ADRES_DEGISMIS].map(y => y.kod)
 
     expect(new Set(duzenKodlari)).toEqual(new Set([...kontrolKodlari, ...yerTutucuKodlari]))
     expect(duzenKodlari).toHaveLength(kontrolKodlari.length + yerTutucuKodlari.length)

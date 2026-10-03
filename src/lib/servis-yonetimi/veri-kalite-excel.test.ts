@@ -49,7 +49,7 @@ function yerTutucu(kod: string, baslik: string, not: string): VeriKaliteExcelSat
   return { kod, baslik, adet: 0, kayitlar: [], kirpildi: false, kapsamDisi: true, not }
 }
 
-/** API'nin döndürdüğü 16 satırın (13 kontrol + 3 yer tutucu) temsili. */
+/** API'nin döndürdüğü 17 satırın (15 kontrol + 2 yer tutucu) temsili. */
 function tamRapor(ustGelen: Partial<Record<string, VeriKaliteExcelSatiri>> = {}): VeriKaliteExcelSatiri[] {
   const varsayilan: VeriKaliteExcelSatiri[] = [
     bulgu('aktif-personel-servis-yok', 'Aktif personel / servis yok', []),
@@ -64,7 +64,8 @@ function tamRapor(ustGelen: Partial<Record<string, VeriKaliteExcelSatiri>> = {})
     bulgu('cakisan-atamalar', 'Çakışan atamalar', []),
     yerTutucu('adres-degismis-servis-yeniden-degerlendirilmemis', 'Adres değişmiş / yeniden değerlendirilmemiş', 'Veri kaynağı yok (B.10).'),
     bulgu('suresi-bitmis-gecici-atama', 'Süresi bitmiş geçici atama', []),
-    yerTutucu('kapasite-asimi', 'Kapasite aşımı', 'Kapasite motoru main\'e girmedi.'),
+    bulgu('kapasite-asimi', 'Kapasite aşımı', []),
+    bulgu('guzergah-arac-yok', 'Güzergâhın aracı yok', []),
     bulgu('tarih-cakismasi-arac-sofor', 'Tarih çakışması (araç/şoför)', []),
     bulgu('aktif-arac-pasif-firma', 'Eksik firma ilişkisi (a)', []),
     bulgu('dis-firma-soforu-firmasiz', 'Eksik firma ilişkisi (b)', []),
@@ -75,25 +76,24 @@ function tamRapor(ustGelen: Partial<Record<string, VeriKaliteExcelSatiri>> = {})
 const YER_TUTUCU_KODLARI = [
   'vardiya-uyumsuzlugu',
   'adres-degismis-servis-yeniden-degerlendirilmemis',
-  'kapasite-asimi',
 ]
 
 // ----------------------------------------------------------------------------
 // Özet sayfası
 // ----------------------------------------------------------------------------
 describe('veriKaliteExcelOlustur — Özet sayfası', () => {
-  it('16 kontrolün (13 uygulanmış + 3 yer tutucu) HEPSİ Özet\'te listelenir', () => {
+  it('17 kontrolün (15 uygulanmış + 2 yer tutucu) HEPSİ Özet\'te listelenir', () => {
     const wb = oku(veriKaliteExcelOlustur(tamRapor()))
     const satirlar = sayfaSatirlari(wb, 'Özet')
 
-    // 1 başlık + 16 kontrol
-    expect(satirlar).toHaveLength(17)
+    // 1 başlık + 17 kontrol
+    expect(satirlar).toHaveLength(18)
     for (const s of tamRapor()) {
       expect(satirlar.some(r => r[0] === s.kod), `${s.kod} eksik`).toBe(true)
     }
   })
 
-  it('🔴 yer tutucu 3 kontrolün Adet hücresine 0 YAZILMAZ, "KAPSAM DIŞI" yazar', () => {
+  it('🔴 yer tutucu 2 kontrolün Adet hücresine 0 YAZILMAZ, "KAPSAM DIŞI" yazar', () => {
     const wb = oku(veriKaliteExcelOlustur(tamRapor()))
 
     for (const kod of YER_TUTUCU_KODLARI) {
@@ -215,8 +215,8 @@ describe('veriKaliteExcelOlustur — sayfa adları', () => {
   it('hepsi ≤31 karakter, hepsi birbirinden FARKLI ve yasaklı karakter yok', () => {
     const wb = oku(veriKaliteExcelOlustur(herKontroldeKayitliRapor()))
 
-    // Özet + 13 uygulanmış kontrol
-    expect(wb.SheetNames).toHaveLength(14)
+    // Özet + 15 uygulanmış kontrol
+    expect(wb.SheetNames).toHaveLength(16)
     for (const ad of wb.SheetNames) {
       expect(ad.length, `"${ad}" ${ad.length} karakter`).toBeLessThanOrEqual(SAYFA_ADI_MAX)
       expect(ad, `"${ad}" yasaklı karakter içeriyor`).not.toMatch(/[:\\/?*[\]]/)

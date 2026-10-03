@@ -47,6 +47,8 @@ function bulguLinki(kod: string, kayit: VeriKaliteKayit): string {
     case 'servis-var-arac-yok':
     case 'servis-var-sofor-yok':
     case 'guzergah-sefer-dilimi-tanimsiz':
+    case 'kapasite-asimi':
+    case 'guzergah-arac-yok':
       return `/servis-yonetimi/guzergah/${kayit.guzergahId}`
     default:
       return '/servis-yonetimi'
@@ -69,6 +71,10 @@ function kayitEtiketi(kod: string, kayit: VeriKaliteKayit): string {
       return `${kayit.guzergahKod} — ${kayit.guzergahAd} / ${kayit.dilimKod} (${kayit.etkilenenPersonelSayisi} personel)`
     case 'guzergah-sefer-dilimi-tanimsiz':
       return `${kayit.guzergahKod} — ${kayit.guzergahAd}`
+    case 'kapasite-asimi':
+      return `${kayit.guzergahKod} — ${kayit.guzergahAd} / ${kayit.dilimKod}: ${kayit.personel} kişi / ${kayit.koltuk} koltuk (+${kayit.fazla})`
+    case 'guzergah-arac-yok':
+      return `${kayit.guzergahKod} — ${kayit.guzergahAd} (${kayit.personelSayisi} personel)`
     case 'kapasitesi-eksik-arac':
       return `${kayit.plaka} — kapasite ${kayit.kapasite} (${kayit.firmaAd})`
     case 'koordinatsiz-durak':

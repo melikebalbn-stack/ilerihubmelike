@@ -61,7 +61,7 @@ function tumKontrolleriBosSonuclaKur() {
   mocks.guzergahDurakSaatFindMany.mockResolvedValue([])
 }
 
-const BEKLENEN_16_KOD = [
+const BEKLENEN_17_KOD = [
   'aktif-personel-servis-yok',
   'pasif-personel-servis-aktif',
   'mukerrer-aktif-servis',
@@ -75,6 +75,7 @@ const BEKLENEN_16_KOD = [
   'adres-degismis-servis-yeniden-degerlendirilmemis',
   'suresi-bitmis-gecici-atama',
   'kapasite-asimi',
+  'guzergah-arac-yok',
   'tarih-cakismasi-arac-sofor',
   'aktif-arac-pasif-firma',
   'dis-firma-soforu-firmasiz',
@@ -101,7 +102,7 @@ describe('GET /api/servis-yonetimi/veri-kalite — yetkilendirme', () => {
 })
 
 describe('GET /api/servis-yonetimi/veri-kalite — pozitif', () => {
-  it('yetkili kullanıcı için 200 + beklenen 16 kontrol/placeholder yapısı döner', async () => {
+  it('yetkili kullanıcı için 200 + beklenen 17 kontrol/placeholder yapısı (15 uygulanmış + 2 yer tutucu) döner', async () => {
     mocks.requirePermission.mockResolvedValue(permissionResult(true))
     tumKontrolleriBosSonuclaKur()
 
@@ -110,7 +111,7 @@ describe('GET /api/servis-yonetimi/veri-kalite — pozitif', () => {
 
     expect(res.status).toBe(200)
     expect(json.ok).toBe(true)
-    expect(json.data.map((s: { kod: string }) => s.kod)).toEqual(BEKLENEN_16_KOD)
+    expect(json.data.map((s: { kod: string }) => s.kod)).toEqual(BEKLENEN_17_KOD)
     expect(
       json.data.every(
         (s: { adet: number; kayitlar: unknown[]; kirpildi: boolean }) =>
@@ -119,7 +120,7 @@ describe('GET /api/servis-yonetimi/veri-kalite — pozitif', () => {
     ).toBe(true)
   })
 
-  it('atlanan/TODO maddeler (8, 10, 12) kapsamDisi + not alanlarıyla, hata fırlatmadan döner', async () => {
+  it('atlanan maddeler (8, 10) kapsamDisi + not alanlarıyla, hata fırlatmadan döner', async () => {
     mocks.requirePermission.mockResolvedValue(permissionResult(true))
     tumKontrolleriBosSonuclaKur()
 
@@ -130,7 +131,12 @@ describe('GET /api/servis-yonetimi/veri-kalite — pozitif', () => {
     const adres = json.data.find((s: { kod: string }) => s.kod === 'adres-degismis-servis-yeniden-degerlendirilmemis')
     const kapasite = json.data.find((s: { kod: string }) => s.kod === 'kapasite-asimi')
 
-    for (const satir of [vardiya, adres, kapasite]) {
+    // B1: kapasite aşımı artık UYGULANMIŞ bir kontrol (kapasite motorundan) — yer tutucu DEĞİL.
+    expect(kapasite.kapsamDisi).toBeUndefined()
+    expect(kapasite.hata).toBeUndefined()
+    expect(json.data.find((s: { kod: string }) => s.kod === 'guzergah-arac-yok').kapsamDisi).toBeUndefined()
+
+    for (const satir of [vardiya, adres]) {
       expect(satir.kapsamDisi).toBe(true)
       expect(typeof satir.not).toBe('string')
       expect(satir.not.length).toBeGreaterThan(0)
@@ -142,10 +148,10 @@ describe('GET /api/servis-yonetimi/veri-kalite — pozitif', () => {
 // ----------------------------------------------------------------------------
 // 🔴 EN ÖNEMLİ SÖZLEŞME NOKTASI: bir kontrol patlarsa endpoint 500 DÖNMEZ.
 // Promise.allSettled'ın anlamı route katmanında da korunur — yalnız patlayan
-// kontrolün kendi satırı hata bilgisiyle döner, diğer 15 satır sağlam kalır.
+// kontrolün kendi satırı hata bilgisiyle döner, diğer 16 satır sağlam kalır.
 // ----------------------------------------------------------------------------
 describe('GET /api/servis-yonetimi/veri-kalite — kısmi hata (Promise.allSettled sözleşmesi)', () => {
-  it('bir kontrol (personnel.findMany) patlarsa 200 döner, yalnız o satırda hata olur, diğer 15 satır sağlam kalır', async () => {
+  it('bir kontrol (personnel.findMany) patlarsa 200 döner, yalnız o satırda hata olur, diğer 16 satır sağlam kalır', async () => {
     mocks.requirePermission.mockResolvedValue(permissionResult(true))
     tumKontrolleriBosSonuclaKur()
     // aktifPersonelServisYok'un ilk çağrısı patlar (personnel.findMany).
@@ -161,7 +167,7 @@ describe('GET /api/servis-yonetimi/veri-kalite — kısmi hata (Promise.allSettl
 
     expect(res.status).toBe(200)
     expect(json.ok).toBe(true)
-    expect(json.data).toHaveLength(16)
+    expect(json.data).toHaveLength(17)
 
     const patlayan = json.data.find((s: { kod: string }) => s.kod === 'aktif-personel-servis-yok')
     expect(patlayan.hata).toBe('DB bağlantı hatası')
@@ -170,7 +176,7 @@ describe('GET /api/servis-yonetimi/veri-kalite — kısmi hata (Promise.allSettl
 
     const digerleri = json.data.filter((s: { kod: string }) => s.kod !== 'aktif-personel-servis-yok')
     expect(digerleri.every((s: { hata?: string }) => s.hata === undefined)).toBe(true)
-    expect(digerleri).toHaveLength(15)
+    expect(digerleri).toHaveLength(16)
   })
 })
 

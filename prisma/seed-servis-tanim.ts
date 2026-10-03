@@ -63,99 +63,46 @@ import { PrismaPg } from '@prisma/adapter-pg'
 import { Pool } from 'pg'
 import { PrismaClient } from '../src/generated/prisma'
 import {
-  TUM_GUZERGAHLAR,
-  TEYIT_BEKLIYOR,
-  ARACLAR,
-  SEFER_DILIMLERI,
-  GUZERGAH_ARAC_ANA_ATAMA,
-} from '../src/lib/servis-yonetimi/servis-tanim-verisi'
-import {
-  SAYIM_ANAHTARLARI,
-  TanimHatasi,
-  cliCoz,
-  placeholderKontrol,
-  planSayimi,
-  planla,
-  uygula,
-  type TanimPrisma,
-} from '../src/lib/servis-yonetimi/servis-tanim-seed-mantigi'
+  calistir,
+  hataKodlariniKur,
+  type Baglanti,
+} from '../src/lib/servis-yonetimi/servis-tanim-seed-calistir'
+import type { TanimPrisma } from '../src/lib/servis-yonetimi/servis-tanim-seed-mantigi'
 
 export * from '../src/lib/servis-yonetimi/servis-tanim-verisi'
 
 // ----------------------------------------------------------------------------
-// ANA AKIŞ
+// GİRİŞ NOKTASI — akış servis-tanim-seed-calistir.ts'te (test edilebilir).
+//
+// 🔴 ÇIKIŞ KODU: calistir() 0 ya da 1 döner; süreç o kodla çıkar. Prod komut
+// zinciri `&&` ile ilerlediği için hata ASLA 0 dönmemeli. Disconnect akışın
+// finally'sinde yapılır ve asıl hatayı yutmaz. Yakalanmamış hata / unhandled
+// rejection de 1 ile biter. Hata stderr'e, başarı çıktısı stdout'a gider.
 // ----------------------------------------------------------------------------
 
-async function main() {
-  // DB'ye dokunmadan ÖNCE: parametreler (yerleşke dahil, dry-run'da da) ve
-  // araç/firma verisinde yer tutucu kontrolü.
-  const { db, yerleskeKod, yerleskeAd, apply: APPLY } = cliCoz(process.argv.slice(2))
-  placeholderKontrol(ARACLAR)
-
+function gercekBaglan(): Baglanti {
   const pool = new Pool({ connectionString: process.env.DATABASE_URL })
   const prisma = new PrismaClient({ adapter: new PrismaPg(pool) })
-
-  try {
-    // --- Güvenlik kapısı: yalnız beklenen DB (göç script'iyle aynı desen) ---
-    const [{ current_database: gercekDb }] = await prisma.$queryRaw<{ current_database: string }[]>`
-      SELECT current_database()
-    `
-    if (gercekDb !== db) {
-      console.error(`❌ Bağlanılan veritabanı ("${gercekDb}") --db ile verilen ("${db}") ile UYUŞMUYOR. Durduruldu.`)
-      process.exit(1)
-    }
-    console.log(`✅ Veritabanı doğrulandı: ${gercekDb}${APPLY ? ' — APPLY MODU' : ' — DRY-RUN'}\n`)
-
-    // --- PLAN (yalnız okur; dry-run ve apply için ORTAK) ---------------------
-    const tprisma = prisma as unknown as TanimPrisma
-    const plan = await planla(tprisma, {
-      yerleskeKod,
-      yerleskeAd,
-      guzergahlar: TUM_GUZERGAHLAR,
-      araclar: ARACLAR,
-      dilimler: SEFER_DILIMLERI,
-    })
-    const { olusturulacak, mevcut } = planSayimi(plan)
-
-    console.log('═══ PLAN ═══')
-    for (const k of SAYIM_ANAHTARLARI) {
-      console.log(`  ${k.padEnd(10)} oluşturulacak: ${String(olusturulacak[k]).padStart(4)} · mevcut korundu: ${mevcut[k]}`)
-    }
-
-    if (APPLY) {
-      const yazilan = await uygula(tprisma, plan)
-      console.log('\n═══ UYGULANDI ═══')
-      for (const k of SAYIM_ANAHTARLARI) console.log(`  ${k.padEnd(10)} yazılan: ${String(yazilan[k]).padStart(4)}`)
-      const fark = SAYIM_ANAHTARLARI.filter((k) => yazilan[k] !== olusturulacak[k])
-      if (fark.length > 0) {
-        throw new Error(`Plan ile uygulama sayıları FARKLI: ${fark.join(', ')}`)
-      }
-    } else {
-      console.log('\n(DRY-RUN — hiçbir şey yazılmadı. --apply ile gerçek yazım yapılır.)')
-    }
-
-    // 🔴 Güzergâh → araç ANA varsayılan ataması: Elif güzergah/plaka listesini
-    // AYRICA iletecek (bkz. servis-tanim-verisi.ts). Liste gelene kadar BOŞ —
-    // seed burada hiçbir create() ÇAĞIRMAZ, yalnız durumu raporlar.
-    console.log(
-      `\n(Güzergâh→araç ANA atama: ${GUZERGAH_ARAC_ANA_ATAMA.length} kayıt — liste bekleniyor, seed yazmadı.)`,
-    )
-
-    // 🔴 ServisDurak'ta not/açıklama alanı YOK (schema.prisma, migration
-    // açılmadı) — bu liste DB'ye YAZILMAZ, yalnız burada, konsolda basılır.
-    // Kalıcı takip TEYIT_BEKLIYOR sabitinde (servis-tanim-verisi.ts).
-    console.log(`\n═══ TEYIT BEKLİYOR (${TEYIT_BEKLIYOR.length} madde — DB'ye yazılmadı, yalnız bu raporda) ═══`)
-    for (const t of TEYIT_BEKLIYOR) {
-      console.log(`  ${t.madde.padEnd(4)} ${t.guzergah.padEnd(22)} ${t.durum.padEnd(28)} ${t.konu}`)
-    }
-  } finally {
-    await prisma.$disconnect()
-    await pool.end()
+  return {
+    prisma: prisma as unknown as TanimPrisma,
+    aktifVeritabani: async () => {
+      const [{ current_database: ad }] = await prisma.$queryRaw<{ current_database: string }[]>`
+        SELECT current_database()
+      `
+      return ad
+    },
+    kapat: async () => {
+      await prisma.$disconnect()
+      await pool.end()
+    },
   }
 }
 
-main().catch((e) => {
-  if (e instanceof TanimHatasi) console.error(`❌ ${e.message}`)
-  else console.error(e)
-  process.exitCode = 1
-})
+hataKodlariniKur(process, console.error)
+calistir(process.argv.slice(2), { baglan: gercekBaglan, log: console.log, err: console.error }).then(
+  (kod) => process.exit(kod),
+  (e) => {
+    console.error(e)
+    process.exit(1)
+  },
+)

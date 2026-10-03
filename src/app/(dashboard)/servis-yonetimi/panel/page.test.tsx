@@ -32,19 +32,20 @@ const TOPLU = {
   asimlar: [{ guzergahId: 'id-G2', kod: 'G2', ad: 'Şişli Hattı', dilimKod: 'SABAH', koltuk: 10, personel: 12, fazla: 2 }],
   toplam: {
     guzergahSayisi: 3, atanmisPersonel: 30, toplamKoltuk: 26, netBosKoltuk: -1,
-    asimSayisi: 1, asimKisi: 2, aracsizGuzergahSayisi: 1, dolmakUzereSayisi: 1,
+    asimSayisi: 1, asimKisi: 2, aracsizGuzergahSayisi: 1, dolmakUzereSayisi: 1, dilimsizAtamaSayisi: 0,
   },
+  dilimsizAtamalar: [],
 }
 const PANEL = {
   buAy: { yil: 2026, ay: 10, yeniServisKullanicisi: 4, servistenAyrilan: 1, servisDegistiren: 2, durakDegistiren: 1, aracDegisenServis: 0, soforDegisenServis: 1, vardiyaDegistiren: 0, toplam: 9 },
-  veriKalite: { kontrolSayisi: 17, bulguluKontrol: 2, toplamBulgu: 7, hataliKontrol: 0, enCokBulgu: [{ kod: 'X', baslik: 'Araçsız güzergâh', adet: 5, hata: false }] },
+  veriKalite: { kontrolSayisi: 17, bulguluKontrol: 2, toplamBulgu: 7, hataliKontrol: 0, dilimsizAtama: 0, enCokBulgu: [{ kod: 'X', baslik: 'Araçsız güzergâh', adet: 5, hata: false }] },
 }
 const KPI = { durumKirilim: [{ durum: 'ACIK', adet: 6 }, { durum: 'AKSIYON_ALINDI', adet: 2 }] }
 
 let fetchMock: ReturnType<typeof vi.fn>
-function fetchKur(toplu: unknown = TOPLU) {
+function fetchKur(toplu: unknown = TOPLU, panel: unknown = PANEL) {
   fetchMock = vi.fn(async (url: string) => {
-    const data = url.includes('kapasite-toplu') ? toplu : url.includes('/panel') ? PANEL : KPI
+    const data = url.includes('kapasite-toplu') ? toplu : url.includes('/panel') ? panel : KPI
     return { ok: true, status: 200, json: async () => ({ ok: true, data }) }
   })
   vi.stubGlobal('fetch', fetchMock)
@@ -211,5 +212,43 @@ describe('Servis Paneli — Türkçe arama ve sıralama', () => {
     expect(sira()).toEqual(['G2', 'G1', 'G3'])
     fireEvent.click(baslik)
     expect(sira()).toEqual(['G1', 'G2', 'G3'])
+  })
+})
+
+describe('Servis Paneli — dilimsiz atama uyarısı (B4)', () => {
+  const dilimsizToplu = (n: number) => ({ ...TOPLU, toplam: { ...TOPLU.toplam, dilimsizAtamaSayisi: n } })
+  const dilimsizPanel = (n: number | null) => ({ ...PANEL, veriKalite: { ...PANEL.veriKalite, dilimsizAtama: n } })
+
+  it('N = 0: "Atanmış personel" kartında altmetin YOK, Veri Kalitesi\'nde dilimsiz satırı YOK', async () => {
+    oturum(['servis.view'])
+    render(<ServisPaneliPage />)
+    await screen.findByText(/yeni servis kullanıcısı/)
+    expect(screen.queryByText(/dilim bağlantısız/)).toBeNull()
+    expect(screen.queryByTestId('vk-dilimsiz')).toBeNull()
+  })
+
+  it('🔴 N > 0: altmetin "N atama dilim bağlantısız, kapasiteye girmiyor" + Veri Kalitesi\'nde aynı sayı', async () => {
+    fetchKur(dilimsizToplu(63), dilimsizPanel(63))
+    oturum(['servis.view'])
+    render(<ServisPaneliPage />)
+    expect(await screen.findByText('63 atama dilim bağlantısız, kapasiteye girmiyor')).toBeTruthy()
+    const vk = await screen.findByTestId('vk-dilimsiz')
+    expect(vk.textContent).toBe('63 atama dilim bağlantısız')
+  })
+
+  it('Veri kalite kontrolü hata verdi (null): Veri Kalitesi satırı çizilmez, KPI altmetni motordan yine gelir', async () => {
+    fetchKur(dilimsizToplu(5), dilimsizPanel(null))
+    oturum(['servis.view'])
+    render(<ServisPaneliPage />)
+    expect(await screen.findByText('5 atama dilim bağlantısız, kapasiteye girmiyor')).toBeTruthy()
+    expect(screen.queryByTestId('vk-dilimsiz')).toBeNull()
+  })
+
+  it('KPI değeri etkilenmez: Atanmış personel kartı motorun sayısını gösterir (dilimsizler eklenmez)', async () => {
+    fetchKur(dilimsizToplu(63), dilimsizPanel(63))
+    oturum(['servis.view'])
+    render(<ServisPaneliPage />)
+    await screen.findByText('63 atama dilim bağlantısız, kapasiteye girmiyor')
+    expect(screen.getByTestId('kpi-Atanmış personel').textContent).toBe('30')
   })
 })

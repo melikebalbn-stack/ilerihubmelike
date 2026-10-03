@@ -1,6 +1,6 @@
 // MASTER Madde 43 — Veri kalite raporunun EKRAN DÜZENİ.
 //
-// Ekran ucu (route.ts) ve Excel export ucu (export/route.ts) AYNI 17 satırı,
+// Ekran ucu (route.ts) ve Excel export ucu (export/route.ts) AYNI 18 satırı,
 // AYNI sırada göstersin diye burada; ikinci kez yazılmasın (rule 6).
 // Next.js route dosyası olarak algılanmasın diye alt çizgiyle başlıyor
 // (_filtre.ts / _erisim-izi.ts deseninin eşi).
@@ -84,6 +84,7 @@ export function raporSiraliOlustur(rapor: VeriKaliteRaporSatiri[]): VeriKaliteDu
     al('suresi-bitmis-gecici-atama'),
     al('kapasite-asimi'),
     al('guzergah-arac-yok'),
+    al('personel-atamasi-dilimsiz'),
     al('tarih-cakismasi-arac-sofor'),
     al('aktif-arac-pasif-firma'),
     al('dis-firma-soforu-firmasiz'),

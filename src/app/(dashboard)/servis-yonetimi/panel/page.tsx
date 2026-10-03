@@ -195,7 +195,15 @@ export default function ServisPaneliPage() {
         <>
           <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
             <KpiKarti baslik="Güzergâh" deger={String(toplu.toplam.guzergahSayisi)} />
-            <KpiKarti baslik="Atanmış personel" deger={String(toplu.toplam.atanmisPersonel)} />
+            <KpiKarti
+              baslik="Atanmış personel"
+              deger={String(toplu.toplam.atanmisPersonel)}
+              alt={
+                toplu.toplam.dilimsizAtamaSayisi > 0
+                  ? `${toplu.toplam.dilimsizAtamaSayisi} atama dilim bağlantısız, kapasiteye girmiyor`
+                  : undefined
+              }
+            />
             <KpiKarti baslik="Toplam koltuk" deger={String(toplu.toplam.toplamKoltuk)} alt="Yalnız aracı olan güzergâhlar" />
             <KpiKarti baslik="Boş koltuk" deger={String(toplu.toplam.netBosKoltuk)} alt="Aşımlar düşülmüş net" />
             <KpiKarti
@@ -333,6 +341,11 @@ export default function ServisPaneliPage() {
                       </p>
                       {ozet.veriKalite.hataliKontrol > 0 && (
                         <p role="alert" className="text-xs text-red-600">{ozet.veriKalite.hataliKontrol} kontrol çalışırken hata verdi.</p>
+                      )}
+                      {ozet.veriKalite.dilimsizAtama !== null && ozet.veriKalite.dilimsizAtama > 0 && (
+                        <p className="text-xs" data-testid="vk-dilimsiz">
+                          <span className="font-semibold tabular-nums">{ozet.veriKalite.dilimsizAtama}</span> atama dilim bağlantısız
+                        </p>
                       )}
                       <ul className="space-y-0.5 text-xs text-muted-foreground">
                         {ozet.veriKalite.enCokBulgu.map((s) => (

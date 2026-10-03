@@ -38,6 +38,7 @@ import {
   servisVarAracYok,
   servisVarSoforYok,
   guzergahSeferDilimiTanimsiz,
+  personelAtamasiDilimsiz,
   kapasitesiEksikArac,
   koordinatsizDurak,
   cakisanAtamalar,
@@ -474,7 +475,7 @@ describe('disFirmaSoforuFirmasiz', () => {
 // Orkestrasyon — Promise.allSettled: bir kontrol patlarsa diğerleri etkilenmez
 // ----------------------------------------------------------------------------
 describe('veriKaliteRaporuGetir', () => {
-  it('bir kontrol reddedilirse (throw) diğer 14 kontrol yine çalışır, patlayan kendi hata bilgisiyle döner', async () => {
+  it('bir kontrol reddedilirse (throw) diğer 15 kontrol yine çalışır, patlayan kendi hata bilgisiyle döner', async () => {
     mocks.personnelFindMany.mockRejectedValueOnce(new Error('DB bağlantı hatası'))
     mocks.personnelFindMany.mockResolvedValue([])
     mocks.personelAtamaGroupBy.mockResolvedValue([])
@@ -491,7 +492,7 @@ describe('veriKaliteRaporuGetir', () => {
 
     const rapor = await veriKaliteRaporuGetir()
 
-    expect(rapor).toHaveLength(15)
+    expect(rapor).toHaveLength(16)
     const patlayan = rapor.find(r => r.kod === 'aktif-personel-servis-yok')
     expect(patlayan?.hata).toBe('DB bağlantı hatası')
     expect(patlayan?.adet).toBe(0)
@@ -500,7 +501,7 @@ describe('veriKaliteRaporuGetir', () => {
     expect(digerleri.every(r => r.hata === undefined)).toBe(true)
   })
 
-  it('hiçbir kontrol patlamazsa tüm 15 sonuç hata alanı olmadan döner', async () => {
+  it('hiçbir kontrol patlamazsa tüm 16 sonuç hata alanı olmadan döner', async () => {
     mocks.personnelFindMany.mockResolvedValue([])
     mocks.personelAtamaGroupBy.mockResolvedValue([])
     mocks.personelAtamaFindMany.mockResolvedValue([])
@@ -515,7 +516,7 @@ describe('veriKaliteRaporuGetir', () => {
     mocks.guzergahDurakSaatFindMany.mockResolvedValue([])
 
     const rapor = await veriKaliteRaporuGetir()
-    expect(rapor).toHaveLength(15)
+    expect(rapor).toHaveLength(16)
     expect(rapor.every(r => r.hata === undefined)).toBe(true)
   })
 })
@@ -527,7 +528,9 @@ describe('veriKaliteRaporuGetir', () => {
 describe('kapasite kontrolleri (kapasite motoru kaynaklı)', () => {
   const GUN_DILIM = [{ id: 'd1', kod: 'SABAH_GIDIS', ad: 'Sabah Servisi' }]
   const kisi = (guzergahId: string, adet: number) =>
-    Array.from({ length: adet }, () => ({ guzergahId, dilimler: [{ dilimId: 'd1' }] }))
+    Array.from({ length: adet }, (_, i) => ({
+      id: `a-${guzergahId}-${i}`, guzergahId, baslangicTarihi: new Date('2026-09-27'), atamaKaynagi: 'MANUEL', dilimler: [{ dilimId: 'd1' }],
+    }))
 
   function kur(guzergahlar: { id: string; kod: string; ad: string }[], araclar: { guzergahId: string; plaka: string; kapasite: number }[], personel: ReturnType<typeof kisi>) {
     mocks.guzergahFindMany.mockResolvedValue(guzergahlar)
@@ -577,5 +580,39 @@ describe('kapasite kontrolleri (kapasite motoru kaynaklı)', () => {
     kur([{ id: 'g1', kod: 'A', ad: 'A' }], [], kisi('g1', 2))
     const [k] = (await guzergahAracYok()).kayitlar
     expect(Object.keys(k).sort()).toEqual(['guzergahAd', 'guzergahId', 'guzergahKod', 'personelSayisi'])
+  })
+})
+
+describe('personelAtamasiDilimsiz (B4) — kapasite motoruyla AYNI kaynak', () => {
+  const dilimsizKur = (n: number) => {
+    mocks.guzergahFindMany.mockResolvedValue([{ id: 'g1', kod: 'DARICA', ad: 'Darıca' }])
+    mocks.seferDilimiFindMany.mockResolvedValue([{ id: 'd1', kod: 'SABAH_GIDIS', ad: 'Sabah Servisi' }])
+    mocks.aracVarsayilanFindMany.mockResolvedValue([])
+    mocks.personelAtamaFindMany.mockResolvedValue(
+      Array.from({ length: n }, (_, i) => ({
+        id: `a${i}`, guzergahId: 'g1', baslangicTarihi: new Date('2026-09-27'), atamaKaynagi: 'IMPORT', dilimler: [],
+      })),
+    )
+  }
+
+  it('N = 0: bulgu yok (adet 0, boş kayıt)', async () => {
+    dilimsizKur(0)
+    const b = await personelAtamasiDilimsiz()
+    expect(b).toMatchObject({ kod: 'personel-atamasi-dilimsiz', adet: 0, kayitlar: [] })
+  })
+
+  it('N > 0: adet = atama sayısı; kayıt güzergâh + başlangıç + kaynak taşır', async () => {
+    dilimsizKur(3)
+    const b = await personelAtamasiDilimsiz()
+    expect(b.adet).toBe(3)
+    expect(b.kayitlar[0]).toEqual({
+      atamaId: 'a0', guzergahId: 'g1', guzergahKod: 'DARICA', guzergahAd: 'Darıca', baslangicTarihi: '2026-09-27', kaynak: 'IMPORT',
+    })
+  })
+
+  it('🔴 KVKK: kayıtta kişi alanı yok (personnelId/ad/sicil)', async () => {
+    dilimsizKur(1)
+    const b = await personelAtamasiDilimsiz()
+    expect(Object.keys(b.kayitlar[0]).sort()).toEqual(['atamaId', 'baslangicTarihi', 'guzergahAd', 'guzergahId', 'guzergahKod', 'kaynak'])
   })
 })

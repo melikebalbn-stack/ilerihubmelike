@@ -628,6 +628,31 @@ export async function guzergahAracYok(): Promise<VeriKaliteBulgu> {
   return { kod: 'guzergah-arac-yok', baslik: 'Güzergâhın aracı yok', adet: kayitlar.length, kayitlar }
 }
 
+// ----------------------------------------------------------------------------
+// Sefer dilimi bağlantısı olmayan aktif personel ataması
+// ----------------------------------------------------------------------------
+// Kapasite motoru personeli (güzergâh × dilim) çiftleri üzerinden sayar; dilim bağlantısı
+// olmayan atama hiçbir çifte girmez → kapasite/KPI'da GÖRÜNMEZ. Sayı motorla AYNI kaynaktan
+// (servisKapasiteTopluGetir.dilimsizAtamalar) gelir, burada yeniden hesaplanmaz.
+// KVKK: kayıt personel kimliği taşımaz (atama kimliği + güzergâh + başlangıç + kaynak).
+export async function personelAtamasiDilimsiz(): Promise<VeriKaliteBulgu> {
+  const toplu = await servisKapasiteTopluGetir()
+  const kayitlar = toplu.dilimsizAtamalar.map((a) => ({
+    atamaId: a.atamaId,
+    guzergahId: a.guzergahId,
+    guzergahKod: a.kod,
+    guzergahAd: a.ad,
+    baslangicTarihi: a.baslangicTarihi,
+    kaynak: a.kaynak,
+  }))
+  return {
+    kod: 'personel-atamasi-dilimsiz',
+    baslik: 'Sefer dilimi bağlantısı olmayan personel ataması',
+    adet: kayitlar.length,
+    kayitlar,
+  }
+}
+
 interface KontrolTanimi {
   kod: string
   baslik: string
@@ -658,6 +683,7 @@ const KONTROLLER: KontrolTanimi[] = [
   // motorundan (kapasite.ts, TEK KAYNAK) gelir; burada yeniden hesaplanmaz.
   { kod: 'kapasite-asimi', baslik: 'Kapasite aşımı', calistir: kapasiteAsimi },
   { kod: 'guzergah-arac-yok', baslik: 'Güzergâhın aracı yok', calistir: guzergahAracYok },
+  { kod: 'personel-atamasi-dilimsiz', baslik: 'Sefer dilimi bağlantısı olmayan personel ataması', calistir: personelAtamasiDilimsiz },
   { kod: 'tarih-cakismasi-arac-sofor', baslik: 'Tarih çakışması (araç/şoför)', calistir: tarihCakismasiAracSofor },
   { kod: 'aktif-arac-pasif-firma', baslik: 'Eksik firma ilişkisi (a)', calistir: aktifAracPasifFirma },
   { kod: 'dis-firma-soforu-firmasiz', baslik: 'Eksik firma ilişkisi (b)', calistir: disFirmaSoforuFirmasiz },

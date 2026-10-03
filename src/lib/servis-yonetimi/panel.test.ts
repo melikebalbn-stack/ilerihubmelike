@@ -46,3 +46,18 @@ describe('veriKaliteOzetiOlustur', () => {
     expect(o).toMatchObject({ toplamBulgu: 0, bulguluKontrol: 0, enCokBulgu: [] })
   })
 })
+
+describe('veriKaliteOzetiOlustur — dilimsiz atama sayısı (B4)', () => {
+  const r = (kod: string, adet: number, hata?: string) =>
+    ({ kod, baslik: kod, adet, ...(hata ? { hata } : {}) }) as unknown as VeriKaliteRaporSatiri
+
+  it('kontrol varsa adet; yoksa 0', () => {
+    expect(veriKaliteOzetiOlustur([r('personel-atamasi-dilimsiz', 63)]).dilimsizAtama).toBe(63)
+    expect(veriKaliteOzetiOlustur([r('personel-atamasi-dilimsiz', 0)]).dilimsizAtama).toBe(0)
+  })
+
+  it('🔴 kontrol hata verdiyse null (0 gibi gösterilmez); rapor satırı hiç yoksa null', () => {
+    expect(veriKaliteOzetiOlustur([r('personel-atamasi-dilimsiz', 0, 'DB')]).dilimsizAtama).toBeNull()
+    expect(veriKaliteOzetiOlustur([r('baska', 3)]).dilimsizAtama).toBeNull()
+  })
+})

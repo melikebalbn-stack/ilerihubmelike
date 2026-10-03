@@ -49,7 +49,7 @@ function yerTutucu(kod: string, baslik: string, not: string): VeriKaliteExcelSat
   return { kod, baslik, adet: 0, kayitlar: [], kirpildi: false, kapsamDisi: true, not }
 }
 
-/** API'nin döndürdüğü 17 satırın (15 kontrol + 2 yer tutucu) temsili. */
+/** API'nin döndürdüğü 18 satırın (16 kontrol + 2 yer tutucu) temsili. */
 function tamRapor(ustGelen: Partial<Record<string, VeriKaliteExcelSatiri>> = {}): VeriKaliteExcelSatiri[] {
   const varsayilan: VeriKaliteExcelSatiri[] = [
     bulgu('aktif-personel-servis-yok', 'Aktif personel / servis yok', []),
@@ -66,6 +66,7 @@ function tamRapor(ustGelen: Partial<Record<string, VeriKaliteExcelSatiri>> = {})
     bulgu('suresi-bitmis-gecici-atama', 'Süresi bitmiş geçici atama', []),
     bulgu('kapasite-asimi', 'Kapasite aşımı', []),
     bulgu('guzergah-arac-yok', 'Güzergâhın aracı yok', []),
+    bulgu('personel-atamasi-dilimsiz', 'Sefer dilimi bağlantısı olmayan personel ataması', []),
     bulgu('tarih-cakismasi-arac-sofor', 'Tarih çakışması (araç/şoför)', []),
     bulgu('aktif-arac-pasif-firma', 'Eksik firma ilişkisi (a)', []),
     bulgu('dis-firma-soforu-firmasiz', 'Eksik firma ilişkisi (b)', []),
@@ -82,12 +83,12 @@ const YER_TUTUCU_KODLARI = [
 // Özet sayfası
 // ----------------------------------------------------------------------------
 describe('veriKaliteExcelOlustur — Özet sayfası', () => {
-  it('17 kontrolün (15 uygulanmış + 2 yer tutucu) HEPSİ Özet\'te listelenir', () => {
+  it('18 kontrolün (16 uygulanmış + 2 yer tutucu) HEPSİ Özet\'te listelenir', () => {
     const wb = oku(veriKaliteExcelOlustur(tamRapor()))
     const satirlar = sayfaSatirlari(wb, 'Özet')
 
-    // 1 başlık + 17 kontrol
-    expect(satirlar).toHaveLength(18)
+    // 1 başlık + 18 kontrol
+    expect(satirlar).toHaveLength(19)
     for (const s of tamRapor()) {
       expect(satirlar.some(r => r[0] === s.kod), `${s.kod} eksik`).toBe(true)
     }
@@ -215,8 +216,8 @@ describe('veriKaliteExcelOlustur — sayfa adları', () => {
   it('hepsi ≤31 karakter, hepsi birbirinden FARKLI ve yasaklı karakter yok', () => {
     const wb = oku(veriKaliteExcelOlustur(herKontroldeKayitliRapor()))
 
-    // Özet + 15 uygulanmış kontrol
-    expect(wb.SheetNames).toHaveLength(16)
+    // Özet + 16 uygulanmış kontrol
+    expect(wb.SheetNames).toHaveLength(17)
     for (const ad of wb.SheetNames) {
       expect(ad.length, `"${ad}" ${ad.length} karakter`).toBeLessThanOrEqual(SAYFA_ADI_MAX)
       expect(ad, `"${ad}" yasaklı karakter içeriyor`).not.toMatch(/[:\\/?*[\]]/)

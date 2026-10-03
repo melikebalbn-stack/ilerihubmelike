@@ -110,6 +110,7 @@ const SAYFA_ADLARI: Record<string, string> = {
   'guzergah-sefer-dilimi-tanimsiz': 'Sefer Dilimi Tanımsız',
   'kapasite-asimi': 'Kapasite Aşımı',
   'guzergah-arac-yok': 'Güzergâhın Aracı Yok',
+  'personel-atamasi-dilimsiz': 'Dilimsiz Personel Ataması',
   'kapasitesi-eksik-arac': 'Kapasitesi Eksik Araç',
   'koordinatsiz-durak': 'Koordinatsız Durak',
   'cakisan-atamalar': 'Çakışan Atamalar',
@@ -248,6 +249,16 @@ const SAYFA_TANIMLARI: Record<string, SayfaTanimi> = {
       { baslik: 'Güzergah Kod', deger: k => metin(k.guzergahKod) },
       { baslik: 'Güzergah Ad', deger: k => metin(k.guzergahAd) },
       { baslik: 'Atanmış Personel', deger: k => sayi(k.personelSayisi) },
+    ],
+  },
+
+  'personel-atamasi-dilimsiz': {
+    kolonlar: [
+      { baslik: 'Atama Kimliği', deger: k => metin(k.atamaId) },
+      { baslik: 'Güzergah Kod', deger: k => metin(k.guzergahKod) },
+      { baslik: 'Güzergah Ad', deger: k => metin(k.guzergahAd) },
+      { baslik: 'Başlangıç', deger: k => metin(k.baslangicTarihi) },
+      { baslik: 'Kaynak', deger: k => metin(k.kaynak) },
     ],
   },
 

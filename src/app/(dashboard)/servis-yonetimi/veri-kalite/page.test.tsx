@@ -207,3 +207,32 @@ describe('VeriKaliteMerkeziPage — Excel export butonu', () => {
     expect(screen.queryByText('Excel indir')).not.toBeInTheDocument()
   })
 })
+
+describe('VeriKaliteMerkeziPage — dilimsiz personel ataması kartı (B4)', () => {
+  const kontrol = (adet: number) =>
+    satir({
+      kod: 'personel-atamasi-dilimsiz',
+      baslik: 'Sefer dilimi bağlantısı olmayan personel ataması',
+      adet,
+      kayitlar: adet === 0 ? [] : [
+        { atamaId: 'a1', guzergahId: 'g1', guzergahKod: 'DARICA', guzergahAd: 'Darıca', baslangicTarihi: '2026-09-27', kaynak: 'IMPORT' },
+      ],
+    })
+
+  it('N > 0: Türkçe başlık, kayıt etiketi ve güzergâh bağlantısı', async () => {
+    mockSession(['servis.view'])
+    global.fetch = vi.fn().mockResolvedValue(fetchOkYanit([kontrol(63)])) as unknown as typeof fetch
+    render(<VeriKaliteMerkeziPage />)
+    await waitFor(() => expect(screen.getByText('Sefer dilimi bağlantısı olmayan personel ataması')).toBeInTheDocument())
+    const kayit = screen.getByText('DARICA — Darıca (IMPORT, 2026-09-27 başlangıçlı)')
+    expect(kayit.closest('a')?.getAttribute('href')).toBe('/servis-yonetimi/guzergah/g1')
+  })
+
+  it('N = 0: olumlu boş durum', async () => {
+    mockSession(['servis.view'])
+    global.fetch = vi.fn().mockResolvedValue(fetchOkYanit([kontrol(0)])) as unknown as typeof fetch
+    render(<VeriKaliteMerkeziPage />)
+    await waitFor(() => expect(screen.getByText('Sefer dilimi bağlantısı olmayan personel ataması')).toBeInTheDocument())
+    expect(screen.getByText('Sorun bulunmadı.')).toBeInTheDocument()
+  })
+})

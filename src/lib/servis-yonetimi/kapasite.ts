@@ -152,8 +152,26 @@ export type KapasiteGirdisi = {
   dilimler: { id: string; kod: string; ad: string }[]
   /** Hesap gününde geçerli, aktif ANA araç atamaları (aktif araç). */
   aracAtamalari: { guzergahId: string; dilimId: string; plaka: string; kapasite: number }[]
-  /** Hesap gününde geçerli, aktif personel atamaları (kişi bilgisi YOK — yalnız güzergâh + dilimler). */
-  personelAtamalari: { guzergahId: string; dilimIdleri: string[] }[]
+  /**
+   * Hesap gününde geçerli, aktif personel atamaları (kişi bilgisi YOK — yalnız güzergâh + dilimler).
+   * atamaId/baslangicTarihi/kaynak ATAMA kaydının teknik alanlarıdır (personel kimliği değil);
+   * yalnız "dilim bağlantısı olmayan atama" listesi için.
+   */
+  personelAtamalari: { guzergahId: string; dilimIdleri: string[]; atamaId?: string; baslangicTarihi?: string; kaynak?: string }[]
+}
+
+/**
+ * Sefer dilimi bağlantısı OLMAYAN aktif personel ataması. Motor bu atamayı hiçbir
+ * (güzergâh × dilim) çiftine saymaz — kapasiteye/KPI'ya GİRMEZ. Sayı sessizce kaybolmasın diye
+ * ayrıca raporlanır (kural DEĞİŞMEDİ).
+ */
+export type DilimsizAtama = {
+  atamaId: string | null
+  guzergahId: string
+  kod: string
+  ad: string
+  baslangicTarihi: string | null
+  kaynak: string | null
 }
 
 export type KapasiteDilimSatiri = {
@@ -205,6 +223,8 @@ export type KapasiteToplamlari = {
   asimKisi: number
   aracsizGuzergahSayisi: number
   dolmakUzereSayisi: number
+  /** dilimsizAtamalar.length — panel/veri kalite AYNI sayıyı gösterir. */
+  dilimsizAtamaSayisi: number
 }
 
 export type ServisKapasiteToplu = {
@@ -214,6 +234,8 @@ export type ServisKapasiteToplu = {
   /** Tüm (güzergâh × dilim) çiftleri — Excel detay sayfası. */
   dilimSatirlari: KapasiteDilimSatiri[]
   asimlar: KapasiteAsimi[]
+  /** Aktif güzergâhlardaki, dilim bağlantısı olmayan aktif atamalar (kapasiteye girmez). */
+  dilimsizAtamalar: DilimsizAtama[]
   toplam: KapasiteToplamlari
 }
 
@@ -297,6 +319,18 @@ export function kapasiteTopluOlustur(girdi: KapasiteGirdisi, tarih: string): Ser
     }))
     .sort((a, b) => b.fazla - a.fazla || a.kod.localeCompare(b.kod, 'tr'))
 
+  const guzergahById = new Map(girdi.guzergahlar.map((g) => [g.id, g]))
+  const dilimsizAtamalar: DilimsizAtama[] = girdi.personelAtamalari
+    .filter((p) => new Set(p.dilimIdleri).size === 0 && guzergahById.has(p.guzergahId))
+    .map((p) => {
+      const g = guzergahById.get(p.guzergahId)!
+      return {
+        atamaId: p.atamaId ?? null, guzergahId: g.id, kod: g.kod, ad: g.ad,
+        baslangicTarihi: p.baslangicTarihi ?? null, kaynak: p.kaynak ?? null,
+      }
+    })
+    .sort((a, b) => a.kod.localeCompare(b.kod, 'tr') || (a.atamaId ?? '').localeCompare(b.atamaId ?? ''))
+
   const toplam: KapasiteToplamlari = {
     guzergahSayisi: guzergahlar.length,
     atanmisPersonel: guzergahlar.reduce((t, g) => t + g.ozet.atananPersonelSayisi, 0),
@@ -306,9 +340,10 @@ export function kapasiteTopluOlustur(girdi: KapasiteGirdisi, tarih: string): Ser
     asimKisi: guzergahlar.reduce((t, g) => t + g.ozet.asimMiktari, 0),
     aracsizGuzergahSayisi: guzergahlar.filter((g) => g.ozet.durum === 'ARAC_YOK').length,
     dolmakUzereSayisi: guzergahlar.filter((g) => g.ozet.durum === 'DOLMAK_UZERE').length,
+    dilimsizAtamaSayisi: dilimsizAtamalar.length,
   }
 
-  return { tarih, guzergahlar, dilimSatirlari, asimlar, toplam }
+  return { tarih, guzergahlar, dilimSatirlari, asimlar, dilimsizAtamalar, toplam }
 }
 
 /**
@@ -343,7 +378,7 @@ export async function servisKapasiteTopluGetir(
     }),
     prisma.servisPersonelAtama.findMany({
       where: { aktif: true, ...guzergahKosulu, ...tarihFiltresi },
-      select: { guzergahId: true, dilimler: { select: { dilimId: true } } },
+      select: { id: true, guzergahId: true, baslangicTarihi: true, atamaKaynagi: true, dilimler: { select: { dilimId: true } } },
     }),
   ])
 
@@ -356,6 +391,7 @@ export async function servisKapasiteTopluGetir(
       })),
       personelAtamalari: personelAtamalari.map((p) => ({
         guzergahId: p.guzergahId, dilimIdleri: p.dilimler.map((d) => d.dilimId),
+        atamaId: p.id, baslangicTarihi: p.baslangicTarihi.toISOString().slice(0, 10), kaynak: p.atamaKaynagi,
       })),
     },
     gun.toISOString().slice(0, 10),

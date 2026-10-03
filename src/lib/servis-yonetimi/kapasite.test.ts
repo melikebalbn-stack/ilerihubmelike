@@ -298,8 +298,8 @@ describe('servisKapasiteTopluGetir — tek-çift fonksiyonla AYNI filtre ve AYNI
       { guzergahId: 'g2', dilimId: 'd2', arac: { plaka: '41B1', kapasite: 27 } },
     ]
     const personel = [
-      ...Array.from({ length: 37 }, () => ({ guzergahId: 'g1', dilimler: [{ dilimId: 'd1' }] })),
-      ...Array.from({ length: 5 }, () => ({ guzergahId: 'g2', dilimler: [{ dilimId: 'd2' }] })),
+      ...Array.from({ length: 37 }, (_, i) => ({ id: `p1-${i}`, guzergahId: 'g1', baslangicTarihi: new Date('2026-08-01'), atamaKaynagi: 'MANUEL', dilimler: [{ dilimId: 'd1' }] })),
+      ...Array.from({ length: 5 }, (_, i) => ({ id: `p2-${i}`, guzergahId: 'g2', baslangicTarihi: new Date('2026-08-01'), atamaKaynagi: 'MANUEL', dilimler: [{ dilimId: 'd2' }] })),
     ]
     mocks.guzergahFindMany.mockResolvedValue([G('g1', 'A'), G('g2', 'B')])
     mocks.dilimFindMany.mockResolvedValue([SABAH, AKSAM])
@@ -326,7 +326,7 @@ describe('servisKapasiteTopluGetir — tek-çift fonksiyonla AYNI filtre ve AYNI
     mocks.dilimFindMany.mockResolvedValue([])
     await servisKapasiteTopluGetir(GUN)
     expect(mocks.personelAtamaFindMany.mock.calls[0][0].select).toEqual({
-      guzergahId: true, dilimler: { select: { dilimId: true } },
+      id: true, guzergahId: true, baslangicTarihi: true, atamaKaynagi: true, dilimler: { select: { dilimId: true } },
     })
     // plaka/kapasite dışında araç alanı seçilmez
     expect(mocks.aracAtamaFindMany.mock.calls[0][0].select).toEqual({
@@ -358,5 +358,83 @@ describe('hesapTarihiCoz', () => {
   it('geçersiz biçim ve olmayan gün hata verir', () => {
     expect(() => hesapTarihiCoz('05.03.2026')).toThrow()
     expect(() => hesapTarihiCoz('2026-02-31')).toThrow()
+  })
+})
+
+describe('B4 — dilim bağlantısı olmayan atama (kural DEĞİŞMEZ: kapasiteye girmez, ayrıca raporlanır)', () => {
+  const dilimsiz = (guzergahId: string, n: number, kaynak = 'IMPORT') =>
+    Array.from({ length: n }, (_, i) => ({
+      guzergahId, dilimIdleri: [] as string[], atamaId: `${guzergahId}-dilimsiz-${i}`, baslangicTarihi: '2026-09-27', kaynak,
+    }))
+
+  it('N = 0: dilimsizAtamalar boş, sayaç 0', () => {
+    const r = kapasiteTopluOlustur({ guzergahlar: [G('g1', 'A')], dilimler: [SABAH], aracAtamalari: [arac('g1', 'd1', 'X1', 10)], personelAtamalari: kisiler('g1', ['d1'], 4) }, '2026-10-03')
+    expect(r.dilimsizAtamalar).toEqual([])
+    expect(r.toplam.dilimsizAtamaSayisi).toBe(0)
+  })
+
+  it('🔴 N > 0: dilimsiz atamalar kapasiteye/KPI\'ya GİRMEZ ama sayılır ve listelenir', () => {
+    const r = kapasiteTopluOlustur({
+      guzergahlar: [G('g1', 'DARICA', 'Darıca'), G('g2', 'ÜSKÜDAR', 'Üsküdar')],
+      dilimler: [SABAH],
+      aracAtamalari: [arac('g1', 'd1', 'X1', 10)],
+      personelAtamalari: [...kisiler('g1', ['d1'], 4), ...dilimsiz('g1', 2), ...dilimsiz('g2', 3)],
+    }, '2026-10-03')
+    // Motor kuralı aynı: yalnız dilim bağlantılı 4 personel sayılır
+    expect(r.guzergahlar[0].ozet).toMatchObject({ atananPersonelSayisi: 4, kapasite: 10, bosKoltuk: 6 })
+    expect(r.guzergahlar[1].ozet).toMatchObject({ atananPersonelSayisi: 0, durum: 'ARAC_YOK' })
+    expect(r.toplam.atanmisPersonel).toBe(4)
+    expect(r.toplam.dilimsizAtamaSayisi).toBe(5)
+    expect(r.dilimsizAtamalar).toHaveLength(5)
+    expect(r.dilimsizAtamalar[0]).toEqual({
+      atamaId: 'g1-dilimsiz-0', guzergahId: 'g1', kod: 'DARICA', ad: 'Darıca', baslangicTarihi: '2026-09-27', kaynak: 'IMPORT',
+    })
+    // Türkçe sıralama: DARICA, ÜSKÜDAR (Ü, D'den sonra)
+    expect(r.dilimsizAtamalar.map((a) => a.kod)).toEqual(['DARICA', 'DARICA', 'ÜSKÜDAR', 'ÜSKÜDAR', 'ÜSKÜDAR'])
+  })
+
+  it('aktif güzergâh listesinde olmayan (pasif) güzergâhın dilimsiz ataması listeye girmez', () => {
+    const r = kapasiteTopluOlustur({ guzergahlar: [G('g1', 'A')], dilimler: [SABAH], aracAtamalari: [], personelAtamalari: dilimsiz('gPasif', 3) }, '2026-10-03')
+    expect(r.dilimsizAtamalar).toEqual([])
+  })
+
+  it('tekrarlı dilimId dilimsiz SAYILMAZ; boş dizi sayılır', () => {
+    const r = kapasiteTopluOlustur({
+      guzergahlar: [G('g1', 'A')], dilimler: [SABAH], aracAtamalari: [],
+      personelAtamalari: [{ guzergahId: 'g1', dilimIdleri: ['d1', 'd1'] }, { guzergahId: 'g1', dilimIdleri: [] }],
+    }, '2026-10-03')
+    expect(r.toplam.dilimsizAtamaSayisi).toBe(1)
+  })
+})
+
+describe('B4 — motor toplama kuralı (belgeleyen testler: panelde "Personel" ne gösterir)', () => {
+  it('1 personel hem SABAH hem AKŞAM bağlı: her dilimde 1; güzergâh satırı 1; KPI 1 (2 DEĞİL)', () => {
+    const r = kapasiteTopluOlustur({
+      guzergahlar: [G('g1', 'A')], dilimler: [SABAH, AKSAM],
+      aracAtamalari: [arac('g1', 'd1', 'X1', 10), arac('g1', 'd2', 'X1', 10)],
+      personelAtamalari: kisiler('g1', ['d1', 'd2'], 1),
+    }, '2026-10-03')
+    expect(r.dilimSatirlari.map((s) => s.ozet.atananPersonelSayisi)).toEqual([1, 1])
+    expect(r.guzergahlar[0].ozet.atananPersonelSayisi).toBe(1)
+    expect(r.toplam.atanmisPersonel).toBe(1)
+  })
+
+  it('5 yalnız-SABAH + 5 yalnız-AKŞAM personel: satır 5, KPI 5 (tekil personel 10 olsa da) — "en dar dilim" kuralı', () => {
+    const r = kapasiteTopluOlustur({
+      guzergahlar: [G('g1', 'A')], dilimler: [SABAH, AKSAM],
+      aracAtamalari: [arac('g1', 'd1', 'X1', 10), arac('g1', 'd2', 'X1', 10)],
+      personelAtamalari: [...kisiler('g1', ['d1'], 5), ...kisiler('g1', ['d2'], 5)],
+    }, '2026-10-03')
+    expect(r.guzergahlar[0].ozet.atananPersonelSayisi).toBe(5)
+    expect(r.toplam.atanmisPersonel).toBe(5)
+  })
+
+  it('satır seçimi öncelikle: araçsız ama personelli dilim, uygun dilimin önüne geçer (satır araçsız dilimin personelini gösterir)', () => {
+    const r = kapasiteTopluOlustur({
+      guzergahlar: [G('g1', 'A')], dilimler: [SABAH, AKSAM],
+      aracAtamalari: [arac('g1', 'd1', 'X1', 20)],
+      personelAtamalari: [...kisiler('g1', ['d1'], 8), ...kisiler('g1', ['d2'], 12)],
+    }, '2026-10-03')
+    expect(r.guzergahlar[0]).toMatchObject({ dilimKod: 'AKSAM_DONUS', ozet: { durum: 'ARAC_YOK', atananPersonelSayisi: 12 } })
   })
 })

@@ -45,13 +45,20 @@ export type VeriKaliteOzeti = {
   toplamBulgu: number
   /** Çalışırken hata veren kontrol sayısı (sessiz yutulmaz). */
   hataliKontrol: number
+  /**
+   * "Sefer dilimi bağlantısı olmayan personel ataması" kontrolünün sayısı (kapasite motoruyla
+   * AYNI kaynak). Kontrol hata verdiyse null (0 gibi gösterilmez).
+   */
+  dilimsizAtama: number | null
   /** En çok bulgusu olan ilk 5 kontrol. */
   enCokBulgu: VeriKaliteOzetiSatiri[]
 }
 
 export function veriKaliteOzetiOlustur(rapor: VeriKaliteRaporSatiri[]): VeriKaliteOzeti {
   const bulgulu = rapor.filter((r) => r.adet > 0)
+  const dilimsiz = rapor.find((r) => r.kod === 'personel-atamasi-dilimsiz')
   return {
+    dilimsizAtama: dilimsiz && dilimsiz.hata === undefined ? dilimsiz.adet : null,
     kontrolSayisi: rapor.length,
     bulguluKontrol: bulgulu.length,
     toplamBulgu: rapor.reduce((t, r) => t + r.adet, 0),

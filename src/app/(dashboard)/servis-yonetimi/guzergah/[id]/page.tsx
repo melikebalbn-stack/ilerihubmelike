@@ -40,6 +40,7 @@ import { ServisGecmisDialog, GecmisButonu } from '../../_components/ServisGecmis
 import { SaatlerDialog } from './SaatlerDialog'
 import { TarihDuzenleDialog } from '../../_components/TarihDuzenleDialog'
 import { KapasitePanel } from './KapasitePanel'
+import { KapasiteKartlari } from './KapasiteKartlari'
 import type { GuzergahDurak, SeferDilimi } from './types'
 import { apiHataMesaji, jsonIstek, servisIstek } from '../../_lib/servis-istek'
 import { usePasifGeriAl } from '../../_lib/usePasifGeriAl'
@@ -285,6 +286,8 @@ export default function GuzergahDetayPage() {
       </div>
 
       {hata && <p className="text-sm text-red-600">{hata}</p>}
+
+      {guzergah?.aktif && <KapasiteKartlari guzergahId={guzergahId} />}
 
       {yukleniyor ? (
         <p className="text-sm text-muted-foreground">Yükleniyor...</p>

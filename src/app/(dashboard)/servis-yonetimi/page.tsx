@@ -2128,6 +2128,9 @@ export default function ServisYonetimiPage() {
           Firma, yerleşke, güzergâh, durak, araç, şoför ve sefer dilimi tanımlarını yönetin. Atama ve kapasite
           takibi güzergâh detayından yapılır.
         </p>
+        <Link href="/servis-yonetimi/panel" className="text-sm text-blue-700 hover:underline">
+          Bugünkü kapasite ve doluluk için Servis Paneli →
+        </Link>
       </div>
       <Tabs defaultValue="firma">
         <TabsList>

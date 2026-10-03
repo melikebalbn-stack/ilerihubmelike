@@ -305,6 +305,9 @@ const strategicHrMenuItems = [
   { name: "İşe Alım", icon: Briefcase, href: "/strategic-hr/recruitment", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"], permission: "recruitment.view" },
   { name: "Envanter", icon: Boxes, href: "/envanter", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"], permission: "envanter.view" },
   { name: "Servis Yönetimi", icon: Truck, href: "/servis-yonetimi", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"], permission: "servis.view", subgroup: "servis" as StrategicHrAltGrup, modul: "servis-yonetimi" },
+  // Paket B2 — Servis Paneli (bugünkü kapasite/doluluk). Servis Yönetimi ile AYNI
+  // permission (servis.view) ve aynı "servis" alt grubu.
+  { name: "Servis Paneli", icon: Truck, href: "/servis-yonetimi/panel", roles: ["HR_MANAGER", "IT_MANAGER", "ADMIN", "SUPER_ADMIN", "DEPT_HEAD"], departments: ["Insan Varliklari", "İnsan Varlıkları", "Human Resources", "HR"], permission: "servis.view", subgroup: "servis" as StrategicHrAltGrup, modul: "servis-yonetimi" },
   // FAZ 1B-EK Madde 31 — "Bu Ay Ne Değişti?" özet ekranı. Servis Yönetimi
   // ile AYNI permission (servis.view) VE aynı "servis" alt grubu — Stratejik
   // İK açıldığında ikisi birlikte "Servis" başlığı altında görünür (bkz.

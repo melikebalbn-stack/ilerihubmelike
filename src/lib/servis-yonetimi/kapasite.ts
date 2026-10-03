@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma'
+import { bugunTR } from './tarih-kurallari'
 
 // ============================================================================
 // KAPASİTE MOTORU — TEK KAYNAK (B1)
@@ -77,6 +78,21 @@ export function kapasiteOzetiHesapla(
     durum,
     asimMiktari: durum === 'ASIM' ? -bosKoltuk : 0,
   }
+}
+
+/**
+ * Hesap tarihi sorgu parametresi: yok → BUGÜN (Türkiye günü); verilmişse geçerli YYYY-MM-DD
+ * olmalı (geçersiz biçim/takvim günü → hata). Sunucu UTC olsa da gün Türkiye'ye göre.
+ */
+export function hesapTarihiCoz(girdi: string | null | undefined): Date {
+  const deger = girdi?.trim()
+  if (!deger) return new Date(`${bugunTR()}T00:00:00.000Z`)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(deger)) throw new Error('Hesap tarihi YYYY-MM-DD formatında olmalıdır.')
+  const tarih = new Date(`${deger}T00:00:00.000Z`)
+  if (Number.isNaN(tarih.getTime()) || tarih.toISOString().slice(0, 10) !== deger) {
+    throw new Error('Hesap tarihi geçersiz.')
+  }
+  return tarih
 }
 
 /** Pozitif AND-of-OR tarih filtresi — tek ve toplu sorgu AYNI filtreyi kullanır. */

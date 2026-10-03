@@ -418,7 +418,7 @@ describe('Sidebar — "Servis: Bu Ay Ne Değişti?" menü öğesi (FAZ 1B-EK Mad
 })
 
 describe('Sidebar — Stratejik İK "Servis" alt-başlığı (Formlar deseninin uygulanması, 2026-09-18)', () => {
-  it('servis.view izinli kullanıcıda "Servis" başlığı görünür ve altında YALNIZ 4 öğe vardır (servis.sikayet.view/servis.kvkk.view isteyen öğeler ayrı testte)', () => {
+  it('servis.view izinli kullanıcıda "Servis" başlığı görünür ve altında YALNIZ 5 öğe vardır (servis.sikayet.view/servis.kvkk.view isteyen öğeler ayrı testte)', () => {
     mockSession({ role: 'KULLANICI', department: 'Üretim', permissions: ['servis.view'] })
     renderSidebar()
     acIvGrubunu()
@@ -426,6 +426,7 @@ describe('Sidebar — Stratejik İK "Servis" alt-başlığı (Formlar deseninin 
     const linkler = Array.from(servisKutu.querySelectorAll('a')).map((a) => a.textContent?.trim())
     expect(linkler).toEqual([
       'Servis Yönetimi',
+      'Servis Paneli',
       'Servis: Bu Ay Ne Değişti?',
       'Veri Kalite Merkezi',
       'Operasyonel Servis Listesi',
@@ -469,6 +470,7 @@ describe('Sidebar — Stratejik İK "Servis" alt-başlığı (Formlar deseninin 
           !!ad &&
           ![
             'Servis Yönetimi',
+            'Servis Paneli',
             'Servis: Bu Ay Ne Değişti?',
             'Veri Kalite Merkezi',
             'Servis Şikâyetleri',

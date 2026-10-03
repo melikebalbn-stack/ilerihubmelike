@@ -19,6 +19,7 @@ vi.mock('@/lib/prisma', () => ({
 
 import {
   DOLMAK_UZERE_ESIGI,
+  hesapTarihiCoz,
   kapasiteOzetiHesapla,
   kapasiteTopluOlustur,
   servisKapasiteOzetiGetir,
@@ -343,5 +344,19 @@ describe('servisKapasiteTopluGetir — tek-çift fonksiyonla AYNI filtre ve AYNI
     expect(mocks.dilimFindMany).toHaveBeenCalledWith({ where: { aktif: true }, select: { id: true, kod: true, ad: true }, orderBy: { sira: 'asc' } })
     expect(mocks.aracAtamaFindMany.mock.calls[0][0].where).toMatchObject({ guzergahId: 'g7' })
     expect(mocks.personelAtamaFindMany.mock.calls[0][0].where).toMatchObject({ guzergahId: 'g7' })
+  })
+})
+
+describe('hesapTarihiCoz', () => {
+  it('geçerli YYYY-MM-DD UTC günü olarak çözülür', () => {
+    expect(hesapTarihiCoz('2026-03-05').toISOString()).toBe('2026-03-05T00:00:00.000Z')
+  })
+  it('null/boş → bugün (Date)', () => {
+    expect(hesapTarihiCoz(null)).toBeInstanceOf(Date)
+    expect(hesapTarihiCoz('  ')).toBeInstanceOf(Date)
+  })
+  it('geçersiz biçim ve olmayan gün hata verir', () => {
+    expect(() => hesapTarihiCoz('05.03.2026')).toThrow()
+    expect(() => hesapTarihiCoz('2026-02-31')).toThrow()
   })
 })

@@ -8,6 +8,8 @@ import {
 } from '@/lib/servis-yonetimi/export-denetim'
 import { GUZERGAH_LISTESI_HEADERS, guzergahListesiSatirlariOlustur } from '@/lib/servis-yonetimi/export'
 
+import { bugunTR } from '@/lib/servis-yonetimi/tarih-kurallari'
+
 export const dynamic = 'force-dynamic'
 
 // GET /api/servis-yonetimi/export/guzergah-listesi — Excel (.xlsx).
@@ -36,7 +38,7 @@ export async function GET() {
   if (!(await exportDenetimiYaz(userId, { rapor: 'GUZERGAH_LISTESI_EXCEL', format: 'XLSX', satirSayisi: rows.length - 1 }))) {
     return exportDenetimiHatasi()
   }
-  const stamp = new Date().toISOString().slice(0, 10)
+  const stamp = bugunTR() // Türkiye günü
 
   return new NextResponse(new Uint8Array(buf), {
     headers: {

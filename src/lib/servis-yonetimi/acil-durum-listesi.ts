@@ -28,6 +28,7 @@
 // TC, bölüm YOK.
 
 import { prisma } from '@/lib/prisma'
+import { bugunTRTarihi } from './gecerli-atama'
 import {
   operasyonelServisListesiGetir,
   type OperasyonelServisListesiSatiri,
@@ -135,7 +136,7 @@ export async function acilDurumListesiGetir(params: {
   dilimId: string
 }): Promise<AcilDurumListesiSonucu> {
   const { guzergahId, dilimId } = params
-  const bugun = gunBaslangici(new Date())
+  const bugun = bugunTRTarihi() // C7-8: Türkiye günü
   // Ders 59 — pozitif AND-of-OR; NOT/negatif form NULL'lu satırı sessizce atar.
   const bugunGecerli = {
     baslangicTarihi: { lte: bugun },

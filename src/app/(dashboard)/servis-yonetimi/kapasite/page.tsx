@@ -15,11 +15,12 @@ import { cn } from '@/lib/utils'
 import { TIRE, bosKoltukMetni, koltukMetni } from '../_lib/kapasite-gosterim'
 import { servisIstek } from '../_lib/servis-istek'
 import { DolulukCubugu, DurumRozeti } from '../_components/KapasiteRozetleri'
+import { bugunTR } from '@/lib/servis-yonetimi/tarih-kurallari'
 
 // TOPLU KAPASİTE (B3): tüm aktif güzergâh × sefer dilimi çiftleri, seçilen gün için.
 // Servis Paneli ile AYNI kaynak (kapasite-toplu → kapasite motoru); burada hesap yok.
 
-const bugun = () => new Date().toISOString().slice(0, 10)
+const bugun = () => bugunTR() // Türkiye günü (UTC değil)
 
 const dilimAramaEslesir = (s: KapasiteDilimSatiri, q: string) =>
   [s.guzergahKod, s.guzergahAd, s.dilimKod, s.dilimAd, ...s.araclar].some((m) => normalizeTr(m).includes(q))

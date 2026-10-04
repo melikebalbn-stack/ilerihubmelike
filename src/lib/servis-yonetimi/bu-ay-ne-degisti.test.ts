@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   islemGecmisiFindMany: vi.fn(),
@@ -483,5 +483,21 @@ describe('buAyNeDegistiGetir', () => {
     expect(sonuc.soforDegisenServisler).toEqual([
       { guzergahKod: 'GESKI', guzergahAd: 'Eski Güzergah', dilimKod: 'S1', eskiAdSoyad: 'Eski Şoför', yeniAdSoyad: 'Yeni Şoför', tarih: new Date('2026-03-11') },
     ])
+  })
+})
+
+describe('C7-8 — cari ay Türkiye gününe göre', () => {
+  afterEach(() => vi.useRealTimers())
+  it('🔴 UTC ay sonu 22:30 = TR ayın 1\'i 01:30: ay parametresi yoksa YENİ ay (UTC olsaydı eski ay)', () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-09-30T22:30:00.000Z'))
+    const { baslangic, bitis } = ayAraligiHesapla()
+    expect(baslangic.toISOString()).toBe('2026-10-01T00:00:00.000Z')
+    expect(bitis.toISOString()).toBe('2026-10-31T23:59:59.999Z')
+  })
+  it('gün ortası: aynı ay', () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-10-15T09:00:00.000Z'))
+    expect(ayAraligiHesapla().baslangic.toISOString()).toBe('2026-10-01T00:00:00.000Z')
   })
 })

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { bugunTR } from '@/lib/servis-yonetimi/tarih-kurallari'
 
 // FAZ 1B-EK Madde 31 — "Bu Ay Ne Değişti?" ekranı, Adım 3 (UI, son adım).
 // Adım 2'deki GET /api/servis-yonetimi/bu-ay-ne-degisti'yi çağırır, sade bir
@@ -66,9 +67,10 @@ export default function BuAyNeDegistiPage() {
   const permissions = session?.user?.permissions || []
   const canView = permissions.includes('servis.view')
 
-  const simdi = new Date()
-  const [yil, setYil] = useState(simdi.getFullYear())
-  const [ay, setAy] = useState(simdi.getMonth() + 1)
+  // Cari yıl/ay Türkiye gününe göre (tarayıcı saat dilimine/UTC'ye değil)
+  const [trYil, trAy] = bugunTR().split('-').map(Number)
+  const [yil, setYil] = useState(trYil)
+  const [ay, setAy] = useState(trAy)
   const [veri, setVeri] = useState<BuAyNeDegistiSonucu | null>(null)
   const [yukleniyor, setYukleniyor] = useState(true)
   const [hata, setHata] = useState<string | null>(null)
@@ -103,7 +105,7 @@ export default function BuAyNeDegistiPage() {
     )
   }
 
-  const yilSecenekleri = [simdi.getFullYear() - 1, simdi.getFullYear(), simdi.getFullYear() + 1]
+  const yilSecenekleri = [trYil - 1, trYil, trYil + 1]
 
   const hicDegisiklikYok =
     !!veri &&

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   systemSettingFindUnique: vi.fn(),
@@ -224,5 +224,26 @@ describe('B5-3 — dilimsiz atama için açık mesaj', () => {
   it('dilimsiz + durak yok: yine açık dilim mesajı (durak sessizliğinden önce)', async () => {
     mocks.personelAtamaFindUnique.mockResolvedValue({ id: 'a1', aktif: true, guzergahId: 'g1', durak: null, dilimler: [] })
     await expect(alternatifServisOnerileriGetir('a1')).rejects.toThrow('önce dilim ekleyin')
+  })
+})
+
+describe('C7-8 — kapasite hesap günü Türkiye günü', () => {
+  afterEach(() => vi.useRealTimers())
+  it('🔴 UTC 22:30 (TR ertesi gün 01:30): aday kapasitesi TR gününe göre sorgulanır (UTC olsaydı dün)', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-10-03T22:30:00.000Z'))
+    mocks.personelAtamaFindUnique.mockResolvedValue({
+      id: 'pa1', guzergahId: 'gMevcut', durakId: 'durak-1', aktif: true,
+      durak: { id: 'durak-1', enlem: 40.0, boylam: 29.0 }, dilimler: [{ dilimId: 'dilim-1' }],
+    })
+    mocks.systemSettingFindUnique.mockResolvedValue(null)
+    mocks.guzergahFindMany.mockResolvedValue([
+      { id: 'gA', kod: 'A', ad: 'A', aktif: true, duraklar: [{ durakId: 'durak-1', durak: { id: 'durak-1', kod: 'D1', ad: 'D1', enlem: 40.0, boylam: 29.0 } }] },
+    ])
+    mocks.servisKapasiteOzetiGetir.mockResolvedValue({ kapasite: 10, atananPersonelSayisi: 1, bosKoltuk: 9, dolulukOrani: 10, aracSayisi: 1, durum: 'NORMAL', asimMiktari: 0 })
+    await alternatifServisOnerileriGetir('pa1')
+    const gunler = mocks.servisKapasiteOzetiGetir.mock.calls.map((c) => (c[2] as Date).toISOString().slice(0, 10))
+    expect(gunler.length).toBeGreaterThan(0)
+    expect(new Set(gunler)).toEqual(new Set(['2026-10-04']))
   })
 })

@@ -14,6 +14,7 @@ import type { KapasiteEtkisiSatiri } from '@/lib/servis-yonetimi/kapasite-asim'
 import { cn } from '@/lib/utils'
 import { AsimUyarisi, etkiMetni } from '../guzergah/[id]/AtamaDilimDialoglari'
 import { apiHataMesaji } from '../_lib/servis-istek'
+import { bugunTR } from '@/lib/servis-yonetimi/tarih-kurallari'
 
 // EXCEL'DEN TOPLU ATAMA (C2) — 1 Dosya yükle → 2 Önizleme → 3 Uygula.
 // Önizleme hiçbir kayıt yazmaz. Uygulamada dosya sunucuda YENİDEN doğrulanır; hatalı satırlar atlanır,
@@ -172,7 +173,7 @@ export default function PersonelAtamaExcelPage() {
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `Atama-Hata-Raporu-${new Date().toISOString().slice(0, 10)}.xlsx`
+      a.download = `Atama-Hata-Raporu-${bugunTR()}.xlsx`
       a.click()
       URL.revokeObjectURL(url)
     } catch {

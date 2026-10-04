@@ -27,12 +27,13 @@
 //     BuAyNeDegistiSonucu'na eklenecek (bkz. altındaki iki alan).
 
 import { prisma } from '@/lib/prisma'
+import { bugunTR } from './tarih-kurallari'
 
 // ── Ay aralığı (saf, DB'siz) ─────────────────────────────────────────────
 export function ayAraligiHesapla(yil?: number, ay?: number): { baslangic: Date; bitis: Date } {
-  const simdi = new Date()
-  const y = yil ?? simdi.getUTCFullYear()
-  const a = ay ?? simdi.getUTCMonth() + 1 // 1-12
+  const [trYil, trAy] = bugunTR().split('-').map(Number) // C7-8: cari ay Türkiye gününe göre
+  const y = yil ?? trYil
+  const a = ay ?? trAy // 1-12
   const baslangic = new Date(Date.UTC(y, a - 1, 1, 0, 0, 0, 0))
   const bitis = new Date(Date.UTC(y, a, 0, 23, 59, 59, 999)) // ayın son günü, son ms
   return { baslangic, bitis }
@@ -140,9 +141,9 @@ function personelOzetOlustur(personnelId: string, personnel: { adSoyad: string; 
 
 export async function buAyNeDegistiGetir(yil?: number, ay?: number): Promise<BuAyNeDegistiSonucu> {
   const { baslangic, bitis } = ayAraligiHesapla(yil, ay)
-  const simdi = new Date()
-  const cariYil = yil ?? simdi.getUTCFullYear()
-  const cariAy = ay ?? simdi.getUTCMonth() + 1
+  const [trYil, trAy] = bugunTR().split('-').map(Number)
+  const cariYil = yil ?? trYil
+  const cariAy = ay ?? trAy
 
   const sonuc: BuAyNeDegistiSonucu = {
     yil: cariYil,

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   aracAtamaFindMany: vi.fn(),
@@ -500,5 +500,24 @@ describe('B6 — KPI "Atanmış personel" = TEKİL kişi', () => {
     expect(where.aktif).toBe(true)
     expect(where.baslangicTarihi).toEqual({ lte: tarihBaslangiciUTC(GUN_B6) })
     expect(where.OR).toEqual([{ bitisTarihi: null }, { bitisTarihi: { gte: tarihBaslangiciUTC(GUN_B6) } }])
+  })
+})
+
+describe('C7-8 — varsayılan hesap günü Türkiye günü', () => {
+  afterEach(() => vi.useRealTimers())
+  it('🔴 UTC 22:30 = TR ertesi gün: tek-çift ve toplu varsayılan tarihi TR günü', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-10-03T22:30:00.000Z'))
+    mocks.aracAtamaFindMany.mockResolvedValue([])
+    mocks.personelAtamaCount.mockResolvedValue(0)
+    mocks.personelAtamaFindMany.mockResolvedValue([])
+    mocks.guzergahFindMany.mockResolvedValue([])
+    mocks.dilimFindMany.mockResolvedValue([])
+    await servisKapasiteOzetiGetir('g1', 'd1')
+    await servisKapasiteTopluGetir()
+    const beklenen = { lte: new Date('2026-10-04T00:00:00.000Z') }
+    expect(mocks.aracAtamaFindMany.mock.calls[0][0].where.baslangicTarihi).toEqual(beklenen)
+    expect(mocks.aracAtamaFindMany.mock.calls[1][0].where.baslangicTarihi).toEqual(beklenen)
+    expect(mocks.personelAtamaCount.mock.calls[0][0].where.baslangicTarihi).toEqual(beklenen)
   })
 })

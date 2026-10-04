@@ -49,6 +49,7 @@ import { ATAMA_DURUM_ETIKETLERI, type AtamaDurumu } from '@/lib/servis-yonetimi/
 import type { GuzergahDurak, SeferDilimi } from './types'
 import { apiHataMesaji, jsonIstek, servisIstek } from '../../_lib/servis-istek'
 import { usePasifGeriAl } from '../../_lib/usePasifGeriAl'
+import { bugunTR } from '@/lib/servis-yonetimi/tarih-kurallari'
 
 type Guzergah = { id: string; kod: string; ad: string; aktif: boolean }
 type SecilebilirDurak = { id: string; kod: string; ad: string }
@@ -634,7 +635,7 @@ function tarihGoster(iso: string | null): string {
   return iso ? iso.slice(0, 10) : '-'
 }
 
-const bugun = () => new Date().toISOString().slice(0, 10)
+const bugun = () => bugunTR() // Türkiye günü (UTC değil)
 
 function VarsayilanAraclarPanel({
   guzergahId,

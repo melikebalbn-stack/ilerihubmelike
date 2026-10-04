@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma'
+import { bugunTRTarihi } from './gecerli-atama'
 import { servisKapasiteOzetiGetir } from './kapasite'
 
 // FAZ 1B — Alternatif Servis Önerisi. Bir personelin mevcut atamasına göre
@@ -170,7 +171,7 @@ export async function alternatifServisOnerileriGetir(atamaId: string): Promise<A
       const dilimSonuclari = await Promise.all(
         dilimIdleri.map(async (dilimId) => ({
           dilimId,
-          bosKoltuk: (await servisKapasiteOzetiGetir(guzergah.id, dilimId)).bosKoltuk,
+          bosKoltuk: (await servisKapasiteOzetiGetir(guzergah.id, dilimId, bugunTRTarihi())).bosKoltuk, // C7-8: Türkiye günü
         })),
       )
       const uygunDilimIdleri = dilimSonuclari.filter((d) => d.bosKoltuk > 0).map((d) => d.dilimId)

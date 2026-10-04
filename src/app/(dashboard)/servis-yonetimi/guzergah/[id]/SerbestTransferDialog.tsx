@@ -9,6 +9,7 @@ import type { KapasiteEtkisiSatiri } from '@/lib/servis-yonetimi/kapasite-asim'
 import type { GuzergahDurak, SeferDilimi } from './types'
 import { AsimUyarisi, etkiMetni } from './AtamaDilimDialoglari'
 import { jsonIstek, servisIstek } from '../../_lib/servis-istek'
+import { bugunTR } from '@/lib/servis-yonetimi/tarih-kurallari'
 
 // SERBEST HEDEFLİ TRANSFER (C1): hedef güzergâh/durak/dilim önerilenlerle SINIRLI DEĞİL — herhangi aktif
 // güzergâh + o güzergâhın durağı + aktif dilim seçilir. Hedefte kapasite etkisi önizlenir (C0), aşımda
@@ -16,7 +17,7 @@ import { jsonIstek, servisIstek } from '../../_lib/servis-istek'
 // Dilim zorunlu: dilimsiz atama üretilmez.
 
 type GuzergahOzeti = { id: string; kod: string; ad: string; aktif: boolean }
-const bugun = () => new Date().toISOString().slice(0, 10)
+const bugun = () => bugunTR() // Türkiye günü (UTC değil)
 
 export function SerbestTransferDialog({
   atama, dilimler, onKapat, onTransferEdildi,

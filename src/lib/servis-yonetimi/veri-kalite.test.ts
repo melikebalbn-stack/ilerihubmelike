@@ -730,5 +730,14 @@ describe('C7-2 — Veri Kalite okuyucuları bugün geçerli atamalarla çalış�
       await suresiBitmisGeciciAtama()
       expect(mocks.personelAtamaFindMany.mock.calls[0][0].where).toEqual({ aktif: true, bitisTarihi: { lt: BUGUN } })
     })
+
+    it('🔴 UTC 22:30 = TR ertesi gün: "bugün" TR günüdür (UTC olsaydı bir gün geride kalırdı)', async () => {
+      vi.setSystemTime(new Date('2026-10-03T22:30:00.000Z'))
+      kur([], [])
+      await suresiBitmisGeciciAtama()
+      expect(mocks.personelAtamaFindMany.mock.calls[0][0].where).toEqual({
+        aktif: true, bitisTarihi: { lt: new Date('2026-10-04T00:00:00.000Z') },
+      })
+    })
   })
 })

@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/prisma'
-import { gecerliAtamaFiltresi, tarihAraligiFiltresi } from './gecerli-atama'
+import { bugunTRTarihi, gecerliAtamaFiltresi, tarihAraligiFiltresi } from './gecerli-atama'
 import { bugunTR } from './tarih-kurallari'
 
 // ============================================================================
@@ -107,7 +107,7 @@ export function tarihFiltresiOlustur(gun: Date) {
 export async function servisKapasiteOzetiGetir(
   guzergahId: string,
   dilimId: string,
-  hesapTarihi: Date = new Date(),
+  hesapTarihi: Date = bugunTRTarihi(),
 ): Promise<ServisKapasiteOzeti> {
   const gun = tarihBaslangiciUTC(hesapTarihi)
   const tarihFiltresi = tarihFiltresiOlustur(gun)
@@ -383,7 +383,7 @@ export function kapasiteTopluOlustur(girdi: KapasiteGirdisi, tarih: string): Ser
  * KVKK: personel tablosundan yalnız güzergahId + dilimler.dilimId okunur; kişi alanı yok.
  */
 export async function servisKapasiteTopluGetir(
-  hesapTarihi: Date = new Date(),
+  hesapTarihi: Date = bugunTRTarihi(),
   secenek?: { guzergahId?: string },
 ): Promise<ServisKapasiteToplu> {
   const gun = tarihBaslangiciUTC(hesapTarihi)

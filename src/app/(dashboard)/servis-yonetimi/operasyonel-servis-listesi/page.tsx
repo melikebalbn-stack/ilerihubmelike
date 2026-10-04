@@ -16,6 +16,7 @@ import { buttonVariants } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { AlertTriangle, FileSpreadsheet, FileText, Loader2 } from 'lucide-react'
+import { bugunTR } from '@/lib/servis-yonetimi/tarih-kurallari'
 
 type Satir = {
   personnelId: string
@@ -40,7 +41,7 @@ const SECIM_UCLARI = [
 ] as const
 
 function bugunIso(): string {
-  return new Date().toISOString().slice(0, 10)
+  return bugunTR() // Türkiye günü (UTC değil)
 }
 
 function tarihTR(iso: string): string {

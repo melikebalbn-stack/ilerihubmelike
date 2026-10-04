@@ -31,6 +31,7 @@ import {
 import { ServisGecmisDialog, GecmisButonu } from '../_components/ServisGecmisDialog'
 import { SikayetciSecici } from './_components/SikayetciSecici'
 import { apiHataMesaji } from '../_lib/servis-istek'
+import { bugunTR } from '@/lib/servis-yonetimi/tarih-kurallari'
 
 type Durum = 'ACIK' | 'AKSIYON_ALINDI' | 'KAPANDI' | 'REDDEDILDI'
 
@@ -249,7 +250,7 @@ export default function SikayetListesiPage() {
     setGecisGonderiliyor(true)
     setGecisHata(null)
     try {
-      const bugun = new Date().toISOString().slice(0, 10)
+      const bugun = bugunTR() // Türkiye günü (UTC değil)
       const govde: Record<string, unknown> = { durum: gecisHedef }
       if (gecisHedef === 'AKSIYON_ALINDI') {
         govde.aksiyon = gecisAksiyon

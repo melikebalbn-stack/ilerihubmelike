@@ -13,12 +13,13 @@ import {
   durumEtiketi,
   koltukMetni,
 } from '../../_lib/kapasite-gosterim'
+import { bugunTR } from '@/lib/servis-yonetimi/tarih-kurallari'
 
 type KapasiteOzeti = KapasiteOzetiGosterim
 
 type DilimOzeti = { dilim: SeferDilimi; ozet: KapasiteOzeti }
 
-const bugun = () => new Date().toISOString().slice(0, 10)
+const bugun = () => bugunTR() // Türkiye günü (UTC değil)
 
 export function KapasitePanel({ guzergahId, dilimler }: { guzergahId: string; dilimler: SeferDilimi[] }) {
   const [hesapTarihi, setHesapTarihi] = useState(bugun())

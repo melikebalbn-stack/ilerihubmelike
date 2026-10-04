@@ -27,7 +27,7 @@ import { usePasifGeriAl } from './_lib/usePasifGeriAl'
 import { apiHataMesaji, jsonIstek, servisIstek } from './_lib/servis-istek'
 import { normalizeTr } from '@/lib/normalize-tr'
 import { ARAC_TIPLERI } from '@/lib/servis-yonetimi/arac-tipleri'
-import { MIN_TARIH, enIleriTarihTR } from '@/lib/servis-yonetimi/tarih-kurallari'
+import { MIN_TARIH, bugunTR, enIleriTarihTR } from '@/lib/servis-yonetimi/tarih-kurallari'
 
 type ServisFirma = {
   id: string
@@ -1818,7 +1818,7 @@ function durumEtiketiGoster(durum: ServisKullanimDurumu): string {
   }
 }
 
-const bugunPersonelDurum = () => new Date().toISOString().slice(0, 10)
+const bugunPersonelDurum = () => bugunTR() // Türkiye günü (UTC değil)
 const bosPersonelDurumForm = { personnelId: '', durum: 'SERVIS_KULLANIYOR' as ServisKullanimDurumu, baslangicTarihi: bugunPersonelDurum(), bitisTarihi: '', neden: '' }
 
 function ServisPersonelDurumPanel({

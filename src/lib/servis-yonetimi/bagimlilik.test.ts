@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { bugunTRTarihi, engelleyiciAtamaFiltresi, engelleyiciAtamaMi } from './gecerli-atama'
 import {
   BagliKayitHatasi,
   FIRMA_ORNEK_LIMITI,
@@ -34,6 +35,9 @@ function sahteDb(cevaplar: Record<string, { sayi?: number; satirlar?: unknown[] 
   }
   return db as unknown as Parameters<typeof yerleskeBagimliliklari>[0] & Record<string, Model>
 }
+
+const BUGUN_TR = new Date('2026-10-03T00:00:00.000Z')
+const ENGELLEYICI = { aktif: true, OR: [{ bitisTarihi: null }, { bitisTarihi: { gte: BUGUN_TR } }] }
 
 describe('pasifleştirme bağımlılıkları — yalnız AKTİF kayıtlar', () => {
   it('yerleşke → aktif güzergâhlar (örnek: kod — ad)', async () => {
@@ -114,7 +118,8 @@ describe('pasifleştirme bağımlılıkları — yalnız AKTİF kayıtlar', () =
       ['ARAC_VARSAYILAN', 1], ['SOFOR_VARSAYILAN', 1], ['PERSONEL_ATAMA', 30], ['DURAK_SAAT', 138],
     ])
     const m = db as unknown as Record<string, Model>
-    expect(m.servisPersonelAtamaDilim.count).toHaveBeenCalledWith({ where: { dilimId: 'd1', atama: { aktif: true } } })
+    // C7: aktif + SÜRESİ GEÇMEMİŞ (bitiş boş ya da ≥ bugün); başlamamış atama engel olmaya devam eder
+    expect(m.servisPersonelAtamaDilim.count.mock.calls[0][0].where).toEqual({ dilimId: 'd1', atama: engelleyiciAtamaFiltresi(bugunTRTarihi()) })
     expect(m.servisGuzergahDurakSaat.count).toHaveBeenCalledWith({ where: { dilimId: 'd1', aktif: true } })
   })
 
@@ -211,5 +216,40 @@ describe('mesajlar', () => {
     const e = new BagliKayitHatasi('m', g)
     expect(e).toBeInstanceOf(Error)
     expect(e.bagimliliklar).toBe(g)
+  })
+})
+
+describe('C7-3 — pasifleştirme korumaları: süresi geçmiş atama engel sayılmaz, başlamamış atama engel olmaya devam eder', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-10-03T09:00:00.000Z'))
+  })
+  afterEach(() => vi.useRealTimers())
+
+  it('🔴 güzergâh: personel atama sayımı aktif + bitiş boş/≥ bugün (başlangıç koşulu YOK → başlamamış sayılır); araç/şoför aynen', async () => {
+    const db = sahteDb({ servisPersonelAtama: { sayi: 3 }, servisGuzergahAracVarsayilan: { sayi: 1 }, servisGuzergahSoforVarsayilan: { sayi: 1 } })
+    await guzergahBagimliliklari(db, 'g1')
+    const m = db as unknown as Record<string, Model>
+    const where = m.servisPersonelAtama.count.mock.calls[0][0].where
+    expect(where).toEqual({ guzergahId: 'g1', ...ENGELLEYICI })
+    expect(where).not.toHaveProperty('baslangicTarihi') // henüz başlamamış atama engel olmaya DEVAM eder
+    expect(m.servisGuzergahAracVarsayilan.count.mock.calls[0][0].where).toEqual({ guzergahId: 'g1', aktif: true })
+    expect(m.servisGuzergahSoforVarsayilan.count.mock.calls[0][0].where).toEqual({ guzergahId: 'g1', aktif: true })
+  })
+
+  it('engelleyici koşulun JS karşılığı: süresi geçmiş → engel DEĞİL; başlamamış / bitişi bugün / süresiz → engel', () => {
+    const D = (g: string) => new Date(`${g}T00:00:00.000Z`)
+    const a = (b: string, e: string | null, aktif = true) => ({ aktif, baslangicTarihi: D(b), bitisTarihi: e ? D(e) : null })
+    expect(engelleyiciAtamaMi(a('2026-09-27', '2026-10-02'), '2026-10-03')).toBe(false) // süresi doldu
+    expect(engelleyiciAtamaMi(a('2026-10-10', null), '2026-10-03')).toBe(true) // başlamadı
+    expect(engelleyiciAtamaMi(a('2026-09-27', '2026-10-03'), '2026-10-03')).toBe(true) // bitişi bugün
+    expect(engelleyiciAtamaMi(a('2026-09-27', null), '2026-10-03')).toBe(true)
+    expect(engelleyiciAtamaMi(a('2026-09-27', null, false), '2026-10-03')).toBe(false) // pasif
+  })
+
+  it('kod değiştirme kullanım kaydı (aktif VE pasif; geçmiş de sayılır) DEĞİŞMEDİ', async () => {
+    const db = sahteDb({ servisPersonelAtama: { sayi: 2 } })
+    await guzergahKodKullanimi(db, 'g1')
+    expect((db as unknown as Record<string, Model>).servisPersonelAtama.count).toHaveBeenCalledWith({ where: { guzergahId: 'g1' } })
   })
 })

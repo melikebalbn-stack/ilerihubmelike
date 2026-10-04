@@ -50,6 +50,15 @@ export function gecerliAtamaFiltresi(gun: Date) {
   return { aktif: true as const, ...tarihAraligiFiltresi(gun) }
 }
 
+/**
+ * ENGELLEYİCİ atama (pasifleştirme korumaları): aktif:true ve SÜRESİ GEÇMEMİŞ (bitiş boş ya da ≥ gün).
+ * Henüz BAŞLAMAMIŞ atama engel olmaya DEVAM eder (gelecekte o güzergâha/dilime yerleşecek personel var);
+ * bitişi geçmiş ama aktif=true kalmış (planlı geçişin eski ataması) engel SAYILMAZ.
+ */
+export function engelleyiciAtamaFiltresi(gun: Date) {
+  return { aktif: true as const, OR: [{ bitisTarihi: null }, { bitisTarihi: { gte: gun } }] }
+}
+
 /** Tarih aralığı verilen günü kapsıyor mu (aktif bayrağına BAKMAZ). */
 export function atamaGunuKapsar(a: Pick<AtamaTarihli, 'baslangicTarihi' | 'bitisTarihi'>, gun: string): boolean {
   const g = gunTarihi(gun).getTime()
@@ -67,4 +76,9 @@ export function atamaDurumu(a: AtamaTarihli, gun: string = bugunTR()): AtamaDuru
   if (a.baslangicTarihi.getTime() > g) return 'BASLAMADI'
   if (a.bitisTarihi !== null && a.bitisTarihi.getTime() < g) return 'SURESI_DOLDU'
   return 'AKTIF'
+}
+
+/** engelleyiciAtamaFiltresi'nin JS karşılığı. */
+export function engelleyiciAtamaMi(a: AtamaTarihli, gun: string): boolean {
+  return a.aktif && (a.bitisTarihi === null || a.bitisTarihi.getTime() >= gunTarihi(gun).getTime())
 }

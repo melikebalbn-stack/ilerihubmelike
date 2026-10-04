@@ -1,4 +1,5 @@
 import type { Prisma } from '@/generated/prisma'
+import { bugunTRTarihi, engelleyiciAtamaFiltresi } from './gecerli-atama'
 
 // A4 — Bağımlılık korumaları (proje kuralı: bağlı kayıt etkisi ÖLÇÜLÜR,
 // kullanıcı uyarılmadan uygulanmaz).
@@ -155,8 +156,10 @@ export async function soforBagimliliklari(db: Db, id: string): Promise<Bagimlili
 
 export async function guzergahBagimliliklari(db: Db, id: string): Promise<BagimlilikGrubu[]> {
   const where = { guzergahId: id, aktif: true }
+  // C7: personel atamasında süresi GEÇMİŞ (bitiş < bugün) aktif kalmış kayıt engel sayılmaz; başlamamış sayılır
+  const personelWhere = { guzergahId: id, ...engelleyiciAtamaFiltresi(bugunTRTarihi()) }
   const [personelSayi, aracSayi, aracOrnek, soforSayi] = await Promise.all([
-    db.servisPersonelAtama.count({ where }),
+    db.servisPersonelAtama.count({ where: personelWhere }),
     db.servisGuzergahAracVarsayilan.count({ where }),
     db.servisGuzergahAracVarsayilan.findMany({
       where,
@@ -182,7 +185,8 @@ export async function seferDilimiBagimliliklari(db: Db, id: string): Promise<Bag
       take: ORNEK_LIMITI,
     }),
     db.servisGuzergahSoforVarsayilan.count({ where: aktifDilim }),
-    db.servisPersonelAtamaDilim.count({ where: { dilimId: id, atama: { aktif: true } } }),
+    // C7: süresi geçmiş (bitiş < bugün) aktif atama engel sayılmaz; henüz başlamamış atama engel olmaya devam eder
+    db.servisPersonelAtamaDilim.count({ where: { dilimId: id, atama: engelleyiciAtamaFiltresi(bugunTRTarihi()) } }),
     db.servisGuzergahDurakSaat.count({ where: aktifDilim }),
   ])
   return dolu([

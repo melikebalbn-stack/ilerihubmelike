@@ -16,6 +16,8 @@ const db = vi.hoisted(() => ({
   /** tx içinde, N. atama güncel okunurken kapatılır (yarış simülasyonu). */
   txteKapat: null as string | null,
   gecmisYazilamaz: false,
+  /** C5-3: transaction İÇİNDEKİ sorgu (round-trip) sayısı. */
+  txSorgu: 0,
   kapasite: {} as Record<string, { atananPersonelSayisi: number; kapasite: number; durum: string }>,
 }))
 
@@ -31,6 +33,7 @@ vi.mock('@/lib/prisma', () => {
       findMany: async ({ where }: { where: { id: { in: string[] } } }) =>
         where.id.in.map((id) => atamaOku(atamalar, id)).filter(Boolean).map((a) => klon(a)),
       findUnique: async ({ where }: { where: { id: string } }) => {
+        db.txSorgu++
         if (db.txteKapat === where.id) { const a = atamaOku(atamalar, where.id); if (a) a.aktif = false }
         const a = atamaOku(atamalar, where.id)
         return a ? { aktif: a.aktif } : null
@@ -38,6 +41,7 @@ vi.mock('@/lib/prisma', () => {
     },
     servisPersonelAtamaDilim: {
       createMany: async ({ data }: { data: { atamaId: string; dilimId: string }[] }) => {
+        db.txSorgu++
         for (const d of data) {
           const a = atamaOku(atamalar, d.atamaId)!
           if (a.dilimler.some((x) => x.dilimId === d.dilimId)) throw new Error('unique ihlali')
@@ -45,12 +49,14 @@ vi.mock('@/lib/prisma', () => {
         }
       },
       deleteMany: async ({ where }: { where: { atamaId: string; dilimId: { in: string[] } } }) => {
+        db.txSorgu++
         const a = atamaOku(atamalar, where.atamaId)!
         a.dilimler = a.dilimler.filter((x) => !where.dilimId.in.includes(x.dilimId))
       },
     },
     servisIslemGecmisi: {
       create: async ({ data }: { data: unknown }) => {
+        db.txSorgu++
         if (db.gecmisYazilamaz) throw new Error('audit yazılamadı')
         gecmis.push(klon(data))
       },
@@ -102,6 +108,7 @@ beforeEach(() => {
   db.dilimler = [SABAH, AKSAM, ESKI]
   db.txteKapat = null
   db.gecmisYazilamaz = false
+  db.txSorgu = 0
   // d1: 10 koltuk, 8 personel; d2: araç yok, 3 personel
   db.kapasite = {
     d1: { atananPersonelSayisi: 8, kapasite: 10, durum: 'UYGUN' },
@@ -308,5 +315,21 @@ describe('atamaDilimleriniGuncelle — tek atama (ekle/çıkar)', () => {
     kur([atama('a1', ['d3'])]) // d3 pasif dilim
     await atamaDilimleriniGuncelle('a1', { ekle: ['d1'] }, 'u1', GUN)
     expect(dilimlerOf('a1')).toEqual(['d1', 'd3'])
+  })
+})
+
+describe('C5-3 — toplu Dilim Ata: transaction içi sorgu bütçesi (200 atama)', () => {
+  it(`dilim EKLEME: atama başına 3 sorgu (findUnique + createMany + tarihçe) → ${TOPLU_DILIM_ATAMA_LIMITI} atama = ${3 * TOPLU_DILIM_ATAMA_LIMITI}`, async () => {
+    const N = TOPLU_DILIM_ATAMA_LIMITI
+    kur(Array.from({ length: N }, (_, i) => atama(`t${i}`)))
+    const s = await topluDilimAta('g1', { atamaIdleri: Array.from({ length: N }, (_, i) => `t${i}`), dilimIdleri: ['d2'] }, 'u1', GUN)
+    expect(s.degisen).toBe(N)
+    expect(db.txSorgu).toBe(3 * N)
+  })
+
+  it('dilim ÇIKARMA/DÜZENLEME tek atamada: findUnique + deleteMany + createMany + tarihçe = 4', async () => {
+    kur([atama('a1', ['d1'])])
+    await atamaDilimleriniGuncelle('a1', { ekle: ['d2'], cikar: ['d1'] }, 'u1', GUN)
+    expect(db.txSorgu).toBe(4)
   })
 })

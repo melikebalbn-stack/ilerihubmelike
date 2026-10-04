@@ -22,28 +22,38 @@ const db = vi.hoisted(() => ({
   txteKapat: null as string | null,
   kapasite: {} as Record<string, { atananPersonelSayisi: number; kapasite: number; durum: string }>,
   yazmaSayaci: 0,
+  /** C5-3: transaction İÇİNDEKİ sorgu (round-trip) sayısı. */
+  txSorgu: 0,
+  /** C5-3: transaction DIŞI okuma sorgusu sayısı ve kapasite motoru çağrısı (her çağrı = 2 gerçek sorgu). */
+  okuSorgu: 0,
+  kapasiteCagrisi: 0,
 }))
 
 vi.mock('@/lib/prisma', () => {
   const klon = <T,>(x: T): T => structuredClone(x)
   const A = (m: Map<string, unknown>, id: string) => m.get(id) as Atama | undefined
-  const okuma = {
+  const okuma0 = {
     personnel: { findMany: async ({ where }: { where: { sicilNo: { in: string[] } } }) => db.personeller.filter((p) => where.sicilNo.in.includes(p.sicilNo)).map((p) => ({ ...p })) },
     servisGuzergah: { findMany: async () => db.guzergahlar.map((g) => ({ ...g })) },
     servisSeferDilimi: { findMany: async () => db.dilimler.map((d) => ({ ...d })) },
     servisGuzergahDurak: { findMany: async ({ where }: { where: { guzergahId: { in: string[] } } }) => db.guzergahDuraklari.filter((g) => where.guzergahId.in.includes(g.guzergahId)).map((g) => klon(g)) },
   }
+  // okuma sorgularını say (transaction dışı round-trip)
+  const sayac = <F extends (...a: never[]) => unknown>(f: F) => ((...a: never[]) => { db.okuSorgu++; return f(...a) }) as F
+  const okuma = Object.fromEntries(Object.entries(okuma0).map(([k, m]) => [k, { findMany: sayac(m.findMany as (...a: never[]) => unknown) }])) as unknown as typeof okuma0
   const yazma = (atamalar: Map<string, unknown>, gecmis: unknown[], audit: unknown[]) => ({
     servisPersonelAtama: {
       findUnique: async ({ where }: { where: { id: string } }) => {
+        db.txSorgu++
         if (db.txteKapat === where.id) { const a = A(atamalar, where.id); if (a) a.aktif = false }
         const a = A(atamalar, where.id)
         return a ? klon(a) : null
       },
       findFirst: async ({ where }: { where: { personnelId: string } }) =>
-        [...atamalar.values() as Iterable<Atama>].find((a) => a.personnelId === where.personnelId && a.aktif) ?? null,
-      update: async ({ where, data }: { where: { id: string }; data: Partial<Atama> }) => { db.yazmaSayaci++; Object.assign(A(atamalar, where.id)!, data) },
+        (db.txSorgu++, [...atamalar.values() as Iterable<Atama>].find((a) => a.personnelId === where.personnelId && a.aktif) ?? null),
+      update: async ({ where, data }: { where: { id: string }; data: Partial<Atama> }) => { db.txSorgu++; db.yazmaSayaci++; Object.assign(A(atamalar, where.id)!, data) },
       create: async ({ data }: { data: Omit<Atama, 'id' | 'dilimler' | 'aktif'> }) => {
+        db.txSorgu++
         db.yazmaSayaci++
         const id = `yeni-${++db.seq}`
         atamalar.set(id, { ...data, id, aktif: true, dilimler: [] })
@@ -52,11 +62,12 @@ vi.mock('@/lib/prisma', () => {
     },
     servisPersonelAtamaDilim: {
       createMany: async ({ data }: { data: { atamaId: string; dilimId: string }[] }) => {
+        db.txSorgu++
         db.yazmaSayaci++
         for (const d of data) A(atamalar, d.atamaId)!.dilimler.push({ dilimId: d.dilimId })
       },
     },
-    servisIslemGecmisi: { create: async ({ data }: { data: unknown }) => { gecmis.push(klon(data)) } },
+    servisIslemGecmisi: { create: async ({ data }: { data: unknown }) => { db.txSorgu++; gecmis.push(klon(data)) } },
     __audit: audit,
   })
   return {
@@ -64,7 +75,7 @@ vi.mock('@/lib/prisma', () => {
       ...okuma,
       servisPersonelAtama: {
         findMany: async ({ where }: { where: { personnelId: { in: string[] } } }) =>
-          [...db.atamalar.values() as Iterable<Atama>].filter((a) => where.personnelId.in.includes(a.personnelId) && a.aktif).map((a) => klon(a)),
+          (db.okuSorgu++, [...db.atamalar.values() as Iterable<Atama>]).filter((a) => where.personnelId.in.includes(a.personnelId) && a.aktif).map((a) => klon(a)),
       },
       $transaction: async (fn: (tx: unknown) => Promise<unknown>) => {
         const kopya = new Map<string, unknown>([...db.atamalar].map(([k, v]) => [k, klon(v)]))
@@ -82,12 +93,13 @@ vi.mock('@/lib/prisma', () => {
 })
 vi.mock('@/lib/audit-log', () => ({
   logAuditEvent: async (p: { tx: { __audit: unknown[] } }) => {
+    db.txSorgu++
     if (db.auditYazilamaz) throw new Error('audit yazılamadı')
     p.tx.__audit.push(structuredClone({ ...p, tx: undefined }))
     return { ok: true }
   },
 }))
-vi.mock('./kapasite', () => ({ servisKapasiteOzetiGetir: async (_g: string, dilimId: string) => db.kapasite[dilimId] }))
+vi.mock('./kapasite', () => ({ servisKapasiteOzetiGetir: async (_g: string, dilimId: string) => { db.kapasiteCagrisi++; return db.kapasite[dilimId] } }))
 
 import { GECIS_ORNEKLERI } from './atama-gecis.ornekler'
 import {
@@ -367,6 +379,9 @@ beforeEach(() => {
   db.auditYazilamaz = false
   db.txteKapat = null
   db.yazmaSayaci = 0
+  db.txSorgu = 0
+  db.okuSorgu = 0
+  db.kapasiteCagrisi = 0
   db.kapasite = {
     d1: { atananPersonelSayisi: 8, kapasite: 10, durum: 'UYGUN' },
     d2: { atananPersonelSayisi: 2, kapasite: 10, durum: 'UYGUN' },
@@ -607,5 +622,54 @@ describe('dosyalar', () => {
   it('hata yoksa rapor yalnız başlık satırı (boş durum)', () => {
     const wb = XLSX.read(hataRaporuOlustur([]), { type: 'buffer' })
     expect(XLSX.utils.sheet_to_json(wb.Sheets['Hatalar'], { header: 1 })).toHaveLength(1)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// C5-3 — SORGU BÜTÇESİ: transaction içindeki round-trip sayısı satır türüne göre SABİT ve satırla DOĞRUSAL.
+// (Ölçüm raporu bu sayılara dayanır; satır başına sorgu eklenirse bu test kırılır → zaman aşımı analizi yenilenmeli.)
+// ---------------------------------------------------------------------------
+describe('C5-3 — Excel uygulama: transaction içi sorgu bütçesi (300 satır)', () => {
+  const N = EXCEL_LIMITLERI.maksSatir
+  const sicil = (i: number) => String(2000 + i)
+  const kisiKur = () => { db.personeller = Array.from({ length: N }, (_, i) => ({ id: `q${i}`, sicilNo: sicil(i), adSoyad: `Kişi ${i}`, aktif: true })) }
+  // araçsız dilim: aşım onayı gerekmesin
+  const aracsiz = () => { db.kapasite.d1 = { atananPersonelSayisi: 0, kapasite: 0, durum: 'ARAC_YOK' }; db.kapasite.d2 = { atananPersonelSayisi: 0, kapasite: 0, durum: 'ARAC_YOK' } }
+
+  it(`YENİ: satır başına 5 sorgu (findFirst + create + createMany + 2 tarihçe) + 1 denetim → ${N} satır = ${5 * N + 1}`, async () => {
+    kisiKur(); aracsiz()
+    const r = await excelUygula(dosya(Array.from({ length: N }, (_, i) => [sicil(i), 'DARICA', '', 'AKŞAM_DÖNÜŞ', '2026-10-01'])), {}, 'u1', IZIN, BUGUN)
+    expect(r.yeni).toBe(N)
+    expect(db.txSorgu).toBe(5 * N + 1)
+  })
+
+  it(`DEĞİŞİKLİK: satır başına 7 sorgu (findUnique + update + tarihçe + create + createMany + 2 tarihçe) + 1 denetim → ${N} satır = ${7 * N + 1}`, async () => {
+    kisiKur(); aracsiz()
+    for (let i = 0; i < N; i++) db.atamalar.set(`e${i}`, atama(`e${i}`, `q${i}`, { dilimler: [{ dilimId: 'd1' }] }))
+    const r = await excelUygula(dosya(Array.from({ length: N }, (_, i) => [sicil(i), 'ÜSKÜDAR', 'USK-01', 'AKŞAM_DÖNÜŞ', BUGUN])), {}, 'u1', IZIN, BUGUN)
+    expect(r.degisiklik).toBe(N)
+    expect(db.txSorgu).toBe(7 * N + 1)
+  })
+
+  it(`DİLİM EKLE / YALNIZ DİLİM: satır başına 3 sorgu (findUnique + createMany + tarihçe) + 1 denetim → ${N} satır = ${3 * N + 1}`, async () => {
+    kisiKur(); aracsiz()
+    for (let i = 0; i < N; i++) db.atamalar.set(`e${i}`, atama(`e${i}`, `q${i}`, { dilimler: [] }))
+    const r = await excelUygula(dosya(Array.from({ length: N }, (_, i) => [sicil(i), '', '', 'SABAH_GIDIŞ', ''])), {}, 'u1', IZIN, BUGUN)
+    expect(r.dilimEkle).toBe(N)
+    expect(db.txSorgu).toBe(3 * N + 1)
+  })
+})
+
+describe('C5-3 — Excel: transaction DIŞI hazırlık sorguları (önizleme / hata raporu / uygulamanın ilk adımı)', () => {
+  it('bağlam yükleme 5 sorgu (personel, güzergâh, dilim, atama, durak) + kapasite etkisi: (etkilenen güzergâh × dilim) çağrı × 2 sorgu — satır sayısından BAĞIMSIZ', async () => {
+    const N = EXCEL_LIMITLERI.maksSatir
+    db.personeller = Array.from({ length: N }, (_, i) => ({ id: `q${i}`, sicilNo: String(2000 + i), adSoyad: `Kişi ${i}`, aktif: true }))
+    // 300 satır, 2 güzergâh × 2 dilim (aşım olmasın diye araçsız)
+    db.kapasite.d1 = { atananPersonelSayisi: 0, kapasite: 0, durum: 'ARAC_YOK' }
+    db.kapasite.d2 = { atananPersonelSayisi: 0, kapasite: 0, durum: 'ARAC_YOK' }
+    const satirlar = dosya(Array.from({ length: N }, (_, i) => [String(2000 + i), i % 2 ? 'DARICA' : 'ÜSKÜDAR', '', 'SABAH_GIDIŞ, AKŞAM_DÖNÜŞ', '2026-10-01']))
+    await excelOnizle(satirlar, IZIN, BUGUN)
+    expect(db.okuSorgu).toBe(5)
+    expect(db.kapasiteCagrisi).toBe(2 * 2) // 2 güzergâh × 2 dilim (her çağrı gerçekte 2 sorgu → 8)
   })
 })

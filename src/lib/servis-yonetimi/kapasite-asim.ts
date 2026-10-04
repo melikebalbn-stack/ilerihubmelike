@@ -1,3 +1,4 @@
+import { atamaGunuKapsar } from './gecerli-atama'
 import { servisKapasiteOzetiGetir } from './kapasite'
 
 // ============================================================================
@@ -48,11 +49,8 @@ export type KapasiteEtkisiSatiri = {
 
 type Dilim = { id: string; kod: string; ad: string }
 
-/** Atama, verilen gün için kapasiteye giriyor mu (motorun tarih filtresiyle aynı mantık). */
-export function atamaGunuKapsar(a: { baslangicTarihi: Date; bitisTarihi: Date | null }, gun: string): boolean {
-  const g = new Date(`${gun}T00:00:00.000Z`)
-  return a.baslangicTarihi.getTime() <= g.getTime() && (a.bitisTarihi === null || a.bitisTarihi.getTime() >= g.getTime())
-}
+// Tarih aralığı kuralı TEK kaynakta (gecerli-atama.ts); geriye dönük import yolu korunur.
+export { atamaGunuKapsar }
 
 export function etkiSatiriOlustur(
   dilim: Dilim,

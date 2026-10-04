@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma'
+import { gecerliAtamaFiltresi, tarihAraligiFiltresi } from './gecerli-atama'
 import { bugunTR } from './tarih-kurallari'
 
 // ============================================================================
@@ -98,12 +99,9 @@ export function hesapTarihiCoz(girdi: string | null | undefined): Date {
   return tarih
 }
 
-/** Pozitif AND-of-OR tarih filtresi — tek ve toplu sorgu AYNI filtreyi kullanır. */
+/** Pozitif AND-of-OR tarih filtresi — tek ve toplu sorgu AYNI filtreyi kullanır (kaynak: gecerli-atama.ts). */
 export function tarihFiltresiOlustur(gun: Date) {
-  return {
-    baslangicTarihi: { lte: gun },
-    OR: [{ bitisTarihi: null }, { bitisTarihi: { gte: gun } }],
-  }
+  return tarihAraligiFiltresi(gun)
 }
 
 export async function servisKapasiteOzetiGetir(
@@ -127,12 +125,8 @@ export async function servisKapasiteOzetiGetir(
       select: { arac: { select: { kapasite: true } } },
     }),
     prisma.servisPersonelAtama.count({
-      where: {
-        guzergahId,
-        aktif: true,
-        dilimler: { some: { dilimId } },
-        ...tarihFiltresi,
-      },
+      // geçerli atama = aktif + tarih aralığı (gecerli-atama.ts, tek kaynak)
+      where: { guzergahId, dilimler: { some: { dilimId } }, ...gecerliAtamaFiltresi(gun) },
     }),
   ])
 
@@ -412,7 +406,7 @@ export async function servisKapasiteTopluGetir(
       select: { guzergahId: true, dilimId: true, arac: { select: { plaka: true, kapasite: true } } },
     }),
     prisma.servisPersonelAtama.findMany({
-      where: { aktif: true, ...guzergahKosulu, ...tarihFiltresi },
+      where: { ...gecerliAtamaFiltresi(gun), ...guzergahKosulu },
       select: { id: true, personnelId: true, guzergahId: true, baslangicTarihi: true, atamaKaynagi: true, dilimler: { select: { dilimId: true } } },
     }),
   ])

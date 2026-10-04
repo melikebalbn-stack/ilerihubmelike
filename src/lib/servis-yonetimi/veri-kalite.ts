@@ -20,6 +20,7 @@
 // adres, e-posta bu ekranda YOK.
 
 import { prisma } from '@/lib/prisma'
+import { bugunTRTarihi, gecerliAtamaFiltresi } from './gecerli-atama'
 import { servisKapasiteTopluGetir } from './kapasite'
 
 export interface VeriKaliteBulgu {
@@ -45,13 +46,15 @@ function araliklarKesisiyorMu(
 // ----------------------------------------------------------------------------
 // KENDI_GELIYOR / KULLANMIYOR / SIRKET_ARACI durumundaki personel bilinçli
 // olarak servis kullanmıyor — anomali SAYILMAZ (bkz. keşif raporu madde C).
+// C7: "servisi var" = BUGÜN GEÇERLİ atama (aktif + tarih aralığı, gecerli-atama.ts). Bitişi geçmiş ama
+// aktif=true kalmış atama (ileri tarihli transferin eski atamasi) personeli "servisi var" göstermez.
 export async function aktifPersonelServisYok(): Promise<VeriKaliteBulgu> {
   const kod = 'aktif-personel-servis-yok'
   const baslik = 'Aktif personel / servis yok'
   const kayitlar = await prisma.personnel.findMany({
     where: {
       aktif: true,
-      servisAtamalari: { none: { aktif: true } },
+      servisAtamalari: { none: gecerliAtamaFiltresi(bugunTRTarihi()) },
       servisDurumlari: { none: { aktif: true, durum: { not: 'SERVIS_KULLANIYOR' } } },
     },
     select: { id: true, sicilNo: true, adSoyad: true, bolum: true },
@@ -67,7 +70,8 @@ export async function pasifPersonelServisAktif(): Promise<VeriKaliteBulgu> {
   const kod = 'pasif-personel-servis-aktif'
   const baslik = 'Pasif personel / servis aktif'
   const kayitlar = await prisma.personnel.findMany({
-    where: { aktif: false, servisAtamalari: { some: { aktif: true } } },
+    // C7: bugün GEÇERLİ atama (aktif + tarih aralığı) — bitişi geçmiş aktif kalmış atama alarm üretmez
+    where: { aktif: false, servisAtamalari: { some: gecerliAtamaFiltresi(bugunTRTarihi()) } },
     select: { id: true, sicilNo: true, adSoyad: true, bolum: true },
     orderBy: { adSoyad: 'asc' },
   })
@@ -75,17 +79,19 @@ export async function pasifPersonelServisAktif(): Promise<VeriKaliteBulgu> {
 }
 
 // ----------------------------------------------------------------------------
-// 3. Mükerrer aktif servis — TARİHTEN BAĞIMSIZ (aynı personelin 2+ aktif=true
-// satırı olması, tarih aralıkları kesişsin ya da kesişmesin). 9'dan farkı:
-// burada tarih boyutuna hiç bakılmaz, yalnız "aynı anda 2+ aktif" sayılır.
+// 3. Mükerrer aktif servis — aynı personelin BUGÜN GEÇERLİ 2+ ataması (C7).
+// Eskiden tarihten bağımsız "2+ aktif=true satır" sayılıyordu: planlı ileri tarihli transferde (eski atama
+// geçiş gününe kadar aktif, yeni atama aktif ama henüz başlamadı) kaydedilir kaydedilmez yanlış alarm
+// veriyordu. Şimdi yalnız bugün gerçekten birlikte geçerli olanlar sayılır.
 // ----------------------------------------------------------------------------
 export async function mukerrerAktifServis(): Promise<VeriKaliteBulgu> {
   const kod = 'mukerrer-aktif-servis'
-  const baslik = 'Mükerrer aktif servis (tarihten bağımsız — aynı personelin 2+ aktif atama satırı)'
+  const baslik = 'Mükerrer aktif servis (aynı personelin bugün geçerli 2+ atama satırı)'
+  const gecerli = gecerliAtamaFiltresi(bugunTRTarihi())
 
   const gruplar = await prisma.servisPersonelAtama.groupBy({
     by: ['personnelId'],
-    where: { aktif: true },
+    where: gecerli,
     _count: { _all: true },
     having: { personnelId: { _count: { gt: 1 } } },
   })
@@ -94,7 +100,7 @@ export async function mukerrerAktifServis(): Promise<VeriKaliteBulgu> {
   const personnelIds = gruplar.map(g => g.personnelId)
   const [atamalar, personeller] = await Promise.all([
     prisma.servisPersonelAtama.findMany({
-      where: { personnelId: { in: personnelIds }, aktif: true },
+      where: { personnelId: { in: personnelIds }, ...gecerli },
       select: {
         id: true,
         personnelId: true,
@@ -232,7 +238,8 @@ async function etkilenenPersonelSayisiHesapla(
   const atamaDilimler = await prisma.servisPersonelAtamaDilim.findMany({
     where: {
       dilimId: { in: [...new Set(eksikCiftler.map(c => c.dilimId))] },
-      atama: { aktif: true, guzergahId: { in: [...new Set(eksikCiftler.map(c => c.guzergahId))] } },
+      // C7: bugün GEÇERLİ atamalar (bitişi geçmiş / henüz başlamamış atamalar etkilenen personel sayısını şişirmez)
+      atama: { ...gecerliAtamaFiltresi(bugunTRTarihi()), guzergahId: { in: [...new Set(eksikCiftler.map(c => c.guzergahId))] } },
     },
     select: { dilimId: true, atama: { select: { guzergahId: true, personnelId: true } } },
   })
@@ -428,11 +435,15 @@ export async function cakisanAtamalar(): Promise<VeriKaliteBulgu> {
 // ----------------------------------------------------------------------------
 // 11. Süresi bitmiş geçici atama
 // ----------------------------------------------------------------------------
+// aktif=true ama bitişi geçmiş atama. C7: "TAMAMLANMIŞ PLANLI GEÇİŞ" hata SAYILMAZ — aynı personelin bitişten
+// SONRAKİ GÜN başlayan başka aktif ataması varsa (ileri tarihli transfer: eski atama geçiş − 1'de biter,
+// yenisi geçiş gününde başlar) eski atama planlı kapanışını tamamlamıştır; tüm okuyucular aktif + tarih
+// aralığını birlikte kullandığı için zararsızdır ve otomatik pasife alınmaz. Bu atamalar listeye girmez.
+// Böyle bir halefi OLMAYAN (gerçekten süresi bitmiş, personel servisten düşmüş) atama hata olarak kalır.
 export async function suresiBitmisGeciciAtama(): Promise<VeriKaliteBulgu> {
   const kod = 'suresi-bitmis-gecici-atama'
   const baslik = 'Süresi bitmiş geçici atama'
-  const bugun = new Date()
-  bugun.setUTCHours(0, 0, 0, 0)
+  const bugun = bugunTRTarihi()
 
   const atamalar = await prisma.servisPersonelAtama.findMany({
     where: { aktif: true, bitisTarihi: { lt: bugun } },
@@ -446,17 +457,43 @@ export async function suresiBitmisGeciciAtama(): Promise<VeriKaliteBulgu> {
     orderBy: { bitisTarihi: 'asc' },
   })
 
-  const kayitlar = atamalar.map(a => ({
-    id: a.id,
-    personnelId: a.personnel.id,
-    sicilNo: a.personnel.sicilNo,
-    adSoyad: a.personnel.adSoyad,
-    bolum: a.personnel.bolum,
-    guzergahKod: a.guzergah.kod,
-    guzergahAd: a.guzergah.ad,
-    baslangicTarihi: a.baslangicTarihi,
-    bitisTarihi: a.bitisTarihi,
-  }))
+  // Tamamlanmış planlı geçiş: aynı personelin bitişten ertesi gün başlayan başka AKTİF ataması
+  const haleflerByPersonel = new Map<string, Set<string>>()
+  if (atamalar.length > 0) {
+    const halefler = await prisma.servisPersonelAtama.findMany({
+      where: { aktif: true, personnelId: { in: [...new Set(atamalar.map((a) => a.personnel.id))] } },
+      select: { id: true, personnelId: true, baslangicTarihi: true },
+    })
+    for (const h of halefler) {
+      if (!h.personnelId || !h.baslangicTarihi) continue
+      const set = haleflerByPersonel.get(h.personnelId) ?? new Set<string>()
+      set.add(`${h.baslangicTarihi.toISOString().slice(0, 10)}|${h.id}`)
+      haleflerByPersonel.set(h.personnelId, set)
+    }
+  }
+  const gunSonrasi = (d: Date) => new Date(d.getTime() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+  const planliGecisTamamlandi = (a: (typeof atamalar)[number]) => {
+    if (!a.bitisTarihi) return false
+    const hedef = gunSonrasi(a.bitisTarihi)
+    return [...(haleflerByPersonel.get(a.personnel.id) ?? [])].some((x) => {
+      const [gun, id] = x.split('|')
+      return gun === hedef && id !== a.id
+    })
+  }
+
+  const kayitlar = atamalar
+    .filter((a) => !planliGecisTamamlandi(a))
+    .map(a => ({
+      id: a.id,
+      personnelId: a.personnel.id,
+      sicilNo: a.personnel.sicilNo,
+      adSoyad: a.personnel.adSoyad,
+      bolum: a.personnel.bolum,
+      guzergahKod: a.guzergah.kod,
+      guzergahAd: a.guzergah.ad,
+      baslangicTarihi: a.baslangicTarihi,
+      bitisTarihi: a.bitisTarihi,
+    }))
 
   return { kod, baslik, adet: kayitlar.length, kayitlar }
 }

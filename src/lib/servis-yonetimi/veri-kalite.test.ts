@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { bugunTRTarihi, gecerliAtamaFiltresi } from './gecerli-atama'
 
 const mocks = vi.hoisted(() => ({
   personnelFindMany: vi.fn(),
@@ -82,7 +83,7 @@ describe('aktifPersonelServisYok', () => {
       expect.objectContaining({
         where: {
           aktif: true,
-          servisAtamalari: { none: { aktif: true } },
+          servisAtamalari: { none: gecerliAtamaFiltresi(bugunTRTarihi()) }, // C7: bugün GEÇERLİ atama
           servisDurumlari: { none: { aktif: true, durum: { not: 'SERVIS_KULLANIYOR' } } },
         },
       }),
@@ -103,11 +104,11 @@ describe('pasifPersonelServisAktif', () => {
     expect(sonuc.adet).toBe(0)
   })
 
-  it('where doğru kurulur (aktif=false + servisAtamalari.some.aktif=true)', async () => {
+  it('where doğru kurulur (aktif=false + servisAtamalari.some = bugün GEÇERLİ atama: aktif + tarih aralığı)', async () => {
     mocks.personnelFindMany.mockResolvedValue([])
     await pasifPersonelServisAktif()
     expect(mocks.personnelFindMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { aktif: false, servisAtamalari: { some: { aktif: true } } } }),
+      expect.objectContaining({ where: { aktif: false, servisAtamalari: { some: gecerliAtamaFiltresi(bugunTRTarihi()) } } }),
     )
   })
 })
@@ -642,5 +643,92 @@ describe('pasifGuzergahaAktifAtama (C4)', () => {
     mocks.personelAtamaFindMany.mockResolvedValue([atama('a1', 'X', 'Y')])
     const b = await pasifGuzergahaAktifAtama()
     expect(Object.keys(b.kayitlar[0]).sort()).toEqual(['atamaId', 'baslangicTarihi', 'guzergahAd', 'guzergahId', 'guzergahKod', 'kaynak'])
+  })
+})
+
+// ----------------------------------------------------------------------------
+// C7-2 — ileri tarihli atama (aktif + tarih aralığı BİRLİKTE)
+// ----------------------------------------------------------------------------
+describe('C7-2 — Veri Kalite okuyucuları bugün geçerli atamalarla çalışır', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-10-03T09:00:00.000Z')) // TR günü 2026-10-03
+  })
+  afterEach(() => vi.useRealTimers())
+  const BUGUN = new Date('2026-10-03T00:00:00.000Z')
+  const GECERLI = { aktif: true, baslangicTarihi: { lte: BUGUN }, OR: [{ bitisTarihi: null }, { bitisTarihi: { gte: BUGUN } }] }
+
+  it('🔴 Mükerrer aktif servis: groupBy ve kayıt sorgusu "bugün geçerli" koşuluyla (tarihten bağımsız aktif=true DEĞİL)', async () => {
+    mocks.personelAtamaGroupBy.mockResolvedValue([{ personnelId: 'p1', _count: { _all: 2 } }])
+    mocks.personelAtamaFindMany.mockResolvedValue([])
+    mocks.personnelFindMany.mockResolvedValue([])
+    await mukerrerAktifServis()
+    expect(mocks.personelAtamaGroupBy.mock.calls.at(-1)![0].where).toEqual(GECERLI)
+    expect(mocks.personelAtamaFindMany.mock.calls.at(-1)![0].where).toEqual({ personnelId: { in: ['p1'] }, ...GECERLI })
+  })
+
+  it('Aktif personel/servis yok ve Pasif personel/servis aktif: bugün geçerli atama koşulu', async () => {
+    mocks.personnelFindMany.mockResolvedValue([])
+    await aktifPersonelServisYok()
+    expect(mocks.personnelFindMany.mock.calls.at(-1)![0].where.servisAtamalari).toEqual({ none: GECERLI })
+    await pasifPersonelServisAktif()
+    expect(mocks.personnelFindMany.mock.calls.at(-1)![0].where.servisAtamalari).toEqual({ some: GECERLI })
+  })
+
+  it('araç/şoför yok: "etkilenen personel" yalnız bugün geçerli atamalarla (bitişi geçmiş/başlamamış sayılmaz)', async () => {
+    mocks.guzergahFindMany.mockResolvedValue([{ id: 'g1', kod: 'G1', ad: 'G' }])
+    mocks.seferDilimiFindMany.mockResolvedValue([{ id: 'd1', kod: 'S', ad: 'S' }])
+    mocks.aracVarsayilanFindMany.mockResolvedValue([])
+    mocks.guzergahDurakSaatFindMany.mockResolvedValue([{ guzergahDurak: { guzergahId: 'g1' }, dilimId: 'd1', dilim: { aktif: true } }])
+    mocks.atamaDilimFindMany.mockResolvedValue([])
+    await servisVarAracYok().catch(() => undefined)
+    const arg = mocks.atamaDilimFindMany.mock.calls.at(-1)?.[0]
+    expect(arg).toBeDefined()
+    expect(arg.where.atama).toMatchObject({ ...GECERLI, guzergahId: { in: ['g1'] } })
+  })
+
+  describe('Süresi bitmiş geçici atama — tamamlanmış planlı geçiş hata sayılmaz', () => {
+    const eski = (id: string, personelId: string, bitis: string) => ({
+      id, baslangicTarihi: new Date('2026-09-27'), bitisTarihi: new Date(bitis),
+      personnel: { id: personelId, sicilNo: personelId, adSoyad: 'Çağlar Şahin', bolum: 'Üretim' }, guzergah: { kod: 'DARICA', ad: 'Darıca' },
+    })
+    const halef = (id: string, personelId: string, baslangic: string) => ({ id, personnelId: personelId, baslangicTarihi: new Date(baslangic) })
+    const kur = (ilk: unknown[], halefler: unknown[]) => {
+      mocks.personelAtamaFindMany.mockReset()
+      mocks.personelAtamaFindMany.mockResolvedValueOnce(ilk).mockResolvedValueOnce(halefler)
+    }
+
+    it('🔴 bitiş 10-02, halef 10-03 başlıyor (planlı geçiş tamamlandı) → HATA DEĞİL', async () => {
+      kur([eski('a1', 'p1', '2026-10-02')], [halef('a2', 'p1', '2026-10-03'), halef('a1', 'p1', '2026-09-27')])
+      expect((await suresiBitmisGeciciAtama()).adet).toBe(0)
+    })
+
+    it('halefi OLMAYAN gerçekten süresi bitmiş atama hata olarak kalır; boşluklu halef (bitişten sonraki gün DEĞİL) tamamlanmış geçiş sayılmaz', async () => {
+      kur([eski('a1', 'p1', '2026-10-02'), eski('a3', 'p2', '2026-10-01')], [halef('a2', 'p2', '2026-10-05')])
+      const s = await suresiBitmisGeciciAtama()
+      expect(s.adet).toBe(2)
+      expect(s.kayitlar.map((k) => k.id)).toEqual(['a1', 'a3'])
+    })
+
+    it('karışık: biri planlı geçiş (hariç), biri gerçek (listelenir); başka personelin halefi sayılmaz', async () => {
+      kur([eski('a1', 'p1', '2026-10-02'), eski('a3', 'p2', '2026-10-02')], [halef('a2', 'p1', '2026-10-03')])
+      const s = await suresiBitmisGeciciAtama()
+      expect(s.kayitlar.map((k) => k.id)).toEqual(['a3'])
+    })
+
+    it('ay/yıl sınırı: bitiş 12-31, halef 01-01 → tamamlanmış planlı geçiş; boş durum → ikinci sorgu atılmaz', async () => {
+      kur([eski('a1', 'p1', '2026-12-31')], [halef('a2', 'p1', '2027-01-01')])
+      expect((await suresiBitmisGeciciAtama()).adet).toBe(0)
+      mocks.personelAtamaFindMany.mockReset()
+      mocks.personelAtamaFindMany.mockResolvedValueOnce([])
+      expect((await suresiBitmisGeciciAtama()).adet).toBe(0)
+      expect(mocks.personelAtamaFindMany).toHaveBeenCalledTimes(1)
+    })
+
+    it('sorgu: aktif:true + bitiş < TR bugünü', async () => {
+      kur([], [])
+      await suresiBitmisGeciciAtama()
+      expect(mocks.personelAtamaFindMany.mock.calls[0][0].where).toEqual({ aktif: true, bitisTarihi: { lt: BUGUN } })
+    })
   })
 })

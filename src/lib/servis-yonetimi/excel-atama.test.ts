@@ -89,6 +89,7 @@ vi.mock('@/lib/audit-log', () => ({
 }))
 vi.mock('./kapasite', () => ({ servisKapasiteOzetiGetir: async (_g: string, dilimId: string) => db.kapasite[dilimId] }))
 
+import { GECIS_ORNEKLERI } from './atama-gecis.ornekler'
 import {
   EXCEL_LIMITLERI, ExcelAtamaHatasi, HATA_RAPORU_BASLIKLARI, SABLON_BASLIKLARI, dilimKodlariniAyir, eklenenKisiHaritasi, excelOku,
   excelOnizle, excelUygula, hataRaporuOlustur, ozetle, sablonOlustur, satirlariPlanla, tarihHucresi,
@@ -125,6 +126,7 @@ function baglam(o: Partial<PlanBaglami> = {}): PlanBaglami {
       ['103', { id: 'p3', adSoyad: 'Ayşe Yıldız', aktif: false }],
     ]),
     aktifAtama: new Map(),
+    gelecekAtama: new Set(),
     guzergah: kodlu([G1, G2, G3]) as PlanBaglami['guzergah'],
     durak: new Map([
       ['g1', new Map([['dk-01', { durakId: 'dk1', kod: 'DK-01', aktif: true }], ['dk-02', { durakId: 'dk2', kod: 'DK-02', aktif: false }]])],
@@ -217,7 +219,8 @@ describe('planlama — satır türleri', () => {
 
   it('DEĞİŞİKLİK: aktif atama farklı güzergâh/durak → eski kapanır, yenisi açılır', () => {
     const b = baglam({ aktifAtama: new Map([['p1', MEVCUT]]) })
-    expect(planla([tam({ guzergahKod: 'ÜSKÜDAR', durakKod: 'USK-01' })], b)[0]).toMatchObject({ tur: 'DEGISIKLIK', eskiAtamaId: 'a1', guzergahId: 'g2', durakId: 'dk9' })
+    // tarih 2026-10-01 (geçmiş): eski anında pasif, bitiş = geçiş günü
+    expect(planla([tam({ guzergahKod: 'ÜSKÜDAR', durakKod: 'USK-01' })], b)[0]).toMatchObject({ tur: 'DEGISIKLIK', eskiAtamaId: 'a1', guzergahId: 'g2', durakId: 'dk9', eskiAktif: false, eskiBitis: '2026-10-01' })
     // aynı güzergâh, farklı durak da değişikliktir
     expect(planla([tam({ durakKod: 'DK-02' })], b)[0].hata).toContain('Durak pasif') // pasif durak seçilemez
   })
@@ -280,12 +283,26 @@ describe('planlama — hata türleri (satır numarasıyla)', () => {
     expect(c.tur).toBe('YENI') // diğer sicil etkilenmez
   })
 
-  it('🔴 güzergâh/durak değişikliği: başlangıç ileri tarihli ya da mevcut atamadan önce ise hata', () => {
+  it('🔴 C5: güzergâh/durak değişikliği transferle AYNI geçiş kuralı — bugün: eski anında pasif; İLERİ tarihli: eski o güne kadar aktif (bitiş = önceki gün), yeni o günde başlar', () => {
     const b = baglam({ aktifAtama: new Map([['p1', MEVCUT]]) })
-    expect(hata({ guzergahKod: 'ÜSKÜDAR', durakKod: 'USK-01', baslangic: '2026-10-20' }, b).hata).toContain('bugünden ileri olamaz')
-    expect(hata({ guzergahKod: 'ÜSKÜDAR', durakKod: 'USK-01', baslangic: '2026-09-01' }, b).hata).toContain('mevcut atamanın başlangıç tarihinden önce olamaz')
+    const degis = (baslangic: string) => hata({ guzergahKod: 'ÜSKÜDAR', durakKod: 'USK-01', baslangic }, b)
+    expect(degis(BUGUN)).toMatchObject({ tur: 'DEGISIKLIK', eskiAktif: false, eskiBitis: '2026-10-03' })
+    expect(degis('2026-10-20')).toMatchObject({ tur: 'DEGISIKLIK', eskiAktif: true, eskiBitis: '2026-10-19', baslangic: '2026-10-20' })
+    expect(degis('2026-10-02')).toMatchObject({ eskiAktif: false, eskiBitis: '2026-10-02' })
+  })
+
+  it('🔴 değişiklik: mevcut atamanın başlangıcından önce / A3 aralığı dışı ise hata (transferle aynı mesajlar)', () => {
+    const b = baglam({ aktifAtama: new Map([['p1', MEVCUT]]) })
+    expect(hata({ guzergahKod: 'ÜSKÜDAR', durakKod: 'USK-01', baslangic: '2026-09-01' }, b).hata).toContain('eski atamanın başlangıç tarihinden önce olamaz')
+    expect(hata({ guzergahKod: 'ÜSKÜDAR', durakKod: 'USK-01', baslangic: '2028-01-01' }, b).hata).toContain('en fazla 1 yıl sonrası')
     // yeni atama ileri tarihli olabilir (A3 aralığında)
     expect(hata({ sicil: '102', baslangic: '2026-12-01' }).tur).toBe('YENI')
+  })
+
+  it('🔴 personelin başlangıcı ileride aktif ataması varsa (ileri tarihli transfer bekliyor) satır HATA', () => {
+    const b = baglam({ aktifAtama: new Map([['p1', MEVCUT]]), gelecekAtama: new Set(['p1']) })
+    expect(hata({ guzergahKod: 'ÜSKÜDAR', durakKod: 'USK-01' }, b).hata).toContain('ileri tarihli (henüz başlamamış) aktif ataması var')
+    expect(hata({ sicil: '102' }, b).tur).toBe('YENI') // başka personel etkilenmez
   })
 
   it('🔴 yetki: servis.create yoksa yeni atama, create+passive yoksa değişiklik satırı HATA (yetki aşılmaz); dilim ekleme edit ile yeter', () => {
@@ -507,6 +524,48 @@ describe('uygulama — tek transaction, ayrı tarihçe, ortak topluIslemId', () 
     const s = dosya(Array.from({ length: 500 }, (_, i) => [String(1000 + i), 'DARICA', '', 'AKŞAM_DÖNÜŞ', '2026-10-01']))
     const o = await excelOnizle(s, IZIN, BUGUN)
     expect(o.ozet).toMatchObject({ toplamSatir: 500, yeni: 500, hatali: 0 })
+  })
+})
+
+describe('C5 — Excel değişikliği, transferle AYNI geçiş sonucunu verir (ortak örnek tablosu)', () => {
+  it.each(GECIS_ORNEKLERI)('$ad ($gun): eskiAktif / eskiBitis', (o) => {
+    const b = baglam({ aktifAtama: new Map([['p1', MEVCUT]]) })
+    const [s] = satirlariPlanla([ham({ satirNo: 2, sicil: '101', guzergahKod: 'ÜSKÜDAR', durakKod: 'USK-01', dilimKodlari: ['SABAH_GIDIŞ'], baslangic: o.gun })], b)
+    expect(s).toMatchObject({ tur: 'DEGISIKLIK', eskiAktif: o.eskiAktif, eskiBitis: o.eskiBitis, baslangic: o.gun })
+  })
+})
+
+describe('C5 — ileri tarihli güzergâh/durak değişikliği (uygulama)', () => {
+  it('🔴 eski atama o güne kadar AKTİF kalır (bitiş = önceki gün), yeni atama geçiş gününde başlar; bugünün kapasitesine yalnız başlamış olanlar girer', async () => {
+    db.atamalar.set('a1', atama('a1', 'p1', { dilimler: [{ dilimId: 'd1' }] }))
+    const s = dosya([['101', 'ÜSKÜDAR', 'USK-01', 'AKŞAM_DÖNÜŞ', '2026-10-20']])
+    const o = await excelOnizle(s, IZIN, BUGUN)
+    expect(o.etki).toHaveLength(0) // yeni atama bugün başlamadı → kapasiteye girmez
+    await excelUygula(s, {}, 'u1', IZIN, BUGUN)
+    expect(db.atamalar.get('a1')).toMatchObject({ aktif: true, bitisTarihi: new Date('2026-10-19T00:00:00.000Z') })
+    const yeni = [...db.atamalar.values() as Iterable<Atama>].find((a) => a.id.startsWith('yeni-'))!
+    expect(yeni).toMatchObject({ guzergahId: 'g2', aktif: true, baslangicTarihi: new Date('2026-10-20T00:00:00.000Z'), bitisTarihi: null })
+    // tarihçe: eski atama için GUNCELLEME (PASIFLESTIRME DEĞİL), planlı açıklama
+    const eskiKayit = gecmis().find((g) => g.hedefId === 'a1')!
+    expect(eskiKayit.islem).toBe('GUNCELLEME')
+    expect(eskiKayit.aciklama).toContain('planlı: 2026-10-20')
+    expect(eskiKayit.yeniDeger).toMatchObject({ bitisTarihi: '2026-10-19', aktif: true })
+  })
+
+  it('bugün tarihli değişiklikte eski anında pasif (PASIFLESTIRME), bitiş = geçiş günü', async () => {
+    db.atamalar.set('a1', atama('a1', 'p1', { dilimler: [{ dilimId: 'd1' }] }))
+    await excelUygula(dosya([['101', 'ÜSKÜDAR', 'USK-01', 'AKŞAM_DÖNÜŞ', BUGUN]]), {}, 'u1', IZIN, BUGUN)
+    expect(db.atamalar.get('a1')).toMatchObject({ aktif: false, bitisTarihi: new Date('2026-10-03T00:00:00.000Z') })
+    expect(gecmis().find((g) => g.hedefId === 'a1')!.islem).toBe('PASIFLESTIRME')
+  })
+
+  it('🔴 bekleyen ileri tarihli atamayla aynı dosya tekrar yüklenirse satır HATA (ikinci aktif atama açılmaz)', async () => {
+    db.atamalar.set('a1', atama('a1', 'p1', { dilimler: [{ dilimId: 'd1' }] }))
+    const s = dosya([['101', 'ÜSKÜDAR', 'USK-01', 'AKŞAM_DÖNÜŞ', '2026-10-20']])
+    await excelUygula(s, {}, 'u1', IZIN, BUGUN)
+    const o = await excelOnizle(s, IZIN, BUGUN)
+    expect(o.satirlar[0].tur).toBe('HATA')
+    expect(o.satirlar[0].hata).toContain('ileri tarihli')
   })
 })
 

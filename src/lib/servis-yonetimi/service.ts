@@ -44,6 +44,7 @@ import {
 } from './plaka'
 import { ARAC_TIPI_HATASI, aracTipiGecerliMi } from './arac-tipleri'
 import { asimOnayiKontrol, atamaGunuKapsar, kapasiteEtkisiHesapla, type KapasiteEtkisiSatiri } from './kapasite-asim'
+import { gecisPlanla } from './atama-gecis'
 import {
   aralikDogrula,
   baslangicTarihiCoz,
@@ -2296,12 +2297,12 @@ async function transferBaglami(eskiAtamaId: string, form: ServisPersonelAtamaTra
 
   const guzergahId = form.guzergahId.trim()
   const durakId = form.durakId?.trim() || null
-  const transferTarihi = dateOnlyOrNull(form.transferTarihi)!
   const dilimIdleri = [...new Set(form.dilimIdleri.map((d) => d.trim()).filter(Boolean))]
 
-  if (transferTarihi < eskiAtama.baslangicTarihi) {
-    throw new Error('Transfer tarihi, eski atamanın başlangıç tarihinden önce olamaz.')
-  }
+  // C5 — geçiş kuralı Excel'deki güzergâh/durak değişikliğiyle AYNI yardımcıdan (atama-gecis.ts):
+  // A3 tarih kuralları; bugün/geçmiş → eski anında pasif, ileri tarihli → eski o güne kadar aktif.
+  const gecis = gecisPlanla(eskiAtama.baslangicTarihi, form.transferTarihi, 'Transfer tarihi')
+  const transferTarihi = gecis.yeniBaslangic
 
   const [personnel, guzergah, dilimler] = await Promise.all([
     prisma.personnel.findUnique({ where: { id: eskiAtama.personnelId } }),
@@ -2330,11 +2331,11 @@ async function transferBaglami(eskiAtamaId: string, form: ServisPersonelAtamaTra
   // C0 — hedefteki kapasite etkisi (yeni atama bugünün kapasitesine yalnız transfer tarihi bugün ya
   // da geçmişse girer; ortak kural: kapasite-asim.ts).
   const bugun = bugunTR()
-  const kapsar = atamaGunuKapsar({ baslangicTarihi: transferTarihi, bitisTarihi: null }, bugun) ? 1 : 0
+  const kapsar = gecis.yeniBugunKapsar ? 1 : 0
   const etki = await kapasiteEtkisiHesapla(
     { id: guzergahId, kod: guzergah.kod }, dilimler, new Map(dilimler.map((d) => [d.id, kapsar] as const)), bugun,
   )
-  return { eskiAtama, guzergahId, durakId, transferTarihi, dilimIdleri, etki }
+  return { eskiAtama, guzergahId, durakId, transferTarihi, gecis, dilimIdleri, etki }
 }
 
 /** Transfer ÖNİZLEMESİ (yazmaz): hedefte kapasite etkisi + aşım var mı. */
@@ -2351,20 +2352,24 @@ export async function transferServisPersonelAtama(
   form: ServisPersonelAtamaTransferForm,
   yapanId: string,
 ) {
-  const { eskiAtama, guzergahId, durakId, transferTarihi, dilimIdleri, etki } = await transferBaglami(eskiAtamaId, form)
+  const { eskiAtama, guzergahId, durakId, transferTarihi, gecis, dilimIdleri, etki } = await transferBaglami(eskiAtamaId, form)
   // Aşım olacaksa onay olmadan transfer YOK (409).
   asimOnayiKontrol(etki, form.asimOnayi, 'Hedef güzergâh seçilen dilimlerde kapasiteyi aşacak. Devam etmek için aşım onayı gerekir.')
 
   return prisma.$transaction(async (tx) => {
     await tx.servisPersonelAtama.update({
       where: { id: eskiAtamaId },
-      data: { bitisTarihi: transferTarihi, aktif: false, updatedById: yapanId },
+      data: { bitisTarihi: gecis.eskiBitis, aktif: gecis.eskiAktif, updatedById: yapanId },
     })
     await kaydetIslemGecmisi({
-      tx, hedefTipi: 'PERSONEL_ATAMA', hedefId: eskiAtamaId, islem: 'PASIFLESTIRME', yapanId,
+      tx, hedefTipi: 'PERSONEL_ATAMA', hedefId: eskiAtamaId,
+      // ileri tarihli transferde eski atama pasife ALINMAZ (planlı kapanış): tarihçede GUNCELLEME
+      islem: gecis.eskiAktif ? 'GUNCELLEME' : 'PASIFLESTIRME', yapanId,
       oncekiDeger: { bitisTarihi: eskiAtama.bitisTarihi, aktif: true },
-      yeniDeger: { bitisTarihi: transferTarihi, aktif: false },
-      aciklama: ALTERNATIF_SERVIS_TRANSFER_ACIKLAMASI,
+      yeniDeger: { bitisTarihi: gecis.eskiBitis, aktif: gecis.eskiAktif },
+      aciklama: gecis.eskiAktif
+        ? `${ALTERNATIF_SERVIS_TRANSFER_ACIKLAMASI} — planlı: ${gecis.gecisGunu} tarihinde yeni servise geçer, eski atama o güne kadar aktif`
+        : ALTERNATIF_SERVIS_TRANSFER_ACIKLAMASI,
     })
 
     const yeniAtama = await tx.servisPersonelAtama.create({

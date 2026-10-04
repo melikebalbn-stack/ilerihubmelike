@@ -147,6 +147,12 @@ export function SerbestTransferDialog({
           <div>
             <Label htmlFor="st-tarih">Transfer Tarihi *</Label>
             <Input id="st-tarih" type="date" value={tarih} onChange={(e) => setTarih(e.target.value)} />
+            {tarih > bugun() && (
+              <p className="pt-1 text-xs text-muted-foreground" data-testid="transfer-ileri-not">
+                İleri tarihli transfer: eski atama geçiş gününe kadar aktif kalır, yeni atama {tarih} tarihinde başlar.
+                Bugünün kapasitesini etkilemez.
+              </p>
+            )}
           </div>
 
           {etki.length > 0 && (

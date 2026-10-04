@@ -10,6 +10,7 @@ import {
   kapasiteEtkisiHesapla,
   type KapasiteEtkisiSatiri,
 } from './kapasite-asim'
+import { gecisPlanla } from './atama-gecis'
 import { TarihHatasi, baslangicTarihiCoz, bugunTR } from './tarih-kurallari'
 
 // ============================================================================
@@ -165,8 +166,10 @@ export type PlanBaglami = {
   bugun: string
   /** sicilNo → personel */
   personel: Map<string, { id: string; adSoyad: string; aktif: boolean }>
-  /** personnelId → aktif atama (en fazla bir) */
+  /** personnelId → BUGÜN geçerli aktif atama (en fazla bir) */
   aktifAtama: Map<string, MevcutAtama>
+  /** personnelId → başlangıcı İLERİDE olan aktif atamaya sahip personel (ileri tarihli transfer vb.) */
+  gelecekAtama: Set<string>
   /** normalizeTr(kod) → güzergâh */
   guzergah: Map<string, KodluKayit>
   /** güzergâhId → (normalizeTr(durakKod) → durak) */
@@ -195,6 +198,9 @@ export type SatirSonucu = {
   eklenecekDilimIdleri?: string[]
   eskiAtamaId?: string
   eskiDilimIdleri?: string[]
+  /** DEGISIKLIK: eski atamaya yazılacak bitiş (YYYY-MM-DD) ve hemen pasife alınıp alınmayacağı (atama-gecis.ts). */
+  eskiBitis?: string
+  eskiAktif?: boolean
   /** Mevcut atamanın bugünün kapasitesine girip girmediği (dilim ekleme etkisi için). */
   mevcutKapsar?: boolean
 }
@@ -240,6 +246,10 @@ export function satirlariPlanla(satirlar: HamSatir[], b: PlanBaglami): SatirSonu
       dilimler.push(d)
     }
     const dilimIdleri = [...new Set(dilimler.map((d) => d.id))]
+    // İleri tarihli aktif ataması olan personelin satırı belirsiz (hangisi değişecek?) → önce o atama sonuçlansın
+    if (b.gelecekAtama.has(personel.id)) {
+      return hataSatiri(h, 'Personelin ileri tarihli (henüz başlamamış) aktif ataması var; önce onu düzenleyin ya da başlamasını bekleyin.', ad)
+    }
     const mevcut = b.aktifAtama.get(personel.id)
 
     // --- YALNIZ DİLİM: güzergâh + durak boş → mevcut aktif atamaya dilim ekle
@@ -297,15 +307,21 @@ export function satirlariPlanla(satirlar: HamSatir[], b: PlanBaglami): SatirSonu
       })
     }
 
-    // güzergâh/durak DEĞİŞİKLİĞİ: eski kapanır + yenisi açılır (transfer mantığı)
+    // güzergâh/durak DEĞİŞİKLİĞİ: transferle AYNI geçiş kuralı (atama-gecis.ts): bugün/geçmiş → eski anında
+    // pasif; ileri tarihli → eski o güne kadar aktif, yeni o günde başlar.
     if (!b.izinler.create || !b.izinler.passive) {
       return hataSatiri(h, 'Güzergâh/durak değişikliği için servis.create ve servis.passive yetkisi gerekir.', ad)
     }
-    if (h.baslangic > b.bugun) return hataSatiri(h, 'Güzergâh/durak değişikliğinde başlangıç tarihi bugünden ileri olamaz.', ad)
-    if (baslangic < mevcut.baslangicTarihi) return hataSatiri(h, 'Başlangıç tarihi mevcut atamanın başlangıç tarihinden önce olamaz.', ad)
+    let gecis: ReturnType<typeof gecisPlanla>
+    try {
+      gecis = gecisPlanla(mevcut.baslangicTarihi, h.baslangic, 'Başlangıç tarihi', new Date(`${b.bugun}T12:00:00.000Z`))
+    } catch (e) {
+      return hataSatiri(h, e instanceof TarihHatasi ? e.message : 'Başlangıç tarihi geçersiz.', ad)
+    }
     return sonuc(h, {
       ...ad, tur: 'DEGISIKLIK', personnelId: personel.id, guzergahId: g.id, guzergahKod: g.kod, durakId: hedefDurakId,
       dilimIdleri, eskiAtamaId: mevcut.id, eskiDilimIdleri: mevcut.dilimIdleri,
+      eskiBitis: gecis.eskiBitis.toISOString().slice(0, 10), eskiAktif: gecis.eskiAktif,
     })
   })
 }
@@ -408,10 +424,12 @@ export async function baglamYukle(
   return {
     bugun,
     personel: new Map(personeller.filter((p) => p.sicilNo).map((p) => [p.sicilNo!, { id: p.id, adSoyad: p.adSoyad, aktif: p.aktif }])),
-    aktifAtama: new Map(atamalar.map((a) => [a.personnelId, {
+    // BUGÜN geçerli atama; başlangıcı ileride olanlar ayrı (ileri tarihli transferde personelin iki aktif atamasi olur)
+    aktifAtama: new Map(atamalar.filter((a) => atamaGunuKapsar(a, bugun)).map((a) => [a.personnelId, {
       id: a.id, guzergahId: a.guzergahId, guzergahKod: guzergahById.get(a.guzergahId)?.kod ?? '',
       durakId: a.durakId, baslangicTarihi: a.baslangicTarihi, bitisTarihi: a.bitisTarihi, dilimIdleri: a.dilimler.map((d) => d.dilimId),
     }])),
+    gelecekAtama: new Set(atamalar.filter((a) => a.baslangicTarihi.toISOString().slice(0, 10) > bugun).map((a) => a.personnelId)),
     guzergah: new Map(guzergahlar.map((g) => [normalizeTr(g.kod), g])),
     durak,
     dilim: new Map(dilimler.map((d) => [normalizeTr(d.kod), d])),
@@ -503,12 +521,15 @@ export async function excelUygula(
             if (!eski?.aktif) throw satirHatasi('Mevcut atama bu sırada değişti/kapandı.')
             await tx.servisPersonelAtama.update({
               where: { id: s.eskiAtamaId! },
-              data: { bitisTarihi: new Date(`${s.baslangic}T00:00:00.000Z`), aktif: false, updatedById: yapanId },
+              data: { bitisTarihi: new Date(`${s.eskiBitis}T00:00:00.000Z`), aktif: s.eskiAktif!, updatedById: yapanId },
             })
             await kaydetIslemGecmisi({
-              tx, hedefTipi: 'PERSONEL_ATAMA', hedefId: s.eskiAtamaId!, islem: 'PASIFLESTIRME', yapanId,
-              oncekiDeger: { aktif: true }, yeniDeger: { bitisTarihi: s.baslangic, aktif: false, topluIslemId, excelSatirNo: s.satirNo },
-              aciklama: `${EXCEL_ATAMA_ACIKLAMASI} — güzergâh/durak değişikliği`,
+              tx, hedefTipi: 'PERSONEL_ATAMA', hedefId: s.eskiAtamaId!, islem: s.eskiAktif ? 'GUNCELLEME' : 'PASIFLESTIRME', yapanId,
+              oncekiDeger: { aktif: true },
+              yeniDeger: { bitisTarihi: s.eskiBitis, aktif: s.eskiAktif, topluIslemId, excelSatirNo: s.satirNo },
+              aciklama: s.eskiAktif
+                ? `${EXCEL_ATAMA_ACIKLAMASI} — güzergâh/durak değişikliği (planlı: ${s.baslangic} tarihinde geçer, eski atama o güne kadar aktif)`
+                : `${EXCEL_ATAMA_ACIKLAMASI} — güzergâh/durak değişikliği`,
             })
           } else {
             const varMi = await tx.servisPersonelAtama.findFirst({ where: { personnelId: s.personnelId!, aktif: true }, select: { id: true } })

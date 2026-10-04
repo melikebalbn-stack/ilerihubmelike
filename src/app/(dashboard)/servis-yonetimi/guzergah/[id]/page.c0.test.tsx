@@ -171,6 +171,15 @@ describe('C1 — Başka Güzergâha Taşı (serbest hedef)', () => {
     expect(govde(cagrilar('/a1/transfer').filter(([u]) => !String(u).includes('onizle'))[0]).asimOnayi).toBe(true)
   })
 
+  it('C5: ileri tarihli transferde açıklama notu çıkar (eski atama o güne kadar aktif, bugünün kapasitesi etkilenmez); bugün tarihlide çıkmaz', async () => {
+    cevaplar['transfer-onizle'] = { body: { ok: true, data: { etki: [etki({ once: 8, sonra: 8 })], asimVar: false } } }
+    await ac()
+    expect(screen.queryByTestId('transfer-ileri-not')).toBeNull()
+    fireEvent.change(screen.getByLabelText('Transfer Tarihi *'), { target: { value: '2999-01-01' } })
+    expect(screen.getByTestId('transfer-ileri-not').textContent).toContain('eski atama geçiş gününe kadar aktif kalır')
+    expect(screen.getByTestId('transfer-ileri-not').textContent).toContain('2999-01-01 tarihinde başlar')
+  })
+
   it('kullanıcı hatası: önizleme hatası Türkçe gösterilir ve uygulama kapalı kalır; uygulama hatası diyalogda kalır', async () => {
     cevaplar['transfer-onizle'] = { status: 400, body: { ok: false, message: 'Pasif güzergaha transfer yapılamaz.' } }
     await ac()

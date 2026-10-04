@@ -24,6 +24,8 @@ const db = vi.hoisted(() => ({
   yazmaSayaci: 0,
   /** C5-3: transaction İÇİNDEKİ sorgu (round-trip) sayısı. */
   txSorgu: 0,
+  /** Test kancası: transaction başlamadan hemen önce çalışır (yarış simülasyonu). */
+  txOncesi: null as (() => void) | null,
   /** C5-3: transaction DIŞI okuma sorgusu sayısı ve kapasite motoru çağrısı (her çağrı = 2 gerçek sorgu). */
   okuSorgu: 0,
   kapasiteCagrisi: 0,
@@ -49,12 +51,24 @@ vi.mock('@/lib/prisma', () => {
         const a = A(atamalar, where.id)
         return a ? klon(a) : null
       },
-      findFirst: async ({ where }: { where: { personnelId: string } }) =>
-        (db.txSorgu++, [...atamalar.values() as Iterable<Atama>].find((a) => a.personnelId === where.personnelId && a.aktif) ?? null),
+      // uygulamadaki çakışma koşulunu değerlendirir: personnelId, aktif, OR(bitiş boş ya da ≥ tarih)
+      findFirst: async ({ where }: { where: { personnelId: string; aktif?: boolean; OR?: ({ bitisTarihi: null } | { bitisTarihi: { gte: Date } })[] } }) => {
+        db.txSorgu++
+        return [...atamalar.values() as Iterable<Atama>].find((a) =>
+          a.personnelId === where.personnelId &&
+          (where.aktif === undefined || a.aktif === where.aktif) &&
+          (!where.OR || where.OR.some((k) => (k.bitisTarihi === null ? a.bitisTarihi === null : a.bitisTarihi !== null && a.bitisTarihi.getTime() >= k.bitisTarihi.gte.getTime()))),
+        ) ?? null
+      },
       update: async ({ where, data }: { where: { id: string }; data: Partial<Atama> }) => { db.txSorgu++; db.yazmaSayaci++; Object.assign(A(atamalar, where.id)!, data) },
       create: async ({ data }: { data: Omit<Atama, 'id' | 'dilimler' | 'aktif'> }) => {
         db.txSorgu++
         db.yazmaSayaci++
+        // DB EXCLUDE kısıtı simülasyonu (servis_personel_atama_aktif_tarih_excl): aynı personelin AKTİF atamalarında
+        // kapalı aralık ([baslangic, bitiş]) çakışması yasak — yeni atama süresiz [baslangic, ∞)
+        const cakisan = [...atamalar.values() as Iterable<Atama>].find((a) =>
+          a.personnelId === data.personnelId && a.aktif && (a.bitisTarihi === null || a.bitisTarihi.getTime() >= new Date(data.baslangicTarihi).getTime()))
+        if (cakisan) throw new Error('EXCLUDE: servis_personel_atama_aktif_tarih_excl')
         const id = `yeni-${++db.seq}`
         atamalar.set(id, { ...data, id, aktif: true, dilimler: [] })
         return { id }
@@ -78,6 +92,7 @@ vi.mock('@/lib/prisma', () => {
           (db.okuSorgu++, [...db.atamalar.values() as Iterable<Atama>]).filter((a) => where.personnelId.in.includes(a.personnelId) && a.aktif).map((a) => klon(a)),
       },
       $transaction: async (fn: (tx: unknown) => Promise<unknown>) => {
+        db.txOncesi?.()
         const kopya = new Map<string, unknown>([...db.atamalar].map(([k, v]) => [k, klon(v)]))
         const gecmisK: unknown[] = []
         const auditK: unknown[] = []
@@ -139,6 +154,7 @@ function baglam(o: Partial<PlanBaglami> = {}): PlanBaglami {
     ]),
     aktifAtama: new Map(),
     gelecekAtama: new Set(),
+    suresiDolmusBitis: new Map(),
     guzergah: kodlu([G1, G2, G3]) as PlanBaglami['guzergah'],
     durak: new Map([
       ['g1', new Map([['dk-01', { durakId: 'dk1', kod: 'DK-01', aktif: true }], ['dk-02', { durakId: 'dk2', kod: 'DK-02', aktif: false }]])],
@@ -331,7 +347,7 @@ describe('planlama — hata türleri (satır numarasıyla)', () => {
       tam({ satirNo: 3, sicil: '101', dilimKodlari: ['AKŞAM_DÖNÜŞ', 'SABAH_GIDIŞ'] }), // dilim ekle
       tam({ satirNo: 4, sicil: '999' }), // hata
     ], b)
-    expect(ozetle(r)).toEqual({ toplamSatir: 3, yeni: 1, degisiklik: 0, dilimEkle: 1, degismeyen: 0, hatali: 1 })
+    expect(ozetle(r)).toEqual({ toplamSatir: 3, yeni: 1, degisiklik: 0, dilimEkle: 1, degismeyen: 0, hatali: 1, uyarili: 0 })
   })
 })
 
@@ -380,6 +396,7 @@ beforeEach(() => {
   db.txteKapat = null
   db.yazmaSayaci = 0
   db.txSorgu = 0
+  db.txOncesi = null
   db.okuSorgu = 0
   db.kapasiteCagrisi = 0
   db.kapasite = {
@@ -582,6 +599,68 @@ describe('C5 — ileri tarihli güzergâh/durak değişikliği (uygulama)', () =
     const o = await excelOnizle(s, IZIN, BUGUN)
     expect(o.satirlar[0].tur).toBe('HATA')
     expect(o.satirlar[0].hata).toContain('ileri tarihli')
+  })
+})
+
+describe('C7-4 — bitişi geçmiş aktif atama: önizleme UYARIR, uygulama AYNI sonucu verir (parti düşmez)', () => {
+  const DOLMUS = (id: string, p: string, bitis: string) => atama(id, p, { baslangicTarihi: new Date('2026-09-01'), bitisTarihi: new Date(`${bitis}T00:00:00.000Z`), dilimler: [{ dilimId: 'd1' }] })
+  beforeEach(() => {
+    db.personeller = Array.from({ length: 6 }, (_, i) => ({ id: `q${i + 1}`, sicilNo: String(3000 + i + 1), adSoyad: `Kişi ${i + 1}`, aktif: true }))
+    db.kapasite.d1 = { atananPersonelSayisi: 0, kapasite: 0, durum: 'ARAC_YOK' }
+    db.kapasite.d2 = { atananPersonelSayisi: 0, kapasite: 0, durum: 'ARAC_YOK' }
+    db.atamalar.set('a2', atama('a2', 'q2', { dilimler: [{ dilimId: 'd1' }] })) // güncel
+    db.atamalar.set('a3', DOLMUS('a3', 'q3', '2026-10-01')) // süresi doldu
+    db.atamalar.set('a4', DOLMUS('a4', 'q4', '2026-10-01'))
+    db.atamalar.set('a5', atama('a5', 'q5', { baslangicTarihi: new Date('2026-10-20'), dilimler: [{ dilimId: 'd1' }] })) // başlamadı
+    db.atamalar.set('a6', DOLMUS('a6', 'q6', '2026-10-01'))
+  })
+  const satirlar = () => dosya([
+    ['3001', 'DARICA', '', 'SABAH_GIDIŞ', '2026-10-01'], // yeni (atama yok)
+    ['3002', 'ÜSKÜDAR', 'USK-01', 'AKŞAM_DÖNÜŞ', '2026-10-03'], // güncelden değişiklik
+    ['3003', 'DARICA', '', 'SABAH_GIDIŞ', '2026-10-02'], // süresi dolmuş + bitişten sonra → uyarılı YENİ
+    ['3004', 'DARICA', '', 'SABAH_GIDIŞ', '2026-09-30'], // süresi dolmuşla ÇAKIŞIR → hata
+    ['3005', 'DARICA', '', 'SABAH_GIDIŞ', '2026-10-05'], // başlamamış aktif atama var → hata
+    ['3006', '', '', 'AKŞAM_DÖNÜŞ', ''], // yalnız dilim ama atama süresi dolmuş → hata
+  ])
+
+  it('önizleme: türler, uyarı metni ve çakışma hataları', async () => {
+    const o = await excelOnizle(satirlar(), IZIN, BUGUN)
+    expect(o.satirlar.map((s) => s.tur)).toEqual(['YENI', 'DEGISIKLIK', 'YENI', 'HATA', 'HATA', 'HATA'])
+    expect(o.satirlar[2].uyari).toBe('Personelin süresi dolmuş (bitişi 2026-10-01) aktif bir ataması var; kayıt "Süresi doldu" olarak kalır, yeni atama bunu etkilemez.')
+    expect(o.satirlar[0].uyari).toBeNull()
+    expect(o.satirlar[3].hata).toContain('çakışıyor')
+    expect(o.satirlar[4].hata).toContain('ileri tarihli')
+    expect(o.satirlar[5].hata).toContain('süresi dolmuş (bitişi 2026-10-01); dilim eklenemez')
+    expect(o.ozet).toMatchObject({ yeni: 2, degisiklik: 1, hatali: 3, uyarili: 1 })
+  })
+
+  it('🔴 ÖNİZLEME = UYGULAMA: önizlemede geçerli her satır uygulanır, hatalılar atlanır, uygulama ASLA "çakışan aktif atama" ile düşmez', async () => {
+    const o = await excelOnizle(satirlar(), IZIN, BUGUN)
+    const gecerli = o.satirlar.filter((s) => s.tur !== 'HATA').map((s) => s.satirNo)
+    const r = await excelUygula(satirlar(), { beklenen: { gecerli: gecerli.length, hatali: o.ozet.hatali } }, 'u1', IZIN, BUGUN)
+    expect({ yeni: r.yeni, degisiklik: r.degisiklik, dilimEkle: r.dilimEkle, atlanan: r.atlanan }).toEqual({ yeni: o.ozet.yeni, degisiklik: o.ozet.degisiklik, dilimEkle: o.ozet.dilimEkle, atlanan: o.ozet.hatali })
+    const yeniler = [...db.atamalar.values() as Iterable<Atama>].filter((a) => a.id.startsWith('yeni-')).map((a) => a.personnelId).sort()
+    expect(yeniler).toEqual(['q1', 'q2', 'q3'])
+    // süresi dolmuş atama dokunulmadan kalır (aktif=true, bitiş aynı) — hata değil, zararsız
+    expect(db.atamalar.get('a3')).toMatchObject({ aktif: true, bitisTarihi: new Date('2026-10-01T00:00:00.000Z') })
+    // hatalı satırlar için hiçbir kayıt açılmadı
+    expect(yeniler).not.toContain('q4')
+    expect(yeniler).not.toContain('q5')
+  })
+
+  it('🔴 eski davranış (uygulamada tarihsiz aktif kontrolü) bu partiyi tümüyle düşürürdü: şimdi YENİ satırı süresi dolmuş atamaya rağmen uygulanır', async () => {
+    const tek = dosya([['3003', 'DARICA', '', 'SABAH_GIDIŞ', '2026-10-02']])
+    const r = await excelUygula(tek, {}, 'u1', IZIN, BUGUN)
+    expect(r.yeni).toBe(1)
+  })
+
+  it('🔴 yarış: planlamadan sonra başka kullanıcı çakışan aktif atama açarsa tüm parti geri alınır, hiçbir kayıt yazılmaz (net mesaj)', async () => {
+    db.txOncesi = () => db.atamalar.set('yaris', atama('yaris', 'q1', { baslangicTarihi: new Date('2026-09-20'), bitisTarihi: null, dilimler: [{ dilimId: 'd1' }] }))
+    const s = dosya([['3001', 'DARICA', '', 'SABAH_GIDIŞ', '2026-10-01'], ['3003', 'DARICA', '', 'SABAH_GIDIŞ', '2026-10-02']])
+    await expect(excelUygula(s, {}, 'u1', IZIN, BUGUN)).rejects.toThrow('çakışan aktif bir ataması oluştu')
+    expect([...db.atamalar.keys()].some((k) => k.startsWith('yeni-'))).toBe(false)
+    expect(gecmis()).toHaveLength(0)
+    expect(db.audit).toHaveLength(0)
   })
 })
 

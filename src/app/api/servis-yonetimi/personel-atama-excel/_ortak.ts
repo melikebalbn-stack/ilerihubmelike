@@ -58,6 +58,6 @@ export async function excelIstegiOku(request: Request, yetkiler: string[]): Prom
 export function satirGorunumu(s: SatirSonucu) {
   return {
     satirNo: s.satirNo, sicil: s.sicil, adSoyad: s.adSoyad, guzergahKod: s.guzergahKod, durakKod: s.durakKod,
-    dilimKodlari: s.dilimKodlari, baslangic: s.baslangic, tur: s.tur, hata: s.hata,
+    dilimKodlari: s.dilimKodlari, baslangic: s.baslangic, tur: s.tur, hata: s.hata, uyari: s.uyari,
   }
 }

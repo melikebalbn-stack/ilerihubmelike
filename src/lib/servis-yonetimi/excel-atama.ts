@@ -11,6 +11,7 @@ import {
   type KapasiteEtkisiSatiri,
 } from './kapasite-asim'
 import { gecisPlanla } from './atama-gecis'
+import { gunTarihi } from './gecerli-atama'
 import { EXCEL_DOSYA_SINIRI_MESAJI, EXCEL_LIMITLERI, EXCEL_MAKS_MB, EXCEL_SATIR_SINIRI_MESAJI } from './excel-atama-limitleri'
 import { TarihHatasi, baslangicTarihiCoz, bugunTR } from './tarih-kurallari'
 
@@ -171,6 +172,8 @@ export type PlanBaglami = {
   aktifAtama: Map<string, MevcutAtama>
   /** personnelId → başlangıcı İLERİDE olan aktif atamaya sahip personel (ileri tarihli transfer vb.) */
   gelecekAtama: Set<string>
+  /** personnelId → aktif=true ama SÜRESİ DOLMUŞ (bitiş < bugün) atamalarının en geç bitişi. Parti düşürmez: uyarı; çakışırsa satır HATA. */
+  suresiDolmusBitis: Map<string, Date>
   /** normalizeTr(kod) → güzergâh */
   guzergah: Map<string, KodluKayit>
   /** güzergâhId → (normalizeTr(durakKod) → durak) */
@@ -191,6 +194,8 @@ export type SatirSonucu = {
   baslangic: string
   tur: SatirTuru
   hata: string | null
+  /** Parti düşürmeyen açık uyarı (ör. personelin süresi dolmuş aktif ataması var). */
+  uyari: string | null
   // --- uygulama planı (yalnız geçerli satırlarda)
   personnelId?: string
   guzergahId?: string
@@ -211,7 +216,7 @@ const bos = (s: string) => s.trim() === ''
 function sonuc(h: HamSatir, o: Partial<SatirSonucu> & { tur: SatirTuru }): SatirSonucu {
   return {
     satirNo: h.satirNo, sicil: h.sicil, adSoyad: null, guzergahKod: h.guzergahKod, durakKod: h.durakKod,
-    dilimKodlari: h.dilimKodlari, baslangic: h.baslangic, hata: null, ...o,
+    dilimKodlari: h.dilimKodlari, baslangic: h.baslangic, hata: null, uyari: null, ...o,
   }
 }
 const hataSatiri = (h: HamSatir, hata: string, p?: { adSoyad?: string | null }) =>
@@ -252,10 +257,29 @@ export function satirlariPlanla(satirlar: HamSatir[], b: PlanBaglami): SatirSonu
       return hataSatiri(h, 'Personelin ileri tarihli (henüz başlamamış) aktif ataması var; önce onu düzenleyin ya da başlamasını bekleyin.', ad)
     }
     const mevcut = b.aktifAtama.get(personel.id)
+    // aktif=true ama bitişi geçmiş atama: tüm okuyucular tarih aralığını kullandığı için zararsız; parti düşürmez,
+    // yalnız UYARI. Yeni atama onunla ÇAKIŞIRSA (DB EXCLUDE kısıtı kapalı aralık) satır HATA.
+    const dolmus = b.suresiDolmusBitis.get(personel.id) ?? null
+    const dolmusGun = dolmus ? dolmus.toISOString().slice(0, 10) : ''
+    const dolmusUyari = dolmus
+      ? `Personelin süresi dolmuş (bitişi ${dolmusGun}) aktif bir ataması var; kayıt "Süresi doldu" olarak kalır, yeni atama bunu etkilemez.`
+      : null
+    const dolmusCakisma = (baslangic: Date) =>
+      dolmus && baslangic.getTime() <= dolmus.getTime()
+        ? `Başlangıç tarihi, personelin süresi dolmuş aktif atamasıyla (bitişi ${dolmusGun}) çakışıyor; bitişten sonraki bir tarih girin.`
+        : null
 
     // --- YALNIZ DİLİM: güzergâh + durak boş → mevcut aktif atamaya dilim ekle
     if (bos(h.guzergahKod) && bos(h.durakKod)) {
-      if (!mevcut) return hataSatiri(h, 'Aktif atama yok; yeni atama için Güzergâh Kodu da girin.', ad)
+      if (!mevcut) {
+        return hataSatiri(
+          h,
+          dolmus
+            ? `Atamanın süresi dolmuş (bitişi ${dolmusGun}); dilim eklenemez. Yeni atama için Güzergâh Kodu ve Başlangıç Tarihi girin.`
+            : 'Aktif atama yok; yeni atama için Güzergâh Kodu da girin.',
+          ad,
+        )
+      }
       const eklenecek = dilimIdleri.filter((d) => !mevcut.dilimIdleri.includes(d))
       if (eklenecek.length === 0) return sonuc(h, { ...ad, tur: 'DEGISIKLIK_YOK', personnelId: personel.id, guzergahId: mevcut.guzergahId, guzergahKod: mevcut.guzergahKod })
       return sonuc(h, {
@@ -290,7 +314,9 @@ export function satirlariPlanla(satirlar: HamSatir[], b: PlanBaglami): SatirSonu
     // --- mevcut aktif atamaya göre tür
     if (!mevcut) {
       if (!b.izinler.create) return hataSatiri(h, 'Yeni atama için servis.create yetkisi gerekir.', ad)
-      return sonuc(h, { ...ad, tur: 'YENI', personnelId: personel.id, guzergahId: g.id, durakId, dilimIdleri, guzergahKod: g.kod })
+      const cakisma = dolmusCakisma(baslangic)
+      if (cakisma) return hataSatiri(h, cakisma, ad)
+      return sonuc(h, { ...ad, tur: 'YENI', personnelId: personel.id, guzergahId: g.id, durakId, dilimIdleri, guzergahKod: g.kod, uyari: dolmusUyari })
     }
 
     // aynı güzergâhta durak boşsa "durak değişmez"
@@ -304,7 +330,7 @@ export function satirlariPlanla(satirlar: HamSatir[], b: PlanBaglami): SatirSonu
       return sonuc(h, {
         ...ad, tur: 'DILIM_EKLE', personnelId: personel.id, guzergahId: g.id, guzergahKod: g.kod, durakId: mevcut.durakId,
         dilimIdleri, eklenecekDilimIdleri: eklenecek, eskiAtamaId: mevcut.id, eskiDilimIdleri: mevcut.dilimIdleri,
-        mevcutKapsar: atamaGunuKapsar(mevcut, b.bugun),
+        mevcutKapsar: atamaGunuKapsar(mevcut, b.bugun), uyari: dolmusUyari,
       })
     }
 
@@ -319,10 +345,12 @@ export function satirlariPlanla(satirlar: HamSatir[], b: PlanBaglami): SatirSonu
     } catch (e) {
       return hataSatiri(h, e instanceof TarihHatasi ? e.message : 'Başlangıç tarihi geçersiz.', ad)
     }
+    const degisiklikCakisma = dolmusCakisma(gecis.yeniBaslangic)
+    if (degisiklikCakisma) return hataSatiri(h, degisiklikCakisma, ad)
     return sonuc(h, {
       ...ad, tur: 'DEGISIKLIK', personnelId: personel.id, guzergahId: g.id, guzergahKod: g.kod, durakId: hedefDurakId,
       dilimIdleri, eskiAtamaId: mevcut.id, eskiDilimIdleri: mevcut.dilimIdleri,
-      eskiBitis: gecis.eskiBitis.toISOString().slice(0, 10), eskiAktif: gecis.eskiAktif,
+      eskiBitis: gecis.eskiBitis.toISOString().slice(0, 10), eskiAktif: gecis.eskiAktif, uyari: dolmusUyari,
     })
   })
 }
@@ -336,6 +364,8 @@ export type ExcelOnizleme = {
     degismeyen: number
     hatali: number
     kapasiteUyarisi: number
+    /** Parti düşürmeyen açık uyarı taşıyan satır sayısı (ör. süresi dolmuş aktif atama). */
+    uyarili: number
   }
   satirlar: SatirSonucu[]
   etki: KapasiteEtkisiSatiri[]
@@ -352,6 +382,7 @@ export function ozetle(satirlar: SatirSonucu[]) {
     dilimEkle: say('DILIM_EKLE') + say('YALNIZ_DILIM'),
     degismeyen: say('DEGISIKLIK_YOK'),
     hatali: say('HATA'),
+    uyarili: satirlar.filter((s) => s.tur !== 'HATA' && s.uyari).length,
   }
 }
 
@@ -431,6 +462,13 @@ export async function baglamYukle(
       durakId: a.durakId, baslangicTarihi: a.baslangicTarihi, bitisTarihi: a.bitisTarihi, dilimIdleri: a.dilimler.map((d) => d.dilimId),
     }])),
     gelecekAtama: new Set(atamalar.filter((a) => a.baslangicTarihi.toISOString().slice(0, 10) > bugun).map((a) => a.personnelId)),
+    suresiDolmusBitis: atamalar
+      .filter((a) => a.bitisTarihi !== null && a.bitisTarihi.getTime() < gunTarihi(bugun).getTime())
+      .reduce((m, a) => {
+        const onceki = m.get(a.personnelId)
+        if (!onceki || a.bitisTarihi!.getTime() > onceki.getTime()) m.set(a.personnelId, a.bitisTarihi!)
+        return m
+      }, new Map<string, Date>()),
     guzergah: new Map(guzergahlar.map((g) => [normalizeTr(g.kod), g])),
     durak,
     dilim: new Map(dilimler.map((d) => [normalizeTr(d.kod), d])),
@@ -471,6 +509,13 @@ export async function excelOnizle(
 // ---------------------------------------------------------------------------
 // Uygulama (tek transaction)
 // ---------------------------------------------------------------------------
+
+/** Yeni [başlangıç, ∞) atama aralığıyla ÇAKIŞAN aktif atama koşulu (bitiş boş ya da ≥ başlangıç; DB EXCLUDE ile aynı kapalı aralık). */
+const cakismaKosulu = (personnelId: string, baslangic: string) => ({
+  personnelId,
+  aktif: true as const,
+  OR: [{ bitisTarihi: null }, { bitisTarihi: { gte: gunTarihi(baslangic) } }],
+})
 
 export const EXCEL_ATAMA_ACIKLAMASI = 'Excel toplu atama'
 export const AUDIT_ACTION_EXCEL_ATAMA = 'SERVIS_EXCEL_TOPLU_ATAMA'
@@ -533,8 +578,9 @@ export async function excelUygula(
                 : `${EXCEL_ATAMA_ACIKLAMASI} — güzergâh/durak değişikliği`,
             })
           } else {
-            const varMi = await tx.servisPersonelAtama.findFirst({ where: { personnelId: s.personnelId!, aktif: true }, select: { id: true } })
-            if (varMi) throw satirHatasi('Personelin bu sırada aktif bir ataması oluştu.')
+            // Önizlemeyle AYNI çakışma kuralı (aktif atama: bitiş boş ya da ≥ yeni başlangıç) — kapalı aralık EXCLUDE kısıtıyla uyumlu
+            const varMi = await tx.servisPersonelAtama.findFirst({ where: cakismaKosulu(s.personnelId!, s.baslangic), select: { id: true } })
+            if (varMi) throw satirHatasi('Personelin bu sırada çakışan aktif bir ataması oluştu.')
           }
           const yeni = await tx.servisPersonelAtama.create({
             data: {

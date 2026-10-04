@@ -22,7 +22,7 @@ import { apiHataMesaji } from '../_lib/servis-istek'
 const BASE = '/api/servis-yonetimi/personel-atama-excel'
 
 type Onizleme = Omit<ExcelOnizleme, 'satirlar'> & {
-  satirlar: { satirNo: number; sicil: string; adSoyad: string | null; guzergahKod: string; durakKod: string; dilimKodlari: string[]; baslangic: string; tur: SatirTuru; hata: string | null }[]
+  satirlar: { satirNo: number; sicil: string; adSoyad: string | null; guzergahKod: string; durakKod: string; dilimKodlari: string[]; baslangic: string; tur: SatirTuru; hata: string | null; uyari?: string | null }[]
 }
 
 const TUR_ETIKETI: Record<SatirTuru, string> = {
@@ -241,13 +241,14 @@ export default function PersonelAtamaExcelPage() {
 
       {adim === 2 && onizleme && (
         <>
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-6">
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-7">
             <Ozet baslik="Yeni atama" deger={onizleme.ozet.yeni} />
             <Ozet baslik="Değişiklik" deger={onizleme.ozet.degisiklik} />
             <Ozet baslik="Dilim ekleme" deger={onizleme.ozet.dilimEkle} />
             <Ozet baslik="Değişmeyen" deger={onizleme.ozet.degismeyen} />
             <Ozet baslik="Kapasite uyarısı" deger={onizleme.ozet.kapasiteUyarisi} vurgu="kirmizi" />
             <Ozet baslik="Hatalı satır" deger={onizleme.ozet.hatali} vurgu="amber" />
+            {onizleme.ozet.uyarili > 0 && <Ozet baslik="Uyarılı satır" deger={onizleme.ozet.uyarili} vurgu="amber" />}
           </div>
 
           {onizleme.etki.length > 0 && (
@@ -309,6 +310,7 @@ export default function PersonelAtamaExcelPage() {
                       <TableCell className="py-1.5">
                         <TurRozeti tur={s.tur} />
                         {s.hata && <span className="mt-0.5 block text-xs text-red-700">{s.hata}</span>}
+                        {s.uyari && <span className="mt-0.5 block text-xs text-amber-700" data-testid="satir-uyari">Uyarı: {s.uyari}</span>}
                       </TableCell>
                     </TableRow>
                   ))}

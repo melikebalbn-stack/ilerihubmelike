@@ -11,7 +11,7 @@ const oturum = (permissions: string[]) =>
 const satir = (o: object) => ({ satirNo: 2, sicil: '101', adSoyad: 'Çağlar Şahin', guzergahKod: 'DARICA', durakKod: 'DK-01', dilimKodlari: ['SABAH_GIDIŞ'], baslangic: '2026-10-01', tur: 'YENI', hata: null, ...o })
 const etki = (o: object = {}) => ({ dilimId: 'd1', dilimKod: 'SABAH_GIDIŞ', dilimAd: 'S', guzergahId: 'g1', guzergahKod: 'DARICA', once: 8, sonra: 9, koltuk: 10, aracYok: false, asim: false, fazla: 0, ...o })
 const ONIZLEME = {
-  ozet: { toplamSatir: 4, yeni: 1, degisiklik: 1, dilimEkle: 1, degismeyen: 0, hatali: 1, kapasiteUyarisi: 0 },
+  ozet: { toplamSatir: 4, yeni: 1, degisiklik: 1, dilimEkle: 1, degismeyen: 0, hatali: 1, kapasiteUyarisi: 0, uyarili: 0 },
   satirlar: [
     satir({ satirNo: 2 }),
     satir({ satirNo: 3, sicil: '102', adSoyad: 'İlker Öztürk', guzergahKod: 'ÜSKÜDAR', durakKod: 'USK-01', tur: 'DEGISIKLIK' }),
@@ -231,5 +231,22 @@ describe('3. Uygula', () => {
     fetchMock.mockRejectedValue(new Error('ağ'))
     fireEvent.click(screen.getByRole('button', { name: /3 satırı uygula/ }))
     expect(await screen.findByText(/Sunucuya ulaşılamadı/)).toBeTruthy()
+  })
+})
+
+describe('C7-4 — süresi dolmuş aktif atama: satır uyarısı (parti düşürmez)', () => {
+  it('uyarı satırda amber metin olarak görünür, "Uyarılı satır" kartı çıkar; satır geçerli kalır ve uygulanabilir', async () => {
+    const uyari = 'Personelin süresi dolmuş (bitişi 2026-10-01) aktif bir ataması var; kayıt "Süresi doldu" olarak kalır, yeni atama bunu etkilemez.'
+    cevap.onizleme = { body: { ok: true, data: { ...ONIZLEME, ozet: { ...ONIZLEME.ozet, uyarili: 1 }, satirlar: [{ ...ONIZLEME.satirlar[0], uyari }, ...ONIZLEME.satirlar.slice(1)] } } }
+    await onizleAc()
+    expect(screen.getByTestId('satir-uyari').textContent).toBe(`Uyarı: ${uyari}`)
+    expect(screen.getByTestId('ozet-Uyarılı satır').textContent).toBe('1')
+    expect((screen.getByRole('button', { name: /3 satırı uygula/ }) as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it('uyarı yoksa kart ve metin YOK', async () => {
+    await onizleAc()
+    expect(screen.queryByTestId('satir-uyari')).toBeNull()
+    expect(screen.queryByTestId('ozet-Uyarılı satır')).toBeNull()
   })
 })

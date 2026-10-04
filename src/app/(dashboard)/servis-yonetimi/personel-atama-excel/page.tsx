@@ -9,6 +9,7 @@ import { Button, buttonVariants } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import type { ExcelOnizleme, ExcelUygulamaSonucu, SatirTuru } from '@/lib/servis-yonetimi/excel-atama'
+import { EXCEL_DOSYA_SINIRI_MESAJI, EXCEL_LIMITLERI, EXCEL_MAKS_MB } from '@/lib/servis-yonetimi/excel-atama-limitleri'
 import type { KapasiteEtkisiSatiri } from '@/lib/servis-yonetimi/kapasite-asim'
 import { cn } from '@/lib/utils'
 import { AsimUyarisi, etkiMetni } from '../guzergah/[id]/AtamaDilimDialoglari'
@@ -19,7 +20,6 @@ import { apiHataMesaji } from '../_lib/servis-istek'
 // geçerli satırlar tek seferde uygulanır. Sayılar/doğrulama sunucudadır; burada yalnız akış ve gösterim.
 
 const BASE = '/api/servis-yonetimi/personel-atama-excel'
-const MAKS_BAYT = 2 * 1024 * 1024
 
 type Onizleme = Omit<ExcelOnizleme, 'satirlar'> & {
   satirlar: { satirNo: number; sicil: string; adSoyad: string | null; guzergahKod: string; durakKod: string; dilimKodlari: string[]; baslangic: string; tur: SatirTuru; hata: string | null }[]
@@ -100,9 +100,9 @@ export default function PersonelAtamaExcelPage() {
       setDosya(null)
       return setHata('Yalnız .xlsx dosyası yüklenebilir. Şablonu indirip kullanın.')
     }
-    if (f.size > MAKS_BAYT) {
+    if (f.size > EXCEL_LIMITLERI.maksDosyaBayt) {
       setDosya(null)
-      return setHata('Dosya çok büyük (en fazla 2 MB).')
+      return setHata(EXCEL_DOSYA_SINIRI_MESAJI)
     }
     setDosya(f)
   }
@@ -215,7 +215,9 @@ export default function PersonelAtamaExcelPage() {
               <li>Sütunlar: Sicil No · Güzergâh Kodu · Durak Kodu · Sefer Dilimi Kodu(ları) · Başlangıç Tarihi.</li>
               <li><strong>Sefer dilimi zorunludur</strong>; dilimsiz atama üretilmez. Birden çok dilim virgülle ayrılır.</li>
               <li>Güzergâh ve Durak boş, Sefer Dilimi dolu bırakılırsa personelin mevcut aktif atamasına dilim eklenir.</li>
-              <li>En fazla 500 satır, 2 MB, yalnız .xlsx.</li>
+              <li>
+                En fazla {EXCEL_LIMITLERI.maksSatir} satır (başlık hariç), {EXCEL_MAKS_MB} MB, yalnız .xlsx. Daha büyük listeleri parçalara bölün.
+              </li>
             </ul>
             <div className="flex flex-wrap items-center gap-3">
               <a href={`${BASE}/sablon`} className={buttonVariants({ variant: 'outline', size: 'sm' })}>

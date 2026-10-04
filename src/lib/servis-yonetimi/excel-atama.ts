@@ -11,6 +11,7 @@ import {
   type KapasiteEtkisiSatiri,
 } from './kapasite-asim'
 import { gecisPlanla } from './atama-gecis'
+import { EXCEL_DOSYA_SINIRI_MESAJI, EXCEL_LIMITLERI, EXCEL_MAKS_MB, EXCEL_SATIR_SINIRI_MESAJI } from './excel-atama-limitleri'
 import { TarihHatasi, baslangicTarihiCoz, bugunTR } from './tarih-kurallari'
 
 // ============================================================================
@@ -29,8 +30,8 @@ import { TarihHatasi, baslangicTarihiCoz, bugunTR } from './tarih-kurallari'
 
 export const SABLON_BASLIKLARI = ['Sicil No', 'Güzergâh Kodu', 'Durak Kodu', 'Sefer Dilimi Kodu(ları)', 'Başlangıç Tarihi'] as const
 
-/** Öneri: dosya 2 MB, en fazla 500 satır (63 atamalık göç + geniş pay; uzun transaction'ı önler). */
-export const EXCEL_LIMITLERI = { maksSatir: 500, maksDosyaBayt: 2 * 1024 * 1024 } as const
+// Sınırlar tek kaynakta (istemci de okur): excel-atama-limitleri.ts
+export { EXCEL_LIMITLERI }
 
 export class ExcelAtamaHatasi extends Error {
   constructor(message: string) {
@@ -94,7 +95,7 @@ export function excelOku(girdi: Buffer | Uint8Array): HamSatir[] {
   const bayt = Buffer.from(girdi)
   if (bayt.length === 0) throw new ExcelAtamaHatasi('Dosya boş.')
   if (bayt.length > EXCEL_LIMITLERI.maksDosyaBayt) {
-    throw new ExcelAtamaHatasi(`Dosya çok büyük (en fazla ${EXCEL_LIMITLERI.maksDosyaBayt / 1024 / 1024} MB).`)
+    throw new ExcelAtamaHatasi(EXCEL_DOSYA_SINIRI_MESAJI)
   }
   // .xlsx = zip ("PK"); .xls/.csv/başka biçimler reddedilir
   if (bayt[0] !== 0x50 || bayt[1] !== 0x4b) throw new ExcelAtamaHatasi('Yalnız .xlsx dosyası yüklenebilir. Şablonu indirip kullanın.')
@@ -138,7 +139,7 @@ export function excelOku(girdi: Buffer | Uint8Array): HamSatir[] {
     if (!h.sicil && !h.guzergahKod && !h.durakKod && h.dilimKodlari.length === 0 && !h.baslangic) continue // boş satır
     satirlar.push(h)
     if (satirlar.length > EXCEL_LIMITLERI.maksSatir) {
-      throw new ExcelAtamaHatasi(`En fazla ${EXCEL_LIMITLERI.maksSatir} satır işlenebilir. Dosyayı bölün.`)
+      throw new ExcelAtamaHatasi(EXCEL_SATIR_SINIRI_MESAJI)
     }
   }
   if (satirlar.length === 0) throw new ExcelAtamaHatasi('Dosyada veri satırı yok.')
@@ -616,7 +617,7 @@ export function sablonOlustur(kodlar: {
     ['YALNIZ DİLİM EKLEME: Güzergâh ve Durak boş, Sefer Dilimi dolu bırakılırsa personelin mevcut AKTİF atamasına dilim eklenir.'],
     ['Mevcut atamadan farklı güzergâh/durak yazılırsa eski atama kapanır, yenisi açılır (başlangıç tarihi bugünden ileri olamaz).'],
     ['Önce Önizleme yapılır; hiçbir kayıt yazılmaz. Hatalı satırlar atlanır, hata raporu indirilir.'],
-    ['Dosya en fazla 500 satır ve 2 MB, yalnız .xlsx.'],
+    [`Dosya en fazla ${EXCEL_LIMITLERI.maksSatir} satır (başlık hariç) ve ${EXCEL_MAKS_MB} MB, yalnız .xlsx. Daha büyük listeleri parçalara bölün.`],
   ])
   aciklama['!cols'] = [{ wch: 120 }]
   XLSX.utils.book_append_sheet(wb, aciklama, 'Açıklama')

@@ -188,7 +188,7 @@ describe('okuma', () => {
     expect(msj(() => excelOku(xlsxOlustur([], ['Ad', 'Soyad'])))).toContain('sütun(lar) bulunamadı')
     expect(msj(() => excelOku(xlsxOlustur([], [...SABLON_BASLIKLARI])))).toContain('veri satırı yok')
     const cok = Array.from({ length: EXCEL_LIMITLERI.maksSatir + 1 }, (_, i) => [`S${i}`, 'DARICA', '', 'SABAH_GIDIŞ', '2026-10-01'])
-    expect(msj(() => excelOku(xlsxOlustur(cok)))).toContain(`En fazla ${EXCEL_LIMITLERI.maksSatir} satır`)
+    expect(msj(() => excelOku(xlsxOlustur(cok)))).toContain(`en fazla ${EXCEL_LIMITLERI.maksSatir} satır olabilir`)
     expect(excelOku(xlsxOlustur(cok.slice(0, EXCEL_LIMITLERI.maksSatir)))).toHaveLength(EXCEL_LIMITLERI.maksSatir) // tam sınır geçer
     const dev = Buffer.concat([Buffer.from([0x50, 0x4b]), Buffer.alloc(EXCEL_LIMITLERI.maksDosyaBayt)])
     expect(msj(() => excelOku(dev))).toContain('çok büyük')
@@ -519,11 +519,12 @@ describe('uygulama — tek transaction, ayrı tarihçe, ortak topluIslemId', () 
     expect(yeniler.every((a) => a.aktif && a.bitisTarihi === null)).toBe(true)
   })
 
-  it('sınır: 500 satırlık dosya okunur ve planlanır', async () => {
-    db.personeller = Array.from({ length: 500 }, (_, i) => ({ id: `p${i}`, sicilNo: String(1000 + i), adSoyad: `Kişi ${i}`, aktif: true }))
-    const s = dosya(Array.from({ length: 500 }, (_, i) => [String(1000 + i), 'DARICA', '', 'AKŞAM_DÖNÜŞ', '2026-10-01']))
+  it('sınır: tam sınır satırlık dosya okunur ve planlanır', async () => {
+    const N = EXCEL_LIMITLERI.maksSatir
+    db.personeller = Array.from({ length: N }, (_, i) => ({ id: `p${i}`, sicilNo: String(1000 + i), adSoyad: `Kişi ${i}`, aktif: true }))
+    const s = dosya(Array.from({ length: N }, (_, i) => [String(1000 + i), 'DARICA', '', 'AKŞAM_DÖNÜŞ', '2026-10-01']))
     const o = await excelOnizle(s, IZIN, BUGUN)
-    expect(o.ozet).toMatchObject({ toplamSatir: 500, yeni: 500, hatali: 0 })
+    expect(o.ozet).toMatchObject({ toplamSatir: N, yeni: N, hatali: 0 })
   })
 })
 

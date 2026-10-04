@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
 import { requireAllPermissions } from '@/lib/auth/require-permission'
 import { getUserPermissions } from '@/lib/auth/get-user-permissions'
-import { EXCEL_LIMITLERI, ExcelAtamaHatasi, excelOku, type HamSatir, type SatirSonucu } from '@/lib/servis-yonetimi/excel-atama'
+import { ExcelAtamaHatasi, excelOku, type HamSatir, type SatirSonucu } from '@/lib/servis-yonetimi/excel-atama'
+import { EXCEL_DOSYA_SINIRI_MESAJI, EXCEL_LIMITLERI } from '@/lib/servis-yonetimi/excel-atama-limitleri'
 
 // Excel toplu atama uçlarının ORTAK iskeleti (Next route dosyası olarak algılanmasın diye "_" ile başlar).
 //
@@ -41,7 +42,7 @@ export async function excelIstegiOku(request: Request, yetkiler: string[]): Prom
     return { error: NextResponse.json({ ok: false, message: 'Excel dosyası seçilmedi.' }, { status: 400 }) }
   }
   if ((dosya as Blob).size > EXCEL_LIMITLERI.maksDosyaBayt) {
-    return { error: NextResponse.json({ ok: false, message: `Dosya çok büyük (en fazla ${EXCEL_LIMITLERI.maksDosyaBayt / 1024 / 1024} MB).` }, { status: 413 }) }
+    return { error: NextResponse.json({ ok: false, message: EXCEL_DOSYA_SINIRI_MESAJI }, { status: 413 }) }
   }
   try {
     const satirlar = excelOku(Buffer.from(await (dosya as Blob).arrayBuffer()))

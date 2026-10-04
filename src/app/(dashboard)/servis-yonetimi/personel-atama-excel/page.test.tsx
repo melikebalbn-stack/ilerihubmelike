@@ -18,7 +18,7 @@ const ONIZLEME = {
     satir({ satirNo: 4, sicil: '103', adSoyad: 'Şule Ğündoğdu', guzergahKod: '', durakKod: '', tur: 'YALNIZ_DILIM' }),
     satir({ satirNo: 5, sicil: '999', adSoyad: null, tur: 'HATA', hata: 'Sicil bulunamadı: 999.' }),
   ],
-  etki: [etki()], asimVar: false, limitler: { maksSatir: 500, maksDosyaBayt: 2097152 },
+  etki: [etki()], asimVar: false, limitler: { maksSatir: 300, maksDosyaBayt: 2097152 },
 }
 const SONUC = { topluIslemId: 'toplu-123', yeni: 1, degisiklik: 1, dilimEkle: 1, degismeyen: 0, atlanan: 1 }
 
@@ -70,6 +70,8 @@ describe('1. Dosya yükle', () => {
     render(<PersonelAtamaExcelPage />)
     expect(screen.getByRole('link', { name: /Şablonu indir/ }).getAttribute('href')).toBe('/api/servis-yonetimi/personel-atama-excel/sablon')
     expect(screen.getByText(/Sefer dilimi zorunludur/)).toBeTruthy()
+    // sınırlar tek kaynaktan (excel-atama-limitleri.ts) — metinde 300 satır / 2 MB
+    expect(document.body.textContent).toContain('En fazla 300 satır (başlık hariç), 2 MB')
     expect(screen.getByLabelText('Adımlar').textContent).toContain('1. Dosya yükle')
     expect((screen.getByRole('button', { name: /Önizle/ }) as HTMLButtonElement).disabled).toBe(true)
     dosyaSec()

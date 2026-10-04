@@ -109,7 +109,7 @@ describe.each(POSTLAR)('$ad — yetki ve dosya doğrulaması', ({ cagir, fn }) =
     const cok = Array.from({ length: EXCEL_LIMITLERI.maksSatir + 1 }, (_, i) => [`S${i}`, 'DARICA', '', 'SABAH_GIDIŞ', '2026-10-01'])
     const satir = await cagir(istek({ dosya: dosya(xlsx(cok)) }))
     expect(satir.status).toBe(400)
-    expect((await satir.json()).message).toContain('En fazla 500 satır')
+    expect((await satir.json()).message).toContain(`en fazla ${EXCEL_LIMITLERI.maksSatir} satır olabilir`)
     expect(fn()).not.toHaveBeenCalled()
   })
 })

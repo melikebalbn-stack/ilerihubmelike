@@ -197,3 +197,34 @@ describe('personelAtamaListesiSatirlariOlustur — KVKK: yalnız ad soyad/sicil 
     expect(rows[2][0]).toBe('C D')
   })
 })
+
+describe('C7-7 — personel atama listesi DURUM sütunu: hesaplanan durum (tarih sütunları aynen)', () => {
+  const kaynak = (baslangic: string, bitis: string | null, aktif = true) => ({
+    personnel: { adSoyad: 'Çağlar Şahin', sicilNo: '101' }, guzergah: { kod: 'DARICA', ad: 'Darıca' }, durak: null, dilimler: [],
+    baslangicTarihi: new Date(`${baslangic}T00:00:00.000Z`), bitisTarihi: bitis ? new Date(`${bitis}T00:00:00.000Z`) : null, aktif,
+  })
+  const durum = (k: ReturnType<typeof kaynak>) => personelAtamaListesiSatirlariOlustur([k], '2026-10-03')[1][7]
+
+  it('Aktif / Başlamadı / Süresi doldu / Pasif', () => {
+    expect(durum(kaynak('2026-09-27', null))).toBe('Aktif')
+    expect(durum(kaynak('2026-09-27', '2026-10-03'))).toBe('Aktif') // bitişi bugün
+    expect(durum(kaynak('2026-10-10', null))).toBe('Başlamadı')
+    expect(durum(kaynak('2026-09-27', '2026-10-02'))).toBe('Süresi doldu') // aktif=true kalmış ama bitişi geçmiş
+    expect(durum(kaynak('2026-09-27', '2026-10-02', false))).toBe('Pasif')
+  })
+
+  it('tarih sütunları aynen (başlangıç/bitiş TR biçimi); satır sayısı ve diğer sütunlar değişmez', () => {
+    const r = personelAtamaListesiSatirlariOlustur([kaynak('2026-09-27', '2026-10-02')], '2026-10-03')
+    expect(r[1].slice(5, 7)).toEqual(['27.09.2026', '02.10.2026'])
+    expect(r[0]).toHaveLength(8)
+    expect(r[1][0]).toBe('Çağlar Şahin')
+  })
+
+  it('planlı geçiş: eski atama geçiş gününde "Süresi doldu", yeni "Aktif"; geçişten önce eski "Aktif", yeni "Başlamadı"', () => {
+    const eski = kaynak('2026-09-27', '2026-10-09')
+    const yeni = kaynak('2026-10-10', null)
+    const goster = (gun: string) => [personelAtamaListesiSatirlariOlustur([eski], gun)[1][7], personelAtamaListesiSatirlariOlustur([yeni], gun)[1][7]]
+    expect(goster('2026-10-09')).toEqual(['Aktif', 'Başlamadı'])
+    expect(goster('2026-10-10')).toEqual(['Süresi doldu', 'Aktif'])
+  })
+})

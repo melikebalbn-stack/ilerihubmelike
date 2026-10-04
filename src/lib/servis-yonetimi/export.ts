@@ -7,6 +7,9 @@
 // satır biçimlendirme mantığı burada saf fonksiyon olarak test edilir
 // (prisma mock'lamaya gerek kalmaz).
 
+import { ATAMA_DURUM_ETIKETLERI, atamaDurumu } from './gecerli-atama'
+import { bugunTR } from './tarih-kurallari'
+
 function tarihTR(d: Date | null | undefined): string {
   if (!d) return ''
   return d.toLocaleDateString('tr-TR', { timeZone: 'UTC' })
@@ -150,7 +153,14 @@ export type PersonelAtamaListesiKaynak = {
   aktif: boolean
 }
 
-export function personelAtamaListesiSatirlariOlustur(atamalar: PersonelAtamaListesiKaynak[]): (string | number)[][] {
+/**
+ * DURUM sütunu (C7-7): `aktif` bayrağı değil HESAPLANAN durum — Aktif / Başlamadı / Süresi doldu / Pasif
+ * (Türkiye günü, gecerli-atama.ts). Bitişi geçmiş ama aktif=true kalmış atama "Aktif" yazmaz. Tarih sütunları aynen.
+ */
+export function personelAtamaListesiSatirlariOlustur(
+  atamalar: PersonelAtamaListesiKaynak[],
+  gun: string = bugunTR(),
+): (string | number)[][] {
   const rows: (string | number)[][] = [[...PERSONEL_ATAMA_LISTESI_HEADERS]]
   for (const a of atamalar) {
     rows.push([
@@ -161,7 +171,7 @@ export function personelAtamaListesiSatirlariOlustur(atamalar: PersonelAtamaList
       a.dilimler.map((d) => dilimEtiketi(d.dilim)).join(', '),
       tarihTR(a.baslangicTarihi),
       tarihTR(a.bitisTarihi),
-      a.aktif ? 'Aktif' : 'Pasif',
+      ATAMA_DURUM_ETIKETLERI[atamaDurumu(a, gun)],
     ])
   }
   return rows

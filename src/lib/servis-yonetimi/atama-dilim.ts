@@ -9,6 +9,7 @@ import {
   type AtamaDilimHataKodu,
   type KapasiteEtkisiSatiri,
 } from './kapasite-asim'
+import { atamaDurumu } from './gecerli-atama'
 import { bugunTR } from './tarih-kurallari'
 
 // C0: ortak kapasite aşımı kuralı kapasite-asim.ts'te; geriye dönük import yolları korunur.
@@ -104,6 +105,17 @@ async function atamalariYukle(guzergahId: string | null, atamaIdleri: string[]):
     throw new AtamaDilimHatasi('Seçilen atamalardan biri bu güzergâha ait değil.')
   }
   if (atamalar.some((a) => !a.aktif)) throw new AtamaDilimHatasi('Pasif atamaya dilim eklenemez/çıkarılamaz. Önce atamayı geri alın.')
+  // C7-5: aktif=true ama SÜRESİ DOLMUŞ (bitiş < bugün) atamaya dilim işlemi yapılamaz (kapasiteye girmeyen kayıt).
+  // "Başlamadı" atamada dilim düzenleme serbest (planlı atama hazırlanabilir).
+  const bugun = bugunTR()
+  const dolmus = atamalar.filter((a) => atamaDurumu(a, bugun) === 'SURESI_DOLDU')
+  if (dolmus.length > 0) {
+    throw new AtamaDilimHatasi(
+      atamalar.length === 1
+        ? `Bu atamanın süresi dolmuş (bitişi ${dolmus[0].bitisTarihi!.toISOString().slice(0, 10)}); dilim eklenemez/çıkarılamaz. Personel için yeni atama oluşturun.`
+        : `Seçilen atamalardan ${dolmus.length} tanesinin süresi dolmuş; dilim işlemi yapılamaz. Süresi dolmuş atamaları seçimden çıkarın.`,
+    )
+  }
   return atamalar
 }
 

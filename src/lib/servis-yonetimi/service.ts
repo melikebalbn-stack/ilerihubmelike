@@ -45,6 +45,7 @@ import {
 import { ARAC_TIPI_HATASI, aracTipiGecerliMi } from './arac-tipleri'
 import { asimOnayiKontrol, atamaGunuKapsar, kapasiteEtkisiHesapla, type KapasiteEtkisiSatiri } from './kapasite-asim'
 import { gecisPlanla } from './atama-gecis'
+import { atamaDurumu } from './gecerli-atama'
 import {
   aralikDogrula,
   baslangicTarihiCoz,
@@ -2109,11 +2110,15 @@ function personelAtamaCakismaMesaji(cakisan: { baslangicTarihi: Date; bitisTarih
 }
 
 export async function listServisPersonelAtamalari(guzergahId: string, filtre?: { aktif?: boolean }) {
-  return prisma.servisPersonelAtama.findMany({
+  const atamalar = await prisma.servisPersonelAtama.findMany({
     where: { guzergahId, ...(filtre?.aktif !== undefined ? { aktif: filtre.aktif } : {}) },
     include: servisPersonelAtamaInclude,
     orderBy: [{ aktif: 'desc' }, { baslangicTarihi: 'desc' }],
   })
+  // C7-5: `aktif` bayrağı tek başına "şu an geçerli" demek değildir → hesaplanan durum (Aktif / Başlamadı /
+  // Süresi doldu / Pasif; Türkiye günü). Ekran rozeti ve engeller buna göre çalışır.
+  const bugun = bugunTR()
+  return atamalar.map((a) => ({ ...a, durum: atamaDurumu(a, bugun) }))
 }
 
 export async function createServisPersonelAtama(form: ServisPersonelAtamaForm, createdById: string) {

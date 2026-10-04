@@ -2895,7 +2895,7 @@ const gecerliPersonelAtama = {
 
 describe('ServisPersonelAtama — view', () => {
   it('guzergahId ve aktif filtresiyle listeler', async () => {
-    mocks.personelAtamaFindMany.mockResolvedValue([{ id: 'pa1' }])
+    mocks.personelAtamaFindMany.mockResolvedValue([{ id: 'pa1', aktif: true, baslangicTarihi: new Date('2026-01-01'), bitisTarihi: null }])
     const data = await listServisPersonelAtamalari('guzergah-1', { aktif: true })
     expect(mocks.personelAtamaFindMany).toHaveBeenCalledWith({
       where: { guzergahId: 'guzergah-1', aktif: true },

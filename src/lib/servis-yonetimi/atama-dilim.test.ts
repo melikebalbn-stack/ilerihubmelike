@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // ============================================================================
 // B5 — atamaya sefer dilimi ekleme/çıkarma. Gerçek servis kodu + bellek-içi SAHTE DB
@@ -331,5 +331,45 @@ describe('C5-3 — toplu Dilim Ata: transaction içi sorgu bütçesi (200 atama)
     kur([atama('a1', ['d1'])])
     await atamaDilimleriniGuncelle('a1', { ekle: ['d2'], cikar: ['d1'] }, 'u1', GUN)
     expect(db.txSorgu).toBe(4)
+  })
+})
+
+describe('C7-5 — süresi dolmuş atamada dilim işlemi ENGELLİ; başlamamış atamada serbest', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-10-03T09:00:00.000Z'))
+  })
+  afterEach(() => vi.useRealTimers())
+  const dolmus = (id: string) => atama(id, [], { bitisTarihi: new Date('2026-10-02T00:00:00.000Z') })
+  const baslamadi = (id: string) => atama(id, [], { baslangicTarihi: new Date('2026-10-10T00:00:00.000Z') })
+
+  it('🔴 tek atama: süresi dolmuş (bitiş dün) → net mesaj, hiçbir şey yazılmaz', async () => {
+    kur([dolmus('a1')])
+    await expect(atamaDilimleriniGuncelle('a1', { ekle: ['d1'] }, 'u1', GUN)).rejects.toThrow('Bu atamanın süresi dolmuş (bitişi 2026-10-02); dilim eklenemez/çıkarılamaz')
+    expect(dilimlerOf('a1')).toEqual([])
+    expect(gecmis()).toHaveLength(0)
+  })
+
+  it('🔴 toplu: seçimde bir tane süresi dolmuş varsa TÜM işlem reddedilir (önizleme de, uygulama da)', async () => {
+    kur([atama('a1'), dolmus('a2'), atama('a3')])
+    const girdi = { atamaIdleri: ['a1', 'a2', 'a3'], dilimIdleri: ['d1'] }
+    await expect(topluDilimOnizle('g1', girdi, GUN)).rejects.toThrow('Seçilen atamalardan 1 tanesinin süresi dolmuş')
+    await expect(topluDilimAta('g1', girdi, 'u1', GUN)).rejects.toThrow('süresi dolmuş')
+    expect(dilimlerOf('a1')).toEqual([])
+    expect(gecmis()).toHaveLength(0)
+  })
+
+  it('başlamamış atamada dilim ekleme/çıkarma SERBEST (kapasite etkisi bugün için 0)', async () => {
+    kur([baslamadi('a1')])
+    const o = await topluDilimOnizle('g1', { atamaIdleri: ['a1'], dilimIdleri: ['d1'] }, GUN)
+    expect(o.degisecek).toBe(1)
+    expect(o.etki[0].sonra).toBe(o.etki[0].once) // bugünün kapasitesine girmiyor
+    await atamaDilimleriniGuncelle('a1', { ekle: ['d1'] }, 'u1', GUN)
+    expect(dilimlerOf('a1')).toEqual(['d1'])
+  })
+
+  it('bitişi BUGÜN olan atama hâlâ geçerli (engel yok)', async () => {
+    kur([atama('a1', [], { bitisTarihi: new Date('2026-10-03T00:00:00.000Z') })])
+    await expect(atamaDilimleriniGuncelle('a1', { ekle: ['d1'] }, 'u1', GUN)).resolves.toBeTruthy()
   })
 })

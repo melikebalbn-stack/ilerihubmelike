@@ -45,6 +45,7 @@ import { AsimUyarisi, DilimDuzenleDialog, DilimSutunu, TopluDilimAtaDialog } fro
 import { SerbestTransferDialog } from './SerbestTransferDialog'
 import type { KapasiteEtkisiSatiri } from '@/lib/servis-yonetimi/kapasite-asim'
 import { TOPLU_DILIM_ATAMA_LIMITI } from './atama-dilim-sabitleri'
+import { ATAMA_DURUM_ETIKETLERI, type AtamaDurumu } from '@/lib/servis-yonetimi/gecerli-atama'
 import type { GuzergahDurak, SeferDilimi } from './types'
 import { apiHataMesaji, jsonIstek, servisIstek } from '../../_lib/servis-istek'
 import { usePasifGeriAl } from '../../_lib/usePasifGeriAl'
@@ -110,6 +111,19 @@ type PersonelAtama = {
   bitisTarihi: string | null
   aktif: boolean
   dilimler: PersonelAtamaDilim[]
+  /** Sunucuda hesaplanan durum (C7-5); eski yanıtlarda yoksa aktif bayrağından türetilir. */
+  durum?: AtamaDurumu
+}
+
+const atamaDurumuGoster = (v: Pick<PersonelAtama, 'aktif' | 'durum'>): AtamaDurumu => v.durum ?? (v.aktif ? 'AKTIF' : 'PASIF')
+const SURESI_DOLDU_IPUCU = 'Süresi dolmuş atama için bu işlem yapılamaz'
+
+function AtamaDurumRozeti({ durum }: { durum: AtamaDurumu }) {
+  const etiket = ATAMA_DURUM_ETIKETLERI[durum]
+  if (durum === 'AKTIF') return <Badge>{etiket}</Badge>
+  if (durum === 'BASLAMADI') return <Badge variant="outline" className="border-blue-300 text-blue-700">{etiket}</Badge>
+  if (durum === 'SURESI_DOLDU') return <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100">{etiket}</Badge>
+  return <Badge variant="secondary">{etiket}</Badge>
 }
 
 function AktifRozet({ aktif }: { aktif: boolean }) {
@@ -1581,7 +1595,8 @@ function PersonelAtamalarPanel({
     yukle()
   }, [yukle])
 
-  const aktifAtamalar = liste.filter((v) => v.aktif)
+  // C7-5: seçilebilir = Aktif ya da Başlamadı. "Süresi doldu" ve pasif atamalar toplu seçime GİRMEZ.
+  const aktifAtamalar = liste.filter((v) => ['AKTIF', 'BASLAMADI'].includes(atamaDurumuGoster(v)))
   const dilimsizAtamalar = aktifAtamalar.filter((v) => v.dilimler.length === 0)
 
   function dilimsizlariSec() {
@@ -1754,10 +1769,12 @@ function PersonelAtamalarPanel({
               <TableRow key={v.id}>
                 {canEdit && (
                   <TableCell>
-                    {v.aktif && (
+                    {['AKTIF', 'BASLAMADI', 'SURESI_DOLDU'].includes(atamaDurumuGoster(v)) && (
                       <input
                         type="checkbox"
                         aria-label={`${v.personnel.adSoyad} seç`}
+                        title={atamaDurumuGoster(v) === 'SURESI_DOLDU' ? SURESI_DOLDU_IPUCU : undefined}
+                        disabled={atamaDurumuGoster(v) === 'SURESI_DOLDU'}
                         checked={secilenAtamalar.includes(v.id)}
                         onChange={(e) => atamaSecimiDegistir(v.id, e.target.checked)}
                       />
@@ -1769,21 +1786,37 @@ function PersonelAtamalarPanel({
                 <TableCell><DilimSutunu dilimler={v.dilimler} /></TableCell>
                 <TableCell>{tarihGoster(v.baslangicTarihi)}</TableCell>
                 <TableCell>{tarihGoster(v.bitisTarihi)}</TableCell>
-                <TableCell><Badge variant={v.aktif ? 'default' : 'secondary'}>{v.aktif ? 'Aktif' : 'Pasif'}</Badge></TableCell>
+                <TableCell><AtamaDurumRozeti durum={atamaDurumuGoster(v)} /></TableCell>
                 {(canEdit || canPassive || canRestore || canHistory) && (
                   <TableCell className="text-right space-x-2">
                     {canHistory && <GecmisButonu onClick={() => setGecmisAtama(v)} />}
                     {canEdit && <Button size="sm" variant="outline" onClick={() => setDuzenlenen(v)}>Düzenle</Button>}
+                    {/* "Süresi doldu": dilim düzenleme / öneri / taşıma ENGELLİ (sunucu da reddeder). "Başlamadı": dilim
+                        düzenleme serbest; taşıma sunucudan net mesajla reddedilir. */}
                     {canEdit && v.aktif && (
-                      <Button size="sm" variant="outline" onClick={() => setDilimDuzenlenen(v)}>Dilim Düzenle</Button>
+                      <Button
+                        size="sm" variant="outline" onClick={() => setDilimDuzenlenen(v)}
+                        disabled={atamaDurumuGoster(v) === 'SURESI_DOLDU'}
+                        title={atamaDurumuGoster(v) === 'SURESI_DOLDU' ? SURESI_DOLDU_IPUCU : undefined}
+                      >
+                        Dilim Düzenle
+                      </Button>
                     )}
                     {v.aktif && canPassive && canManage && (
-                      <Button size="sm" variant="outline" onClick={() => setAlternatifIcinAtama(v)}>
+                      <Button
+                        size="sm" variant="outline" onClick={() => setAlternatifIcinAtama(v)}
+                        disabled={atamaDurumuGoster(v) === 'SURESI_DOLDU'}
+                        title={atamaDurumuGoster(v) === 'SURESI_DOLDU' ? SURESI_DOLDU_IPUCU : undefined}
+                      >
                         Alternatif Servis Öner
                       </Button>
                     )}
                     {v.aktif && canPassive && canManage && (
-                      <Button size="sm" variant="outline" onClick={() => setSerbestTransferAtama(v)}>
+                      <Button
+                        size="sm" variant="outline" onClick={() => setSerbestTransferAtama(v)}
+                        disabled={atamaDurumuGoster(v) === 'SURESI_DOLDU'}
+                        title={atamaDurumuGoster(v) === 'SURESI_DOLDU' ? SURESI_DOLDU_IPUCU : undefined}
+                      >
                         Başka Güzergâha Taşı
                       </Button>
                     )}

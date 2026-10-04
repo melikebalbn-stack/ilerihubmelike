@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   personelAtamaFindMany: vi.fn(),
@@ -17,6 +17,7 @@ vi.mock('@/lib/prisma', () => ({
 }))
 
 import { operasyonelServisListesiGetir } from './operasyonel-servis-listesi'
+import { bugunTR } from './tarih-kurallari'
 
 function ornekAtama(overrides: Partial<Record<string, unknown>> = {}) {
   return {
@@ -168,7 +169,7 @@ describe('operasyonelServisListesiGetir — point-in-time', () => {
   })
 
   it('bugünün tarihi verildiğinde gecmisTarihSecildi=false döner', async () => {
-    const bugun = new Date().toISOString().slice(0, 10)
+    const bugun = bugunTR() // Türkiye günü
     const sonuc = await operasyonelServisListesiGetir({ tarih: bugun })
     expect(sonuc.gecmisTarihSecildi).toBe(false)
   })
@@ -226,5 +227,40 @@ describe('operasyonelServisListesiGetir — telefon dahil', () => {
     mocks.personelAtamaFindMany.mockResolvedValue([ornekAtama()])
     const sonuc = await operasyonelServisListesiGetir()
     expect(sonuc.satirlar[0].telefon).toBe('5551112233')
+  })
+})
+
+describe('C7-8 / C7-9 — Türkiye günü ve "bugün + sonrası için aktif:true"', () => {
+  const BIRAZ_SONRA = '2026-10-03T22:30:00.000Z' // UTC 10-03 22:30 = Türkiye 10-04 01:30 (UTC günü "dün")
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(BIRAZ_SONRA))
+  })
+  afterEach(() => vi.useRealTimers())
+  const where = () => mocks.personelAtamaFindMany.mock.calls[0][0].where
+
+  it('🔴 tarih verilmezse TÜRKİYE günü (UTC değil): TR 00:00-03:00 aralığında dün değil bugün; aktif:true + tarih aralığı', async () => {
+    const s = await operasyonelServisListesiGetir({})
+    expect(s.tarih).toBe('2026-10-04')
+    expect(s.gecmisTarihSecildi).toBe(false)
+    expect(where().aktif).toBe(true)
+    expect(where().baslangicTarihi).toEqual({ lte: new Date('2026-10-04T00:00:00.000Z') })
+  })
+
+  it('bugün (TR) ve gelecek tarih → aktif:true; TR\'ye göre DÜN olan (UTC bugünü) → geçmiş sayılır: yalnız tarih (aktif anahtarı YOK)', async () => {
+    await operasyonelServisListesiGetir({ tarih: '2026-10-04' })
+    expect(where().aktif).toBe(true)
+    mocks.personelAtamaFindMany.mockClear()
+    await operasyonelServisListesiGetir({ tarih: '2026-12-01' })
+    expect(where().aktif).toBe(true)
+    mocks.personelAtamaFindMany.mockClear()
+    const dun = await operasyonelServisListesiGetir({ tarih: '2026-10-03' })
+    expect(dun.gecmisTarihSecildi).toBe(true)
+    expect(where().aktif).toBeUndefined()
+  })
+
+  it('🔴 geçmiş tarih seçilince yalnız tarih (tarihsel doğru): o gün geçerli olan, sonradan pasife alınmış atama listelenir', async () => {
+    await operasyonelServisListesiGetir({ tarih: '2026-09-30' })
+    expect(where()).not.toHaveProperty('aktif')
   })
 })

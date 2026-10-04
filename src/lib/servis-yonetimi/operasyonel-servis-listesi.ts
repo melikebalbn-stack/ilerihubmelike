@@ -32,6 +32,7 @@
 // mı, mevcut bir alanın yeniden yorumlanması mı) buraya eklenecek.
 
 import { prisma } from '@/lib/prisma'
+import { bugunTRTarihi } from './gecerli-atama'
 
 export interface OperasyonelServisListesiFiltre {
   /** ISO tarih ("YYYY-MM-DD") veya Date. Verilmezse bugün kullanılır. */
@@ -138,8 +139,10 @@ async function sabahSaatleriGetir(
 export async function operasyonelServisListesiGetir(
   filtre: OperasyonelServisListesiFiltre = {},
 ): Promise<OperasyonelServisListesiSonucu> {
-  const tarih = gunBaslangici(filtre.tarih ? new Date(filtre.tarih) : new Date())
-  const bugun = gunBaslangici(new Date())
+  // C7-8/C7-9: gün Türkiye günü. Bugün ve sonrası için GEÇERLİ atama (aktif:true + tarih aralığı); GEÇMİŞ tarih
+  // seçilince yalnız tarih aralığı (tarihsel doğru: o gün geçerli olan, sonradan pasife alınmış atama da listelenir).
+  const bugun = bugunTRTarihi()
+  const tarih = filtre.tarih ? gunBaslangici(new Date(filtre.tarih)) : bugun
   const gecmisTarihSecildi = tarih.getTime() < bugun.getTime()
 
   const izinliGuzergahIdler = filtre.firmaId ? await firmaGuzergahIdleriGetir(filtre.firmaId, tarih) : null
@@ -148,6 +151,7 @@ export async function operasyonelServisListesiGetir(
     where: {
       baslangicTarihi: { lte: tarih },
       OR: [{ bitisTarihi: null }, { bitisTarihi: { gte: tarih } }],
+      ...(gecmisTarihSecildi ? {} : { aktif: true }),
       ...(filtre.guzergahId ? { guzergahId: filtre.guzergahId } : {}),
       ...(filtre.durakId ? { durakId: filtre.durakId } : {}),
       ...(filtre.bolum ? { personnel: { bolum: filtre.bolum } } : {}),

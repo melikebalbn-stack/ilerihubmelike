@@ -2299,6 +2299,15 @@ async function transferBaglami(eskiAtamaId: string, form: ServisPersonelAtamaTra
   const eskiAtama = await prisma.servisPersonelAtama.findUnique({ where: { id: eskiAtamaId } })
   if (!eskiAtama) throw new Error('Personel ataması bulunamadı.')
   if (!eskiAtama.aktif) throw new Error('Bu atama zaten pasif, transfer edilemez.')
+  // C7-6: yalnız AKTİF (bugün geçerli) atama transfer edilir. Süresi dolmuş atamada geçiş bitişi ileri tarihe
+  // UZATIRDI (geçmişi yeniden yazar); başlamamış atamada eski atama henüz kapanacak bir şey değildir.
+  const durum = atamaDurumu(eskiAtama)
+  if (durum === 'SURESI_DOLDU') {
+    throw new Error(`Bu atamanın süresi dolmuş (bitişi ${eskiAtama.bitisTarihi!.toISOString().slice(0, 10)}); transfer edilemez. Personel için yeni atama oluşturun.`)
+  }
+  if (durum === 'BASLAMADI') {
+    throw new Error(`Bu atama henüz başlamamış (başlangıcı ${eskiAtama.baslangicTarihi.toISOString().slice(0, 10)}); transfer edilemez. Başlangıcını bekleyin ya da atamayı düzenleyin.`)
+  }
 
   const guzergahId = form.guzergahId.trim()
   const durakId = form.durakId?.trim() || null

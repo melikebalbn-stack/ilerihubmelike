@@ -4391,3 +4391,55 @@ describe('C5 — transfer geçiş tarihi', () => {
     expect(mocks.islemGecmisiCreate).toHaveBeenCalledTimes(3) // eski + yeni atama + yeni dilim
   })
 })
+
+// ============================================================================
+// C7-6 — transfer: yalnız AKTİF (bugün geçerli) atama
+// ============================================================================
+describe('C7-6 — transfer yalnız bugün geçerli (Aktif) atamada', () => {
+  const taban = { id: 'pa1', aktif: true, personnelId: 'personel-1', guzergahId: 'guzergah-1', baslangicTarihi: new Date('2026-09-27T00:00:00.000Z'), bitisTarihi: null as Date | null }
+  const form = { guzergahId: 'guzergah-77', durakId: null, dilimIdleri: ['dilim-1'], transferTarihi: '2026-10-03' }
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-10-03T09:00:00.000Z'))
+    mocks.personnelFindUnique.mockResolvedValue({ id: 'personel-1', aktif: true })
+    mocks.guzergahFindUnique.mockResolvedValue({ id: 'guzergah-77', kod: 'SERBEST', aktif: true })
+    mocks.seferDilimiFindMany.mockResolvedValue([{ id: 'dilim-1', kod: 'SABAH_GIDIŞ', ad: 'Sabah', aktif: true }])
+    mocks.personelAtamaFindFirst.mockResolvedValue(null)
+    mocks.personelAtamaUpdate.mockResolvedValue({ id: 'pa1' })
+    mocks.personelAtamaCreate.mockResolvedValue({ id: 'pa2' })
+    mocks.personelAtamaDilimCreateMany.mockResolvedValue({ count: 1 })
+  })
+  afterEach(() => vi.useRealTimers())
+  const kur = (eski: object) => {
+    mocks.personelAtamaFindUnique.mockReset()
+    mocks.personelAtamaFindUnique.mockResolvedValueOnce({ ...taban, ...eski }).mockResolvedValueOnce({ id: 'pa2' })
+  }
+
+  it('🔴 süresi dolmuş (bitiş dün): REDDEDİLİR — bitiş ileri tarihe uzatılmaz, hiçbir şey yazılmaz', async () => {
+    kur({ bitisTarihi: new Date('2026-10-02T00:00:00.000Z') })
+    await expect(transferServisPersonelAtama('pa1', form, 'u1')).rejects.toThrow('Bu atamanın süresi dolmuş (bitişi 2026-10-02); transfer edilemez. Personel için yeni atama oluşturun.')
+    expect(mocks.personelAtamaUpdate).not.toHaveBeenCalled()
+    expect(mocks.personelAtamaCreate).not.toHaveBeenCalled()
+    expect(mocks.islemGecmisiCreate).not.toHaveBeenCalled()
+  })
+
+  it('başlamamış atama (başlangıç yarın) → net mesaj, yazma yok', async () => {
+    kur({ baslangicTarihi: new Date('2026-10-04T00:00:00.000Z') })
+    await expect(transferServisPersonelAtama('pa1', { ...form, transferTarihi: '2026-10-10' }, 'u1')).rejects.toThrow('Bu atama henüz başlamamış (başlangıcı 2026-10-04); transfer edilemez. Başlangıcını bekleyin ya da atamayı düzenleyin.')
+    expect(mocks.personelAtamaUpdate).not.toHaveBeenCalled()
+  })
+
+  it('önizleme de aynı reddi verir (yazmaz)', async () => {
+    kur({ bitisTarihi: new Date('2026-10-02T00:00:00.000Z') })
+    await expect(transferKapasiteOnizle('pa1', form)).rejects.toThrow('süresi dolmuş')
+  })
+
+  it('bitişi BUGÜN olan ve bitişi GELECEKTE olan (planlı) atama transfer edilebilir; pasif atama eski mesajla reddedilir', async () => {
+    kur({ bitisTarihi: new Date('2026-10-03T00:00:00.000Z') })
+    await expect(transferServisPersonelAtama('pa1', form, 'u1')).resolves.toBeTruthy()
+    kur({ bitisTarihi: new Date('2026-10-09T00:00:00.000Z') })
+    await expect(transferServisPersonelAtama('pa1', { ...form, transferTarihi: '2026-10-05' }, 'u1')).resolves.toBeTruthy()
+    kur({ aktif: false })
+    await expect(transferServisPersonelAtama('pa1', form, 'u1')).rejects.toThrow('zaten pasif')
+  })
+})

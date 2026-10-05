@@ -95,19 +95,23 @@ export async function findInvoiceUuid(invoiceNumber: string, invoiceDateISO: str
   }
 }
 
-/** documentUuid'ye göre PDF içeriğini indirir. */
+async function getDocumentDataRaw(sessionID: string, uuid: string): Promise<Buffer> {
+  const body =
+    `<getDocumentData xmlns="${TNS}"><sessionID>${sessionID}</sessionID><uuid>${xmlEscape(uuid)}</uuid>` +
+    `<docType>EINVOICE</docType><dataType>PDF</dataType></getDocumentData>`
+  const txt = await soapCall('getDocumentData', body)
+  const value = extractTag(txt, 'Value')
+  if (!value) throw new Error('eLogo PDF verisi alınamadı: ' + txt.slice(0, 400))
+  const raw = Buffer.from(value, 'base64')
+  // eLogo PDF'i de (UBL gibi) tek dosyalık bir ZIP içinde dönüyor ("PK" imzası).
+  return raw.subarray(0, 2).toString('latin1') === 'PK' ? unzipFirstEntry(raw) : raw
+}
+
+/** documentUuid'ye göre PDF içeriğini indirir (tek fatura — kendi login/logout'u var). */
 export async function fetchInvoicePdf(uuid: string): Promise<Buffer> {
   const sessionID = await login()
   try {
-    const body =
-      `<getDocumentData xmlns="${TNS}"><sessionID>${sessionID}</sessionID><uuid>${xmlEscape(uuid)}</uuid>` +
-      `<docType>EINVOICE</docType><dataType>PDF</dataType></getDocumentData>`
-    const txt = await soapCall('getDocumentData', body)
-    const value = extractTag(txt, 'Value')
-    if (!value) throw new Error('eLogo PDF verisi alınamadı: ' + txt.slice(0, 400))
-    const raw = Buffer.from(value, 'base64')
-    // eLogo PDF'i de (UBL gibi) tek dosyalık bir ZIP içinde dönüyor ("PK" imzası).
-    return raw.subarray(0, 2).toString('latin1') === 'PK' ? unzipFirstEntry(raw) : raw
+    return await getDocumentDataRaw(sessionID, uuid)
   } finally {
     await logout(sessionID)
   }
@@ -131,6 +135,14 @@ function unzipFirstEntry(zip: Buffer): Buffer {
   throw new Error(`Desteklenmeyen ZIP sıkıştırma yöntemi: ${method}`)
 }
 
+async function pdfPathFor(invoiceId: string): Promise<string> {
+  const path = await import('path')
+  const fs = await import('fs/promises')
+  const dir = path.join(process.cwd(), 'storage', 'sandbox-melike', 'fatura-pdf')
+  await fs.mkdir(dir, { recursive: true })
+  return path.join(dir, `${invoiceId}.pdf`)
+}
+
 /** Fatura eklenince arka planda çağrılır: eLogo'da arar, bulursa PDF'i indirip diske yazar. */
 export async function resolveAndStorePdf(opts: {
   invoiceId: string
@@ -142,10 +154,96 @@ export async function resolveAndStorePdf(opts: {
 
   const pdf = await fetchInvoicePdf(uuid)
   const fs = await import('fs/promises')
-  const path = await import('path')
-  const dir = path.join(process.cwd(), 'storage', 'sandbox-melike', 'fatura-pdf')
-  await fs.mkdir(dir, { recursive: true })
-  const pdfPath = path.join(dir, `${opts.invoiceId}.pdf`)
+  const pdfPath = await pdfPathFor(opts.invoiceId)
   await fs.writeFile(pdfPath, pdf)
   return { uuid, pdfPath }
+}
+
+export interface BackfillTarget {
+  id: string
+  invoiceNumber: string
+  invoiceDateISO: string
+}
+export interface BackfillResult {
+  id: string
+  uuid: string | null
+  pdfPath: string | null
+  error?: string
+}
+
+/**
+ * Eski faturalar için toplu PDF taraması — tek bir eLogo oturumu üzerinden, gün bazlı
+ * GetDocumentList önbelleğiyle (aynı günün faturaları listeyi tekrar çekmez). Yüzlerce
+ * fatura için dakikalar sürebilir — çağıran taraf (backfill-pdf route) bunu beklemeden
+ * (fire-and-forget) tetikler, sonuçlar DB'ye kaydedilince biter.
+ */
+export async function backfillPdfs(targets: BackfillTarget[]): Promise<BackfillResult[]> {
+  const fs = await import('fs/promises')
+  const byDay = new Map<string, BackfillTarget[]>()
+  for (const t of targets) {
+    const day = t.invoiceDateISO.slice(0, 10)
+    if (!byDay.has(day)) byDay.set(day, [])
+    byDay.get(day)!.push(t)
+  }
+
+  const results: BackfillResult[] = []
+  let sessionID = await login()
+  const docCache = new Map<string, string[]>()
+
+  async function listForDay(day: string): Promise<string[]> {
+    const cached = docCache.get(day)
+    if (cached) return cached
+    let docs: string[]
+    try {
+      docs = await getDocumentList(sessionID, day)
+    } catch {
+      sessionID = await login() // oturum düşmüş olabilir — yeniden giriş yapıp tekrar dene
+      docs = await getDocumentList(sessionID, day)
+    }
+    docCache.set(day, docs)
+    return docs
+  }
+
+  try {
+    for (const [day, invs] of byDay) {
+      const nextDay = new Date(day)
+      nextDay.setDate(nextDay.getDate() + 1)
+      const days = [day, nextDay.toISOString().slice(0, 10)]
+      const allDocs = (await Promise.all(days.map(listForDay))).flat()
+
+      for (const inv of invs) {
+        try {
+          let uuid: string | null = null
+          for (const doc of allDocs) {
+            const json = extractTag(doc, 'documentJSon')
+            const docUuid = extractTag(doc, 'documentUuid')
+            if (json && docUuid && json.includes(inv.invoiceNumber)) {
+              uuid = docUuid
+              break
+            }
+          }
+          if (!uuid) {
+            results.push({ id: inv.id, uuid: null, pdfPath: null })
+            continue
+          }
+
+          let pdf: Buffer
+          try {
+            pdf = await getDocumentDataRaw(sessionID, uuid)
+          } catch {
+            sessionID = await login()
+            pdf = await getDocumentDataRaw(sessionID, uuid)
+          }
+          const pdfPath = await pdfPathFor(inv.id)
+          await fs.writeFile(pdfPath, pdf)
+          results.push({ id: inv.id, uuid, pdfPath })
+        } catch (err) {
+          results.push({ id: inv.id, uuid: null, pdfPath: null, error: err instanceof Error ? err.message : String(err) })
+        }
+      }
+    }
+  } finally {
+    await logout(sessionID)
+  }
+  return results
 }

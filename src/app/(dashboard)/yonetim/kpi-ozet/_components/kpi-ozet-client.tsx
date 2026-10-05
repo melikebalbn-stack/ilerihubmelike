@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/select'
 import { Loader2, LayoutDashboard } from 'lucide-react'
 import {
-  LineChart, Line, Bar, BarChart, Legend, LabelList, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  Bar, BarChart, Legend, LabelList, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts'
 
 const NAVY = '#1B4F72'
@@ -269,20 +269,31 @@ export default function KpiOzetClient() {
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={220}>
-                  <LineChart
+                  <BarChart
                     data={
                       ceyrekTrend.find(d => d.orgUnitId === secilenDepartmanId)?.ceyrekler.map(c => ({
-                        ad: `Ç${c.ceyrek}`, Oran: c.oran,
+                        ad: `Ç${c.ceyrek}`, Oran: c.oran, renk: CEYREK_RENKLERI[c.ceyrek - 1],
                       })) ?? []
                     }
                     margin={{ left: 4, right: 8, top: 4, bottom: 4 }}
                   >
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="ad" tick={{ fontSize: 12 }} />
-                    <YAxis tick={{ fontSize: 12 }} domain={[0, 100]} />
-                    <Tooltip formatter={(v: number) => `%${v}`} />
-                    <Line type="monotone" dataKey="Oran" stroke={NAVY} strokeWidth={2} dot={{ r: 4 }} connectNulls />
-                  </LineChart>
+                    <YAxis tick={{ fontSize: 12 }} />
+                    <Tooltip formatter={(v: number) => (v == null ? '—' : `%${v}`)} />
+                    <Bar dataKey="Oran" radius={[4, 4, 0, 0]}>
+                      {[1, 2, 3, 4].map(ceyrek => (
+                        <Cell key={ceyrek} fill={CEYREK_RENKLERI[ceyrek - 1]} />
+                      ))}
+                      <LabelList
+                        dataKey="Oran"
+                        position="top"
+                        fontSize={11}
+                        fill="#52514e"
+                        formatter={(v: number | null) => (v == null ? '' : `%${v}`)}
+                      />
+                    </Bar>
+                  </BarChart>
                 </ResponsiveContainer>
               </CardContent>
             </Card>

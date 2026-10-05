@@ -7,13 +7,11 @@ const UST_BIRIM_ID = 'cmrzg1kqr00027jpe7y4egyt9'
 // iyi) göre yönlendirilir — oranYonu çoğu KPI'da hiç elle düzeltilmeden varsayılanda (G_H)
 // kalmış, direction ise zaten doğru giriliyor. Böylece yüksek oran HER ZAMAN "iyi" anlamına
 // gelir: lower_is_better'da hedef/gerçekleşen, higher_is_better'da gerçekleşen/hedef.
-// Hedef ya da gerçekleşen sıfıra çok yakın (ya da tam sıfır) olduğunda oran Infinity'ye kadar
-// uçabiliyor (ör. bir ayki hedef 0,15 iken gerçekleşen 1.293.287 — %862 milyon çıkıyor) ve tek
-// bir böyle ay, departman/şirket ortalamasını anlamsızlaştırıyor. Üst sınır koyuyoruz.
-const UST_ORAN_SINIRI = 300
+// KASITLI OLARAK üst sınır/kırpma YOK — hedef ya da gerçekleşen sıfıra çok yakın girilen
+// ölçümler (ör. %33 yerine 0,33 girilmiş gibi veri atışı sırasında ölçek hatası) olduğu gibi
+// aşırı oranlar üretiyor; bu sınırlanırsa hatalı veri gizlenip kaynaktan düzeltilmesi atlanır.
 function basariOrani(direction: string, target: number, actual: number): number {
-  const ham = (direction === 'lower_is_better' ? target / actual : actual / target) * 100
-  return Math.min(ham, UST_ORAN_SINIRI)
+  return (direction === 'lower_is_better' ? target / actual : actual / target) * 100
 }
 
 export async function GET(request: Request) {

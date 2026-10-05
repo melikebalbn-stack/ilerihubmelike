@@ -348,14 +348,9 @@ export function UygunsuzlukFormClient({
               <ArrowLeft className="h-4 w-4 mr-1" /> Listeye dön
             </Link>
           </Button>
-          <div className="flex items-center gap-2 flex-wrap">
-            <h1 className="text-2xl font-bold text-[#1B4F72]">
-              {initial ? `Uygunsuzluk No: ${initial.no}` : 'Yeni Uygunsuzluk'}
-            </h1>
-            <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${durumRenk[durumGuncel]}`}>
-              {UYGUNSUZLUK_DURUM_LABELS[durumGuncel]}
-            </span>
-          </div>
+          <h1 className="text-2xl font-bold text-[#1B4F72]">
+            {initial ? `Uygunsuzluk No: ${initial.no}` : 'Yeni Uygunsuzluk'}
+          </h1>
         </div>
         {canManage && (
           <Button
@@ -377,10 +372,6 @@ export function UygunsuzlukFormClient({
       <div className="rounded-md border bg-white p-4 space-y-3">
         <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Tanım</span>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-          <div>
-            <Label className="text-xs text-slate-600">Tarih *</Label>
-            <Input type="date" value={tarih} disabled={ro} onChange={(e) => setTarih(e.target.value)} className="mt-1 h-9" />
-          </div>
           <div>
             <Label className="text-xs text-slate-600">Mamul ürün kodu *</Label>
             <Input value={mamulUrunKodu} disabled={ro} onChange={(e) => setMamulUrunKodu(e.target.value)} className="mt-1 h-9" />
@@ -443,7 +434,11 @@ export function UygunsuzlukFormClient({
       {/* ── Tarih ── */}
       <div className="rounded-md border bg-white p-4 space-y-3">
         <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Tarih</span>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div>
+            <Label className="text-xs text-slate-600">Yazım tarihi *</Label>
+            <Input type="date" value={tarih} disabled={ro} onChange={(e) => setTarih(e.target.value)} className="mt-1 h-9" />
+          </div>
           <div>
             <Label className="text-xs text-slate-600">Planlanan aksiyon tarihi (termin)</Label>
             <Input type="date" value={termin} disabled={ro} onChange={(e) => setTermin(e.target.value)} className="mt-1 h-9" />
@@ -536,6 +531,14 @@ export function UygunsuzlukFormClient({
       <div className="rounded-md border bg-white p-4 space-y-3">
         <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Diğer</span>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <Label className="text-xs text-slate-600">Durum</Label>
+            <div className="mt-1">
+              <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${durumRenk[durumGuncel]}`}>
+                {UYGUNSUZLUK_DURUM_LABELS[durumGuncel]}
+              </span>
+            </div>
+          </div>
           <div>
             <div className="flex items-center justify-between">
               <Label className="text-xs text-slate-600">Kategori</Label>

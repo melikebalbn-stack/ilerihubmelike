@@ -1,4 +1,4 @@
--- Melih Bey onayıyla uygulanır. Sıra: 20261002070100_fif_paket4_enum'dan ÖNCE.
+-- Melih Bey onayıyla uygulanır. Sıra: 20261005090200_fif_paket4_enum'dan ÖNCE.
 --
 -- FİF (KAL-FR-10) Paket 3 — kaynak listesi, satır bazlı sorumlu/termin/etkinlik,
 -- ek termin talebi, faaliyet bazlı geçmiş. DDL bölümü offline `prisma migrate diff`

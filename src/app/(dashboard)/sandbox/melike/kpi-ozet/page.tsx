@@ -10,11 +10,28 @@ import {
 } from '@/components/ui/select'
 import { Loader2, LayoutDashboard } from 'lucide-react'
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  LineChart, Line, Bar, BarChart, Legend, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts'
 
 const NAVY = '#1B4F72'
 const GENEL_ID = 'GENEL'
+// Doğrulanmış kategorik paletin ilk 4 rengi (renk körlüğü güvenli, bkz. faturalar sayfasındaki PALETTE) —
+// burada sadece 4 seri (Ç1-Ç4) olduğu için tüm 8 renge gerek yok.
+const CEYREK_RENKLERI = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100']
+
+const MUDURLUK_EKI = /\s*müdürlüğü\s*$/i
+const BAGLAC_KELIMELER = new Set(['ve', 'ile'])
+
+// "Sistem Geliştirme Müdürlüğü" -> "SG" — grafikte/eksende uzun isimler yer kaplamasın diye.
+function kisaltDepartman(ad: string): string {
+  const temiz = ad.replace(MUDURLUK_EKI, '').trim()
+  const kelimeler = temiz
+    .split(/[\s&/-]+/)
+    .filter(k => k.length > 0 && !BAGLAC_KELIMELER.has(k.toLocaleLowerCase('tr')))
+  if (kelimeler.length === 0) return ad.slice(0, 2).toLocaleUpperCase('tr')
+  if (kelimeler.length === 1) return kelimeler[0].slice(0, 2).toLocaleUpperCase('tr')
+  return (kelimeler[0][0] + kelimeler[1][0]).toLocaleUpperCase('tr')
+}
 
 interface Departman {
   id: string
@@ -23,11 +40,6 @@ interface Departman {
 
 interface DepartmanCeyrekTrendi {
   orgUnitId: string
-  name: string
-  ceyrekler: { ceyrek: number; oran: number | null }[]
-}
-
-interface GenelCeyrekTrendi {
   name: string
   ceyrekler: { ceyrek: number; oran: number | null }[]
 }
@@ -65,7 +77,6 @@ export default function KpiOzetPage() {
   const [mevcutYillar, setMevcutYillar] = useState<number[]>([])
   const [secilenYil, setSecilenYil] = useState<number | null>(null)
   const [ceyrekTrend, setCeyrekTrend] = useState<DepartmanCeyrekTrendi[] | null>(null)
-  const [genelCeyrekTrend, setGenelCeyrekTrend] = useState<GenelCeyrekTrendi | null>(null)
   const [genelToplam, setGenelToplam] = useState<number | null>(null)
 
   useEffect(() => {
@@ -94,14 +105,8 @@ export default function KpiOzetPage() {
     if (secilenYil == null) return
     fetch(`/api/sandbox/melike/kpi/ceyrek-trend?yil=${secilenYil}`)
       .then(res => res.json())
-      .then(d => {
-        setCeyrekTrend(d.trend ?? [])
-        setGenelCeyrekTrend(d.genel ?? null)
-      })
-      .catch(() => {
-        setCeyrekTrend([])
-        setGenelCeyrekTrend(null)
-      })
+      .then(d => setCeyrekTrend(d.trend ?? []))
+      .catch(() => setCeyrekTrend([]))
   }, [secilenYil])
 
   const secilenOzet = useMemo(
@@ -109,6 +114,17 @@ export default function KpiOzetPage() {
     [ozet, secilenDepartmanId],
   )
   const secilenDepartman = departmanlar.find(d => d.id === secilenDepartmanId)
+
+  // Şirket geneli çeyrek kıyası: her departman için tek kısa çubuk grubu (Ç1-Ç4) —
+  // "hangi departman hangi çeyrekte nasıldı" tek bakışta görünsün.
+  const departmanCeyrekKarsilastirma = useMemo(() => {
+    if (!ceyrekTrend) return []
+    return ceyrekTrend.map(d => {
+      const row: Record<string, string | number | null> = { departman: kisaltDepartman(d.name), tamAd: d.name }
+      for (const c of d.ceyrekler) row[`Ç${c.ceyrek}`] = c.oran
+      return row
+    })
+  }, [ceyrekTrend])
 
   return (
     <div className="space-y-6">
@@ -159,7 +175,7 @@ export default function KpiOzetPage() {
           <CardHeader className="pb-2 flex flex-row items-center justify-between">
             <div>
               <CardTitle className="text-base">Genel Özet — Şirket Geneli</CardTitle>
-              <p className="text-xs text-muted-foreground">{secilenYil} yılı, tüm departmanların tüm KPI'ları — çeyrek çeyrek gidişat</p>
+              <p className="text-xs text-muted-foreground">{secilenYil} yılı, departmanların çeyrek çeyrek kıyası</p>
             </div>
             {genelToplam != null && (
               <div className="text-right">
@@ -169,20 +185,23 @@ export default function KpiOzetPage() {
             )}
           </CardHeader>
           <CardContent>
-            {!genelCeyrekTrend ? (
+            {!ceyrekTrend ? (
               <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
             ) : (
-              <ResponsiveContainer width="100%" height={220}>
-                <LineChart
-                  data={genelCeyrekTrend.ceyrekler.map(c => ({ ad: `Ç${c.ceyrek}`, Oran: c.oran }))}
-                  margin={{ left: 4, right: 8, top: 4, bottom: 4 }}
-                >
+              <ResponsiveContainer width="100%" height={280}>
+                <BarChart data={departmanCeyrekKarsilastirma} margin={{ left: 4, right: 8, top: 4, bottom: 4 }}>
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="ad" tick={{ fontSize: 12 }} />
-                  <YAxis tick={{ fontSize: 12 }} domain={[0, 100]} />
-                  <Tooltip formatter={(v: number) => `%${v}`} />
-                  <Line type="monotone" dataKey="Oran" stroke={NAVY} strokeWidth={2} dot={{ r: 4 }} connectNulls />
-                </LineChart>
+                  <XAxis dataKey="departman" tick={{ fontSize: 12 }} interval={0} />
+                  <YAxis tick={{ fontSize: 12 }} />
+                  <Tooltip
+                    formatter={(v: number) => (v == null ? '—' : `%${v}`)}
+                    labelFormatter={(_, payload) => payload?.[0]?.payload?.tamAd ?? ''}
+                  />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                  {[1, 2, 3, 4].map((ceyrek, i) => (
+                    <Bar key={ceyrek} dataKey={`Ç${ceyrek}`} fill={CEYREK_RENKLERI[i]} radius={[3, 3, 0, 0]} />
+                  ))}
+                </BarChart>
               </ResponsiveContainer>
             )}
           </CardContent>

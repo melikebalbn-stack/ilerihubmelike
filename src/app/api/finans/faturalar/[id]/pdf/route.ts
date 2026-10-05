@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
 import { apiNotFound, apiForbidden, apiError } from '@/lib/api-response'
-import { canAccessFaturaTakip } from '../../_lib/access'
+import { canAccessFaturaTakip } from '@/lib/faturalar-access'
 import { resolveAndStorePdf } from '../../_lib/elogo'
 
 // GET — faturanın eLogo PDF'ini indirir. Zaten diskte varsa direkt o dönülür; yoksa
@@ -40,7 +40,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     return servePdf(bytes, invoice.invoiceNumber)
   } catch (error) {
     return apiError('PDF alınırken bir hata oluştu', 500, {
-      endpoint: 'sandbox/melike/faturalar/[id]/pdf GET',
+      endpoint: 'finans/faturalar/[id]/pdf GET',
       error,
     })
   }

@@ -31,5 +31,3 @@ data/*.xls
 data/*.csv
 public/uploads
 
-# Fatura Takip — eLogo'dan indirilen gerçek fatura PDF'leri, repo'ya alınmaz
-storage/

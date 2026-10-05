@@ -236,7 +236,7 @@ export default function FaturalarClient() {
   // downloadFile() bu durumda hata gövdesini sessizce indirir/gösterir. Burada fetch ile
   // önce durumu kontrol edip kullanıcıya anlamlı bir mesaj gösteriyoruz.
   async function handleDownloadPdf(invoiceId: string, invoiceNumber: string) {
-    const res = await fetch(`/api/sandbox/melike/faturalar/${invoiceId}/pdf`)
+    const res = await fetch(`/api/finans/faturalar/${invoiceId}/pdf`)
     if (!res.ok) {
       const data = await res.json().catch(() => ({}))
       alert(data.error || 'PDF bulunamadı')
@@ -254,13 +254,13 @@ export default function FaturalarClient() {
   }
 
   async function loadBackfillStatus() {
-    const res = await fetch('/api/sandbox/melike/faturalar/backfill-pdf')
+    const res = await fetch('/api/finans/faturalar/backfill-pdf')
     if (res.ok) setBackfillStatus(await res.json())
   }
 
   async function handleBackfillPdfs() {
     if (!confirm('Henüz PDF\'i olmayan tüm eski faturalar için eLogo\'da toplu arama başlatılsın mı? Fatura sayısına göre birkaç dakika sürebilir.')) return
-    const res = await fetch('/api/sandbox/melike/faturalar/backfill-pdf', { method: 'POST' })
+    const res = await fetch('/api/finans/faturalar/backfill-pdf', { method: 'POST' })
     if (res.ok) {
       const data = await res.json()
       alert(`${data.count} fatura taranacak. Durumu üstteki satırdan takip edebilirsin.`)

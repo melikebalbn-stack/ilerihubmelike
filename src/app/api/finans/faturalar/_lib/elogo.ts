@@ -164,7 +164,9 @@ function unzipFirstEntry(zip: Buffer): Buffer {
 async function pdfPathFor(invoiceId: string): Promise<string> {
   const path = await import('path')
   const fs = await import('fs/promises')
-  const dir = path.join(process.cwd(), 'storage', 'sandbox-melike', 'fatura-pdf')
+  // public/uploads paylaşımlı dizine symlink; slot değişiminde (reset --hard + clean)
+  // silinmez. Diğer modüllerle aynı desen (rma-foto-dosya, fif-foto-dosya).
+  const dir = path.join(process.cwd(), 'public', 'uploads', 'faturalar')
   await fs.mkdir(dir, { recursive: true })
   return path.join(dir, `${invoiceId}.pdf`)
 }

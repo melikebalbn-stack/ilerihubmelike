@@ -1,7 +1,7 @@
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
 import { apiSuccess, apiForbidden, apiError } from '@/lib/api-response'
-import { canAccessFaturaTakip } from '../_lib/access'
+import { canAccessFaturaTakip } from '@/lib/faturalar-access'
 import { backfillPdfs } from '../_lib/elogo'
 
 // POST — PDF'i henüz olmayan TÜM eski faturalar için eLogo'da toplu arama başlatır.
@@ -43,7 +43,7 @@ export async function POST() {
     return apiSuccess({ started: true, count: pending.length })
   } catch (error) {
     return apiError('Toplu PDF taraması başlatılırken bir hata oluştu', 500, {
-      endpoint: 'sandbox/melike/faturalar/backfill-pdf POST',
+      endpoint: 'finans/faturalar/backfill-pdf POST',
       error,
     })
   }
@@ -70,7 +70,7 @@ export async function GET() {
     })
   } catch (error) {
     return apiError('Durum alınırken bir hata oluştu', 500, {
-      endpoint: 'sandbox/melike/faturalar/backfill-pdf GET',
+      endpoint: 'finans/faturalar/backfill-pdf GET',
       error,
     })
   }

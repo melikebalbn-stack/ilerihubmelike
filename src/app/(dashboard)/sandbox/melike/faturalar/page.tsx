@@ -45,12 +45,13 @@ const NAVY = '#1B4F72'
 // kartı sürekli %0 gösteriyordu (Toplam kartı yine de doğruydu çünkü o sadece toplama bakıyor).
 const SG_LABEL = 'Sistem Geliştirme Müdürlüğü'
 const GENEL_LABEL = 'Genel'
-// Renk mantığı değişti: bölüm sayısı kadar rastgele/rainbow renk seçmek yerine ilerihub'ın
-// tüm sayfalarda zaten kullandığı TEK marka rengi (lacivert, NAVY) esas alınıyor. Bu uygulamanın
-// bütün amacı zaten Sistem Geliştirme'yi öne çıkarmak — o yüzden "emphasis" yaklaşımı: asıl ilgi
-// noktası (Sistem Geliştirme) NAVY, diğer tüm gerçek bölümler tek bir nötr gri. Renk artık kimlik
-// değil vurgu taşıyor; hangi bölüm olduğu zaten satırın/çubuğun etiketinde yazıyor.
+// Renk mantığı: bölüm sayısı kadar rastgele/rainbow renk yerine ilerihub'ın tüm sayfalarda
+// zaten kullandığı TEK marka rengi (lacivert, NAVY) esas alınıyor — bu uygulamanın amacı zaten
+// Sistem Geliştirme'yi öne çıkarmak. Genel (atanmamış) ve diğer gerçek bölümler iki ayrı ton
+// gri — Genel daha açık, diğerleri biraz daha koyu. Hangi bölüm olduğu zaten satırın/çubuğun
+// etiketinde yazıyor; renk burada kimlik değil vurgu taşıyor.
 const OTHER_DEPT_COLOR = '#94A3B8'
+const GENEL_COLOR = '#CBD5E1'
 
 type Currency = 'TRY' | 'USD' | 'EUR'
 
@@ -103,11 +104,13 @@ interface Summary {
   departments: DepartmentTotal[]
 }
 
+// Kuruş her zaman gösterilir (ör. tam sayıysa "...,00" ile biter) — bazen 2 ondalık
+// basılıp bazen yuvarlanması tutarsız/eksik görünüyordu.
 function formatEur(n: number) {
-  return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(n || 0)
+  return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n || 0)
 }
 function formatTL(n: number) {
-  return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 }).format(n || 0)
+  return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n || 0)
 }
 function formatPercent(n: number) {
   if (n === 0) return '%0'
@@ -285,24 +288,25 @@ export default function FaturaTakipPage() {
     }
   }
 
-  // Renk artık kimlik değil vurgu taşıyor: Sistem Geliştirme NAVY (ilerihub'ın marka rengi,
-  // bu ekranın asıl ilgi noktası), her gerçek bölüm aynı nötr gri. Hangi bölüm olduğu zaten
-  // çubuğun/satırın etiketinde yazıyor — renkten renge ayırt etmeye gerek yok.
   function getDeptColor(label: string) {
-    return label === SG_LABEL ? NAVY : OTHER_DEPT_COLOR
+    if (label === SG_LABEL) return NAVY
+    if (label === GENEL_LABEL) return GENEL_COLOR
+    return OTHER_DEPT_COLOR
   }
 
   const OTHER_LABEL = 'Diğer bölümler'
 
-  // "Tüm Zamanlar" grafiğindeki seriler: Sistem Geliştirme (varsa) ve geri kalan tüm gerçek
-  // bölümlerin toplamı tek "Diğer bölümler" serisi olarak. Tek tek bölüm kırılımı için zaten
-  // alttaki tabloya bak — grafiğin işi burada sadece SG'nin payını zaman içinde göstermek.
+  // "Tüm Zamanlar" grafiğindeki seriler: Genel (varsa, en altta — en büyük pay genelde bu),
+  // Sistem Geliştirme, ve geri kalan tüm gerçek bölümlerin toplamı tek "Diğer bölümler"
+  // serisi olarak. Genel bazı aylarda toplamın çoğunu kaplıyor — bu yüzden her segmentin
+  // ucunda tam € değeri yazıyor (LabelList), sadece çubuk yüksekliğine güvenmiyoruz.
   const chartSeries = useMemo(() => {
     if (!summary) return []
     const labels = summary.departments.map((d) => d.label)
+    const hasGenel = labels.includes(GENEL_LABEL)
     const hasSG = labels.includes(SG_LABEL)
     const hasOther = labels.some((l) => l !== GENEL_LABEL && l !== SG_LABEL)
-    return [...(hasSG ? [SG_LABEL] : []), ...(hasOther ? [OTHER_LABEL] : [])]
+    return [...(hasGenel ? [GENEL_LABEL] : []), ...(hasSG ? [SG_LABEL] : []), ...(hasOther ? [OTHER_LABEL] : [])]
   }, [summary])
 
   // Grafik üstteki "Aylık / Tüm Zamanlar" seçimini takip eder — ayrı bir grafik-bölüm
@@ -313,10 +317,14 @@ export default function FaturaTakipPage() {
     if (!summary) return []
     if (scopeMode === 'ALL') {
       return summary.months.map((m) => {
-        const row: Record<string, string | number> = { ay: formatMonthLabel(m.key), [SG_LABEL]: 0, [OTHER_LABEL]: 0 }
+        const row: Record<string, string | number> = {
+          ay: formatMonthLabel(m.key),
+          [GENEL_LABEL]: 0,
+          [SG_LABEL]: 0,
+          [OTHER_LABEL]: 0,
+        }
         for (const d of m.departments) {
-          if (d.label === GENEL_LABEL) continue // atanmamış — bu karşılaştırmada yok
-          const key = d.label === SG_LABEL ? SG_LABEL : OTHER_LABEL
+          const key = d.label === GENEL_LABEL ? GENEL_LABEL : d.label === SG_LABEL ? SG_LABEL : OTHER_LABEL
           row[key] = (Number(row[key]) || 0) + d.eur
         }
         return row
@@ -489,9 +497,8 @@ export default function FaturaTakipPage() {
             </button>
           </div>
           <p className="mb-3 text-xs text-muted-foreground/80">
-            {scopeMode === 'ALL'
-              ? '"Genel" (bölüm atanmamış faturalar) aylık trend grafiğinde yok — tek başına çok büyük olduğu için diğer bölümleri ezip grafiği okunaksız yapıyordu. Aşağıdaki tabloda var.'
-              : '"Genel" (bölüm atanmamış faturalar) aşağıda hem grafikte hem tabloda görünüyor.'}
+            "Genel" (bölüm atanmamış faturalar) burada da var — bazı aylarda toplamın çoğunu
+            kaplıyor, o yüzden her segmentin/çubuğun ucunda tam € değeri de yazıyor.
           </p>
           {scopeMode === 'ALL' ? (
             <div className="mb-4 h-64 w-full">
@@ -511,7 +518,14 @@ export default function FaturaTakipPage() {
                       stroke="#fff"
                       strokeWidth={2}
                       radius={i === chartSeries.length - 1 ? [4, 4, 0, 0] : undefined}
-                    />
+                    >
+                      <LabelList
+                        dataKey={label}
+                        position="center"
+                        formatter={(v: number) => (v > 0 ? formatEur(v) : '')}
+                        style={{ fontSize: 9, fill: label === SG_LABEL ? '#fff' : '#334155' }}
+                      />
+                    </Bar>
                   ))}
                 </BarChart>
               </ResponsiveContainer>

@@ -161,6 +161,18 @@ const initialForm: FormData = {
   bedenNot: "",
 }
 
+type EskiKayit = {
+  id: string
+  sicilNo: string | null
+  adSoyad: string
+  bolum: string | null
+  gorev: string | null
+  yakaRengi: string | null
+  iseGirisTarihi: string | null
+  cikisTarihi: string | null
+  eslesme: "TC" | "AD"
+}
+
 export default function NewPersonnelPage() {
   const { data: session } = useSession()
   const router = useRouter()
@@ -178,6 +190,12 @@ export default function NewPersonnelPage() {
   // olmayan kullanıcıya boş dizi döndürüp seçiciyi işlevsiz bırakıyordu.
   const [personelAdaylari, setPersonelAdaylari] = useState<PersonelSecenegi[]>([])
   const [adaylarYukleniyor, setAdaylarYukleniyor] = useState(true)
+  // ESKİ ÇALIŞAN TESPİTİ (05.10.2026) — ad-soyad/TC eşleşmesinde PASİF kayıtlar.
+  // Seçilirse yeni kayıt AÇILMAZ: eski kayıt yeniden aktifleştirilir (sicil ve
+  // geçmiş bağlar korunsun). Seçim İV'nindir; otomatik hiçbir şey ezilmez.
+  const [eskiKayitlar, setEskiKayitlar] = useState<EskiKayit[]>([])
+  const [yenidenIseAlinan, setYenidenIseAlinan] = useState<EskiKayit | null>(null)
+  const [sicilOnerisi, setSicilOnerisi] = useState("")
 
   useEffect(() => {
     fetch("/api/settings/hr-departments")
@@ -193,10 +211,56 @@ export default function NewPersonnelPage() {
     fetch("/api/personnel/next-sicil")
       .then(r => r.ok ? r.json() : null)
       .then((d: { nextSicil?: string } | null) => {
-        if (d?.nextSicil) setForm(prev => (prev.sicilNo ? prev : { ...prev, sicilNo: d.nextSicil! }))
+        if (d?.nextSicil) {
+          setSicilOnerisi(d.nextSicil)
+          setForm(prev => (prev.sicilNo ? prev : { ...prev, sicilNo: d.nextSicil! }))
+        }
       })
       .catch(() => {})
   }, [])
+
+  // Ad-soyad / TC değiştikçe pasif kayıtlarda ara (debounce 400 ms). Yeniden işe
+  // alım seçildiyse arama DURUR — İV kararını verdi, şerit yerini özete bıraktı.
+  useEffect(() => {
+    if (yenidenIseAlinan) return
+    const adSoyad = form.adSoyad.trim()
+    const tc = form.tcKimlikNo.trim()
+    if (adSoyad.length < 3 && tc.length !== 11) {
+      setEskiKayitlar([])
+      return
+    }
+    const zamanlayici = setTimeout(() => {
+      const qs = new URLSearchParams()
+      if (adSoyad) qs.set("adSoyad", adSoyad)
+      if (tc.length === 11) qs.set("tcKimlikNo", tc)
+      fetch(`/api/personnel/eski-kayit-ara?${qs.toString()}`)
+        .then(r => (r.ok ? r.json() : null))
+        .then((d: { eslesmeler?: EskiKayit[] } | null) => setEskiKayitlar(d?.eslesmeler ?? []))
+        .catch(() => {})
+    }, 400)
+    return () => clearTimeout(zamanlayici)
+  }, [form.adSoyad, form.tcKimlikNo, yenidenIseAlinan])
+
+  /** "Bu kişiyi yeniden işe al" — aynı formda devam; sicil eski kayıttan gelir. */
+  const yenidenIseAlSec = (k: EskiKayit) => {
+    setYenidenIseAlinan(k)
+    setEskiKayitlar([])
+    setForm(prev => ({
+      ...prev,
+      sicilNo: k.sicilNo ?? prev.sicilNo,
+      adSoyad: k.adSoyad,
+      // Bölüm/görev/yaka ÖNERİ olarak gelir; İV yeni görevine göre değiştirir.
+      bolum: prev.bolum || k.bolum || "",
+      gorev: prev.gorev || k.gorev || "",
+      yakaRengi: prev.yakaRengi || k.yakaRengi || "",
+    }))
+  }
+
+  /** Yeniden işe alımdan vazgeç — yeni kayıt akışına dön, sicil önerisi geri gelsin. */
+  const yenidenIseAlVazgec = () => {
+    setYenidenIseAlinan(null)
+    setForm(prev => ({ ...prev, sicilNo: sicilOnerisi || prev.sicilNo }))
+  }
 
   const set = (field: keyof FormData, value: string | boolean) => {
     setForm((prev) => {
@@ -262,16 +326,25 @@ export default function NewPersonnelPage() {
           ? [{ bankaSube: bankaSube || null, hesapNo: bankaHesapNo || null, ibanNo: ibanNo || null, isPrimary: true, aktif: true }]
           : undefined
 
-      const res = await fetch("/api/personnel", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...personnelFields,
-          sensitive: Object.keys(sensitive).length > 0 ? sensitive : undefined,
-          bankAccounts,
-          beden,
-        }),
-      })
+      // YENİDEN İŞE ALIM: yeni kayıt AÇILMAZ — eski kayıt aktifleştirilir.
+      // Hassas/banka/beden alanları bu yolda GÖNDERİLMEZ: eski kayıt onları zaten
+      // taşıyor, güncelleme personel kartından yapılır (sessizce ezilmesin).
+      const res = yenidenIseAlinan
+        ? await fetch(`/api/personnel/${yenidenIseAlinan.id}/yeniden-ise-al`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(personnelFields),
+          })
+        : await fetch("/api/personnel", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              ...personnelFields,
+              sensitive: Object.keys(sensitive).length > 0 ? sensitive : undefined,
+              bankAccounts,
+              beden,
+            }),
+          })
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
@@ -280,7 +353,11 @@ export default function NewPersonnelPage() {
       }
 
       const olusan = await res.json().catch(() => null)
-      toast.success("Personel başarıyla oluşturuldu")
+      toast.success(
+        yenidenIseAlinan
+          ? `${yenidenIseAlinan.adSoyad} yeniden işe alındı (${yenidenIseAlinan.sicilNo ?? "sicilsiz"}) — eski kayıt aktifleştirildi`
+          : "Personel başarıyla oluşturuldu",
+      )
       // Koltuk ikincil: açılmadıysa kayıt yine oluştu, İK elle yerleştirsin.
       if (olusan?.koltuk?.acildi) {
         toast.success(`Şemada koltuk açıldı: ${olusan.koltuk.birim}`)
@@ -312,6 +389,64 @@ export default function NewPersonnelPage() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
+        {/* ESKİ ÇALIŞAN UYARISI — ad-soyad/TC eşleşen PASİF kayıtlar. Seçim
+            yapılmadan hiçbir alan ezilmez; İV isterse yok sayıp yeni kayıt açar. */}
+        {!yenidenIseAlinan && eskiKayitlar.length > 0 && (
+          <div className="rounded-xl border border-amber-300 bg-amber-50 p-4">
+            <p className="text-sm font-semibold text-amber-900">
+              Bu kişi daha önce çalışmış ({eskiKayitlar.length} kayıt)
+            </p>
+            <p className="mt-1 text-xs text-amber-800">
+              Yeniden işe alımda <strong>yeni kayıt açılmaz</strong>: eski kayıt aktifleştirilir,
+              sicil ve geçmiş (zimmet, eğitim, izin) korunur. Doğru kişiyi seçin.
+            </p>
+            <div className="mt-3 space-y-2">
+              {eskiKayitlar.map((k) => (
+                <div
+                  key={k.id}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-white px-3 py-2"
+                >
+                  <div className="text-sm">
+                    <span className="font-medium">{k.sicilNo ?? "(sicilsiz)"}</span> · {k.adSoyad}
+                    <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-600">
+                      {k.eslesme === "TC" ? "TC eşleşmesi" : "Ad-soyad eşleşmesi"}
+                    </span>
+                    <div className="text-xs text-muted-foreground">
+                      {[k.bolum, k.gorev].filter(Boolean).join(" · ") || "bölüm/görev yok"}
+                      {" · "}
+                      {k.iseGirisTarihi ? new Date(k.iseGirisTarihi).toLocaleDateString("tr-TR") : "?"}
+                      {" – "}
+                      {k.cikisTarihi ? new Date(k.cikisTarihi).toLocaleDateString("tr-TR") : "çıkış tarihi yok"}
+                    </div>
+                  </div>
+                  <Button type="button" variant="outline" size="sm" onClick={() => yenidenIseAlSec(k)}>
+                    Bu kişiyi yeniden işe al
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* YENİDEN İŞE ALIM MODU — seçim özeti; sicil eski kayıttan gelir. */}
+        {yenidenIseAlinan && (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-300 bg-emerald-50 p-4">
+            <div className="text-sm text-emerald-900">
+              <p className="font-semibold">
+                Yeniden işe alım: {yenidenIseAlinan.adSoyad} ({yenidenIseAlinan.sicilNo ?? "sicilsiz"})
+              </p>
+              <p className="mt-1 text-xs">
+                Kaydet dendiğinde yeni personel OLUŞTURULMAZ; bu kayıt aktifleştirilir, yeni bir
+                çalışma dönemi açılır. Eski çıkış bilgisi ve kapalı dönem korunur. Hassas bilgi ve
+                banka alanları bu formdan güncellenmez — personel kartından düzenleyin.
+              </p>
+            </div>
+            <Button type="button" variant="outline" size="sm" onClick={yenidenIseAlVazgec}>
+              Vazgeç, yeni kayıt aç
+            </Button>
+          </div>
+        )}
+
         {/* Section 1: Kimlik */}
         <Card>
           <CardHeader>
@@ -322,7 +457,11 @@ export default function NewPersonnelPage() {
               <div className="space-y-2">
                 <Label htmlFor="sicilNo">Sicil No *</Label>
                 <Input id="sicilNo" value={form.sicilNo} onChange={(e) => set("sicilNo", e.target.value)} required />
-                <p className="text-xs text-muted-foreground">Önerilen sıradaki numara. Ayrılıp dönen personel için eski sicil numarası girilebilir.</p>
+                <p className="text-xs text-muted-foreground">
+                  {yenidenIseAlinan
+                    ? "Yeniden işe alım — sicil eski kayıttan gelir, değiştirilmez."
+                    : "Önerilen sıradaki numara. Ayrılıp dönen personel için eski sicil numarası girilebilir."}
+                </p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="adSoyad">Ad Soyad *</Label>

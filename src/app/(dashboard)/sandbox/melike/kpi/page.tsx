@@ -552,7 +552,10 @@ function basariSeviyesi(kpi: Kpi, target: number | null, actual: number | null):
 
 function sayiFormat(n: number | null): string {
   if (n == null) return ''
-  return n.toLocaleString('tr-TR', { maximumFractionDigits: 2 })
+  // maximumFractionDigits: 2 iken 0,003 gibi küçük ama sıfır OLMAYAN bir hedef "0" olarak
+  // görünüyordu — altındaki G/H Oran satırı ise ham (yuvarlanmamış) değeri kullandığı için
+  // "hedef 0 görünüyor ama oran %1500" gibi kafa karıştırıcı bir tabloya yol açıyordu.
+  return n.toLocaleString('tr-TR', { maximumFractionDigits: 4 })
 }
 
 // Bazı birimler kelime yerine sembol olarak gösterilir (€186.655 gibi, sonuna değil önüne).

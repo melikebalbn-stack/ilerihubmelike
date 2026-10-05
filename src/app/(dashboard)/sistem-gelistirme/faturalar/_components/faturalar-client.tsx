@@ -26,6 +26,7 @@ import {
   CartesianGrid,
   Cell,
   Legend,
+  LabelList,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -109,10 +110,15 @@ function formatPercent(n: number) {
   if (n === 0) return '%0'
   const abs = Math.abs(n)
   // Fatura toplamı ciroya kıyasla çok küçük olabiliyor (binde/on binde bir) —
-  // sabit 1-2 ondalık her şeyi "%0.0"a yuvarlayıp bilgisiz hale getiriyordu.
-  if (abs >= 1) return `%${n.toFixed(1)}`
-  if (abs >= 0.01) return `%${n.toFixed(2)}`
-  return `%${n.toFixed(4)}`
+  // sabit 1-2 ondalık her şeyi "%0,0"a yuvarlayıp bilgisiz hale getiriyordu.
+  // tr-TR locale: ondalık AYRACI VİRGÜL — € / ₺ sütunlarındaki "." (binlik) ile
+  // karışmasın diye toFixed() (hep nokta kullanır) yerine Intl.NumberFormat.
+  const digits = abs >= 1 ? 1 : abs >= 0.01 ? 2 : 4
+  const formatted = new Intl.NumberFormat('tr-TR', {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  }).format(n)
+  return `%${formatted}`
 }
 function formatThousands(digits: string) {
   if (!digits) return ''
@@ -297,9 +303,10 @@ export default function FaturalarClient() {
     }
     const m = summary.months.find((mm) => mm.key === scopeMonth)
     if (!m) return []
-    return m.departments
-      .filter((d) => d.label !== GENEL_LABEL)
-      .sort((a, b) => b.eur - a.eur)
+    // Burada (tek ay, yatay çubuk) Genel de gösteriliyor — stacked grafikteki gibi "ezme"
+    // sorunu yok çünkü her bölüm kendi satırında; değer etiketleri de var (LabelList),
+    // o yüzden küçük bölümlerin tam tutarı yine okunabiliyor.
+    return [...m.departments].sort((a, b) => b.eur - a.eur)
   }, [summary, scopeMode, scopeMonth])
 
   const totalCiro = useMemo(() => Object.values(revenues).reduce((s, v) => s + v, 0), [revenues])
@@ -458,7 +465,9 @@ export default function FaturalarClient() {
             </button>
           </div>
           <p className="mb-3 text-xs text-muted-foreground/80">
-            "Genel" (bölüm atanmamış faturalar) burada yok — toplamı üstteki "Toplam (€)" kartında.
+            {scopeMode === 'ALL'
+              ? '"Genel" (bölüm atanmamış faturalar) aylık trend grafiğinde yok — tek başına çok büyük olduğu için diğer bölümleri ezip grafiği okunaksız yapıyordu. Aşağıdaki tabloda var.'
+              : '"Genel" (bölüm atanmamış faturalar) aşağıda hem grafikte hem tabloda görünüyor.'}
           </p>
           {scopeMode === 'ALL' ? (
             <div className="mb-4 h-64 w-full">
@@ -490,7 +499,7 @@ export default function FaturalarClient() {
             // kategoriler için yatay çubuk.
             <div className="mb-4 w-full" style={{ height: Math.max(160, chartData.length * 48) }}>
               <ResponsiveContainer>
-                <BarChart data={chartData} layout="vertical" margin={{ left: 8, right: 24, top: 4, bottom: 4 }}>
+                <BarChart data={chartData} layout="vertical" margin={{ left: 8, right: 70, top: 4, bottom: 4 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#EEE" horizontal={false} />
                   <XAxis type="number" tick={{ fontSize: 11 }} />
                   <YAxis type="category" dataKey="label" tick={{ fontSize: 11 }} width={190} />
@@ -499,6 +508,10 @@ export default function FaturalarClient() {
                     {chartData.map((entry: any) => (
                       <Cell key={entry.label} fill={getDeptColor(entry.label)} />
                     ))}
+                    {/* Genel'in tutarı diğerlerinden çok büyük olabiliyor, çubuk boyu küçük
+                        bölümleri görsel olarak eziyor — bu yüzden değer her çubuğun ucunda
+                        yazılı, sadece çubuk uzunluğuna güvenmiyoruz. */}
+                    <LabelList dataKey="eur" position="right" formatter={(v: number) => formatEur(v)} style={{ fontSize: 11, fill: '#52514E' }} />
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>

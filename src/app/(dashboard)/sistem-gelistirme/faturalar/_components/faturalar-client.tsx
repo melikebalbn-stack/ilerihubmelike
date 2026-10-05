@@ -158,6 +158,12 @@ export default function FaturalarClient() {
   const [showForm, setShowForm] = useState(false)
   const [editingInvoice, setEditingInvoice] = useState<EditableInvoice | null>(null)
   const [showImport, setShowImport] = useState(false)
+  const [backfillStatus, setBackfillStatus] = useState<{
+    total: number
+    found: number
+    checkedNotFound: number
+    remaining: number
+  } | null>(null)
   const [filter, setFilter] = useState('ALL') // 'ALL' | 'GENEL' | <orgUnitId>
   const [search, setSearch] = useState('')
   const [departments, setDepartments] = useState<Department[]>([])
@@ -207,7 +213,9 @@ export default function FaturalarClient() {
 
   useEffect(() => {
     setLoading(true)
-    Promise.all([loadInvoices(), loadSummary(), loadRevenues(), loadDepartments()]).finally(() => setLoading(false))
+    Promise.all([loadInvoices(), loadSummary(), loadRevenues(), loadDepartments(), loadBackfillStatus()]).finally(() =>
+      setLoading(false)
+    )
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -244,6 +252,28 @@ export default function FaturalarClient() {
     document.body.removeChild(link)
     URL.revokeObjectURL(url)
   }
+
+  async function loadBackfillStatus() {
+    const res = await fetch('/api/sandbox/melike/faturalar/backfill-pdf')
+    if (res.ok) setBackfillStatus(await res.json())
+  }
+
+  async function handleBackfillPdfs() {
+    if (!confirm('Henüz PDF\'i olmayan tüm eski faturalar için eLogo\'da toplu arama başlatılsın mı? Fatura sayısına göre birkaç dakika sürebilir.')) return
+    const res = await fetch('/api/sandbox/melike/faturalar/backfill-pdf', { method: 'POST' })
+    if (res.ok) {
+      const data = await res.json()
+      alert(`${data.count} fatura taranacak. Durumu üstteki satırdan takip edebilirsin.`)
+      loadBackfillStatus()
+    }
+  }
+
+  // Toplu tarama sürerken 5 saniyede bir durumu yenile; bitince (remaining=0) durdur.
+  useEffect(() => {
+    if (!backfillStatus || backfillStatus.remaining === 0) return
+    const timer = setTimeout(loadBackfillStatus, 5000)
+    return () => clearTimeout(timer)
+  }, [backfillStatus])
 
   async function handleDelete(id: string) {
     if (!confirm('Bu fatura kaydını silmek istediğine emin misin?')) return
@@ -413,7 +443,16 @@ export default function FaturalarClient() {
             Genel / Sistem Geliştirme ayrımı · TCMB € dönüşümü · aylık ciro kıyası
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {backfillStatus && backfillStatus.remaining > 0 && (
+            <span className="text-xs text-muted-foreground">
+              Eski fatura PDF taraması: {backfillStatus.found + backfillStatus.checkedNotFound}/{backfillStatus.total}{' '}
+              tarandı ({backfillStatus.found} bulundu)
+            </span>
+          )}
+          <Button variant="outline" onClick={handleBackfillPdfs} title="PDF'i olmayan eski faturalar için eLogo'da toplu arama başlat">
+            <FileDown className="mr-1.5 h-4 w-4" /> Eski Faturaların PDF'lerini Çek
+          </Button>
           <Button variant="outline" onClick={() => setShowImport(true)}>
             <FileSpreadsheet className="mr-1.5 h-4 w-4" /> Excel İçe/Dışa Aktar
           </Button>

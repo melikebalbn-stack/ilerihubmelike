@@ -6,8 +6,11 @@ export const dynamic = 'force-dynamic'
 
 const UST_BIRIM_ID = 'cmrzg1kqr00027jpe7y4egyt9'
 
-function tutuldu(direction: string, target: number, actual: number): boolean {
-  return direction === 'lower_is_better' ? actual <= target : actual >= target
+// KPI Takip sayfasındaki "G/H Oran"/"H/G Oran" ile AYNI formül (page.tsx'teki oranYonu mantığı) —
+// tutturulan/tutturulamayan ay sayısını saymak yerine, her ölçümün G/H (ya da H/G) oranının
+// ortalaması alınır. Örn: %218, %79, %88... ortalaması.
+function gHOrani(oranYonu: string, target: number, actual: number): number {
+  return (oranYonu === 'H_G' ? target / actual : actual / target) * 100
 }
 
 export async function GET(request: Request) {
@@ -40,11 +43,12 @@ export async function GET(request: Request) {
     const kpiOranlari = deptKpiler
       .map(k => {
         const gecerliOlcumler = k.measurements.filter(
-          m => m.target != null && m.actual != null && (aktifYil == null || m.year === aktifYil),
+          m => m.target && m.actual != null && (aktifYil == null || m.year === aktifYil),
         )
         if (gecerliOlcumler.length === 0) return null
-        const tutulan = gecerliOlcumler.filter(m => tutuldu(k.direction, m.target as number, m.actual as number)).length
-        return { id: k.id, name: k.name, oran: Math.round((tutulan / gecerliOlcumler.length) * 100) }
+        const oranlar = gecerliOlcumler.map(m => gHOrani(k.oranYonu, m.target as number, m.actual as number))
+        const ort = oranlar.reduce((t, o) => t + o, 0) / oranlar.length
+        return { id: k.id, name: k.name, oran: Math.round(ort) }
       })
       .filter((x): x is { id: string; name: string; oran: number } => x !== null)
 

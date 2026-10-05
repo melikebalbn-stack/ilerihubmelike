@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/select'
 import { Loader2, LayoutDashboard } from 'lucide-react'
 import {
-  Bar, BarChart, Legend, LabelList, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  Bar, ComposedChart, Line, Legend, LabelList, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts'
 
 const NAVY = '#1B4F72'
@@ -69,6 +69,28 @@ function oranBgRengi(oran: number): string {
   if (oran >= 80) return '#dcfce7'
   if (oran >= 50) return '#fef3c7'
   return '#fee2e2'
+}
+
+// Basit doğrusal regresyon (en küçük kareler) — çubukların üzerine genel eğilimi (yukarı/aşağı)
+// gösteren kesikli bir çizgi koymak için. Eksik (null) noktaları atlar, sıra numarasını x kabul eder.
+function egilimEkle<T extends Record<string, unknown>>(
+  veri: T[],
+  alan: keyof T,
+): (T & { Egilim: number | null })[] {
+  const noktalar = veri
+    .map((v, i) => ({ x: i, y: v[alan] as number | null }))
+    .filter((n): n is { x: number; y: number } => n.y != null)
+  if (noktalar.length < 2) return veri.map(v => ({ ...v, Egilim: null }))
+  const n = noktalar.length
+  const sumX = noktalar.reduce((t, p) => t + p.x, 0)
+  const sumY = noktalar.reduce((t, p) => t + p.y, 0)
+  const sumXY = noktalar.reduce((t, p) => t + p.x * p.y, 0)
+  const sumXX = noktalar.reduce((t, p) => t + p.x * p.x, 0)
+  const payda = n * sumXX - sumX * sumX
+  if (payda === 0) return veri.map(v => ({ ...v, Egilim: null }))
+  const egim = (n * sumXY - sumX * sumY) / payda
+  const kesisim = (sumY - egim * sumX) / n
+  return veri.map((v, i) => ({ ...v, Egilim: Math.round(egim * i + kesisim) }))
 }
 
 export default function KpiOzetClient() {
@@ -190,7 +212,7 @@ export default function KpiOzetClient() {
               <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
             ) : (
               <ResponsiveContainer width="100%" height={280}>
-                <BarChart data={departmanCeyrekKarsilastirma} margin={{ left: 4, right: 8, top: 4, bottom: 4 }}>
+                <ComposedChart data={departmanCeyrekKarsilastirma} margin={{ left: 4, right: 8, top: 4, bottom: 4 }}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="departman" tick={{ fontSize: 12 }} interval={0} />
                   <YAxis tick={{ fontSize: 12 }} />
@@ -210,7 +232,7 @@ export default function KpiOzetClient() {
                       />
                     </Bar>
                   ))}
-                </BarChart>
+                </ComposedChart>
               </ResponsiveContainer>
             )}
             {ceyrekTrend && ceyrekTrend.length > 0 && (
@@ -269,12 +291,13 @@ export default function KpiOzetClient() {
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={220}>
-                  <BarChart
-                    data={
+                  <ComposedChart
+                    data={egilimEkle(
                       ceyrekTrend.find(d => d.orgUnitId === secilenDepartmanId)?.ceyrekler.map(c => ({
-                        ad: `Ç${c.ceyrek}`, Oran: c.oran, renk: CEYREK_RENKLERI[c.ceyrek - 1],
-                      })) ?? []
-                    }
+                        ad: `Ç${c.ceyrek}`, Oran: c.oran,
+                      })) ?? [],
+                      'Oran',
+                    )}
                     margin={{ left: 4, right: 8, top: 4, bottom: 4 }}
                   >
                     <CartesianGrid strokeDasharray="3 3" />
@@ -293,7 +316,17 @@ export default function KpiOzetClient() {
                         formatter={(v: number | null) => (v == null ? '' : `%${v}`)}
                       />
                     </Bar>
-                  </BarChart>
+                    <Line
+                      type="linear"
+                      dataKey="Egilim"
+                      stroke="#dc2626"
+                      strokeWidth={2}
+                      strokeDasharray="5 4"
+                      dot={false}
+                      legendType="none"
+                      name="Eğilim"
+                    />
+                  </ComposedChart>
                 </ResponsiveContainer>
               </CardContent>
             </Card>

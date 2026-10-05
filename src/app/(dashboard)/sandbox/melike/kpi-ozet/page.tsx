@@ -149,6 +149,20 @@ export default function KpiOzetPage() {
     })
   }, [ceyrekTrend])
 
+  // Şirket geneli çeyrek ORTALAMASI (tüm departmanların o çeyrekteki ortalaması) — departman
+  // karşılaştırma grafiğinin x ekseni departman olduğu için eğilim çizgisi oraya oturmuyordu,
+  // bunun için ayrı, çeyreklerin kendisinin x ekseni olduğu küçük bir grafik.
+  const sirketGeneliCeyrekOrtalama = useMemo(() => {
+    if (!ceyrekTrend || ceyrekTrend.length === 0) return []
+    return [1, 2, 3, 4].map(ceyrek => {
+      const degerler = ceyrekTrend
+        .map(d => d.ceyrekler.find(c => c.ceyrek === ceyrek)?.oran)
+        .filter((o): o is number => o != null)
+      const oran = degerler.length > 0 ? Math.round(degerler.reduce((t, o) => t + o, 0) / degerler.length) : null
+      return { ad: `Ç${ceyrek}`, Oran: oran }
+    })
+  }, [ceyrekTrend])
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -240,6 +254,49 @@ export default function KpiOzetPage() {
                 {ceyrekTrend.map(d => `${kisaltDepartman(d.name)} = ${d.name}`).join(' · ')}
               </p>
             )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Şirket geneli çeyrek ORTALAMASI + eğilim çizgisi — departman karşılaştırmasının x ekseni
+          departman olduğu için eğilim orada gösterilemiyordu, bunun için ayrı küçük grafik */}
+      {secilenDepartmanId === GENEL_ID && sirketGeneliCeyrekOrtalama.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Şirket Geneli — Çeyreklik Ortalama Eğilimi</CardTitle>
+            <p className="text-xs text-muted-foreground">{secilenYil} yılı, tüm departmanların çeyrek bazında ortalaması</p>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={200}>
+              <ComposedChart data={egilimEkle(sirketGeneliCeyrekOrtalama, 'Oran')} margin={{ left: 4, right: 8, top: 4, bottom: 4 }}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="ad" tick={{ fontSize: 12 }} />
+                <YAxis tick={{ fontSize: 12 }} />
+                <Tooltip formatter={(v: number) => (v == null ? '—' : `%${v}`)} />
+                <Bar dataKey="Oran" radius={[4, 4, 0, 0]}>
+                  {[1, 2, 3, 4].map(ceyrek => (
+                    <Cell key={ceyrek} fill={CEYREK_RENKLERI[ceyrek - 1]} />
+                  ))}
+                  <LabelList
+                    dataKey="Oran"
+                    position="top"
+                    fontSize={11}
+                    fill="#52514e"
+                    formatter={(v: number | null) => (v == null ? '' : `%${v}`)}
+                  />
+                </Bar>
+                <Line
+                  type="linear"
+                  dataKey="Egilim"
+                  stroke="#dc2626"
+                  strokeWidth={2}
+                  strokeDasharray="5 4"
+                  dot={false}
+                  legendType="none"
+                  name="Eğilim"
+                />
+              </ComposedChart>
+            </ResponsiveContainer>
           </CardContent>
         </Card>
       )}

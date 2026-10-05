@@ -1,23 +1,24 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { ORG_UNIT_CODE_TO_PERSONNEL_BOLUM } from '../../personel-map'
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const kpi = await prisma.kPIDefinition.findUnique({
     where: { id },
-    select: { orgUnit: { select: { code: true } } },
+    select: { orgUnit: { select: { name: true } } },
   })
   if (!kpi) return NextResponse.json({ error: 'KPI bulunamadı' }, { status: 404 })
 
-  const bolum = ORG_UNIT_CODE_TO_PERSONNEL_BOLUM[kpi.orgUnit.code]
-  const sorumluAdaylari = bolum
-    ? await prisma.personnel.findMany({
-        where: { bolum, aktif: true },
-        select: { id: true, adSoyad: true, gorev: true },
-        orderBy: { adSoyad: 'asc' },
-      })
-    : []
+  // KPI-AYAR: önceden OrgUnit kodundan elle bakılan, az sayıda departmanı kapsayan ve
+  // Personnel.bolum ile BÜYÜK/küçük harf uyuşmazlığı yüzünden hiçbir departmanda eşleşme
+  // vermeyen bir eşleme tablosu vardı (personel-map.ts). OrgUnit.name ile Personnel.bolum
+  // (serbest metin) zaten birebir aynı yazılıyor — doğrudan o karşılaştırılıyor, harf
+  // büyüklüğüne duyarsız (gelecekte küçük bir yazım farkı yine sıfır sonuç vermesin diye).
+  const sorumluAdaylari = await prisma.personnel.findMany({
+    where: { bolum: { equals: kpi.orgUnit.name, mode: 'insensitive' }, aktif: true },
+    select: { id: true, adSoyad: true, gorev: true },
+    orderBy: { adSoyad: 'asc' },
+  })
 
   return NextResponse.json({
     sorumluAdaylari: sorumluAdaylari.map(p => ({ id: p.id, displayName: p.adSoyad, positionTitle: p.gorev })),

@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server'
 import * as XLSX from 'xlsx'
 import { prisma } from '@/lib/prisma'
 import { YON_TERS, PERIYOT_TERS, ORAN_TERS } from '../excel-sablon'
-import { ORG_UNIT_CODE_TO_PERSONNEL_BOLUM } from '../personel-map'
 
 function tarihAyristir(v: unknown): Date | null {
   if (v instanceof Date) return v
@@ -98,10 +97,12 @@ export async function POST(request: Request) {
   let sorumluEslesen = 0
   const eslesmeyenSorumlular = new Set<string>()
   if (aksiyonSayfasi) {
-    const orgUnit = await prisma.orgUnit.findUnique({ where: { id: orgUnitId }, select: { code: true } })
-    const bolum = orgUnit ? ORG_UNIT_CODE_TO_PERSONNEL_BOLUM[orgUnit.code] : undefined
-    const personeller = bolum
-      ? await prisma.personnel.findMany({ where: { bolum, aktif: true }, select: { id: true, adSoyad: true } })
+    const orgUnit = await prisma.orgUnit.findUnique({ where: { id: orgUnitId }, select: { name: true } })
+    const personeller = orgUnit
+      ? await prisma.personnel.findMany({
+          where: { bolum: { equals: orgUnit.name, mode: 'insensitive' }, aktif: true },
+          select: { id: true, adSoyad: true },
+        })
       : []
     const personelIndex = new Map(personeller.map(p => [p.adSoyad.toLocaleUpperCase('tr').trim(), p.id]))
 

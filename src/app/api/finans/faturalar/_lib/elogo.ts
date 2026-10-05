@@ -59,13 +59,56 @@ async function logout(sessionID: string): Promise<void> {
 
 async function getDocumentList(sessionID: string, day: string): Promise<string[]> {
   // day: "YYYY-MM-DD". OPTYPE=2 -> SendRecvType.RECV (bize gelen faturalar).
-  const params = ['DOCUMENTTYPE=EINVOICE', `BEGINDATE=${day}`, `ENDDATE=${day}`, 'OPTYPE=2']
+  // DATEBY zorunlu param — olmadan servis "DATEBY parametresi doğru formatta değil"
+  // diyip HER ZAMAN 0 belge dönüyor (hata değil gibi görünüyor ama aslında sorgu reddediliyor).
+  const params = [
+    'DOCUMENTTYPE=EINVOICE',
+    `BEGINDATE=${day}T00:00:00`,
+    `ENDDATE=${day}T23:59:59`,
+    'OPTYPE=2',
+    'DATEBY=1',
+  ]
   const paramList = params.map((p) => `<b:string>${xmlEscape(p)}</b:string>`).join('')
   const body =
     `<GetDocumentList xmlns="${TNS}"><sessionID>${sessionID}</sessionID>` +
     `<paramList xmlns:b="${AR}">${paramList}</paramList></GetDocumentList>`
   const txt = await soapCall('GetDocumentList', body)
   return Array.from(txt.matchAll(/<(?:\w+:)?Document>([\s\S]*?)<\/(?:\w+:)?Document>/g)).map((m) => m[1])
+}
+
+async function getDocumentDataRaw(sessionID: string, uuid: string, dataType: 'UBL' | 'PDF'): Promise<Buffer> {
+  const body =
+    `<getDocumentData xmlns="${TNS}"><sessionID>${sessionID}</sessionID><uuid>${xmlEscape(uuid)}</uuid>` +
+    `<docType>EINVOICE</docType><dataType>${dataType}</dataType></getDocumentData>`
+  const txt = await soapCall('getDocumentData', body)
+  const value = extractTag(txt, 'Value')
+  if (!value) throw new Error(`eLogo ${dataType} verisi alınamadı: ` + txt.slice(0, 400))
+  const raw = Buffer.from(value, 'base64')
+  // eLogo verisi tek dosyalık bir ZIP içinde dönüyor ("PK" imzası) — hem UBL hem PDF için.
+  return raw.subarray(0, 2).toString('latin1') === 'PK' ? unzipFirstEntry(raw) : raw
+}
+
+/**
+ * GetDocumentList'in döndürdüğü <Document> kayıtlarında documentJSon/documentId HER ZAMAN
+ * boş (i:nil="true") geliyor — fatura no'yu bu listeden doğrudan okumak mümkün değil.
+ * Tek yol: her adayın UBL'ini çekip içindeki gerçek fatura no'yu (<cbc:ID>) okumak.
+ * Bir günün tüm adaylarını TEK SEFERDE {fatura no -> uuid} haritasına çevirir.
+ */
+async function buildDayIndex(sessionID: string, day: string): Promise<Map<string, string>> {
+  const docs = await getDocumentList(sessionID, day)
+  const index = new Map<string, string>()
+  for (const doc of docs) {
+    const uuid = extractTag(doc, 'documentUuid')
+    if (!uuid) continue
+    try {
+      const ubl = await getDocumentDataRaw(sessionID, uuid, 'UBL')
+      const id = ubl.toString('utf-8').match(/<cbc:ID>([^<]+)<\/cbc:ID>/)
+      if (id) index.set(id[1], uuid)
+    } catch {
+      // Bu adayın UBL'i okunamadı — diğerlerine devam, tüm günü düşürme.
+    }
+  }
+  return index
 }
 
 /** Bir faturanın eLogo'daki documentUuid'sini (ETTN) bulur — fatura no eşleşmesiyle. */
@@ -80,14 +123,9 @@ export async function findInvoiceUuid(invoiceNumber: string, invoiceDateISO: str
   const sessionID = await login()
   try {
     for (const d2 of days) {
-      const docs = await getDocumentList(sessionID, d2)
-      for (const doc of docs) {
-        const json = extractTag(doc, 'documentJSon')
-        const uuid = extractTag(doc, 'documentUuid')
-        if (json && uuid && json.includes(invoiceNumber)) {
-          return uuid
-        }
-      }
+      const index = await buildDayIndex(sessionID, d2)
+      const uuid = index.get(invoiceNumber)
+      if (uuid) return uuid
     }
     return null
   } finally {
@@ -95,23 +133,11 @@ export async function findInvoiceUuid(invoiceNumber: string, invoiceDateISO: str
   }
 }
 
-async function getDocumentDataRaw(sessionID: string, uuid: string): Promise<Buffer> {
-  const body =
-    `<getDocumentData xmlns="${TNS}"><sessionID>${sessionID}</sessionID><uuid>${xmlEscape(uuid)}</uuid>` +
-    `<docType>EINVOICE</docType><dataType>PDF</dataType></getDocumentData>`
-  const txt = await soapCall('getDocumentData', body)
-  const value = extractTag(txt, 'Value')
-  if (!value) throw new Error('eLogo PDF verisi alınamadı: ' + txt.slice(0, 400))
-  const raw = Buffer.from(value, 'base64')
-  // eLogo PDF'i de (UBL gibi) tek dosyalık bir ZIP içinde dönüyor ("PK" imzası).
-  return raw.subarray(0, 2).toString('latin1') === 'PK' ? unzipFirstEntry(raw) : raw
-}
-
 /** documentUuid'ye göre PDF içeriğini indirir (tek fatura — kendi login/logout'u var). */
 export async function fetchInvoicePdf(uuid: string): Promise<Buffer> {
   const sessionID = await login()
   try {
-    return await getDocumentDataRaw(sessionID, uuid)
+    return await getDocumentDataRaw(sessionID, uuid, 'PDF')
   } finally {
     await logout(sessionID)
   }
@@ -188,20 +214,20 @@ export async function backfillPdfs(targets: BackfillTarget[]): Promise<BackfillR
 
   const results: BackfillResult[] = []
   let sessionID = await login()
-  const docCache = new Map<string, string[]>()
+  const indexCache = new Map<string, Map<string, string>>()
 
-  async function listForDay(day: string): Promise<string[]> {
-    const cached = docCache.get(day)
+  async function indexForDay(day: string): Promise<Map<string, string>> {
+    const cached = indexCache.get(day)
     if (cached) return cached
-    let docs: string[]
+    let index: Map<string, string>
     try {
-      docs = await getDocumentList(sessionID, day)
+      index = await buildDayIndex(sessionID, day)
     } catch {
       sessionID = await login() // oturum düşmüş olabilir — yeniden giriş yapıp tekrar dene
-      docs = await getDocumentList(sessionID, day)
+      index = await buildDayIndex(sessionID, day)
     }
-    docCache.set(day, docs)
-    return docs
+    indexCache.set(day, index)
+    return index
   }
 
   try {
@@ -209,19 +235,11 @@ export async function backfillPdfs(targets: BackfillTarget[]): Promise<BackfillR
       const nextDay = new Date(day)
       nextDay.setDate(nextDay.getDate() + 1)
       const days = [day, nextDay.toISOString().slice(0, 10)]
-      const allDocs = (await Promise.all(days.map(listForDay))).flat()
+      const dayIndexes = await Promise.all(days.map(indexForDay))
 
       for (const inv of invs) {
         try {
-          let uuid: string | null = null
-          for (const doc of allDocs) {
-            const json = extractTag(doc, 'documentJSon')
-            const docUuid = extractTag(doc, 'documentUuid')
-            if (json && docUuid && json.includes(inv.invoiceNumber)) {
-              uuid = docUuid
-              break
-            }
-          }
+          const uuid = dayIndexes.map((idx) => idx.get(inv.invoiceNumber)).find((v) => v) ?? null
           if (!uuid) {
             results.push({ id: inv.id, uuid: null, pdfPath: null })
             continue
@@ -229,10 +247,10 @@ export async function backfillPdfs(targets: BackfillTarget[]): Promise<BackfillR
 
           let pdf: Buffer
           try {
-            pdf = await getDocumentDataRaw(sessionID, uuid)
+            pdf = await getDocumentDataRaw(sessionID, uuid, 'PDF')
           } catch {
             sessionID = await login()
-            pdf = await getDocumentDataRaw(sessionID, uuid)
+            pdf = await getDocumentDataRaw(sessionID, uuid, 'PDF')
           }
           const pdfPath = await pdfPathFor(inv.id)
           await fs.writeFile(pdfPath, pdf)

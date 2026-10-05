@@ -10058,6 +10058,13 @@ model Invoice {
   // Doluysa: departmentOrgUnitId/departmentName yok sayılır, gerçek dağılım burada.
   allocations InvoiceDepartmentAllocation[]
 
+  // eLogo e-Fatura entegrasyonu: fatura eklenince arka planda eLogo'da aranır.
+  // elogoUuid bulunursa (documentUuid/ETTN) PDF indirilip elogoPdfPath'e kaydedilir.
+  // elogoCheckedAt doluyken elogoUuid boşsa: arandı ama bulunamadı (tekrar aranabilir).
+  elogoUuid      String?
+  elogoPdfPath   String?
+  elogoCheckedAt DateTime?
+
   @@index([invoiceDate])
   @@index([departmentOrgUnitId])
   @@index([companyName])

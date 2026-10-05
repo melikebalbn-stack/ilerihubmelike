@@ -5,6 +5,7 @@ import { requireUser } from '@/lib/auth/require-user'
 import { apiSuccess, apiCreated, apiBadRequest, apiForbidden, apiError } from '@/lib/api-response'
 import { canAccessFaturaTakip } from './_lib/access'
 import { resolveDepartments, computeAmounts } from './_lib/invoice'
+import { resolveAndStorePdf } from './_lib/elogo'
 
 const CURRENCIES: InvoiceCurrency[] = ['TRY', 'USD', 'EUR']
 
@@ -119,6 +120,27 @@ export async function POST(request: NextRequest) {
       },
       include: { allocations: true },
     })
+
+    // eLogo'dan PDF'i arka planda ara/indir — fatura kaydını bekletmez, kullanıcıya hemen cevap dönülür.
+    // Bulunamazsa/hata olursa sessizce geçilir: "PDF indir" butonu elle tekrar dener.
+    void resolveAndStorePdf({
+      invoiceId: invoice.id,
+      invoiceNumber: invoice.invoiceNumber,
+      invoiceDateISO: dateStr,
+    })
+      .then((result) =>
+        prisma.invoice.update({
+          where: { id: invoice.id },
+          data: {
+            elogoCheckedAt: new Date(),
+            ...(result && { elogoUuid: result.uuid, elogoPdfPath: result.pdfPath }),
+          },
+        })
+      )
+      .catch((err) => {
+        console.error('[fatura-takip] eLogo PDF arka plan hatası:', err)
+        return prisma.invoice.update({ where: { id: invoice.id }, data: { elogoCheckedAt: new Date() } }).catch(() => {})
+      })
 
     return apiCreated({ invoice })
   } catch (error) {

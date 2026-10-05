@@ -373,34 +373,42 @@ export function UygunsuzlukFormClient({
         )}
       </div>
 
-      {/* ── Başlık ── */}
-      <div className="rounded-md border bg-white p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-        <div>
-          <Label className="text-xs text-slate-600">Tarih *</Label>
-          <Input type="date" value={tarih} disabled={ro} onChange={(e) => setTarih(e.target.value)} className="mt-1 h-9" />
+      {/* ── Tanım ── */}
+      <div className="rounded-md border bg-white p-4 space-y-3">
+        <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Tanım</span>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div>
+            <Label className="text-xs text-slate-600">Tarih *</Label>
+            <Input type="date" value={tarih} disabled={ro} onChange={(e) => setTarih(e.target.value)} className="mt-1 h-9" />
+          </div>
+          <div>
+            <Label className="text-xs text-slate-600">Mamul ürün kodu *</Label>
+            <Input value={mamulUrunKodu} disabled={ro} onChange={(e) => setMamulUrunKodu(e.target.value)} className="mt-1 h-9" />
+          </div>
+          <div>
+            <Label className="text-xs text-slate-600">Alt parça kodu</Label>
+            <Input value={altParcaKodu} disabled={ro} onChange={(e) => setAltParcaKodu(e.target.value)} className="mt-1 h-9" />
+          </div>
+          <div>
+            <Label className="text-xs text-slate-600">Müşteri adı</Label>
+            <Input value={musteriAdi} disabled={ro} onChange={(e) => setMusteriAdi(e.target.value)} className="mt-1 h-9" />
+          </div>
+          <div>
+            <Label className="text-xs text-slate-600">İş emri no *</Label>
+            <Input value={isEmriNo} disabled={ro} onChange={(e) => setIsEmriNo(e.target.value)} className="mt-1 h-9 font-quality-mono" />
+          </div>
+          <div>
+            <Label className="text-xs text-slate-600">İş emri adeti</Label>
+            <Input type="number" min={1} value={isEmriAdeti} disabled={ro} onChange={(e) => setIsEmriAdeti(e.target.value)} className="mt-1 h-9" />
+            <p className="mt-1 text-[11px] text-slate-400">Red oranı bu değere göre hesaplanır</p>
+          </div>
         </div>
+      </div>
+
+      {/* ── Hata Tanımı ── */}
+      <div className="rounded-md border bg-white p-4 space-y-3">
+        <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Hata Tanımı</span>
         <div>
-          <Label className="text-xs text-slate-600">Mamul ürün kodu *</Label>
-          <Input value={mamulUrunKodu} disabled={ro} onChange={(e) => setMamulUrunKodu(e.target.value)} className="mt-1 h-9" />
-        </div>
-        <div>
-          <Label className="text-xs text-slate-600">Alt parça kodu</Label>
-          <Input value={altParcaKodu} disabled={ro} onChange={(e) => setAltParcaKodu(e.target.value)} className="mt-1 h-9" />
-        </div>
-        <div>
-          <Label className="text-xs text-slate-600">Müşteri adı</Label>
-          <Input value={musteriAdi} disabled={ro} onChange={(e) => setMusteriAdi(e.target.value)} className="mt-1 h-9" />
-        </div>
-        <div>
-          <Label className="text-xs text-slate-600">İş emri no *</Label>
-          <Input value={isEmriNo} disabled={ro} onChange={(e) => setIsEmriNo(e.target.value)} className="mt-1 h-9 font-quality-mono" />
-        </div>
-        <div>
-          <Label className="text-xs text-slate-600">İş emri adeti</Label>
-          <Input type="number" min={1} value={isEmriAdeti} disabled={ro} onChange={(e) => setIsEmriAdeti(e.target.value)} className="mt-1 h-9" />
-          <p className="mt-1 text-[11px] text-slate-400">Red oranı bu değere göre hesaplanır</p>
-        </div>
-        <div className="lg:col-span-2">
           <Label className="text-xs text-slate-600">Tespit eden bölüm</Label>
           <div className="mt-1">
             <HataKoduSecici
@@ -412,40 +420,41 @@ export function UygunsuzlukFormClient({
             />
           </div>
         </div>
-        <div>
-          <Label className="text-xs text-slate-600">Aksiyon sorumlusu</Label>
-          <div className="mt-1">
-            <MusteriSecici
-              value={sorumlu}
-              onChange={setSorumlu}
-              disabled={ro}
-              searchUrl="/api/quality/rma/sorumlu-ara"
-              placeholder="Personel ara…"
-            />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <Label className="text-xs text-slate-600">Kök neden (oluşum)</Label>
+            <Textarea value={kokNeden} disabled={ro} onChange={(e) => setKokNeden(e.target.value)} rows={3} className="mt-1" />
+          </div>
+          <div>
+            <Label className="text-xs text-slate-600">Kaçış kök nedeni</Label>
+            <Textarea value={kacisKokNedeni} disabled={ro} onChange={(e) => setKacisKokNedeni(e.target.value)} rows={3} className="mt-1" />
+          </div>
+          <div>
+            <Label className="text-xs text-slate-600">Geçici aksiyon</Label>
+            <Textarea value={geciciAksiyon} disabled={ro} onChange={(e) => setGeciciAksiyon(e.target.value)} rows={3} className="mt-1" />
+          </div>
+          <div>
+            <Label className="text-xs text-slate-600">Kalıcı aksiyon (düzeltici faaliyet)</Label>
+            <Textarea value={duzelticiFaaliyet} disabled={ro} onChange={(e) => setDuzelticiFaaliyet(e.target.value)} rows={3} className="mt-1" />
           </div>
         </div>
-        <div>
-          <Label className="text-xs text-slate-600">Aksiyon onaylayan</Label>
-          <div className="mt-1">
-            <MusteriSecici
-              value={onaylayan}
-              onChange={setOnaylayan}
-              disabled={ro}
-              searchUrl="/api/quality/rma/sorumlu-ara"
-              placeholder="Personel ara…"
-            />
+      </div>
+
+      {/* ── Tarih ── */}
+      <div className="rounded-md border bg-white p-4 space-y-3">
+        <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Tarih</span>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <Label className="text-xs text-slate-600">Planlanan aksiyon tarihi (termin)</Label>
+            <Input type="date" value={termin} disabled={ro} onChange={(e) => setTermin(e.target.value)} className="mt-1 h-9" />
           </div>
-        </div>
-        <div>
-          <Label className="text-xs text-slate-600">Termin</Label>
-          <Input type="date" value={termin} disabled={ro} onChange={(e) => setTermin(e.target.value)} className="mt-1 h-9" />
-        </div>
-        <div>
-          <Label className="text-xs text-slate-600">Kapanış tarihi</Label>
-          <Input type="date" value={kapanisTarihi} disabled={ro} onChange={(e) => setKapanisTarihi(e.target.value)} className="mt-1 h-9" />
+          <div>
+            <Label className="text-xs text-slate-600">Aksiyon tamamlanma tarihi (kapanış)</Label>
+            <Input type="date" value={kapanisTarihi} disabled={ro} onChange={(e) => setKapanisTarihi(e.target.value)} className="mt-1 h-9" />
+          </div>
         </div>
         {initial && initial.tarihGecmisi.length > 0 && (
-          <div className="md:col-span-2 lg:col-span-3">
+          <div>
             <Label className="text-xs text-slate-600">Tarih revizyon geçmişi</Label>
             <div className="mt-1 space-y-1">
               {initial.tarihGecmisi.map((t, i) => {
@@ -464,25 +473,38 @@ export function UygunsuzlukFormClient({
             </div>
           </div>
         )}
-        <div className="md:col-span-2 lg:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+      </div>
+
+      {/* ── Kişi ── */}
+      <div className="rounded-md border bg-white p-4 space-y-3">
+        <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Kişi</span>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
-            <Label className="text-xs text-slate-600">Kök neden (oluşum)</Label>
-            <Textarea value={kokNeden} disabled={ro} onChange={(e) => setKokNeden(e.target.value)} rows={3} className="mt-1" />
+            <Label className="text-xs text-slate-600">Aksiyon sorumlusu</Label>
+            <div className="mt-1">
+              <MusteriSecici
+                value={sorumlu}
+                onChange={setSorumlu}
+                disabled={ro}
+                searchUrl="/api/quality/rma/sorumlu-ara"
+                placeholder="Personel ara…"
+              />
+            </div>
           </div>
           <div>
-            <Label className="text-xs text-slate-600">Kaçış kök nedeni</Label>
-            <Textarea value={kacisKokNedeni} disabled={ro} onChange={(e) => setKacisKokNedeni(e.target.value)} rows={3} className="mt-1" />
-          </div>
-          <div>
-            <Label className="text-xs text-slate-600">Geçici aksiyon</Label>
-            <Textarea value={geciciAksiyon} disabled={ro} onChange={(e) => setGeciciAksiyon(e.target.value)} rows={3} className="mt-1" />
-          </div>
-          <div>
-            <Label className="text-xs text-slate-600">Kalıcı aksiyon (düzeltici faaliyet)</Label>
-            <Textarea value={duzelticiFaaliyet} disabled={ro} onChange={(e) => setDuzelticiFaaliyet(e.target.value)} rows={3} className="mt-1" />
+            <Label className="text-xs text-slate-600">Aksiyon onaylayan</Label>
+            <div className="mt-1">
+              <MusteriSecici
+                value={onaylayan}
+                onChange={setOnaylayan}
+                disabled={ro}
+                searchUrl="/api/quality/rma/sorumlu-ara"
+                placeholder="Personel ara…"
+              />
+            </div>
           </div>
         </div>
-        <div className="md:col-span-2 lg:col-span-3">
+        <div>
           <Label className="text-xs text-slate-600">Toplantıya katılanlar</Label>
           <div className="mt-1">
             <MusteriSecici
@@ -508,26 +530,33 @@ export function UygunsuzlukFormClient({
             </div>
           )}
         </div>
-        <div>
-          <div className="flex items-center justify-between">
-            <Label className="text-xs text-slate-600">Kategori</Label>
-            {canManage && (
-              <Link href="/kalite/uygunsuzluk/kategoriler" className="text-[11px] text-[#1B4F72] hover:underline">
-                Kategorileri yönet
-              </Link>
-            )}
+      </div>
+
+      {/* ── Diğer ── */}
+      <div className="rounded-md border bg-white p-4 space-y-3">
+        <span className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Diğer</span>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <div className="flex items-center justify-between">
+              <Label className="text-xs text-slate-600">Kategori</Label>
+              {canManage && (
+                <Link href="/kalite/uygunsuzluk/kategoriler" className="text-[11px] text-[#1B4F72] hover:underline">
+                  Kategorileri yönet
+                </Link>
+              )}
+            </div>
+            <Select value={kategoriId ?? 'yok'} onValueChange={(v) => setKategoriId(v === 'yok' ? null : v)} disabled={ro}>
+              <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="Kategori seçin" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="yok">Seçilmedi</SelectItem>
+                {kategoriler.map((k) => (
+                  <SelectItem key={k.id} value={k.id}>{k.ad}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
-          <Select value={kategoriId ?? 'yok'} onValueChange={(v) => setKategoriId(v === 'yok' ? null : v)} disabled={ro}>
-            <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="Kategori seçin" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="yok">Seçilmedi</SelectItem>
-              {kategoriler.map((k) => (
-                <SelectItem key={k.id} value={k.id}>{k.ad}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
         </div>
-        <div className="md:col-span-2 lg:col-span-3">
+        <div>
           <Label className="text-xs text-slate-600">Öğrenilmiş dersler</Label>
           <Textarea
             value={ogrenilmisDersler}

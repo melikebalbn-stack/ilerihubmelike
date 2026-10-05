@@ -10,14 +10,15 @@ import {
 } from '@/components/ui/select'
 import { Loader2, LayoutDashboard } from 'lucide-react'
 import {
-  LineChart, Line, Bar, BarChart, Legend, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  LineChart, Line, Bar, BarChart, Legend, LabelList, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts'
 
 const NAVY = '#1B4F72'
 const GENEL_ID = 'GENEL'
-// Doğrulanmış kategorik paletin ilk 4 rengi (renk körlüğü güvenli, bkz. faturalar sayfasındaki PALETTE) —
-// burada sadece 4 seri (Ç1-Ç4) olduğu için tüm 8 renge gerek yok.
-const CEYREK_RENKLERI = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100']
+// Ç1-Ç4 bir SIRA (zaman içinde ilerleme) — kategorik (rastgele/kimlik) renk değil, TEK ton
+// açıktan koyuya kademeli "ordinal" renk kullanılır (dataviz skill: sıralı veri tek hue ile
+// gösterilir). Lacivert ilerihub'ın marka rengiyle (#1B4F72) bitiyor, validator ile doğrulandı.
+const CEYREK_RENKLERI = ['#86B6DE', '#5285B2', '#2E6690', '#1B4F72']
 
 const MUDURLUK_EKI = /\s*müdürlüğü\s*$/i
 const BAGLAC_KELIMELER = new Set(['ve', 'ile'])
@@ -199,10 +200,23 @@ export default function KpiOzetPage() {
                   />
                   <Legend wrapperStyle={{ fontSize: 11 }} />
                   {[1, 2, 3, 4].map((ceyrek, i) => (
-                    <Bar key={ceyrek} dataKey={`Ç${ceyrek}`} fill={CEYREK_RENKLERI[i]} radius={[3, 3, 0, 0]} />
+                    <Bar key={ceyrek} dataKey={`Ç${ceyrek}`} fill={CEYREK_RENKLERI[i]} radius={[3, 3, 0, 0]}>
+                      <LabelList
+                        dataKey={`Ç${ceyrek}`}
+                        position="top"
+                        fontSize={9}
+                        fill="#52514e"
+                        formatter={(v: number | null) => (v == null ? '' : `%${v}`)}
+                      />
+                    </Bar>
                   ))}
                 </BarChart>
               </ResponsiveContainer>
+            )}
+            {ceyrekTrend && ceyrekTrend.length > 0 && (
+              <p className="mt-3 text-xs text-muted-foreground">
+                {ceyrekTrend.map(d => `${kisaltDepartman(d.name)} = ${d.name}`).join(' · ')}
+              </p>
             )}
           </CardContent>
         </Card>

@@ -8,11 +8,15 @@
 //              (2. puanı müdür yrd. VEYA müdür verir, ikisi birden DEĞİL)
 //   GRİ   → tek doldurucu: mudurYardimcisiId varsa o, yoksa mudurId · onay adımı YOK
 //   BEYAZ → (05.10.2026 · Melih kararı) müdür yardımcısı adımı DEVREYE GİRDİ:
-//           1. Personnel.sorumlu1Id (yoksa bölüm müdürü — bugünkü davranış)
+//           1. Personnel.sorumlu1Id (yoksa bölüm müdürü — bloke etmez)
 //           2. sorumlu1'in ÜSTÜNDEKİ ilk kademe: mudurYardimcisiId, yoksa mudurId
 //              · 1. değerlendirici zaten müdür ise 2. adım YOK (zincir yukarı
-//                yürür, geri dönmez) → bugünkü tek puan + GMY onayı korunur
+//                yürür, geri dönmez)
 //              · 2. puanı müdür yrd. verdiyse onay bölüm müdürüne gider
+//           ZİNCİR MÜDÜRDE BİTER — GMY adımı YOK.
+//           GMY YALNIZ değerlendirilen kişi MÜDÜR KADROSUNDAYSA devreye girer
+//           (kişinin kendisi dept.mudurId): o zaman puanı GMY verir (05.10 düzeltmesi;
+//           önce tüm beyaz yakada GMY'ye bağlı bölümlerde onay adımı vardı)
 //
 // FAIL-CLOSED: zincir çözülemezse form AÇILMAZ, sebep döner
 // (personnel-request-chain'in "yanlış kişiye düşmektense bloke" ilkesi).
@@ -133,21 +137,6 @@ async function kisiCoz(
     userId: u?.id ?? null,
     rol,
   };
-}
-
-/**
- * Bölümün organizasyon şemasındaki üstü Genel Müdür Yardımcısı mı?
- * DepartmentDefinition.orgUnitId → OrgUnit.parentId → adı "Genel Müdür Yardımcısı".
- * orgUnitId NULL ise (bilinen açık: GENEL MÜDÜRLÜK) çözülemez → null döner.
- */
-async function gmyeBagliMi(db: Db, orgUnitId: string | null): Promise<boolean | null> {
-  if (!orgUnitId) return null;
-  const birim = await db.orgUnit.findUnique({
-    where: { id: orgUnitId },
-    select: { parent: { select: { name: true } } },
-  });
-  if (!birim?.parent) return null;
-  return birim.parent.name.trim() === GMY_ADI;
 }
 
 /**
@@ -360,7 +349,8 @@ export async function denemeZinciriCoz(db: Db, personnelId: string): Promise<Zin
   // üretirdi. Zincir bu yüzden yukarı yürür ve geri dönmez.
   if (yaka === "BEYAZ") {
     if (kendisi(mudur)) {
-      // Kişinin kendisi bölüm müdürü → bir üst kademe: GMY. (DEĞİŞMEDİ)
+      // MÜDÜR KADROSUNDAKİ KİŞİ — tek istisna: puanı üst kademe (GMY) verir.
+      // Melih kararı 05.10: GMY yalnız BU durumda zincire girer. (DEĞİŞMEDİ)
       atlananlar.push("Değerlendirici kendisi (bölüm müdürü) olduğu için atlandı — üst kademeye çıkıldı");
       const gmy = await kisiCoz(db, await gmyPersonelId(db), "MUDUR");
       if (!gmy || kendisi(gmy)) {
@@ -430,25 +420,14 @@ export async function denemeZinciriCoz(db: Db, personnelId: string): Promise<Zin
     //  · 2. puan müdürde bitiyorsa → ayrıca onay YOK (puanla ucu MUDUR_BEKLIYOR
     //    sonrası doğrudan İK'ya geçirir; oraya onay koymak ölü durum olurdu).
     //  · Tek puanlı hâlde (deg2 yok) GMY onayı BUGÜNKÜ GİBİ sürer.
-    let onaylayan: ZincirKisi | null = null;
-    if (deg2?.rol === "MUDUR_YARDIMCISI") {
-      onaylayan = mudur.personnelId === kisi.id ? null : mudur;
-    } else if (!deg2) {
-      const gmyBagli = await gmyeBagliMi(db, dept.orgUnitId);
-      if (gmyBagli === null) {
-        return {
-          ok: false,
-          sebep: `"${dept.name}" bölümünün organizasyon şemasındaki yeri çözülemiyor (şema bağı yok) — onay kademesi belirlenemedi. İnsan Varlıkları ile iletişime geçin.`,
-        };
-      }
-      if (gmyBagli) {
-        onaylayan = await kisiCoz(db, await gmyPersonelId(db), "MUDUR");
-        if (!onaylayan) {
-          return { ok: false, sebep: "Genel Müdür Yardımcısı kaydı çözülemiyor — onay kademesi kurulamadı. İnsan Varlıkları ile iletişime geçin." };
-        }
-        if (onaylayan.personnelId === kisi.id) onaylayan = null; // kendisi GMY ise onay aranmaz
-      }
-    }
+    // ONAY KADEMESİ — zincir MÜDÜRDE BİTER (05.10.2026 düzeltmesi).
+    //  · 2. puanı müdür yrd. verdiyse → bölüm müdürü onaylar (mavi yakayla aynı).
+    //  · 2. puan müdürde bitiyorsa ya da tek puanlıysa → onay YOK, İK kapanışına
+    //    gider. GMY adımı artık YALNIZ müdür kadrosundaki kişide var (yukarıdaki
+    //    kendisi(mudur) dalı); eskiden GMY'ye bağlı TÜM bölümlerin beyaz
+    //    yakasında onay adımı açılıyordu — kaldırıldı.
+    const onaylayan: ZincirKisi | null =
+      deg2?.rol === "MUDUR_YARDIMCISI" ? mudur : null;
 
     return {
       ok: true,
@@ -464,6 +443,22 @@ export async function denemeZinciriCoz(db: Db, personnelId: string): Promise<Zin
   }
 
   return { ok: false, sebep: `Tanımsız yaka rengi ("${kisi.yakaRengi ?? "boş"}") — zincir kurulamıyor.` };
+}
+
+/**
+ * 2. değerlendirici puanını verdikten sonraki durum (SAF — DB/oturum yok).
+ *
+ * 05.10.2026: eskiden bu karar `durum === "MUDUR_YRD_BEKLIYOR" ? ONAY : IK`
+ * biçiminde SABİTTİ ve formun `onaylayanId`'sine HİÇ bakmıyordu. Beyaz yakada
+ * GMY onayı kaldırılıp onay yalnız "2. puanı müdür yrd. verdi" hâline bağlanınca,
+ * onaycısı OLMAYAN bir müdür-yrd adımı ONAY_BEKLIYOR'a düşüp sahipsiz kalabilirdi.
+ * Artık onaycı yoksa doğrudan İK kapanışına gider.
+ */
+export function ikinciAdimSonrasiDurum(
+  durum: DenemeDurum,
+  onaylayanId: string | null | undefined,
+): DenemeDurum {
+  return durum === "MUDUR_YRD_BEKLIYOR" && onaylayanId ? "ONAY_BEKLIYOR" : "IK_BEKLIYOR";
 }
 
 /**

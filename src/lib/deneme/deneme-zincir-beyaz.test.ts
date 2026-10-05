@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { denemeZinciriCoz } from "./deneme-zincir";
+import { denemeZinciriCoz, ikinciAdimSonrasiDurum, birinciAdimSonrasiDurum } from "./deneme-zincir";
 
 // IV-FR-27 · beyaz yakada müdür yardımcısı adımı (05.10.2026).
 //
@@ -142,9 +142,10 @@ describe("denemeZinciriCoz · beyaz yaka + müdür yardımcısı adımı", () =>
     expect(z.onaylayan).toBeNull();
   });
 
-  it("beyaz + sorumlu1 = müdür → 2. adım YOK, GMY'ye bağlıysa onay (bugünkü davranış)", async () => {
+  it("beyaz + sorumlu1 = müdür → 2. adım YOK ve GMY onayı da YOK (zincir müdürde biter)", async () => {
     // Prod'da 24 beyaz yaka bu durumda; zincir yukarı yürür, müdürden müdür
-    // yardımcısına GERİ DÖNMEZ.
+    // yardımcısına GERİ DÖNMEZ. 05.10 düzeltmesi: GMY'ye bağlı bölüm olsa bile
+    // onay adımı açılmaz — GMY yalnız MÜDÜR KADROSUNDAKİ kişide devreye girer.
     const kisi = beyaz("mudur");
     const z = await denemeZinciriCoz(
       db([...TEMEL, kisi, { id: "gmy", adSoyad: "GMY", gorev: "GENEL MÜDÜR YARDIMCISI", aktif: true }], DEPT, {
@@ -157,8 +158,52 @@ describe("denemeZinciriCoz · beyaz yaka + müdür yardımcısı adımı", () =>
     if (!z.ok) return;
     expect(z.degerlendirici1.personnelId).toBe("mudur");
     expect(z.degerlendirici2).toBeNull();
-    expect(z.onaylayan?.personnelId).toBe("gmy");
+    expect(z.onaylayan).toBeNull();
     expect(z.atlananlar.join(" ")).toContain("zincir yukarı yürür");
+    // Tek puanlı + onaysız → 1. adımdan sonra doğrudan İK kapanışı.
+    expect(birinciAdimSonrasiDurum(z)).toBe("IK_BEKLIYOR");
+  });
+
+  it("beyaz + GMY'ye bağlı bölüm, sorumlu1 farklı kişi → onay müdürde, GMY YOK", async () => {
+    const kisi = beyaz("sorumlu");
+    const z = await denemeZinciriCoz(
+      db([...TEMEL, kisi, { id: "gmy", adSoyad: "GMY", gorev: "GMY", aktif: true }], DEPT, {
+        gmyPersonnelId: "gmy",
+        parentAdi: "Genel Müdür Yardımcısı",
+      }),
+      "kisi",
+    );
+    expect(z.ok).toBe(true);
+    if (!z.ok) return;
+    expect(z.onaylayan?.personnelId).toBe("mudur");
+    expect(z.onaylayan?.personnelId).not.toBe("gmy");
+  });
+
+  it("MÜDÜR KADROSUNDAKİ kişi → puanı GMY verir (GMY istisnası AYNEN)", async () => {
+    // Değerlendirilen kişinin kendisi bölümün müdürü: tek istisna, üst kademe.
+    const kisiMudur: Kisi = {
+      id: "mudur",
+      adSoyad: "Müdür",
+      gorev: "MÜDÜR",
+      aktif: true,
+      yakaRengi: "BEYAZ",
+      sorumlu1Id: null,
+      departmentId: "d1",
+      bolum: "Mühendislik Müdürlüğü",
+    };
+    const z = await denemeZinciriCoz(
+      db(
+        [kisiMudur, { id: "myrd", adSoyad: "Müdür Yrd", gorev: "MÜDÜR YARDIMCISI", aktif: true }, { id: "gmy", adSoyad: "GMY", gorev: "GMY", aktif: true }],
+        DEPT,
+        { gmyPersonnelId: "gmy", parentAdi: "Genel Müdür Yardımcısı" },
+      ),
+      "mudur",
+    );
+    expect(z.ok).toBe(true);
+    if (!z.ok) return;
+    expect(z.degerlendirici1.personnelId).toBe("gmy");
+    expect(z.degerlendirici2).toBeNull();
+    expect(z.onaylayan).toBeNull();
   });
 
   it("beyaz + sorumlu1 YOK → bloke etmez, 1. değerlendirici müdür olur", async () => {
@@ -173,6 +218,7 @@ describe("denemeZinciriCoz · beyaz yaka + müdür yardımcısı adımı", () =>
     expect(z.ok).toBe(true);
     if (!z.ok) return;
     expect(z.degerlendirici1.personnelId).toBe("mudur");
+    expect(z.onaylayan).toBeNull(); // GMY'ye bağlı bölüm olsa da onay adımı yok
     expect(z.atlananlar.join(" ")).toContain("1. sorumlu atanmamış");
   });
 
@@ -197,5 +243,22 @@ describe("denemeZinciriCoz · beyaz yaka + müdür yardımcısı adımı", () =>
     expect(z.degerlendirici1.personnelId).toBe("sorumlu");
     expect(z.degerlendirici2?.personnelId).toBe("myrd");
     expect(z.onaylayan?.personnelId).toBe("mudur");
+  });
+});
+
+describe("ikinciAdimSonrasiDurum · 2. puan sonrası hedef", () => {
+  it("müdür yrd. puanladı + onaycı var → ONAY_BEKLIYOR (mavi yaka davranışı DEĞİŞMEDİ)", () => {
+    expect(ikinciAdimSonrasiDurum("MUDUR_YRD_BEKLIYOR", "mudur")).toBe("ONAY_BEKLIYOR");
+  });
+
+  it("müdür puanladı → IK_BEKLIYOR (Kalite özel zinciri: 2. puan müdürde biter)", () => {
+    expect(ikinciAdimSonrasiDurum("MUDUR_BEKLIYOR", "mudur")).toBe("IK_BEKLIYOR");
+    expect(ikinciAdimSonrasiDurum("MUDUR_BEKLIYOR", null)).toBe("IK_BEKLIYOR");
+  });
+
+  it("müdür yrd. puanladı ama onaycı YOK → sahipsiz ONAY_BEKLIYOR üretmez, İK'ya gider", () => {
+    // 05.10 düzeltmesinin asıl sebebi: eski sabit geçiş onaylayanId'ye bakmıyordu.
+    expect(ikinciAdimSonrasiDurum("MUDUR_YRD_BEKLIYOR", null)).toBe("IK_BEKLIYOR");
+    expect(ikinciAdimSonrasiDurum("MUDUR_YRD_BEKLIYOR", undefined)).toBe("IK_BEKLIYOR");
   });
 });

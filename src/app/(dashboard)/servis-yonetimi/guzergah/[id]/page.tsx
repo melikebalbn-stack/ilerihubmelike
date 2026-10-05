@@ -221,6 +221,9 @@ export default function GuzergahDetayPage() {
     yukle()
   }, [yukle])
 
+  // Hook'lar HER render'da aynı sırada çağrılmalı: erken return'den (yetki yok) ÖNCE olmak zorunda (C7-11).
+  const { pasiflestir, geriAl } = usePasifGeriAl({ yol: 'guzergah-durak', yukle, setHata })
+
   if (!canView) {
     return (
       <div className="p-6">
@@ -297,8 +300,6 @@ export default function GuzergahDetayPage() {
     }
     await yukle()
   }
-
-  const { pasiflestir, geriAl } = usePasifGeriAl({ yol: 'guzergah-durak', yukle, setHata })
 
   return (
     <div className="p-6 space-y-6">

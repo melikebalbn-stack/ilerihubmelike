@@ -25,14 +25,15 @@
  *   COKLU_ESLESME   birden fazla mevcut kayıt (veya aynı kaydı birden fazla satır) eşleşti
  *   SAHIP_BELIRSIZ  sahip TAM eşleşmedi / yalnız kısmi / yalnız pasif hesap
  *   TANIM_YOK       DIGER türünde turDiger ZimmetTanim'da yok
+ *   ANAHTARSIZ      seri/IMEI/MAC'i olmayan satır (depo veya normal) → eşleştirme yapılamaz, yeni kayıt açılır
  *   BEKLET/ENVANTER islem kolonundan — yalnız rapora yazılır
  *
  * Kullanım (worktree kökünden):
  *   npx tsx --env-file=<.env yolu> scripts/zimmet/it-devir-import.ts <csv> --created-by <User.id>
  *       [--override <json>] [--coklu-birlestir] [--yenile] [--envanter-sahibi <User.id>] [--apply --db-name <ad>]
  *   --envanter-sahibi: islem=ENVANTER satırları depo kaydı olarak yazılır — sahip ve iadeAlan = bu kullanıcı,
- *   cihazDurumu=PASIF, iadeTarihi=aktarım anı, aciklama "[IT listesi 09.2026] Depo · …". Eşleştirme kuralları aynı;
- *   seri/IMEI/MAC'i olmayan depo satırı ANAHTARSIZ kararıyla yeni kayıt açılır. Verilmezse ENVANTER yalnız rapora.
+ *   cihazDurumu=PASIF, iadeTarihi=aktarım anı, aciklama "[IT listesi 09.2026] Depo · …". Eşleştirme kuralları aynı.
+ *   Verilmezse ENVANTER yalnız rapora.
  *   Varsayılan DRY-RUN: tüm kararları hesaplar, hiçbir şey yazmaz.
  *   --apply: tek transaction; --db-name current_database() ile aynı değilse durur.
  *   Kişi eşleştirme override'ı: {"Excel adı": "User.id"}. --override <yol> verilirse dosya zorunlu
@@ -310,8 +311,8 @@ async function main() {
     if (kayitlar.length === 0) {
       const anahtarsiz = !['seriNumarasi', 'imeiNumarasi', 'macAdresi'].some((kolon) => anahtarNormalize(s[kolon]))
       sonuclar.push(
-        anahtarsiz && depo
-          ? sonuc('ANAHTARSIZ', 'depo cihazı: seri/IMEI/MAC yok — eşleştirme yapılamadı, yeni kayıt', user.id)
+        anahtarsiz
+          ? sonuc('ANAHTARSIZ', `${depo ? 'depo cihazı: ' : ''}seri/IMEI/MAC yok — eşleştirme yapılamadı, yeni kayıt`, user.id)
           : sonuc('YENI', 'eşleşen mevcut kayıt yok', user.id),
       )
       continue

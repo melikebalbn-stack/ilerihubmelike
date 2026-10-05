@@ -201,6 +201,38 @@ export async function acikOperatorler(): Promise<MasOperatorSatiri[]> {
   return res.recordset
 }
 
+/**
+ * Belirli üretimlerin operatörü (kapanmış dahil — ProductionUser.EndDateTime filtresi YOK).
+ * Üretim başına en erken başlayan aktif ProductionUser. IN 500'lük batch.
+ */
+export async function operatorlerByMasIds(ids: number[]): Promise<MasOperatorSatiri[]> {
+  const uniq = [...new Set(ids)].filter((n) => Number.isFinite(n))
+  if (uniq.length === 0) return []
+  const pool = await masPool()
+  const out: MasOperatorSatiri[] = []
+  for (let i = 0; i < uniq.length; i += 500) {
+    const rq = pool.request()
+    const params = uniq.slice(i, i + 500).map((id, j) => {
+      rq.input(`id${j}`, sql.Int, id)
+      return `@id${j}`
+    })
+    const res = await rq.query<MasOperatorSatiri & { bas: Date | null }>(
+      `SELECT pu.ProductionMasterId AS masId, u.EmployeeNo AS employeeNo, ` +
+        `LTRIM(RTRIM(CONCAT(u.FirstName, ' ', u.LastName))) AS ad, pu.StartDateTime AS bas ` +
+        `FROM Production.ProductionUser pu JOIN Auth.[User] u ON u.Id = pu.UserId ` +
+        `WHERE pu.Active = 1 AND pu.ProductionMasterId IN (${params.join(',')})`,
+    )
+    const sirali = [...res.recordset].sort((a, b) => (a.bas?.getTime() ?? 0) - (b.bas?.getTime() ?? 0))
+    const gorulen = new Set<number>()
+    for (const r of sirali) {
+      if (!r.employeeNo || gorulen.has(r.masId)) continue
+      gorulen.add(r.masId)
+      out.push({ masId: r.masId, employeeNo: r.employeeNo, ad: r.ad })
+    }
+  }
+  return out
+}
+
 /** MAS_DURUS_SAAT (varsayılan 24): açık duruşta yalnız son N saati al — 2017 çöp kayıtları eler. */
 function durusSaat(): number {
   const n = Number(process.env.MAS_DURUS_SAAT)

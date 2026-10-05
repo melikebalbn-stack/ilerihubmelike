@@ -12,8 +12,8 @@
  *  - IFS'e YAZILMAZ: ifsCompleteYazildi=true, ifsScrapYazildi=true, ifsYazildi=true (geçmiş üretim IFS'e
  *    zaten kendi yolundan gitti; cron tekrar raporlamasın).
  *  - OEE kaydı HESAPLANMAZ (geçmiş duruşlar aynalanmadı → kullanılabilirlik yanlış çıkar).
- * Varsayılan YALNIZ ayna başlangıcından (ilk kaynak=MAS log) önce biten üretimler; sonrası "ayna boşluğu" olarak
- * raporlanır (--ayna-sonrasi-dahil ile o da aktarılır).
+ * Varsayılan YALNIZ ayna başlangıcından önce biten üretimler (IFS'e yazılmaz, OEE yok); sonrası "ayna boşluğu" olarak
+ * kaçış sebebiyle raporlanır. --ayna-sonrasi: YALNIZ ayna boşluğu aktarılır — normal MAS kaydı gibi (IFS cron yazar, OEE).
  * Atlananlar: adet 0, tezgah eşleşmeyen, operatör eşleşmeyen, aynı tezgahta aynı iş emri için zaman
  * olarak çakışan IPRO logu olan (kiosk/terminal ile girilmiş olabilir — çift sayım olmasın).
  *
@@ -21,7 +21,7 @@
  * Geri alma: aktarılan loglar hesapKaynagi='MAS_GECMIS' ile işaretli; oturumları yalnız bu loglara bağlı.
  * MAS SALT OKUMA (inline mssql).
  *
- *   npx tsx scripts/ipro/uretim-gecmis-aktar.ts [--gun 30] [--is-emri M002262469]
+ *   npx tsx scripts/ipro/uretim-gecmis-aktar.ts [--gun 30] [--is-emri M002262469] [--ayna-sonrasi]
  *   DATABASE_URL=<prod> npx tsx scripts/ipro/uretim-gecmis-aktar.ts --apply --prod-onay
  */
 import sql from 'mssql'
@@ -29,6 +29,7 @@ import { createPrisma, banner, summary } from './_lib'
 import { masTarih } from '../../src/lib/mas/tarih'
 import { saniyeToCevrim } from '../../src/lib/ipro/cevrim-util'
 import { isEmirineGrupla, employeeNoToSicilNo, type MasUretimGirdi } from '../../src/lib/entegrasyon/mas/uretim-mapper'
+import { oeeKaydiHesaplaVeYaz } from '../../src/lib/ipro/oee-hesap'
 
 const APPLY = process.argv.includes('--apply')
 const arg = (ad: string) => {
@@ -108,10 +109,15 @@ async function main() {
 
     // Ayna başlangıcı: ilk kaynak=MAS log. Varsayılan YALNIZ bundan önce biten MAS üretimleri aktarılır;
     // sonrasındaki eksikler ayna boşluğudur (operatör/tezgah eşleşmedi, açık iş çakışması…) → yalnız raporlanır.
-    // Hepsini aktarmak için: --ayna-sonrasi-dahil
-    const ilkMas = await prisma.iproProductionLog.findFirst({ where: { kaynak: 'MAS', baslatildiAt: { not: null } }, orderBy: { baslatildiAt: 'asc' }, select: { baslatildiAt: true } })
+    // --ayna-sonrasi: YALNIZ ayna sonrası kaçanlar aktarılır (Melih 05.10: IFS'e de yazılsın) → normal MAS kaydı
+    // gibi: hesapKaynagi='MAS', ifsCompleteYazildi=false (IFS cron yazar), OEE hesaplanır. Her biri için kaçış sebebi raporlanır.
+    // Ayna başlangıcı = ilk kaynak=MAS ve hesapKaynagi≠MAS_GECMIS log (geçmiş aktarım sonrası da doğru kalsın).
+    const ilkMas = await prisma.iproProductionLog.findFirst({
+      where: { kaynak: 'MAS', baslatildiAt: { not: null }, OR: [{ hesapKaynagi: null }, { hesapKaynagi: { not: ISARET } }] },
+      orderBy: { baslatildiAt: 'asc' }, select: { baslatildiAt: true },
+    })
     const aynaBas = ilkMas?.baslatildiAt ?? new Date()
-    const SONRASI_DAHIL = process.argv.includes('--ayna-sonrasi-dahil')
+    const SONRASI = process.argv.includes('--ayna-sonrasi')
 
     // 2) MAS: hedef iş emirlerinin KAPALI üretimleri (açıklar canlı aynanın işi)
     const masHam = await dilimli<MasSatir>(pool, hedef, 'str', (inList) =>
@@ -142,8 +148,8 @@ async function main() {
 
     // 3) Operatörler (ProductionUser — en erken başlayan)
     const opHam = masIds.length
-      ? await dilimli<{ masId: number; employeeNo: string | null; bas: Date | null }>(pool, masIds, 'int', (inList) =>
-          `SELECT pu.ProductionMasterId AS masId, u.EmployeeNo AS employeeNo, pu.StartDateTime AS bas ` +
+      ? await dilimli<{ masId: number; employeeNo: string | null; bas: Date | null; bit: Date | null }>(pool, masIds, 'int', (inList) =>
+          `SELECT pu.ProductionMasterId AS masId, u.EmployeeNo AS employeeNo, pu.StartDateTime AS bas, pu.EndDateTime AS bit ` +
           `FROM Production.ProductionUser pu JOIN Auth.[User] u ON u.Id = pu.UserId ` +
           `WHERE pu.Active = 1 AND pu.ProductionMasterId IN (${inList})`,
         )
@@ -151,18 +157,25 @@ async function main() {
     const opByMas = new Map<number, string>()
     for (const o of [...opHam].sort((a, b) => (a.bas?.getTime() ?? 0) - (b.bas?.getTime() ?? 0)))
       if (o.employeeNo && !opByMas.has(o.masId)) opByMas.set(o.masId, String(o.employeeNo))
+    const opPencere = new Map<number, { bas: Date; bit: Date | null }[]>()
+    for (const o of opHam) {
+      const b = masTarih(o.bas)
+      if (!b) continue
+      opPencere.set(o.masId, [...(opPencere.get(o.masId) ?? []), { bas: b, bit: masTarih(o.bit) }])
+    }
 
     // 4) IPRO referansları
     const [tezgahlar, personeller, mevcutMas, mevcutIsEmri] = await Promise.all([
-      prisma.iproTezgah.findMany({ select: { id: true, kod: true } }),
+      prisma.iproTezgah.findMany({ select: { id: true, kod: true, aktif: true } }),
       prisma.personnel.findMany({ select: { id: true, sicilNo: true } }),
       prisma.iproProductionLog.findMany({ where: { masProductionMasterId: { in: masIds } }, select: { masProductionMasterId: true, ifsOrderNo: true } }),
       prisma.iproProductionLog.findMany({
         where: { ifsOrderNo: { in: hedef } },
-        select: { tezgahId: true, ifsOrderNo: true, baslatildiAt: true, bitirildiAt: true },
+        select: { tezgahId: true, personnelId: true, ifsOrderNo: true, ifsOperationNo: true, baslatildiAt: true, bitirildiAt: true },
       }),
     ])
     const tezgahByKod = new Map(tezgahlar.map((t) => [t.kod, t.id]))
+    const tezgahAktif = new Map(tezgahlar.map((t) => [t.id, t.aktif]))
     const personBySicil = new Map(personeller.map((p) => [p.sicilNo, p.id]))
     const mevcutAnahtar = new Set(mevcutMas.map((m) => `${m.masProductionMasterId}|${m.ifsOrderNo}`))
 
@@ -174,7 +187,7 @@ async function main() {
     const adaylar: Aday[] = []
     const atlanan: { sebep: string; detay: string }[] = []
     let zatenVar = 0
-    const aynaBoslugu: { etiket: string; tezgahKod: string; bas: Date; bit: Date; adet: number }[] = []
+    const aynaBoslugu: { etiket: string; tezgahKod: string; bas: Date; bit: Date; adet: number; sebep: string }[] = []
     for (const [masId, satirlar] of satirByMas) {
       const girdiler: MasUretimGirdi[] = satirlar.map((s) => ({
         masId, tezgahKod: s.tezgahKod, employeeNo: opByMas.get(masId) ?? null, workOrderNo: s.workOrderNo,
@@ -197,10 +210,24 @@ async function main() {
         const cakisan = mevcutIsEmri.some((l) => l.tezgahId === tezgahId && l.ifsOrderNo === g.workOrderNo && l.baslatildiAt
           && l.baslatildiAt.getTime() < bit.getTime() && bas.getTime() < (l.bitirildiAt ?? new Date()).getTime())
         if (cakisan) { atlanan.push({ sebep: 'cakisan_ipro_logu', detay: etiket }); continue }
-        if (!SONRASI_DAHIL && bit.getTime() > aynaBas.getTime()) {
-          aynaBoslugu.push({ etiket, tezgahKod: g.tezgahKod!, bas, bit, adet })
-          continue
-        }
+        const aynaSonrasi = bit.getTime() > aynaBas.getTime()
+        if (aynaSonrasi) {
+          // Kaçış sebebi (ayna yalnız MAS'ta AÇIK üretimi + o an MAS oturumu açık operatörü görür)
+          const opNo = g.operasyonNo ? Number(g.operasyonNo) : null
+          // Operatörün MAS oturumu üretim penceresiyle en az 1 dk örtüşüyor mu?
+          const opAcik = (opPencere.get(masId) ?? []).some(
+            (w) => Math.min((w.bit ?? bit).getTime(), bit.getTime()) - Math.max(w.bas.getTime(), bas.getTime()) > 60_000,
+          )
+          const kisiCakisma = mevcutIsEmri.some((l) => l.personnelId === personnelId && l.ifsOrderNo === g.workOrderNo && l.ifsOperationNo === opNo
+            && l.baslatildiAt && l.baslatildiAt.getTime() < bit.getTime() && bas.getTime() < (l.bitirildiAt ?? new Date()).getTime())
+          const sebep = !tezgahAktif.get(tezgahId) ? 'tezgah_ipro_pasif'
+            : !opAcik ? 'operator_mas_oturumu_kapali'
+            : kisiCakisma ? 'ayni_kiside_acik_is'
+            : bit.getTime() - bas.getTime() < 10 * 60_000 ? 'kisa_sure_10dk'
+            : 'diger'
+          aynaBoslugu.push({ etiket, tezgahKod: g.tezgahKod!, bas, bit, adet, sebep })
+          if (!SONRASI) continue
+        } else if (SONRASI) continue
         adaylar.push({
           masId, tezgahId, tezgahKod: g.tezgahKod!, personnelId, ifsOrderNo: g.workOrderNo,
           ifsOperationNo: g.operasyonNo ? Number(g.operasyonNo) : null, bas, bit, adet, meta,
@@ -215,10 +242,14 @@ async function main() {
     if (aynaBoslugu.length) {
       const gun = new Map<string, { kayit: number; adet: number }>()
       for (const b of aynaBoslugu) { const k = b.bit.toISOString().slice(0, 10); const c = gun.get(k) ?? { kayit: 0, adet: 0 }; c.kayit++; c.adet += b.adet; gun.set(k, c) }
-      console.log('\n== AYNA SONRASI EKSİK (aktarılmaz, rapor) — gün bazında ==')
+      console.log('\n== AYNA SONRASI EKSİK — gün bazında ==')
       for (const [k, v] of [...gun].sort()) console.log(`  ${k} | kayıt=${v.kayit} adet=${v.adet}`)
+      const sebepGrup = new Map<string, { kayit: number; adet: number }>()
+      for (const b of aynaBoslugu) { const c = sebepGrup.get(b.sebep) ?? { kayit: 0, adet: 0 }; c.kayit++; c.adet += b.adet; sebepGrup.set(b.sebep, c) }
+      console.log('\n== AYNA SONRASI EKSİK — kaçış sebebi ==')
+      for (const [k, v] of [...sebepGrup].sort((a, b) => b[1].kayit - a[1].kayit)) console.log(`  ${k} | kayıt=${v.kayit} adet=${v.adet}`)
       console.log('  örnek (ilk 15):')
-      for (const b of aynaBoslugu.slice(0, 15)) console.log(`  ${b.etiket} | ${b.bas.toISOString()} → ${b.bit.toISOString()} | adet=${b.adet}`)
+      for (const b of aynaBoslugu.slice(0, 15)) console.log(`  ${b.sebep} | ${b.etiket} | ${b.bas.toISOString()} → ${b.bit.toISOString()} | adet=${b.adet}`)
     }
     const isEmriOzet = new Map<string, { kayit: number; adet: number }>()
     for (const a of adaylar) {
@@ -242,17 +273,17 @@ async function main() {
     }
 
     // 7) Yaz
-    let olusan = 0, hata = 0
+    let olusan = 0, hata = 0, oee = 0
     if (APPLY) {
       for (const a of adaylar) {
         try {
           const cevrim = saniyeToCevrim(a.meta.cycleTime ?? null)
-          await prisma.$transaction(async (tx) => {
+          const logId = await prisma.$transaction(async (tx) => {
             const ses = await tx.iproOperatorSession.create({
               data: { tezgahId: a.tezgahId, personnelId: a.personnelId, authMethod: 'LIST', girisAt: a.bas, cikisAt: a.bit },
               select: { id: true },
             })
-            await tx.iproProductionLog.create({
+            const log = await tx.iproProductionLog.create({
               data: {
                 tezgahId: a.tezgahId, sessionId: ses.id, personnelId: a.personnelId, kaynak: 'MAS',
                 masProductionMasterId: a.masId, masProductionDetayId: a.meta.masDetayId ?? null,
@@ -262,12 +293,20 @@ async function main() {
                 ifsQtyDue: a.meta.planlananAdet != null ? Math.round(a.meta.planlananAdet) : null,
                 ifsDueDate: a.meta.deliveryDateTime ?? null,
                 ifsMachRunFactor: cevrim?.faktor ?? null, ifsRunTimeCode: cevrim?.kod ?? null,
-                qtyComplete: a.adet, uretimAdet: a.adet, qtyScrap: 0, masCarpan: a.carpan, hesapKaynagi: ISARET,
-                ifsCompleteYazildi: true, ifsScrapYazildi: true, ifsYazildi: true,
+                qtyComplete: a.adet, uretimAdet: a.adet, qtyScrap: 0, masCarpan: a.carpan,
+                // Ayna sonrası: normal MAS kaydı → IFS cron yazar. Geçmiş: IFS'e yazılmaz.
+                ...(SONRASI
+                  ? { hesapKaynagi: 'MAS' }
+                  : { hesapKaynagi: ISARET, ifsCompleteYazildi: true, ifsScrapYazildi: true, ifsYazildi: true }),
               },
+              select: { id: true },
             })
+            return log.id
           })
           olusan++
+          if (SONRASI) {
+            try { await oeeKaydiHesaplaVeYaz(prisma, logId); oee++ } catch { /* OEE hatası aktarımı bloklamasın */ }
+          }
         } catch (e) {
           hata++
           console.warn(`  ⚠️ ${a.ifsOrderNo} mas=${a.masId}: ${(e as Error).message.slice(0, 160)}`)
@@ -281,10 +320,11 @@ async function main() {
       ['IPRO\'da zaten var', zatenVar],
       ['aktarılacak kayıt', adaylar.length],
       ['aktarılacak adet', adaylar.reduce((s, a) => s + a.adet, 0)],
-      ['ayna sonrası eksik kayıt (aktarılmaz)', aynaBoslugu.length],
-      ['ayna sonrası eksik adet (aktarılmaz)', aynaBoslugu.reduce((s, a) => s + a.adet, 0)],
+      ['ayna sonrası eksik kayıt', aynaBoslugu.length],
+      ['ayna sonrası eksik adet', aynaBoslugu.reduce((s, a) => s + a.adet, 0)],
+      ['mod', SONRASI ? 'AYNA SONRASI (IFS\'e yazılır, OEE)' : 'GEÇMİŞ (IFS\'e yazılmaz)'],
       ...[...sebepSay].map(([k, v]) => [`atlanan: ${k}`, v] as [string, number]),
-      ...(APPLY ? ([['oluşturulan', olusan], ['hata', hata]] as [string, number][]) : []),
+      ...(APPLY ? ([['oluşturulan', olusan], ['hata', hata], ['OEE hesaplanan', oee]] as [string, number][]) : []),
     ])
     if (!APPLY) console.log('\nℹ️ DRY-RUN — yazma yok. Yazmak için: --apply (prod: --apply --prod-onay)')
     await pool.close(); await disconnect()

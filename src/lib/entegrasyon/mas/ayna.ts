@@ -4,6 +4,8 @@ import {
   acikUretimler,
   uretimlerByMasIds,
   acikOperatorler,
+  kapananUretimler,
+  operatorlerByMasIds,
   durusPenceresi,
   duruslarByIds,
   rejectByMasIds,
@@ -32,6 +34,7 @@ export interface MasAynaOzet {
   guncellenen: number
   mukerrer: number // (personnelId, ifsOrderNo, ifsOperationNo) UNIQUE çakışması — ayrı satır açılamadı, atlandı
   kapatilan: number
+  kapaliEklenen: number // (b2) IPRO'ya hiç girmemiş, son 48 saatte kapanmış MAS üretimi → KAPALI log olarak eklendi
   durusAcilan: number
   durusKapatilan: number
   durusGuncellenen: number // masId'li kayıtta bitiş/sebep/başlangıç değişikliği (kapanış dahil değil)
@@ -86,7 +89,7 @@ export async function runMasAyna(opts: { dryRun?: boolean; limit?: number | null
 
   const ozet: MasAynaOzet = {
     dryRun, acikOkunan: acikSatir.length, acikUygun: 0, acilan: 0, guncellenen: 0, mukerrer: 0,
-    kapatilan: 0, durusAcilan: 0, durusKapatilan: 0, durusGuncellenen: 0, durusBaglanan: 0, durusMasSilinmis: 0, durusSifirSure: 0, durusPlanDisiSilinen: 0,
+    kapatilan: 0, kapaliEklenen: 0, durusAcilan: 0, durusKapatilan: 0, durusGuncellenen: 0, durusBaglanan: 0, durusMasSilinmis: 0, durusSifirSure: 0, durusPlanDisiSilinen: 0,
     durusBaslangicYok: 0, durusOeeYeniden: 0, hurdaOkunan: 0, hurdaYazilan: 0, hurdaLogGuncellenen: 0,
     eslesmeyenDurusSebepleri: [], atlanan: [],
   }
@@ -322,6 +325,17 @@ export async function runMasAyna(opts: { dryRun?: boolean; limit?: number | null
     }
   } // durusDahil
 
+  // ── (b2) KAÇAN KAPALI üretimler → KAPALI log ──
+  // (a) yalnız MAS'ta ŞU AN açık üretimleri görür. İki ayna turu arasında başlayıp biten, açıkken operatörü
+  // MAS'ta oturumda görünmeyen (ProductionUser.EndDateTime dolu) veya açıkken eşleşemeyen üretim IPRO'ya hiç
+  // girmiyordu (14.09–05.10: 88 üretim). Son 48 saatte kapanan MAS üretimlerinden IPRO'da karşılığı olmayanlar
+  // KAPALI log olarak eklenir: normal IFS akışı (ifsCompleteYazildi=false → cron yazar) + OEE.
+  try {
+    await kacanKapaliEkle(tezgahByKod, personBySicil, ozet, dryRun, simdi)
+  } catch (e) {
+    ozet.atlanan.push({ sebep: 'kapali_ekle_hatasi', anahtar: 'b2', detay: (e as Error)?.message?.slice(0, 120) ?? '?' })
+  }
+
   // ── (d) HURDA → IproHurdaKaydi (MAS Production.ProductionReject aynası) ──
   // Hedef: MAS kaynaklı, AÇIK veya son 48 saatte KAPANMIŞ loglar. reject idempotent (masRejectId UNIQUE);
   // zaman masTarih'ten geçer. log.qtyScrap = Σ adet (rework HARİÇ). ifsScrapYazildi'ye DOKUNULMAZ, IFS'e yazılmaz.
@@ -375,6 +389,98 @@ export async function runMasAyna(opts: { dryRun?: boolean; limit?: number | null
   }
 
   return ozet
+}
+
+async function kacanKapaliEkle(
+  tezgahByKod: Map<string, { id: string; sinyalli: boolean }>,
+  personBySicil: Map<string | null, string>,
+  ozet: MasAynaOzet,
+  dryRun: boolean,
+  simdi: Date,
+): Promise<void> {
+  const satirlar = await kapananUretimler({ sinceDate: new Date(simdi.getTime() - 48 * 3600_000) })
+  if (!satirlar.length) return
+  const satirByMas = new Map<number, MasUretimSatiri[]>()
+  for (const r of satirlar) satirByMas.set(r.masId, [...(satirByMas.get(r.masId) ?? []), r])
+  const masIds = [...satirByMas.keys()]
+  const mevcut = await prisma.iproProductionLog.findMany({
+    where: { masProductionMasterId: { in: masIds } },
+    select: { masProductionMasterId: true, ifsOrderNo: true },
+  })
+  const mevcutAnahtar = new Set(mevcut.map((m) => `${m.masProductionMasterId}|${m.ifsOrderNo}`))
+  const eksikMas = masIds.filter((id) => (satirByMas.get(id) ?? []).some((r) => r.workOrderNo && !mevcutAnahtar.has(`${id}|${r.workOrderNo.trim()}`)))
+  if (!eksikMas.length) return
+  const opByMas = new Map<number, string>()
+  for (const o of await operatorlerByMasIds(eksikMas)) if (o.employeeNo) opByMas.set(o.masId, o.employeeNo)
+
+  for (const masId of eksikMas) {
+    const pmSatir = satirByMas.get(masId)!
+    for (const g of isEmirineGrupla(girdiye(pmSatir, opByMas))) {
+      if (!g.workOrderNo || mevcutAnahtar.has(`${masId}|${g.workOrderNo}`)) continue
+      const meta = pmSatir.find((r) => (r.workOrderNo ?? '').trim() === g.workOrderNo) ?? pmSatir[0]
+      const adet = Math.round(g.adet)
+      if (adet <= 0 || !meta.startDateTime || !meta.endDateTime) continue
+      const tz = g.tezgahKod ? tezgahByKod.get(g.tezgahKod) : undefined
+      if (!tz) {
+        ozet.atlanan.push({ sebep: 'kapali_tezgah_eslesmedi', anahtar: g.anahtar, detay: g.tezgahKod ?? '—' })
+        continue
+      }
+      const sicil = employeeNoToSicilNo(g.employeeNo)
+      const personId = sicil ? personBySicil.get(sicil) : undefined
+      if (!personId) {
+        ozet.atlanan.push({ sebep: 'kapali_personel_eslesmedi', anahtar: g.anahtar, detay: `${g.employeeNo ?? '—'}→${sicil ?? '?'}` })
+        continue
+      }
+      if (dryRun) {
+        ozet.kapaliEklenen++
+        continue
+      }
+      try {
+        const cevrim = saniyeToCevrim(meta.cycleTime ?? null)
+        const carpan = meta.counterMultiplier != null ? Math.round(meta.counterMultiplier) : null
+        let plcAdet: number | null = null
+        if (tz.sinyalli) {
+          try {
+            plcAdet = (await isPenceresiDeltaToplami(prisma, g.tezgahKod!, meta.startDateTime, meta.endDateTime)).toplam
+          } catch {
+            plcAdet = null
+          }
+        }
+        const logId = await prisma.$transaction(async (tx) => {
+          const ses = await tx.iproOperatorSession.create({
+            data: { tezgahId: tz.id, personnelId: personId, authMethod: 'LIST', girisAt: meta.startDateTime!, cikisAt: meta.endDateTime },
+            select: { id: true },
+          })
+          const log = await tx.iproProductionLog.create({
+            data: {
+              tezgahId: tz.id, sessionId: ses.id, personnelId: personId, kaynak: KAYNAK,
+              masProductionMasterId: masId, masProductionDetayId: meta.masDetayId ?? null,
+              ifsOrderNo: g.workOrderNo, ifsOperationNo: g.operasyonNo ? Number(g.operasyonNo) : null,
+              durum: 'KAPALI', baslatildiAt: meta.startDateTime!, bitirildiAt: meta.endDateTime,
+              tamamlandi: pmSatir.some((r) => !!r.isFinished),
+              ifsPartNo: meta.partNo ?? null, ifsPartDescription: meta.description ?? null,
+              ifsQtyDue: meta.planlananAdet != null ? Math.round(meta.planlananAdet) : null,
+              ifsDueDate: meta.deliveryDateTime ?? null,
+              ifsMachRunFactor: cevrim?.faktor ?? null, ifsRunTimeCode: cevrim?.kod ?? null,
+              qtyComplete: adet, uretimAdet: adet, qtyScrap: 0, plcAdet, masCarpan: carpan, hesapKaynagi: 'MAS',
+            },
+            select: { id: true },
+          })
+          return log.id
+        })
+        mevcutAnahtar.add(`${masId}|${g.workOrderNo}`)
+        ozet.kapaliEklenen++
+        try {
+          await oeeKaydiHesaplaVeYaz(prisma, logId)
+        } catch {
+          /* OEE hatası ayna'yı bloklamasın */
+        }
+      } catch (e) {
+        if ((e as { code?: string })?.code === 'P2002') ozet.mukerrer++
+        else ozet.atlanan.push({ sebep: 'kapali_ekle_yazma_hatasi', anahtar: g.anahtar, detay: (e as Error)?.message?.slice(0, 120) ?? '?' })
+      }
+    }
+  }
 }
 
 async function durusAynala(

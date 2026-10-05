@@ -12,6 +12,8 @@
  *  - IFS'e YAZILMAZ: ifsCompleteYazildi=true, ifsScrapYazildi=true, ifsYazildi=true (geçmiş üretim IFS'e
  *    zaten kendi yolundan gitti; cron tekrar raporlamasın).
  *  - OEE kaydı HESAPLANMAZ (geçmiş duruşlar aynalanmadı → kullanılabilirlik yanlış çıkar).
+ * Varsayılan YALNIZ ayna başlangıcından (ilk kaynak=MAS log) önce biten üretimler; sonrası "ayna boşluğu" olarak
+ * raporlanır (--ayna-sonrasi-dahil ile o da aktarılır).
  * Atlananlar: adet 0, tezgah eşleşmeyen, operatör eşleşmeyen, aynı tezgahta aynı iş emri için zaman
  * olarak çakışan IPRO logu olan (kiosk/terminal ile girilmiş olabilir — çift sayım olmasın).
  *
@@ -104,6 +106,13 @@ async function main() {
     }
     const hedefSet = new Set(hedef)
 
+    // Ayna başlangıcı: ilk kaynak=MAS log. Varsayılan YALNIZ bundan önce biten MAS üretimleri aktarılır;
+    // sonrasındaki eksikler ayna boşluğudur (operatör/tezgah eşleşmedi, açık iş çakışması…) → yalnız raporlanır.
+    // Hepsini aktarmak için: --ayna-sonrasi-dahil
+    const ilkMas = await prisma.iproProductionLog.findFirst({ where: { kaynak: 'MAS', baslatildiAt: { not: null } }, orderBy: { baslatildiAt: 'asc' }, select: { baslatildiAt: true } })
+    const aynaBas = ilkMas?.baslatildiAt ?? new Date()
+    const SONRASI_DAHIL = process.argv.includes('--ayna-sonrasi-dahil')
+
     // 2) MAS: hedef iş emirlerinin KAPALI üretimleri (açıklar canlı aynanın işi)
     const masHam = await dilimli<MasSatir>(pool, hedef, 'str', (inList) =>
       `SELECT pm.Id AS masId, pd.Id AS masDetayId, pm.StartDateTime AS startDateTime, pm.EndDateTime AS endDateTime, ` +
@@ -165,6 +174,7 @@ async function main() {
     const adaylar: Aday[] = []
     const atlanan: { sebep: string; detay: string }[] = []
     let zatenVar = 0
+    const aynaBoslugu: { etiket: string; tezgahKod: string; bas: Date; bit: Date; adet: number }[] = []
     for (const [masId, satirlar] of satirByMas) {
       const girdiler: MasUretimGirdi[] = satirlar.map((s) => ({
         masId, tezgahKod: s.tezgahKod, employeeNo: opByMas.get(masId) ?? null, workOrderNo: s.workOrderNo,
@@ -187,6 +197,10 @@ async function main() {
         const cakisan = mevcutIsEmri.some((l) => l.tezgahId === tezgahId && l.ifsOrderNo === g.workOrderNo && l.baslatildiAt
           && l.baslatildiAt.getTime() < bit.getTime() && bas.getTime() < (l.bitirildiAt ?? new Date()).getTime())
         if (cakisan) { atlanan.push({ sebep: 'cakisan_ipro_logu', detay: etiket }); continue }
+        if (!SONRASI_DAHIL && bit.getTime() > aynaBas.getTime()) {
+          aynaBoslugu.push({ etiket, tezgahKod: g.tezgahKod!, bas, bit, adet })
+          continue
+        }
         adaylar.push({
           masId, tezgahId, tezgahKod: g.tezgahKod!, personnelId, ifsOrderNo: g.workOrderNo,
           ifsOperationNo: g.operasyonNo ? Number(g.operasyonNo) : null, bas, bit, adet, meta,
@@ -197,6 +211,15 @@ async function main() {
     }
 
     // 6) Rapor
+    console.log(`\nayna başlangıcı (ilk kaynak=MAS log): ${aynaBas.toISOString()}`)
+    if (aynaBoslugu.length) {
+      const gun = new Map<string, { kayit: number; adet: number }>()
+      for (const b of aynaBoslugu) { const k = b.bit.toISOString().slice(0, 10); const c = gun.get(k) ?? { kayit: 0, adet: 0 }; c.kayit++; c.adet += b.adet; gun.set(k, c) }
+      console.log('\n== AYNA SONRASI EKSİK (aktarılmaz, rapor) — gün bazında ==')
+      for (const [k, v] of [...gun].sort()) console.log(`  ${k} | kayıt=${v.kayit} adet=${v.adet}`)
+      console.log('  örnek (ilk 15):')
+      for (const b of aynaBoslugu.slice(0, 15)) console.log(`  ${b.etiket} | ${b.bas.toISOString()} → ${b.bit.toISOString()} | adet=${b.adet}`)
+    }
     const isEmriOzet = new Map<string, { kayit: number; adet: number }>()
     for (const a of adaylar) {
       const k = `${a.ifsOrderNo}/${a.ifsOperationNo ?? '—'}`
@@ -258,6 +281,8 @@ async function main() {
       ['IPRO\'da zaten var', zatenVar],
       ['aktarılacak kayıt', adaylar.length],
       ['aktarılacak adet', adaylar.reduce((s, a) => s + a.adet, 0)],
+      ['ayna sonrası eksik kayıt (aktarılmaz)', aynaBoslugu.length],
+      ['ayna sonrası eksik adet (aktarılmaz)', aynaBoslugu.reduce((s, a) => s + a.adet, 0)],
       ...[...sebepSay].map(([k, v]) => [`atlanan: ${k}`, v] as [string, number]),
       ...(APPLY ? ([['oluşturulan', olusan], ['hata', hata]] as [string, number][]) : []),
     ])

@@ -144,6 +144,9 @@ export default function GuzergahDetayPage() {
     () => typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('dilimsiz') === '1',
   )
   const guzergahId = (params?.id as string) || ''
+  // C7-10: araç/personel yazmalarından sonra üst kapasite kartları yeniden çekilir (sayaç artınca).
+  const [kartSayaci, setKartSayaci] = useState(0)
+  const kartlariYenile = useCallback(() => setKartSayaci((n) => n + 1), [])
   const { data: session } = useSession()
   const permissions = session?.user?.permissions || []
   const canView = permissions.includes('servis.view')
@@ -326,7 +329,7 @@ export default function GuzergahDetayPage() {
 
       {hata && <p className="text-sm text-red-600">{hata}</p>}
 
-      {guzergah?.aktif && <KapasiteKartlari guzergahId={guzergahId} />}
+      {guzergah?.aktif && <KapasiteKartlari guzergahId={guzergahId} yenilemeSayaci={kartSayaci} />}
 
       {yukleniyor ? (
         <p className="text-sm text-muted-foreground">Yükleniyor...</p>
@@ -421,6 +424,7 @@ export default function GuzergahDetayPage() {
               canPassive={canPassive}
               canRestore={canRestore}
               canHistory={canHistory}
+              onDegisti={kartlariYenile}
             />
           </TabsContent>
 
@@ -456,6 +460,7 @@ export default function GuzergahDetayPage() {
               canRestore={canRestore}
               canHistory={canHistory}
               dilimsizFiltre={dilimsizFiltre}
+              onDegisti={kartlariYenile}
             />
           </TabsContent>
 
@@ -644,6 +649,7 @@ function VarsayilanAraclarPanel({
   canPassive,
   canRestore,
   canHistory,
+  onDegisti,
 }: {
   guzergahId: string
   dilimler: SeferDilimi[]
@@ -651,6 +657,8 @@ function VarsayilanAraclarPanel({
   canPassive: boolean
   canRestore: boolean
   canHistory: boolean
+  /** Başarılı yazma sonrası (kapasiteyi etkiler): üst kartlar yeniden çekilsin. */
+  onDegisti?: () => void
 }) {
   const [liste, setListe] = useState<AracVarsayilan[]>([])
   const [araclar, setAraclar] = useState<SecilebilirArac[]>([])
@@ -711,6 +719,7 @@ function VarsayilanAraclarPanel({
     }
     setDialogAcik(false)
     yukle()
+    onDegisti?.()
   }
 
   function kapatmaAc(v: AracVarsayilan) {
@@ -734,6 +743,7 @@ function VarsayilanAraclarPanel({
     }
     setKapatilan(null)
     yukle()
+    onDegisti?.()
   }
 
   async function geriAl(id: string) {
@@ -745,6 +755,7 @@ function VarsayilanAraclarPanel({
       return
     }
     yukle()
+    onDegisti?.()
   }
 
   return (
@@ -889,6 +900,7 @@ function VarsayilanAraclarPanel({
             if (!sonuc.ok) return sonuc.mesaj
             setDuzenlenen(null)
             yukle()
+            onDegisti?.()
             return null
           }}
         />
@@ -1539,6 +1551,7 @@ function PersonelAtamalarPanel({
   canRestore,
   canHistory,
   dilimsizFiltre = false,
+  onDegisti,
 }: {
   guzergahId: string
   aktifDuraklar: GuzergahDurak[]
@@ -1549,6 +1562,8 @@ function PersonelAtamalarPanel({
   canRestore: boolean
   canHistory: boolean
   dilimsizFiltre?: boolean
+  /** Başarılı yazma sonrası (kapasiteyi etkiler): üst kartlar yeniden çekilsin. */
+  onDegisti?: () => void
 }) {
   const [liste, setListe] = useState<PersonelAtama[]>([])
   const [yukleniyor, setYukleniyor] = useState(true)
@@ -1660,6 +1675,7 @@ function PersonelAtamalarPanel({
     }
     setDialogAcik(false)
     yukle()
+    onDegisti?.()
   }
 
   function kapatmaAc(v: PersonelAtama) {
@@ -1683,6 +1699,7 @@ function PersonelAtamalarPanel({
     }
     setKapatilan(null)
     yukle()
+    onDegisti?.()
   }
 
   async function geriAl(id: string) {
@@ -1694,6 +1711,7 @@ function PersonelAtamalarPanel({
       return
     }
     yukle()
+    onDegisti?.()
   }
 
   return (
@@ -1914,7 +1932,7 @@ function PersonelAtamalarPanel({
           atama={dilimDuzenlenen}
           dilimler={dilimler}
           onKapat={() => setDilimDuzenlenen(null)}
-          onKaydedildi={() => { setDilimDuzenlenen(null); yukle() }}
+          onKaydedildi={() => { setDilimDuzenlenen(null); yukle(); onDegisti?.() }}
         />
       )}
 
@@ -1929,6 +1947,7 @@ function PersonelAtamalarPanel({
             setSecilenAtamalar([])
             setBilgi(`${sonuc.degisen} atamaya dilim eklendi${sonuc.degismeyen > 0 ? `, ${sonuc.degismeyen} atamada değişiklik yoktu` : ''}.`)
             yukle()
+            onDegisti?.()
           }}
         />
       )}
@@ -1951,6 +1970,7 @@ function PersonelAtamalarPanel({
             if (!sonuc.ok) return sonuc.mesaj
             setDuzenlenen(null)
             yukle()
+            onDegisti?.()
             return null
           }}
         />
@@ -1978,7 +1998,7 @@ function PersonelAtamalarPanel({
           atama={serbestTransferAtama}
           dilimler={dilimler}
           onKapat={() => setSerbestTransferAtama(null)}
-          onTransferEdildi={() => { setSerbestTransferAtama(null); yukle() }}
+          onTransferEdildi={() => { setSerbestTransferAtama(null); yukle(); onDegisti?.() }}
         />
       )}
 
@@ -1986,7 +2006,7 @@ function PersonelAtamalarPanel({
         atama={alternatifIcinAtama}
         dilimler={dilimler}
         onOpenChange={(o) => !o && setAlternatifIcinAtama(null)}
-        onTransferEdildi={() => { setAlternatifIcinAtama(null); yukle() }}
+        onTransferEdildi={() => { setAlternatifIcinAtama(null); yukle(); onDegisti?.() }}
       />
     </div>
   )

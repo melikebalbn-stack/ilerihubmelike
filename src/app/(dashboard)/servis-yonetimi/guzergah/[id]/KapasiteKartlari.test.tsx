@@ -51,3 +51,45 @@ describe('KapasiteKartlari (güzergâh detayı)', () => {
     expect(container.innerHTML).toBe('')
   })
 })
+
+describe('C7-10 — yenilemeSayaci', () => {
+  const uygun = (kapasite: number, personel: number) =>
+    yanit([satir({ kapasite, atananPersonelSayisi: personel, bosKoltuk: kapasite - personel, dolulukOrani: (personel / kapasite) * 100, aracSayisi: 1, durum: 'UYGUN', asimMiktari: 0 })])
+
+  it('🔴 sayaç artınca yeniden çeker ve yeni değeri gösterir (araç yok → araç var)', async () => {
+    const f = vi.fn()
+      .mockResolvedValueOnce(yanit([satir({ kapasite: 0, atananPersonelSayisi: 0, bosKoltuk: 0, dolulukOrani: null, aracSayisi: 0, durum: 'ARAC_YOK', asimMiktari: 0 })]))
+      .mockResolvedValue(uygun(15, 1))
+    vi.stubGlobal('fetch', f)
+    const { rerender } = render(<KapasiteKartlari guzergahId="g1" yenilemeSayaci={0} />)
+    await waitFor(() => expect(screen.getByTestId('guzergah-kart-Koltuk').textContent).toBe('—'))
+    rerender(<KapasiteKartlari guzergahId="g1" yenilemeSayaci={1} />)
+    await waitFor(() => expect(screen.getByTestId('guzergah-kart-Koltuk').textContent).toBe('15'))
+    expect(screen.getByTestId('guzergah-kart-Personel').textContent).toBe('1')
+    expect(f).toHaveBeenCalledTimes(2)
+  })
+
+  it('aynı sayaçla yeniden çizim tekrar çekmez; sayaç verilmezse (varsayılan 0) tek çekim', async () => {
+    const f = vi.fn(async (_url: string) => uygun(15, 1))
+    vi.stubGlobal('fetch', f)
+    const { rerender } = render(<KapasiteKartlari guzergahId="g1" yenilemeSayaci={3} />)
+    await waitFor(() => expect(screen.getByTestId('guzergah-kart-Koltuk').textContent).toBe('15'))
+    rerender(<KapasiteKartlari guzergahId="g1" yenilemeSayaci={3} />)
+    rerender(<KapasiteKartlari guzergahId="g1" yenilemeSayaci={3} />)
+    await new Promise((r) => setTimeout(r, 30))
+    expect(f).toHaveBeenCalledTimes(1)
+  })
+
+  it('yenileme sırasında eski kartlar kalır (titreme yok); yenileme hatasında son değer korunur', async () => {
+    const f = vi.fn()
+      .mockResolvedValueOnce(uygun(15, 1))
+      .mockResolvedValueOnce({ ok: false, status: 500, json: async () => ({ ok: false, message: 'x' }) })
+    vi.stubGlobal('fetch', f)
+    const { rerender } = render(<KapasiteKartlari guzergahId="g1" yenilemeSayaci={0} />)
+    await waitFor(() => expect(screen.getByTestId('guzergah-kart-Koltuk').textContent).toBe('15'))
+    rerender(<KapasiteKartlari guzergahId="g1" yenilemeSayaci={1} />)
+    await waitFor(() => expect(f).toHaveBeenCalledTimes(2))
+    expect(screen.getByTestId('guzergah-kart-Koltuk').textContent).toBe('15')
+  })
+})
+

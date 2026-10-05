@@ -9,7 +9,7 @@ import { servisIstek } from '../../_lib/servis-istek'
 // Güzergâh detayı üst kartları (B2): Koltuk / Personel / Boş koltuk / Doluluk.
 // Sayılar Servis Paneli ile AYNI kaynaktan (kapasite motoru, kapasite-toplu ucu) gelir —
 // güzergâhın en dolu sefer dilimi. Hesap yok, yalnız biçimlendirme.
-export function KapasiteKartlari({ guzergahId }: { guzergahId: string }) {
+export function KapasiteKartlari({ guzergahId, yenilemeSayaci = 0 }: { guzergahId: string; yenilemeSayaci?: number }) {
   const [ozet, setOzet] = useState<ServisKapasiteToplu['guzergahlar'][number] | null>(null)
 
   useEffect(() => {
@@ -26,7 +26,8 @@ export function KapasiteKartlari({ guzergahId }: { guzergahId: string }) {
     return () => {
       iptal = true
     }
-  }, [guzergahId])
+    // yenilemeSayaci: sayfa araç/personel yazmasından sonra artırır → kartlar bayat kalmaz (C7-10).
+  }, [guzergahId, yenilemeSayaci])
 
   // Pasif güzergâh ya da henüz yükleniyor/hata: kart gösterilmez (sayfa bunsuz da tam çalışır).
   if (!ozet) return null

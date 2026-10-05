@@ -6,11 +6,17 @@ export const dynamic = 'force-dynamic'
 
 const UST_BIRIM_ID = 'cmrzg1kqr00027jpe7y4egyt9'
 
-// KPI Takip sayfasındaki "G/H Oran"/"H/G Oran" ile AYNI formül (page.tsx'teki oranYonu mantığı) —
-// tutturulan/tutturulamayan ay sayısını saymak yerine, her ölçümün G/H (ya da H/G) oranının
-// ortalaması alınır. Örn: %218, %79, %88... ortalaması.
-function gHOrani(oranYonu: string, target: number, actual: number): number {
-  return (oranYonu === 'H_G' ? target / actual : actual / target) * 100
+// Oran, KPI'nın oranYonu (G/H ya da H/G) alanına göre DEĞİL, direction'a (düşük mü yüksek mi
+// iyi) göre yönlendirilir — oranYonu çoğu KPI'da hiç elle düzeltilmeden varsayılanda (G_H)
+// kalmış, direction ise zaten doğru giriliyor. Böylece yüksek oran HER ZAMAN "iyi" anlamına
+// gelir: lower_is_better'da hedef/gerçekleşen, higher_is_better'da gerçekleşen/hedef.
+// Hedef ya da gerçekleşen sıfıra çok yakın (ya da tam sıfır) olduğunda oran Infinity'ye kadar
+// uçabiliyor (ör. bir ayki hedef 0,15 iken gerçekleşen 1.293.287 — %862 milyon çıkıyor) ve tek
+// bir böyle ay, departman/şirket ortalamasını anlamsızlaştırıyor. Üst sınır koyuyoruz.
+const UST_ORAN_SINIRI = 300
+function basariOrani(direction: string, target: number, actual: number): number {
+  const ham = (direction === 'lower_is_better' ? target / actual : actual / target) * 100
+  return Math.min(ham, UST_ORAN_SINIRI)
 }
 
 export async function GET(request: Request) {
@@ -46,7 +52,7 @@ export async function GET(request: Request) {
           m => m.target && m.actual != null && (aktifYil == null || m.year === aktifYil),
         )
         if (gecerliOlcumler.length === 0) return null
-        const oranlar = gecerliOlcumler.map(m => gHOrani(k.oranYonu, m.target as number, m.actual as number))
+        const oranlar = gecerliOlcumler.map(m => basariOrani(k.direction, m.target as number, m.actual as number))
         const ort = oranlar.reduce((t, o) => t + o, 0) / oranlar.length
         return { id: k.id, name: k.name, oran: Math.round(ort) }
       })

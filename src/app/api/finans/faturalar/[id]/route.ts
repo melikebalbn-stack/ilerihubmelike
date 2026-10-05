@@ -20,6 +20,12 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     if (!existing) return apiNotFound('Fatura bulunamadı')
 
     await prisma.invoice.delete({ where: { id } })
+
+    if (existing.elogoPdfPath) {
+      const fs = await import('fs/promises')
+      await fs.unlink(existing.elogoPdfPath).catch(() => {})
+    }
+
     return apiNoContent()
   } catch (error) {
     return apiError('Fatura silinirken bir hata oluştu', 500, {

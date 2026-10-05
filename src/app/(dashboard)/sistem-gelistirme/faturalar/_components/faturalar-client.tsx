@@ -19,7 +19,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Plus, Search, AlertCircle, Trash2, Pencil, FileSpreadsheet, Download, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react'
+import { Plus, Search, AlertCircle, Trash2, Pencil, FileSpreadsheet, FileDown, Download, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react'
 import {
   Bar,
   BarChart,
@@ -223,6 +223,27 @@ export default function FaturalarClient() {
       setScopeMonth(summary.months[summary.months.length - 1].key)
     }
   }, [summary, scopeMonth])
+
+  // PDF bulunamayabilir (eLogo'da yoksa/henüz eşleşmemişse) — ImportDialog'daki <a> tabanlı
+  // downloadFile() bu durumda hata gövdesini sessizce indirir/gösterir. Burada fetch ile
+  // önce durumu kontrol edip kullanıcıya anlamlı bir mesaj gösteriyoruz.
+  async function handleDownloadPdf(invoiceId: string, invoiceNumber: string) {
+    const res = await fetch(`/api/sandbox/melike/faturalar/${invoiceId}/pdf`)
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      alert(data.error || 'PDF bulunamadı')
+      return
+    }
+    const blob = await res.blob()
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `Fatura_${invoiceNumber}.pdf`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+  }
 
   async function handleDelete(id: string) {
     if (!confirm('Bu fatura kaydını silmek istediğine emin misin?')) return
@@ -721,6 +742,13 @@ export default function FaturalarClient() {
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleDownloadPdf(inv.id, inv.invoiceNumber)}
+                        className="text-muted-foreground hover:text-[#1B4F72]"
+                        title="PDF indir (eLogo'dan)"
+                      >
+                        <FileDown className="h-3.5 w-3.5" />
+                      </button>
                       <button
                         onClick={() => {
                           setEditingInvoice({

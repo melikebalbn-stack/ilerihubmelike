@@ -7,8 +7,12 @@
 //           2. bölümün mudurYardimcisiId varsa MUDUR_YRD_BEKLIYOR, yoksa MUDUR_BEKLIYOR
 //              (2. puanı müdür yrd. VEYA müdür verir, ikisi birden DEĞİL)
 //   GRİ   → tek doldurucu: mudurYardimcisiId varsa o, yoksa mudurId · onay adımı YOK
-//   BEYAZ → tek doldurucu: bölümün mudurId · GMY'ye bağlıysa ONAY_BEKLIYOR
-//           (GMY puan VERMEZ), doğrudan GM'e bağlıysa onay yok → İK
+//   BEYAZ → (05.10.2026 · Melih kararı) müdür yardımcısı adımı DEVREYE GİRDİ:
+//           1. Personnel.sorumlu1Id (yoksa bölüm müdürü — bugünkü davranış)
+//           2. sorumlu1'in ÜSTÜNDEKİ ilk kademe: mudurYardimcisiId, yoksa mudurId
+//              · 1. değerlendirici zaten müdür ise 2. adım YOK (zincir yukarı
+//                yürür, geri dönmez) → bugünkü tek puan + GMY onayı korunur
+//              · 2. puanı müdür yrd. verdiyse onay bölüm müdürüne gider
 //
 // FAIL-CLOSED: zincir çözülemezse form AÇILMAZ, sebep döner
 // (personnel-request-chain'in "yanlış kişiye düşmektense bloke" ilkesi).
@@ -342,11 +346,21 @@ export async function denemeZinciriCoz(db: Db, personnelId: string): Promise<Zin
     };
   }
 
-  // ── BEYAZ YAKA: tek puan, GMY'ye bağlıysa onay ──
+  // ── BEYAZ YAKA: sorumlu1 → (müdür yrd.) → müdür ──
+  //
+  // 05.10.2026 (Melih kararı): beyaz yakada da müdür yardımcısı adımı işler.
+  // Bölümün mudurYardimcisiId'si YOKSA adım sessizce atlanır — hata verilmez.
+  //
+  // NEDEN "sorumlu1'in ÜSTÜNDEKİ kademe" diye kuruldu: prod ölçümü (05.10, 59
+  // aktif beyaz yaka) sorumlu1 alanının çoğu kez müdürün ya da müdür
+  // yardımcısının KENDİSİ olduğunu gösterdi — 24 kişide sorumlu1=müdür,
+  // 19 kişide sorumlu1=müdür yrd. Düz "sorumlu1 → müdür yrd → müdür" dizilimi
+  // bu kayıtlarda ya aynı kişiye iki puan yazdırır (form hiç açılmaz:
+  // degerlendiriciAtamasiGecerliMi) ya da müdür → müdür yrd. gibi TERS sıra
+  // üretirdi. Zincir bu yüzden yukarı yürür ve geri dönmez.
   if (yaka === "BEYAZ") {
-    let deg1: ZincirKisi = mudur;
-    if (kendisi(deg1)) {
-      // Kişinin kendisi bölüm müdürü → bir üst kademe: GMY.
+    if (kendisi(mudur)) {
+      // Kişinin kendisi bölüm müdürü → bir üst kademe: GMY. (DEĞİŞMEDİ)
       atlananlar.push("Değerlendirici kendisi (bölüm müdürü) olduğu için atlandı — üst kademeye çıkıldı");
       const gmy = await kisiCoz(db, await gmyPersonelId(db), "MUDUR");
       if (!gmy || kendisi(gmy)) {
@@ -365,21 +379,75 @@ export async function denemeZinciriCoz(db: Db, personnelId: string): Promise<Zin
       };
     }
 
-    const gmyBagli = await gmyeBagliMi(db, dept.orgUnitId);
-    if (gmyBagli === null) {
-      return {
-        ok: false,
-        sebep: `"${dept.name}" bölümünün organizasyon şemasındaki yeri çözülemiyor (şema bağı yok) — onay kademesi belirlenemedi. İnsan Varlıkları ile iletişime geçin.`,
-      };
+    // 1. değerlendirici: sorumlu1. YOKSA/pasifse bölüm müdürüne düşülür —
+    // beyaz yaka bugüne dek sorumlu1 OLMADAN da çalışıyordu, bloke etmek
+    // regresyon olurdu (prod: 1 kişide sorumlu1 boş).
+    const sorumlu1 = await kisiCoz(db, kisi.sorumlu1Id, "TAKIM_LIDERI");
+    let deg1: ZincirKisi;
+    if (sorumlu1 && !kendisi(sorumlu1)) {
+      deg1 = sorumlu1;
+    } else {
+      if (kisi.sorumlu1Id && !sorumlu1) {
+        atlananlar.push("1. sorumlu pasif/kaydı yok — 1. değerlendirici bölüm müdürü oldu");
+      } else if (sorumlu1 && kendisi(sorumlu1)) {
+        atlananlar.push("1. sorumlu kişinin kendisi — 1. değerlendirici bölüm müdürü oldu");
+      } else {
+        atlananlar.push("1. sorumlu atanmamış — 1. değerlendirici bölüm müdürü oldu");
+      }
+      deg1 = mudur;
     }
 
-    let onaylayan: ZincirKisi | null = null;
-    if (gmyBagli) {
-      onaylayan = await kisiCoz(db, await gmyPersonelId(db), "MUDUR");
-      if (!onaylayan) {
-        return { ok: false, sebep: "Genel Müdür Yardımcısı kaydı çözülemiyor — onay kademesi kurulamadı. İnsan Varlıkları ile iletişime geçin." };
+    // 2. değerlendirici: deg1'in ÜSTÜNDEKİ ilk kademe. deg1 zaten müdürse
+    // 2. adım yoktur (yukarı yürüyen zincir geri dönmez).
+    let deg2: ZincirKisi | null = null;
+    if (deg1.personnelId !== mudur.personnelId) {
+      const adaylar = [mudurYrd, mudur];
+      for (const aday of adaylar) {
+        if (!aday) continue;
+        if (kendisi(aday)) continue; // değerlendirilen kişinin kendisi olamaz
+        if (aday.personnelId === deg1.personnelId) continue; // aynı kişiye iki puan yazılmaz
+        deg2 = aday;
+        break;
       }
-      if (onaylayan.personnelId === kisi.id) onaylayan = null; // kendisi GMY ise onay aranmaz
+      if (!mudurYrd) {
+        atlananlar.push(`"${dept.name}" bölümünde müdür yardımcısı tanımlı değil — adım atlandı`);
+      } else if (deg2 && deg2.rol === "MUDUR") {
+        atlananlar.push("Müdür yardımcısı adımı atlandı (1. değerlendirici ya da değerlendirilen kişinin kendisi)");
+      }
+    } else {
+      atlananlar.push("1. değerlendirici bölüm müdürü — müdür yardımcısı adımı uygulanmaz (zincir yukarı yürür)");
+    }
+
+    const degismezBeyaz = degerlendiriciAtamasiGecerliMi({
+      personnelId: kisi.id,
+      degerlendirici1Id: deg1.personnelId,
+      degerlendirici2Id: deg2?.personnelId ?? null,
+    });
+    if (!degismezBeyaz.ok) return { ok: false, sebep: degismezBeyaz.sebep };
+
+    // ONAY KADEMESİ
+    //  · 2. puanı müdür yrd. verdiyse → bölüm müdürü onaylar (mavi yakayla aynı).
+    //  · 2. puan müdürde bitiyorsa → ayrıca onay YOK (puanla ucu MUDUR_BEKLIYOR
+    //    sonrası doğrudan İK'ya geçirir; oraya onay koymak ölü durum olurdu).
+    //  · Tek puanlı hâlde (deg2 yok) GMY onayı BUGÜNKÜ GİBİ sürer.
+    let onaylayan: ZincirKisi | null = null;
+    if (deg2?.rol === "MUDUR_YARDIMCISI") {
+      onaylayan = mudur.personnelId === kisi.id ? null : mudur;
+    } else if (!deg2) {
+      const gmyBagli = await gmyeBagliMi(db, dept.orgUnitId);
+      if (gmyBagli === null) {
+        return {
+          ok: false,
+          sebep: `"${dept.name}" bölümünün organizasyon şemasındaki yeri çözülemiyor (şema bağı yok) — onay kademesi belirlenemedi. İnsan Varlıkları ile iletişime geçin.`,
+        };
+      }
+      if (gmyBagli) {
+        onaylayan = await kisiCoz(db, await gmyPersonelId(db), "MUDUR");
+        if (!onaylayan) {
+          return { ok: false, sebep: "Genel Müdür Yardımcısı kaydı çözülemiyor — onay kademesi kurulamadı. İnsan Varlıkları ile iletişime geçin." };
+        }
+        if (onaylayan.personnelId === kisi.id) onaylayan = null; // kendisi GMY ise onay aranmaz
+      }
     }
 
     return {
@@ -388,7 +456,7 @@ export async function denemeZinciriCoz(db: Db, personnelId: string): Promise<Zin
       departmentId: dept.id,
       departmentAdi: dept.name,
       degerlendirici1: deg1,
-      degerlendirici2: null,
+      degerlendirici2: deg2,
       onaylayan,
       baslangicDurumu: "DEGERLENDIRICI1_BEKLIYOR",
       atlananlar,

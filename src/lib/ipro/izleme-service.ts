@@ -2,6 +2,7 @@ import 'server-only'
 import { prisma } from '@/lib/prisma'
 import { statusCek, fizikselDurum } from '@/lib/ipro/fiziksel-aktivite'
 import { tezgahlarinCanliOee, IDEAL_ESIK, type OeeCanliKart } from '@/lib/ipro/oee-pano-service'
+import { ortalamaCevrim } from '@/lib/ipro/ort-cevrim'
 
 /**
  * IPRO izleme panosu — SALT OKUMA veri katmanı (FAZ 2).
@@ -312,6 +313,8 @@ export type TezgahDetay = {
   // Üretim ilerleme — gerçekleşen = iş emri+op KÜMÜLATİF (tüm logların uretimAdet toplamı, tek oturum değil)
   // / planlanan (iş emri ifsQtyDue).
   uretim: { gerceklesen: number; planlanan: number | null }
+  // Ortalama çevrim (MAS "Ort. birim süre"): aktif işin (iş süresi − duruşlar) / qtyComplete. Çoklu açık işte null.
+  cevrim: { ortSn: number | null; netDk: number; durusDk: number; adet: number } | null
 }
 
 /** Tezgah + aktif iş + bugün kapanan işler. Bulunamazsa null. */
@@ -441,6 +444,17 @@ export async function tezgahDetay(tezgahId: string): Promise<TezgahDetay | null>
   }
   const planlanan = aktif?.ifsQtyDue ?? refIs?.ifsQtyDue ?? null
 
+  // Ortalama çevrim — yalnız tek açık işte (çoklu işte üretim tek işe atfedilemez).
+  let cevrim: TezgahDetay['cevrim'] = null
+  if (aktifler.length === 1 && aktif?.baslatildiAt) {
+    const isDuruslari = await prisma.iproMachineDowntime.findMany({
+      where: { tezgahId, baslangic: { lt: now }, OR: [{ bitis: null }, { bitis: { gt: aktif.baslatildiAt } }] },
+      select: { baslangic: true, bitis: true },
+    })
+    const r = ortalamaCevrim({ baslangic: aktif.baslatildiAt, bitis: now, adet: aktif.qtyComplete, duruslar: isDuruslari })
+    cevrim = { ortSn: r.ortSn, netDk: Math.round(r.netSn / 60), durusDk: Math.round(r.durusSn / 60), adet: aktif.qtyComplete }
+  }
+
   return {
     id: tezgah.id,
     kod: tezgah.kod,
@@ -469,5 +483,6 @@ export async function tezgahDetay(tezgahId: string): Promise<TezgahDetay | null>
       elapsedDk: yuvarla(elapsedDk),
     },
     uretim: { gerceklesen, planlanan },
+    cevrim,
   }
 }

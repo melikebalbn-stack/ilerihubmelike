@@ -6,7 +6,7 @@ import { Activity, AlertTriangle, Factory, Maximize, Minimize, Package, RefreshC
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { cevrimMetni } from '@/lib/ipro/cevrim-util'
+import { cevrimMetni, cevrimSaniye } from '@/lib/ipro/cevrim-util'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
   Dialog,
@@ -181,6 +181,7 @@ type Detay = {
   bugunDuruslar: DurusSatiri[]
   sureDagilimi: { calismaDk: number; durusDk: number; bostaDk: number; elapsedDk: number }
   uretim: { gerceklesen: number; planlanan: number | null }
+  cevrim?: { ortSn: number | null; netDk: number; durusDk: number; adet: number } | null
 }
 
 /** ms → "92 dk" (yalnız dakika). Negatif/gelecek/NaN → "—" (TZ sapması güvenliği). */
@@ -645,6 +646,9 @@ function DetayDialog({ tezgahId, canliOee, esik, onClose }: { tezgahId: string |
       ? (cevrimMetni(aktif.ifsMachRunFactor, aktif.ifsRunTimeCode) ?? `${aktif.ifsMachRunFactor} ${aktif.ifsRunTimeCode ?? ''}`.trim())
       : '—'
   const uret = detay?.uretim
+  const planCevrimSn = cevrimSaniye(aktif?.ifsMachRunFactor, aktif?.ifsRunTimeCode)
+  const ortCevrimSn = detay?.cevrim?.ortSn ?? null
+  const cevrimYuksek = ortCevrimSn != null && planCevrimSn != null && ortCevrimSn > planCevrimSn
   const yuzde = uret && uret.planlanan ? Math.min(100, Math.round((uret.gerceklesen / uret.planlanan) * 100)) : null
 
   const rozet =
@@ -763,9 +767,18 @@ function DetayDialog({ tezgahId, canliOee, esik, onClose }: { tezgahId: string |
                 </div>
                 <div className="text-slate-300">|</div>
                 <div>
-                  <span className="text-slate-400">ort.</span> <span className="font-semibold text-slate-400">—</span>
+                  <span className="text-slate-400">ort.</span>{' '}
+                  <span className={`font-semibold ${ortCevrimSn == null ? 'text-slate-400' : cevrimYuksek ? 'text-red-600' : 'text-emerald-600'}`}>
+                    {ortCevrimSn != null ? `${ortCevrimSn.toLocaleString('tr-TR', { maximumFractionDigits: 1 })} sn` : '—'}
+                  </span>
                 </div>
-                <span className="ml-auto text-xs text-slate-400">ort. çevrim poller ile</span>
+                <span className="ml-auto text-xs text-slate-400">
+                  {detay?.cevrim
+                    ? `net ${dkBicim(detay.cevrim.netDk)} / ${detay.cevrim.adet} adet`
+                    : cokluIs
+                      ? 'çoklu işte hesaplanmaz'
+                      : ''}
+                </span>
               </div>
             </section>
 

@@ -87,6 +87,8 @@ type Detay = {
   bugunDuruslar: DurusSatiri[]
   sureDagilimi: { calismaDk: number; durusDk: number; bostaDk: number; elapsedDk: number }
   uretim: { gerceklesen: number; planlanan: number | null }
+  // Ortalama çevrim (MAS "Ort. birim süre"): (iş süresi − duruşlar) / qtyComplete — servis hesaplar.
+  cevrim?: { ortSn: number | null; netDk: number; durusDk: number; adet: number } | null
   // Açık işte canlı PLC üretimi (terminal route hesaplar): iş penceresi Σdelta + son sinyal.
   // seriVar=false → hiç delta yok. Kapalı/geçmiş işlerde null (mevcut uretim davranışı).
   canliUretim: { adet: number; seriVar: boolean; sonSinyal: string | null } | null
@@ -277,8 +279,10 @@ export function TezgahDetayModal({
   const planCevrimSn = cevrimSaniye(aktif?.ifsMachRunFactor, aktif?.ifsRunTimeCode)
   const isSuresiSn =
     aktif?.baslatildiAt ? Math.max(0, (Date.now() - new Date(aktif.baslatildiAt).getTime()) / 1000) : 0
+  // Gerçekleşen: MAS tanımı (net süre / adet, servis) öncelikli; yoksa iş süresi / canlı PLC Σdelta.
   const gercCevrimSn =
-    acikIsVar && canli && canli.adet > 0 && isSuresiSn > 0 ? isSuresiSn / canli.adet : null
+    detay?.cevrim?.ortSn ??
+    (acikIsVar && canli && canli.adet > 0 && isSuresiSn > 0 ? isSuresiSn / canli.adet : null)
   const cevrimSapmaYuzde =
     planCevrimSn && planCevrimSn > 0 && gercCevrimSn != null
       ? Math.round(((gercCevrimSn - planCevrimSn) / planCevrimSn) * 100)

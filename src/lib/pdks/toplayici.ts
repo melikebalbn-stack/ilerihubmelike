@@ -36,7 +36,7 @@ export async function acsEventCek(
   bitis: Date,
   maksSayfa = MAKS_SAYFA,
 ): Promise<{ olaylar: HamOlay[]; sayfa: number; tamam: boolean; atlanan: number }> {
-  const searchID = randomUUID()
+  const searchID = randomUUID().replace(/-/g, '') // ISAPI searchID ≤32 char (UUID tireli 36)
   const olaylar: HamOlay[] = []
   let atlanan = 0
   for (let sayfa = 1; sayfa <= maksSayfa; sayfa++) {
@@ -46,7 +46,7 @@ export async function acsEventCek(
         AcsEventCond: {
           searchID,
           searchResultPosition: olaylar.length + atlanan,
-          maxResults: 30,
+          maxResults: 5,
           major: 0,
           minor: 0,
           startTime: hikZamanOfsetli(baslangic),

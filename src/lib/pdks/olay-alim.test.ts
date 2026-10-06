@@ -305,14 +305,14 @@ describe('toplayiciTuru (sahte panel)', () => {
     const t = (s: number) => new Date(simdi.getTime() - (70 - s) * 1000)
     await olaylariIsle(depo, tc, [1, 2, 65].map((s) => olay(s, t(s), 5, 1, { cardNo: '11863577' })), { kaynak: 'PUSH', esleme: E, simdi })
     expect((await imleciIlerlet(depo, tc, simdi)).imlec).toBe(2)
-    // …panel günlüğünde 1-65 hepsi var (3 sayfa).
+    // …panel günlüğünde 1-65 hepsi var (maxResults 5 → 13 sayfa).
     for (let s = 1; s <= 65; s++) {
       panelOlaylari.push({ major: 5, minor: 1, time: iso(t(s)), cardNo: '11863577', doorNo: 1, cardReaderNo: 1, serialNo: s })
     }
     panelSaatiIleriSn = 120
 
     const oz = await toplayiciTuru(depo, tc, E, simdi)
-    expect(oz.sayfa).toBe(3)
+    expect(oz.sayfa).toBe(13)
     expect(oz.pencereTamam).toBe(true)
     expect(oz.islem).toMatchObject({ alinan: 65, eklenen: 62, tekrar: 3 })
     expect(oz.imlec).toMatchObject({ imlec: 65, bekleyenBosluk: 0 })

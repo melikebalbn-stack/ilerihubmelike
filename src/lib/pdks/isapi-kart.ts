@@ -132,7 +132,7 @@ export interface PanelKarti {
 
 /** Paneldeki tüm kartlar (sayfalı). Güvenlik sınırı: en fazla 200 sayfa. */
 export async function paneldekiKartlar(cihaz: IsapiCihaz, sayfa = 30): Promise<PanelKarti[]> {
-  const searchID = randomUUID()
+  const searchID = randomUUID().replace(/-/g, '') // ISAPI searchID ≤32 char
   const sonuc: PanelKarti[] = []
   for (let i = 0; i < 200; i++) {
     const veri = await jsonIstek(cihaz, '/ISAPI/AccessControl/CardInfo/Search', 'POST', {

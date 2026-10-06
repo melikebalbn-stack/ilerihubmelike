@@ -15307,6 +15307,11 @@ model KPIDefinition {
   gerceklesenEtiketi String              @default("Gerçekleşen")
   hedefEtiketi       String              @default("Hedef")
   oranYonu           String              @default("G_H") // "G_H" (gerçekleşen/hedef) | "H_G" (hedef/gerçekleşen)
+  // KPI-OZEL-ALAN: Gerçekleşen/Hedef'e ek, KPI'ya özel etiketli sayısal alanlar (ör. İleri/Müşteri/Toplam).
+  ozelAlanlar        KPIOzelAlan[]
+  // Oranın payını (G/H ya da H/G'nin "G" tarafı) hangi kaynaktan alacağı — "actual" ise yerleşik
+  // Gerçekleşen kullanılır, aksi halde bir KPIOzelAlan.key değeridir. Payda (Hedef) hep target kalır.
+  oranPayKaynagi     String              @default("actual")
   active             Boolean             @default(true)
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
@@ -15317,6 +15322,35 @@ model KPIDefinition {
   @@unique([orgUnitId, name])
 }
 
+model KPIOzelAlan {
+  id        String              @id @default(cuid())
+  kpiId     String
+  kpi       KPIDefinition       @relation(fields: [kpiId], references: [id], onDelete: Cascade)
+  key       String
+  label     String
+  siraNo    Int                 @default(0)
+  degerler  KPIOzelAlanDegeri[]
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+
+  @@unique([kpiId, key])
+}
+
+model KPIOzelAlanDegeri {
+  id        String      @id @default(cuid())
+  alanId    String
+  alan      KPIOzelAlan @relation(fields: [alanId], references: [id], onDelete: Cascade)
+  year      Int
+  month     Int
+  value     Float?
+  // KPI-NA: "uygulanamaz" işaretlenmişse true — boş (hiç girilmemiş) durumdan farklı.
+  naMi      Boolean     @default(false)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  @@unique([alanId, year, month])
+}
+
 model KPIMeasurement {
   id          String        @id @default(cuid())
   kpiId       String
@@ -15325,6 +15359,13 @@ model KPIMeasurement {
   month       Int
   target      Float?
   actual      Float?
+  // KPI-NA: bu ayki değer "uygulanamaz" (N/A) işaretlenmişse true — boş (hiç girilmemiş)
+  // durumdan farklı, oran hesabında %0 ve kötü (kırmızı) renk olarak değerlendirilir.
+  hedefNA       Boolean @default(false)
+  gerceklesenNA Boolean @default(false)
+  // KPI-ELLE-ORAN: dolu ise otomatik oran hesabını (ve N/A kuralını) by-pass edip doğrudan bu
+  // değer "oran %" olarak kullanılır — saçma/bozuk veri durumlarını anında düzeltebilmek için.
+  manuelOran    Float?
   enteredById String?
   enteredBy   User?         @relation(fields: [enteredById], references: [id], onDelete: SetNull)
   createdAt   DateTime      @default(now())

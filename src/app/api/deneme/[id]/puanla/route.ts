@@ -8,6 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { aktoruCoz } from "@/lib/deneme/deneme-aktor";
 import { adimSahibiMi, gecisRolu, denemeRedLog } from "@/lib/deneme/deneme-yetki";
 import { gecisIzinli, denemeOrtalama, denemeBasariliMi } from "@/lib/deneme/deneme-transitions";
+import { ikinciAdimSonrasiDurum } from "@/lib/deneme/deneme-zincir";
 import type { DenemeDurum } from "@/generated/prisma";
 
 export const dynamic = "force-dynamic";
@@ -82,8 +83,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         hedef = form.onaylayanId ? "ONAY_BEKLIYOR" : "IK_BEKLIYOR";
       }
     } else {
-      // 2. puan: müdür yrd. doldurduysa müdür onayına, müdür doldurduysa doğrudan İK.
-      hedef = form.durum === "MUDUR_YRD_BEKLIYOR" ? "ONAY_BEKLIYOR" : "IK_BEKLIYOR";
+      // 2. puan: müdür yrd. doldurduysa VE onaycı atanmışsa müdür onayına; müdür
+      // doldurduysa ya da onaycı yoksa doğrudan İK. Karar tek kaynakta
+      // (ikinciAdimSonrasiDurum) — 05.10'da beyaz yakada GMY onayı kaldırılınca
+      // "onaycısı olmayan müdür-yrd adımı" ihtimali doğdu, sahipsiz ONAY_BEKLIYOR
+      // üretmesin.
+      hedef = ikinciAdimSonrasiDurum(form.durum, form.onaylayanId);
     }
     if (!gecisIzinli(form.durum, rol, hedef)) {
       denemeRedLog({ uc: "puanla", formId: id, from: form.durum, to: hedef, reason: "geçiş matriste izinli değil", user: aktor.email });

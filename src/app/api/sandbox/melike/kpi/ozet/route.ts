@@ -10,7 +10,11 @@ const UST_BIRIM_ID = 'cmrzg1kqr00027jpe7y4egyt9'
 // KASITLI OLARAK üst sınır/kırpma YOK — hedef ya da gerçekleşen sıfıra çok yakın girilen
 // ölçümler (ör. %33 yerine 0,33 girilmiş gibi veri atışı sırasında ölçek hatası) olduğu gibi
 // aşırı oranlar üretiyor; bu sınırlanırsa hatalı veri gizlenip kaynaktan düzeltilmesi atlanır.
+// Payda (bölen) sıfırsa (lower_is_better'da gerçekleşen) Infinity/NaN çıkıp ortalamayı
+// bozardı — bölüm hatasında %0 döndürülür (KPI Takip sayfasındaki G/H Oran satrıyla tutarlı).
 function basariOrani(direction: string, target: number, actual: number): number {
+  const payda = direction === 'lower_is_better' ? actual : target
+  if (payda === 0) return 0
   return (direction === 'lower_is_better' ? target / actual : actual / target) * 100
 }
 

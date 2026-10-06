@@ -823,9 +823,16 @@ function KpiVeriTablosu({
                     </td>
                     {ortYillar.map(([y]) => <td key={y} className="p-2 bg-slate-50 border-l border-slate-200" />)}
                     {aylikVeri.map((v, i) => {
-                      const oran = v.target && v.actual != null
-                        ? Math.round((kpi.oranYonu === 'H_G' ? v.target / v.actual : v.actual / v.target) * 100)
-                        : null
+                      // Payda (bölen) sıfırsa (G/H'de hedef, H/G'de gerçekleşen) normalde
+                      // Infinity/NaN çıkıp "%Infinity" gibi anlamsız bir şey gösterirdi —
+                      // bölüm hatası durumunda %0 yazıyoruz. Değer hiç girilmemişse (null)
+                      // yine boş kalır, bu ayrı bir durum.
+                      const payda = (kpi.oranYonu === 'H_G' ? v.actual : v.target) as number | null
+                      const oran = v.target == null || v.actual == null || payda == null
+                        ? null
+                        : payda === 0
+                          ? 0
+                          : Math.round((kpi.oranYonu === 'H_G' ? (v.target as number) / payda : (v.actual as number) / payda) * 100)
                       return (
                         <td key={i} className="p-2 text-center font-semibold bg-sky-50 text-sky-900 border-l border-slate-200">
                           {oran == null ? '' : `%${oran}`}

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
@@ -94,8 +95,12 @@ function egilimEkle<T extends Record<string, unknown>>(
 }
 
 export default function KpiOzetPage() {
+  const searchParams = useSearchParams()
   const [departmanlar, setDepartmanlar] = useState<Departman[]>([])
-  const [secilenDepartmanId, setSecilenDepartmanId] = useState<string>(GENEL_ID)
+  // KPI Takip sayfasından belirli bir departmandayken "KPI Özet →" ile gelindiyse o departmanın
+  // özetine düşsün — direkt ana sekmeden/menüden açıldıysa (departman parametresi yoksa) Şirket
+  // Geneli ile başlasın.
+  const [secilenDepartmanId, setSecilenDepartmanId] = useState<string>(() => searchParams.get('departman') || GENEL_ID)
   const [ozet, setOzet] = useState<DepartmanOzeti[] | null>(null)
   const [mevcutYillar, setMevcutYillar] = useState<number[]>([])
   const [secilenYil, setSecilenYil] = useState<number | null>(null)

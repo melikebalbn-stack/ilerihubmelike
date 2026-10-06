@@ -975,7 +975,7 @@ export default function MelikeKpiPage() {
           <p className="text-sm text-muted-foreground mt-1">Aylık hedef/gerçekleşen takibi ve aksiyon planı</p>
         </div>
         <div className="flex items-center gap-2">
-          <Link href="/sandbox/melike/kpi-ozet">
+          <Link href={`/sandbox/melike/kpi-ozet?departman=${secilenDepartmanId}`}>
             <Button size="sm" variant="outline">KPI Özet →</Button>
           </Link>
           <YeniKpiDialog orgUnitId={secilenDepartmanId} onCreated={yukle} />

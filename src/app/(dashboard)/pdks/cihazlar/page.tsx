@@ -19,10 +19,10 @@ export default async function PdksCihazlarPage() {
       <div>
         <h1 className="flex items-center gap-2 text-2xl font-bold text-[#1B4F72]">
           <DoorOpen className="h-6 w-6" />
-          PDKS · Cihazlar &amp; Kapılar
+          PDKS · Cihazlar &amp; Turnikeler
         </h1>
         <p className="mt-1 text-sm text-slate-500">
-          Geçiş kontrol panelleri (Hikvision ISAPI), kapılar ve okuyucu yönleri. Kimlik bilgileri sunucu
+          Geçiş kontrol panelleri (Hikvision ISAPI), turnikeler ve okuyucu yönleri. Kimlik bilgileri sunucu
           .env dosyasında tutulur; bu ekranda yalnız tanımlı olup olmadığı görünür.
         </p>
       </div>

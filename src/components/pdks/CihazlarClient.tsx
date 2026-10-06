@@ -139,7 +139,7 @@ export function CihazlarClient() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <p className="text-sm text-slate-500">
-          {cihazlar.length} cihaz · {cihazlar.reduce((t, c) => t + c.kapilar.length, 0)} kapı
+          {cihazlar.length} cihaz · {cihazlar.reduce((t, c) => t + c.kapilar.length, 0)} turnike
         </p>
         <Button size="sm" onClick={() => setCihazDuzen({ marka: 'HIKVISION', model: 'DS-K2604T', aktif: true })}>
           <Plus className="mr-1 h-4 w-4" /> Cihaz Ekle
@@ -163,10 +163,10 @@ export function CihazlarClient() {
           onDuzenle={() => setCihazDuzen({ ...c })}
           onSil={() => sil(`/api/pdks/cihazlar/${c.id}`, `${c.kod} cihazı`)}
           onKapiEkle={() =>
-            setKapiDuzen({ cihazId: c.id, kapiNo: (c.kapilar.at(-1)?.kapiNo ?? 0) + 1, ad: '', grup: '', aktif: true })
+            setKapiDuzen({ cihazId: c.id, kapiNo: (c.kapilar.at(-1)?.kapiNo ?? 0) + 1, ad: '', aktif: true })
           }
           onKapiDuzenle={(k) => setKapiDuzen({ ...k })}
-          onKapiSil={(k) => sil(`/api/pdks/kapilar/${k.id}`, `“${k.ad}” kapısı`)}
+          onKapiSil={(k) => sil(`/api/pdks/kapilar/${k.id}`, `“${k.ad}” turnikesi`)}
           onOkuyucuEkle={(k) =>
             setOkuyucuDuzen({ kapiId: k.id, okuyucuNo: (k.okuyucular.at(-1)?.okuyucuNo ?? 0) + 1, yon: 'GIRIS', puantajaDahil: true, aktif: true })
           }
@@ -254,31 +254,27 @@ export function CihazlarClient() {
         </DialogContent>
       </Dialog>
 
-      {/* ── Kapı dialog ── */}
+      {/* ── Turnike dialog ── */}
       <Dialog open={!!kapiDuzen} onOpenChange={(o) => !o && dialogKapat()}>
         <DialogContent>
-          <DialogHeader><DialogTitle>{kapiDuzen?.id ? 'Kapı Düzenle' : 'Kapı Ekle'}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{kapiDuzen?.id ? 'Turnike Düzenle' : 'Turnike Ekle'}</DialogTitle></DialogHeader>
           {kapiDuzen && (
             <div className="space-y-3">
               <div className="flex gap-3">
                 <div className="w-28">
-                  <Label>Kapı no</Label>
+                  <Label>Turnike no</Label>
                   <Input
                     type="number"
                     min={1}
                     value={kapiDuzen.kapiNo ?? ''}
                     onChange={(e) => setKapiDuzen({ ...kapiDuzen, kapiNo: Number(e.target.value) })}
                   />
+                  <p className="mt-1 text-xs text-slate-500">Paneldeki kapı (door) no.</p>
                 </div>
                 <div className="flex-1">
                   <Label>Ad</Label>
-                  <Input value={kapiDuzen.ad ?? ''} onChange={(e) => setKapiDuzen({ ...kapiDuzen, ad: e.target.value })} placeholder="Turnike 1 - Giriş" />
+                  <Input value={kapiDuzen.ad ?? ''} onChange={(e) => setKapiDuzen({ ...kapiDuzen, ad: e.target.value })} placeholder="Turnike 1" />
                 </div>
-              </div>
-              <div>
-                <Label>Grup (isteğe bağlı)</Label>
-                <Input value={kapiDuzen.grup ?? ''} onChange={(e) => setKapiDuzen({ ...kapiDuzen, grup: e.target.value })} placeholder="TURNIKE-1" />
-                <p className="mt-1 text-xs text-slate-500">Aynı fiziksel turnikenin giriş ve çıkış kapılarını birlikte gösterir.</p>
               </div>
               <div className="flex items-center justify-between">
                 <Label>Aktif</Label>
@@ -293,11 +289,11 @@ export function CihazlarClient() {
               disabled={kaydediliyor}
               onClick={() => {
                 if (!kapiDuzen) return
-                const { id, cihazId, kapiNo, ad, grup, aktif } = kapiDuzen
+                const { id, cihazId, kapiNo, ad, aktif } = kapiDuzen
                 void kaydet(
                   id ? `/api/pdks/kapilar/${id}` : '/api/pdks/kapilar',
                   id ? 'PATCH' : 'POST',
-                  id ? { kapiNo, ad, grup, aktif } : { cihazId, kapiNo, ad, grup, aktif },
+                  id ? { kapiNo, ad, aktif } : { cihazId, kapiNo, ad, aktif },
                   dialogKapat,
                 )
               }}
@@ -482,11 +478,11 @@ function CihazKarti({
 
         {saglik && <SaglikSonucKarti s={saglik} />}
 
-        {/* Kapılar */}
+        {/* Turnikeler */}
         <div>
           <div className="mb-2 flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-slate-700">Kapılar ve okuyucular</h3>
-            <Button variant="ghost" size="sm" onClick={onKapiEkle}><Plus className="mr-1 h-4 w-4" /> Kapı Ekle</Button>
+            <h3 className="text-sm font-semibold text-slate-700">Turnikeler ve okuyucular</h3>
+            <Button variant="ghost" size="sm" onClick={onKapiEkle}><Plus className="mr-1 h-4 w-4" /> Turnike Ekle</Button>
           </div>
           <div className="overflow-x-auto rounded-lg border">
             <table className="w-full text-sm">
@@ -494,7 +490,6 @@ function CihazKarti({
                 <tr>
                   <th className="px-3 py-2">No</th>
                   <th className="px-3 py-2">Ad</th>
-                  <th className="px-3 py-2">Grup</th>
                   <th className="px-3 py-2">Okuyucular</th>
                   <th className="px-3 py-2">Durum</th>
                   <th className="px-3 py-2" />
@@ -505,7 +500,6 @@ function CihazKarti({
                   <tr key={k.id} className="border-t align-top">
                     <td className="px-3 py-2 font-medium">{k.kapiNo}</td>
                     <td className="px-3 py-2">{k.ad}</td>
-                    <td className="px-3 py-2 text-slate-500">{k.grup ?? '—'}</td>
                     <td className="px-3 py-2">
                       <div className="flex flex-wrap items-center gap-1.5">
                         {k.okuyucular.map((o) => (
@@ -543,7 +537,7 @@ function CihazKarti({
                   </tr>
                 ))}
                 {c.kapilar.length === 0 && (
-                  <tr><td colSpan={6} className="px-3 py-6 text-center text-slate-400">Kapı tanımı yok</td></tr>
+                  <tr><td colSpan={5} className="px-3 py-6 text-center text-slate-400">Turnike tanımı yok</td></tr>
                 )}
               </tbody>
             </table>

@@ -177,9 +177,9 @@ export function GecislerClient({ canManage }: { canManage: boolean }) {
       {/* Filtreler */}
       <div className="flex flex-wrap items-center gap-3">
         <Select value={kapiId} onValueChange={setKapiId}>
-          <SelectTrigger className="w-44"><SelectValue placeholder="Kapı" /></SelectTrigger>
+          <SelectTrigger className="w-44"><SelectValue placeholder="Turnike" /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="HEPSI">Tüm kapılar</SelectItem>
+            <SelectItem value="HEPSI">Tüm turnikeler</SelectItem>
             {(veri?.kapilar ?? []).map((k) => <SelectItem key={k.id} value={k.id}>{k.ad}</SelectItem>)}
           </SelectContent>
         </Select>
@@ -206,7 +206,7 @@ export function GecislerClient({ canManage }: { canManage: boolean }) {
             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
               <tr>
                 <th className="px-3 py-2">Saat</th>
-                <th className="px-3 py-2">Kapı</th>
+                <th className="px-3 py-2">Turnike</th>
                 <th className="px-3 py-2">Yön</th>
                 <th className="px-3 py-2">Kart no</th>
                 <th className="px-3 py-2">Sicil</th>

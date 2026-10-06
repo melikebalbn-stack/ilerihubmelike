@@ -15,6 +15,7 @@ import { requireUser } from '@/lib/auth/require-user'
 import { bolumTalepYetkisiCore } from '@/lib/bolum-talep/bolum-talep-yetki'
 import { bolumTransferiUygula } from '@/lib/personnel/bolum-transfer-uygula'
 import { kararBildir } from '@/lib/bolum-talep/bolum-talep-bildirim'
+import { talepKoltukOzeti } from '@/lib/bolum-talep/bolum-talep-gorev'
 import type { TransferOnay } from '@/generated/prisma'
 
 export const dynamic = 'force-dynamic'
@@ -43,7 +44,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     const talep = await prisma.bolumDegisiklikTalep.findUnique({
       where: { id },
-      include: { personnel: { select: { id: true, sicilNo: true, adSoyad: true, bolum: true, aktif: true } } },
+      include: { personnel: { select: { id: true, sicilNo: true, adSoyad: true, bolum: true, gorev: true, aktif: true } } },
     })
     if (!talep) return NextResponse.json({ error: 'Talep bulunamadı' }, { status: 404 })
     if (talep.durum !== 'BEKLIYOR') {
@@ -124,6 +125,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       const transfer = await bolumTransferiUygula(tx, {
         personnel: talep.personnel,
         yeniBolum: talep.hedefBolum,
+        // Talepte seçilen yeni görev (opsiyonel) — koltuğun yeni bölümün
+        // kutusuna taşınabilmesi için gerekli (06.10 ILR-00925 vakası).
+        yeniGorev: talep.hedefGorev,
         transferTarihi,
         talepTarihi: talep.talepTarihi,
         // Talep daima bölüm yöneticisinden gelir (personel onayı FAZ 2).
@@ -139,6 +143,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         talepNo: talep.talepNo,
       })
 
+      // Koltuk sonucu talebe YAZILIR — İV listesindeki rozetin kaynağı.
+      // Eskiden yalnız denetime ve anlık toast'a düşüyordu, kimse görmüyordu.
+      const koltukOzet = talepKoltukOzeti({
+        tasindi: transfer.koltuk.tasindi,
+        sebep: transfer.koltuk.sebep,
+        acildi: transfer.koltukAcma?.koltukAcildi,
+      })
+
       const t = await tx.bolumDegisiklikTalep.update({
         where: { id },
         data: {
@@ -149,6 +161,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
           isgOnayi: isgOnayi as TransferOnay,
           doktorOnayi: doktorOnayi as TransferOnay,
           transferId: transfer.transferId,
+          koltukTasindi: koltukOzet.koltukTasindi,
+          koltukSebep: koltukOzet.koltukSebep,
         },
         include: { personnel: { select: { sicilNo: true, adSoyad: true } } },
       })

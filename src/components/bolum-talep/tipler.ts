@@ -6,6 +6,9 @@ export type BolumTalepSatiri = {
   durum: 'BEKLIYOR' | 'ONAYLANDI' | 'REDDEDILDI' | 'IPTAL'
   mevcutBolum: string
   hedefBolum: string
+  hedefGorev: string | null
+  koltukTasindi: boolean | null
+  koltukSebep: string | null
   talepTarihi: string
   transferTarihi: string | null
   kararTarihi: string | null

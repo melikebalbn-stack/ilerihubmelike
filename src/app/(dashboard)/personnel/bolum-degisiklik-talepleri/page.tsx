@@ -12,6 +12,7 @@ import { toast } from 'sonner'
 import { SplitBadge } from '@/components/akademi/SplitBadge'
 import { EnvanterArama, envanterAramaEslesir } from '@/components/envanter/EnvanterArama'
 import { TalepDurumRozet } from '@/components/bolum-talep/durum-rozet'
+import { koltukRozeti } from '@/lib/bolum-talep/bolum-talep-gorev'
 import { ACAN_ROL_ETIKET, type BolumTalepSatiri } from '@/components/bolum-talep/tipler'
 import { gerekceLabel, ONAY_OPTIONS } from '@/components/personnel/department-transfer/constants'
 
@@ -232,6 +233,16 @@ export default function BolumTalepKuyrukPage() {
                     </td>
                     <td>
                       <TalepDurumRozet durum={t.durum} />
+                      {/* Koltuk taşınmadıysa görünür rozet (06.10.2026) — bu bilgi
+                          eskiden yalnız denetim kaydına ve anlık toast'a düşüyordu. */}
+                      {koltukRozeti(t).gorunur && (
+                        <div
+                          className="mt-1 inline-block rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[11px] font-medium text-rose-700"
+                          title={t.koltukSebep ?? undefined}
+                        >
+                          ⚠ {koltukRozeti(t).metin}
+                        </div>
+                      )}
                     </td>
                     <td className="text-right">
                       <SplitBadge
@@ -265,7 +276,10 @@ export default function BolumTalepKuyrukPage() {
             </div>
 
             <div className="rounded-xl border bg-slate-50 p-4 text-sm">
-              <p className="font-medium text-slate-700">Gerekçeler</p>
+              <p className="font-medium text-slate-700">
+                Yeni görev: {secili.hedefGorev ?? '(talepte belirtilmedi — mevcut görev korunur)'}
+              </p>
+              <p className="mt-2 font-medium text-slate-700">Gerekçeler</p>
               <ul className="mt-1 list-inside list-disc text-slate-600">
                 {secili.gerekceler.map((g) => (
                   <li key={g}>{gerekceLabel(g)}</li>
@@ -373,6 +387,20 @@ export default function BolumTalepKuyrukPage() {
                   </div>
                   <div>İSG onayı: {secili.isgOnayi ?? '—'}</div>
                   <div>Doktor onayı: {secili.doktorOnayi ?? '—'}</div>
+                  <div>Yeni görev: {secili.hedefGorev ?? '(değişmedi)'}</div>
+                  <div>
+                    Şema koltuğu:{' '}
+                    {secili.koltukTasindi === null ? (
+                      '—'
+                    ) : secili.koltukTasindi ? (
+                      <span className="text-emerald-700">taşındı</span>
+                    ) : (
+                      <span className="text-rose-700">taşınmadı</span>
+                    )}
+                  </div>
+                  {secili.koltukTasindi === false && secili.koltukSebep && (
+                    <div className="md:col-span-2 text-rose-700">Koltuk sebebi: {secili.koltukSebep}</div>
+                  )}
                   {secili.redGerekcesi && (
                     <div className="md:col-span-2 text-rose-700">Red gerekçesi: {secili.redGerekcesi}</div>
                   )}

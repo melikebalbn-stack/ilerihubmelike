@@ -15,11 +15,12 @@ import {
   Table,
   TableBody,
   TableCell,
+  TableFooter,
   TableHead,
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Plus, Search, AlertCircle, Trash2, Pencil, FileSpreadsheet, FileDown, Download, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react'
+import { Plus, Search, AlertCircle, Trash2, Pencil, FileSpreadsheet, FileDown, Download, StickyNote, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react'
 import {
   Bar,
   BarChart,
@@ -405,6 +406,13 @@ export default function FaturalarClient() {
     return sorted
   }, [invoices, listMonthFilter, sortKey, sortDir])
 
+  // displayedInvoices zaten Bölüm + Ay filtresi + arama uygulanmış hali — toplam da
+  // aynı seti kullanıyor, filtre değişince otomatik güncellenir.
+  const displayedTotalEur = useMemo(
+    () => displayedInvoices.reduce((s, inv) => s + Number(inv.amountEUR), 0),
+    [displayedInvoices]
+  )
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -557,9 +565,26 @@ export default function FaturalarClient() {
                     >
                       <LabelList
                         dataKey={label}
-                        position="center"
-                        formatter={(v: number) => (v > 0 ? formatEur(v) : '')}
-                        style={{ fontSize: 9, fill: label === SG_LABEL ? '#fff' : '#334155' }}
+                        content={(props: any) => {
+                          // İnce segmentlerde (küçük bölüm/ay) etiketler üst üste binip
+                          // okunaksızlaşıyordu — segment görsel olarak yazıyı taşıyacak
+                          // kadar yüksek değilse (hover ile zaten Tooltip'te tam değer var)
+                          // etiket basılmıyor, yarım/üst üste yazı yerine boş bırakılıyor.
+                          const { x, y, width, height, value } = props
+                          if (!value || height < 16) return null
+                          return (
+                            <text
+                              x={x + width / 2}
+                              y={y + height / 2}
+                              dy={4}
+                              textAnchor="middle"
+                              fontSize={9}
+                              fill={label === SG_LABEL ? '#fff' : '#334155'}
+                            >
+                              {formatEur(value)}
+                            </text>
+                          )
+                        }}
                       />
                     </Bar>
                   ))}
@@ -617,6 +642,22 @@ export default function FaturalarClient() {
                     </TableRow>
                   )
                 })}
+                {(() => {
+                  // Toplam satırı: tek tek bölümlerin değil, TÜMÜNÜN cirodaki gerçek payı.
+                  const totalTl = scopedDepartments.reduce((s, d) => s + d.tl, 0)
+                  const totalEur = scopedDepartments.reduce((s, d) => s + d.eur, 0)
+                  const totalOran = scopedCiro > 0 ? (totalEur / scopedCiro) * 100 : null
+                  return (
+                    <TableRow className="border-t-2 font-semibold">
+                      <TableCell>Toplam</TableCell>
+                      <TableCell className="text-right">{formatTL(totalTl)}</TableCell>
+                      <TableCell className="text-right">{formatEur(totalEur)}</TableCell>
+                      <TableCell className="text-right" style={{ color: totalOran == null ? '#BBB' : NAVY }}>
+                        {totalOran == null ? '—' : formatPercent(totalOran)}
+                      </TableCell>
+                    </TableRow>
+                  )
+                })()}
               </TableBody>
             </Table>
           )}
@@ -648,14 +689,17 @@ export default function FaturalarClient() {
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs text-muted-foreground">Ciro (€)</label>
-                    <Input
-                      value={monthCiro > 0 ? formatThousands(String(monthCiro)) : ''}
-                      onChange={(e) => handleRevenueChange(m.key, e.target.value.replace(/\D/g, ''))}
-                      onBlur={() => handleRevenueBlur(m.key)}
-                      placeholder="ciro gir"
-                      inputMode="numeric"
-                      className="h-9 w-40 text-right"
-                    />
+                    <div className="relative w-44">
+                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">€</span>
+                      <Input
+                        value={monthCiro > 0 ? formatThousands(String(monthCiro)) : ''}
+                        onChange={(e) => handleRevenueChange(m.key, e.target.value.replace(/\D/g, ''))}
+                        onBlur={() => handleRevenueBlur(m.key)}
+                        placeholder="ciro gir"
+                        inputMode="numeric"
+                        className="h-9 pl-6 text-right"
+                      />
+                    </div>
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs text-muted-foreground">Oran</label>
@@ -743,7 +787,14 @@ export default function FaturalarClient() {
                 <TableRow key={inv.id}>
                   <TableCell>{formatDateTR(inv.invoiceDate)}</TableCell>
                   <TableCell className="max-w-[220px] truncate" title={inv.companyName}>
-                    {inv.companyName}
+                    <span className="inline-flex items-center gap-1">
+                      {inv.companyName}
+                      {inv.note && (
+                        <span title={inv.note}>
+                          <StickyNote className="h-3 w-3 flex-shrink-0 text-amber-600" />
+                        </span>
+                      )}
+                    </span>
                   </TableCell>
                   <TableCell className="text-muted-foreground">{inv.invoiceNumber}</TableCell>
                   <TableCell className="text-right">
@@ -766,7 +817,9 @@ export default function FaturalarClient() {
                         onValueChange={(v) => handleDepartmentChange(inv.id, v)}
                       >
                         <SelectTrigger className="h-7 w-44 text-xs" style={{ color: inv.departmentOrgUnitId ? NAVY : '#5F5E5A' }}>
-                          <SelectValue />
+                          <SelectValue>
+                            <span className="block truncate text-left">{inv.departmentOrgUnitId || 'Genel'}</span>
+                          </SelectValue>
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="GENEL">Genel</SelectItem>
@@ -824,6 +877,17 @@ export default function FaturalarClient() {
               ))
             )}
           </TableBody>
+          {displayedInvoices.length > 0 && (
+            <TableFooter>
+              <TableRow>
+                <TableCell colSpan={4} className="font-semibold">
+                  Toplam ({displayedInvoices.length} fatura)
+                </TableCell>
+                <TableCell className="text-right font-semibold">{formatEur(displayedTotalEur)}</TableCell>
+                <TableCell colSpan={2} />
+              </TableRow>
+            </TableFooter>
+          )}
         </Table>
       </Card>
 

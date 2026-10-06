@@ -1,6 +1,6 @@
 # Fatura Takip — Teknik Dokümantasyon
 
-Sandbox: `sandbox/melike` · URL: `/sandbox/melike/faturalar` (prod'da henüz yok, bkz. "Durum")
+URL: `/sistem-gelistirme/faturalar` · API: `/api/finans/faturalar` (canlı)
 
 ## 1. Amaç
 
@@ -141,7 +141,7 @@ satırın/kartın € tutarı). Ciro girilmemişse (0) `—` gösterilir.
 
 ## 5. API Uçları
 
-Hepsi `src/app/api/sandbox/melike/faturalar/` altında, hepsi `requireUser()` +
+Hepsi `src/app/api/finans/faturalar/` altında, hepsi `requireUser()` +
 `canAccessFaturaTakip()` ile korunuyor.
 
 | Method | Yol | İş |
@@ -216,7 +216,7 @@ etiketinde yazıyor.
 ## 9. Dosya Haritası
 
 ```
-src/app/api/sandbox/melike/faturalar/
+src/app/api/finans/faturalar/
   route.ts                 GET liste / POST oluştur
   [id]/route.ts             DELETE / PATCH / PUT
   departments/route.ts      Personnel.bolum listesi
@@ -226,14 +226,17 @@ src/app/api/sandbox/melike/faturalar/
   tcmb-rate/route.ts        tek kur sorgusu
   export/route.ts           şablon / KPI özet / ham liste Excel
   import/route.ts           Excel toplu yükleme
-  _lib/access.ts            erişim + isSistemGelistirme()
-  _lib/tcmb.ts               TCMB kur çekme + cache
+  [id]/pdf/route.ts         eLogo PDF indir
+  backfill-pdf/route.ts     eski faturalar için toplu eLogo PDF taraması
+  _lib/elogo.ts             eLogo PostBoxService (login/arama/PDF, ENV: ELOGO_USERNAME/PASSWORD)
+  _lib/tcmb.ts              TCMB kur çekme + cache
   _lib/excel.ts              excel parse/format yardımcıları
   _lib/invoice.ts            resolveDepartments, computeAmounts
   _lib/summary.ts            computeSummary (tek kaynak)
 
-src/app/(dashboard)/sandbox/melike/faturalar/
-  page.tsx                          ana sayfa
+src/app/(dashboard)/sistem-gelistirme/faturalar/
+  page.tsx                          sunucu sayfası (yetki) → _components/faturalar-client.tsx
+  _components/faturalar-client.tsx  ana ekran
   _components/InvoiceFormDialog.tsx fatura ekle/düzenle formu
   _components/ImportDialog.tsx      excel içe/dışa aktar dialogu
   _components/CompanyAutocomplete.tsx firma adı autocomplete
@@ -241,14 +244,14 @@ src/app/(dashboard)/sandbox/melike/faturalar/
 
 ## 10. Durum
 
-- Branch: `sandbox/melike`, remote: `kisisel` (melikebalbn-stack/ilerihubmelike).
-  `hub`/`origin`'de bu branch hiç olmadı.
-- Prod'da (`hub.ilerigroup.com/sistem-gelistirme/faturalar`) şu an sadece **ilk sürüm**
-  (Genel/SG ayrımı, Excel içe/dışa aktarım) entegre. Bu dokümandaki her şey — çoklu bölüm
-  bölme, gerçek bölüm kaynağı, aylık ciro, tam düzenleme, KPI export, tüm UX/grafik/renk
-  düzeltmeleri, "Sistem Geliştirme Oranı" bug fix'i — henüz **sadece bu sandbox'ta**.
-- `sandbox/melike` branch'inin yerel `prisma/migrations/` geçmişi, bu işten bağımsız,
-  önceden var olan bir nedenle gerçek dev DB geçmişinden geride — yeni migration'lar
-  `prisma migrate diff` ile ek (additive) olarak üretilip elle uygulandı, `prisma migrate
-  dev`/`db push` hiç kullanılmadı. Bu, Melih Bey bu branch'i canlıya alırken bilmesi
-  gereken ayrı bir konu.
+- Canlı: `hub.ilerigroup.com/sistem-gelistirme/faturalar`. Bu dokümandaki her şey —
+  çoklu bölüm bölme, gerçek bölüm kaynağı, aylık ciro, tam düzenleme, KPI export,
+  UX/grafik/renk düzeltmeleri, eLogo PDF entegrasyonu — entegre edildi.
+- Geliştirme Melike'nin forkundaki `sandbox/melike` branch'inde yapılıyor; canlıya
+  cherry-pick ile `melihjoe/ilerihub` main'e alınıyor. Sandbox yolları (`/sandbox/melike/...`)
+  canlıda yok.
+- eLogo PDF'leri `public/uploads/faturalar/` altında (paylaşımlı `~/shared/uploads`
+  symlink'i) — slot değişiminde (`reset --hard` + `clean`) silinmesin diye. `storage/`
+  kullanılmaz.
+- `ELOGO_USERNAME` / `ELOGO_PASSWORD` iki slotun da `.env`'inde tanımlı olmalı; slot
+  başına ayrı dosyalar ve PM2 süreci env'i başlangıçta okuyor.

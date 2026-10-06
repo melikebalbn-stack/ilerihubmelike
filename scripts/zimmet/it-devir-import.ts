@@ -8,13 +8,16 @@
  *
  * Girdi CSV kolonları:
  *   ref, sayfa, excel_satir, islem, sebep, zimmet_sahibi_excel, zimmet_sahibi_eslestir,
- *   departman, tur, turDiger, marka_model, seriNumarasi, macAdresi, imeiNumarasi,
+ *   departman, tur, turDiger, marka, model, seriNumarasi, macAdresi, imeiNumarasi,
  *   pcAdi, ozellik, altZimmetSahibi, zimmet_tarihi, aciklama
+ *   (eski CSV'ler: marka + model yerine tek marka_model kolonu → model'e yazılır, marka boş)
  *
  * Kararlar (satır başına bir tane):
  *   YENI            eşleşen mevcut kayıt yok → yeni kayıt
  *   ATLA            aynı sahipte imzasız kayıt zaten var
  *   ATLA_ZATEN_VAR  id=ref kaydı zaten var (idempotent tekrar çalıştırma)
+ *   YENIDEN_AC      id=ref kaydı silinmiş ve son silme notu "sorunlu kayıt, IT elle girecek" → CSV
+ *                   değerleriyle geri açılır (ONAY_BEKLIYOR, onay/imza boş, sonBildirimTarihi NULL)
  *   ATLA_IMZALI     aynı sahipte ONAYLANDI / e-imzalı kayıt zaten var
  *   TASI            başka sahipte imzasız kayıt → eskisi soft-delete, yenisi açılır
  *   YENILE          (--yenile) ATLA yerine: imzasız eski kayıt soft-delete, itdevir-<ref> açılır
@@ -30,10 +33,16 @@
  *
  * Kullanım (worktree kökünden):
  *   npx tsx --env-file=<.env yolu> scripts/zimmet/it-devir-import.ts <csv> --created-by <User.id>
- *       [--override <json>] [--coklu-birlestir] [--yenile] [--envanter-sahibi <User.id>] [--apply --db-name <ad>]
+ *       [--override <json>] [--coklu-birlestir] [--yenile] [--envanter-sahibi <User.id>] [--alan-guncelle]
+ *       [--apply --db-name <ad>]
  *   --envanter-sahibi: islem=ENVANTER satırları depo kaydı olarak yazılır — sahip ve iadeAlan = bu kullanıcı,
- *   cihazDurumu=PASIF, iadeTarihi=aktarım anı, aciklama "[IT listesi 09.2026] Depo · …". Eşleştirme kuralları aynı.
+ *   cihazDurumu=PASIF, iadeTarihi=aktarım anı, aciklama "[IT listesi 10.2026] Depo · …". Eşleştirme kuralları aynı.
+ *   aciklama: CSV'deki baştaki TÜM "[IT listesi …]" etiketleri atılır, tek ACIKLAMA_ETIKETI konur.
  *   Verilmezse ENVANTER yalnız rapora.
+ *   --alan-guncelle: ATLA_ZATEN_VAR olan silinmemiş itdevir- kayıtlarında YALNIZ marka ve model CSV'dekiyle
+ *   farklıysa güncellenir; aciklama'nın içeriği korunur, yalnız baştaki çift/eski etiket tek ACIKLAMA_ETIKETI'ne
+ *   indirilir (durum, sahip, cihaz durumu, sonBildirimTarihi DEĞİŞMEZ); geçmişe eskiDurum = yeniDurum satırı
+ *   ALAN_GUNCELLE_NOTU / ETIKET_DUZELT_NOTU ile yazılır. Kayıt açılmaz/silinmez; rapordaki alan_guncelle kolonunda görünür.
  *   Varsayılan DRY-RUN: tüm kararları hesaplar, hiçbir şey yazmaz.
  *   --apply: tek transaction; --db-name current_database() ile aynı değilse durur.
  *   Kişi eşleştirme override'ı: {"Excel adı": "User.id"}. --override <yol> verilirse dosya zorunlu
@@ -41,7 +50,6 @@
  *
  * Geri alma: scripts/zimmet/it-devir-geri-al.ts (apply raporunu girdi alır).
  */
-import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import { Pool } from 'pg'
@@ -56,6 +64,12 @@ import {
   argDeger,
   raporYolu,
   ESKI_SILEN_KARARLAR,
+  KULLANICI_SELECT,
+  SORUNLU_NOTU,
+  YENIDEN_AC_NOTU,
+  overrideYukle,
+  sahipEslestirici,
+  type Kullanici,
 } from './it-devir-ortak'
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL })
@@ -69,13 +83,18 @@ const CREATED_BY = argDeger('--created-by')
 const DB_NAME = argDeger('--db-name')
 // --override verilirse dosya ZORUNLU (yoksa durur); verilmezse varsayılan dosya varsa kullanılır.
 const OVERRIDE_ARG = argDeger('--override')
-const OVERRIDE_YOLU = OVERRIDE_ARG ?? path.join(os.homedir(), 'zimmet_kisi_eslestirme.json')
+const OVERRIDE_VARSAYILAN = path.join(os.homedir(), 'zimmet_kisi_eslestirme.json')
 // --envanter-sahibi verilirse islem=ENVANTER satırları depo kaydı olarak yazılır (verilmezse yalnız rapora).
 const ENVANTER_SAHIBI_ID = argDeger('--envanter-sahibi')
-const DEPO_ACIKLAMA_ONEKI = '[IT listesi 09.2026] Depo'
+// aciklama'nın tek etiketi; CSV/eski kayıttaki "[IT listesi …]" etiketleri bununla değiştirilir.
+const ACIKLAMA_ETIKETI = '[IT listesi 10.2026]'
+const ETIKET_DESENI = /^\s*\[IT listesi [^\]]*\]\s*/
+const DEPO_DESENI = /^Depo(?:\s*·\s*|\s*$)/
+const ALAN_GUNCELLE = process.argv.includes('--alan-guncelle')
+const ALAN_GUNCELLE_NOTU = 'IT listesi – marka/model düzeltildi'
+const ETIKET_DUZELT_NOTU = 'IT listesi – açıklama etiketi düzeltildi'
 
 const TUR_DEGERLERI = new Set<string>(Object.values(ZimmetTuru))
-const BLUECOLLAR_DOMAIN = '@bluecollar.ilerigroup.com'
 
 type Satir = Record<string, string>
 type Karar =
@@ -91,6 +110,7 @@ type Karar =
   | 'SAHIP_BELIRSIZ'
   | 'TANIM_YOK'
   | 'ANAHTARSIZ'
+  | 'YENIDEN_AC'
   | 'BEKLET'
   | 'ENVANTER'
 
@@ -104,7 +124,6 @@ type Sonuc = {
   depo: boolean
 }
 
-type Kullanici = { id: string; name: string | null; firstName: string | null; lastName: string | null; email: string; isActive: boolean }
 type MevcutKayit = {
   id: string
   zimmetSahibiId: string
@@ -113,11 +132,6 @@ type MevcutKayit = {
   seriNumarasi: string | null
   imeiNumarasi: string | null
   macAdresi: string | null
-}
-
-// Ad karşılaştırması: normalizeTr + fazla boşluk + " | ILERI" gibi ekler temizlenir.
-function adNormalize(ad: string | null | undefined): string {
-  return normalizeTr((ad ?? '').split('|')[0]).replace(/\s+/g, ' ').trim()
 }
 
 function imzali(k: MevcutKayit): boolean {
@@ -137,6 +151,40 @@ function tarihCoz(deger: string): Date | null {
 function bos(v: string | undefined): string | null {
   const s = (v ?? '').trim()
   return s ? s : null
+}
+
+// Yeni CSV: ayrı marka + model kolonları. Eski CSV: birleşik marka_model → model'e, marka boş.
+function markaModel(s: Satir): { marka: string | null; model: string | null } {
+  return 'marka' in s ? { marka: bos(s.marka), model: bos(s.model) } : { marka: null, model: bos(s.marka_model) }
+}
+
+const markaModelMetni = (m: { marka: string | null; model: string | null }) => `${m.marka ?? '—'} / ${m.model ?? '—'}`
+
+// Baştaki tüm "[IT listesi …]" etiketlerini atar.
+function etiketsiz(deger: string): string {
+  let s = deger
+  while (ETIKET_DESENI.test(s)) s = s.replace(ETIKET_DESENI, '')
+  return s.trim()
+}
+
+// Tek etiketli açıklama: "[IT listesi 10.2026] Depo · <not>" / "[IT listesi 10.2026] <not>".
+function aciklamaEtiketle(icerik: string, depo: boolean): string {
+  if (depo) return icerik ? `${ACIKLAMA_ETIKETI} Depo · ${icerik}` : `${ACIKLAMA_ETIKETI} Depo`
+  return icerik ? `${ACIKLAMA_ETIKETI} ${icerik}` : ACIKLAMA_ETIKETI
+}
+
+// Etiketler ve "Depo ·" ayrılır: "[IT listesi 09.2026] Depo · [IT listesi 10.2026] Not: …" → depo + "Not: …"
+function govdeAyir(deger: string): { depo: boolean; icerik: string } {
+  const govde = etiketsiz(deger)
+  return DEPO_DESENI.test(govde) ? { depo: true, icerik: etiketsiz(govde.replace(DEPO_DESENI, '')) } : { depo: false, icerik: govde }
+}
+
+// --alan-guncelle: mevcut açıklamanın içeriği korunur, yalnız etiketler teke indirilir.
+// Etiketle başlamayan açıklamaya dokunulmaz.
+function etiketDuzelt(mevcut: string | null): string | null {
+  if (!mevcut || !ETIKET_DESENI.test(mevcut)) return mevcut
+  const { depo, icerik } = govdeAyir(mevcut)
+  return aciklamaEtiketle(icerik, depo)
 }
 
 async function main() {
@@ -165,33 +213,20 @@ async function main() {
   }
 
   const satirlar = csvOku(CSV_YOLU)
+  const kolonlar = new Set(Object.keys(satirlar[0] ?? {}))
+  const yeniKolonlar = kolonlar.has('marka') && kolonlar.has('model')
+  if (!yeniKolonlar && !kolonlar.has('marka_model')) throw new Error('CSV\'de marka + model ya da marka_model kolonu yok')
+  if (yeniKolonlar && kolonlar.has('marka_model')) throw new Error('CSV\'de hem marka/model hem marka_model var — biri olmalı')
+  if (kolonlar.has('marka') !== kolonlar.has('model')) throw new Error('CSV\'de marka ve model kolonları birlikte olmalı')
+  if (ALAN_GUNCELLE && !yeniKolonlar) throw new Error('--alan-guncelle için CSV\'de ayrı marka ve model kolonları gerekli')
   console.log(`CSV: ${CSV_YOLU} (${satirlar.length} satır) · oluşturan: ${olusturan.name ?? olusturan.id}`)
 
-  let override: Record<string, string> = {}
-  if (OVERRIDE_ARG && !fs.existsSync(OVERRIDE_ARG)) {
-    throw new Error(`--override dosyası bulunamadı: ${OVERRIDE_ARG}`)
-  }
-  if (fs.existsSync(OVERRIDE_YOLU)) {
-    override = JSON.parse(fs.readFileSync(OVERRIDE_YOLU, 'utf-8'))
-    console.log(`Kişi eşleştirme override: ${OVERRIDE_YOLU} — ${Object.keys(override).length} anahtar yüklendi`)
-  } else {
-    console.log(`Kişi eşleştirme override: YOK (varsayılan ${OVERRIDE_YOLU} bulunamadı)`)
-  }
-  const overrideNorm = new Map(Object.entries(override).map(([ad, id]) => [adNormalize(ad), id]))
+  const override = overrideYukle(OVERRIDE_ARG, OVERRIDE_VARSAYILAN)
 
   // ── Referans veriler ──
-  const kullanicilar: Kullanici[] = await prisma.user.findMany({
-    select: { id: true, name: true, firstName: true, lastName: true, email: true, isActive: true },
-  })
+  const kullanicilar: Kullanici[] = await prisma.user.findMany({ select: KULLANICI_SELECT })
   const kullaniciById = new Map(kullanicilar.map((u) => [u.id, u]))
-  const kullaniciByAd = new Map<string, Kullanici[]>()
-  for (const u of kullanicilar) {
-    const adlar = new Set([adNormalize(u.name), adNormalize(`${u.firstName ?? ''} ${u.lastName ?? ''}`)])
-    for (const ad of adlar) {
-      if (!ad) continue
-      kullaniciByAd.set(ad, [...(kullaniciByAd.get(ad) ?? []), u])
-    }
-  }
+  const sahipBul = sahipEslestirici(kullanicilar, override)
 
   const tanimlar = await prisma.zimmetTanim.findMany({
     where: { aktif: true },
@@ -218,45 +253,26 @@ async function main() {
     }
   }
   const refler = satirlar.map((s) => s.ref)
-  const zatenVar = new Set(
-    (await prisma.zimmetFormu.findMany({ where: { id: { in: refler } }, select: { id: true } })).map((z) => z.id),
-  )
+  const varOlanlar = await prisma.zimmetFormu.findMany({
+    where: { id: { in: refler } },
+    select: { id: true, silindiMi: true, durum: true, marka: true, model: true, aciklama: true },
+  })
+  const varOlanById = new Map(varOlanlar.map((z) => [z.id, z]))
+  const zatenVar = new Set(varOlanlar.map((z) => z.id))
+  // YENIDEN_AC adayları: itdevir-<ref> silinmiş VE son silme notu SORUNLU_NOTU ("IT elle girecek").
+  // Başka bir sebeple silinmiş (geri alma, temizlik vb.) kayıt ATLA_ZATEN_VAR kalır.
+  const silinmisIdler = varOlanlar.filter((z) => z.silindiMi).map((z) => z.id)
+  const sonSilmeNotu = new Map<string, string | null>()
+  for (const g of await prisma.zimmetDurumGecmisi.findMany({
+    where: { zimmetId: { in: silinmisIdler }, yeniDurum: 'SILINDI' },
+    orderBy: { createdAt: 'desc' },
+    select: { zimmetId: true, not: true },
+  })) {
+    if (!sonSilmeNotu.has(g.zimmetId)) sonSilmeNotu.set(g.zimmetId, g.not)
+  }
+  const yenidenAcilabilir = new Set(silinmisIdler.filter((id) => sonSilmeNotu.get(id) === SORUNLU_NOTU))
 
   // ── Yardımcılar ──
-  function sahipBul(ad: string): { user: Kullanici | null; sebep: string } {
-    const n = adNormalize(ad)
-    const ovId = overrideNorm.get(n)
-    if (ovId) {
-      const u = kullaniciById.get(ovId)
-      return u ? { user: u, sebep: 'override' } : { user: null, sebep: `override User.id bulunamadı: ${ovId}` }
-    }
-    const adaylar = kullaniciByAd.get(n) ?? []
-    if (adaylar.length === 0) {
-      const tokenlar = new Set(n.split(' '))
-      const kismi = kullanicilar.filter((u) => {
-        const t = new Set(adNormalize(u.name).split(' ').filter(Boolean))
-        const ortak = [...tokenlar].filter((x) => t.has(x)).length
-        return ortak >= 2 && ([...tokenlar].every((x) => t.has(x)) || [...t].every((x) => tokenlar.has(x)))
-      })
-      return {
-        user: null,
-        sebep: kismi.length
-          ? `yalnız kısmi eşleşme: ${kismi.map((u) => `${u.name} (${u.id})`).join('; ')}`
-          : 'User tablosunda eşleşme yok',
-      }
-    }
-    if (adaylar.length === 1) {
-      const u = adaylar[0]
-      return u.isActive ? { user: u, sebep: 'tam' } : { user: null, sebep: `tek eşleşme PASİF hesap: ${u.name} (${u.id})` }
-    }
-    const aktifAd = adaylar.filter((u) => u.isActive && !u.email.toLowerCase().endsWith(BLUECOLLAR_DOMAIN))
-    if (aktifAd.length === 1) return { user: aktifAd[0], sebep: `${adaylar.length} hesaptan aktif AD hesabı seçildi` }
-    return {
-      user: null,
-      sebep: `birden fazla hesap, tek aktif AD hesabı yok: ${adaylar.map((u) => `${u.id}${u.isActive ? '' : ' (pasif)'}`).join('; ')}`,
-    }
-  }
-
   function tanimVar(turDiger: string): boolean {
     const parcalar = turDiger.split('·').map((p) => esitlikIcinNormalize(p)).filter(Boolean)
     const kok = tanimlar.find((t) => t.parentId === null && esitlikIcinNormalize(t.ad) === parcalar[0])
@@ -292,7 +308,7 @@ async function main() {
     if (!TUR_DEGERLERI.has(s.tur)) throw new Error(`${s.ref}: geçersiz tur "${s.tur}"`)
     tarihCoz(s.zimmet_tarihi) // format hatası varsa dry-run'da yakalansın
 
-    if (zatenVar.has(s.ref)) {
+    if (zatenVar.has(s.ref) && !yenidenAcilabilir.has(s.ref)) {
       sonuclar.push(sonuc('ATLA_ZATEN_VAR', 'id=ref kaydı zaten var'))
       continue
     }
@@ -369,6 +385,20 @@ async function main() {
     }
   }
 
+  // YENIDEN_AC: silinmiş "IT elle girecek" kaydı, eşleşen başka mevcut kayıt yoksa (YENI/ANAHTARSIZ)
+  // geri açılıp CSV değerleriyle güncellenir. Başka bir mevcut kayıtla eşleşiyorsa otomatik karar
+  // verilmez (COKLU_ESLESME); sahip/tanım sorunları kendi kararında kalır.
+  for (const r of sonuclar) {
+    if (!yenidenAcilabilir.has(r.satir.ref)) continue
+    if (r.karar === 'YENI' || r.karar === 'ANAHTARSIZ') {
+      r.sebep = `silinmiş "IT elle girecek" kaydı CSV değerleriyle geri açılıyor (${r.sebep})`
+      r.karar = 'YENIDEN_AC'
+    } else if (r.karar in ESKI_SILEN_KARARLAR || r.karar === 'ATLA' || r.karar === 'ATLA_IMZALI' || r.karar === 'IMZALI_CAKISMA') {
+      r.sebep = `yeniden açılacak kayıt başka mevcut kayıtla da eşleşiyor — elle karar gerekir (${r.sebep})`
+      r.karar = 'COKLU_ESLESME'
+    }
+  }
+
   // Aynı mevcut kaydı birden fazla satır taşımak/birleştirmek istiyorsa → hepsi COKLU_ESLESME.
   const talepler = new Map<string, Sonuc[]>()
   for (const r of sonuclar.filter((x) => x.karar in ESKI_SILEN_KARARLAR)) {
@@ -383,7 +413,7 @@ async function main() {
   }
   // CSV içinde aynı anahtarla YENI açılacak birden fazla satır → hepsi COKLU_ESLESME.
   const yeniAnahtar = new Map<string, Sonuc[]>()
-  for (const r of sonuclar.filter((x) => x.karar === 'YENI' || x.karar in ESKI_SILEN_KARARLAR)) {
+  for (const r of sonuclar.filter((x) => x.karar === 'YENI' || x.karar === 'YENIDEN_AC' || x.karar in ESKI_SILEN_KARARLAR)) {
     for (const kolon of ['seriNumarasi', 'imeiNumarasi', 'macAdresi']) {
       const a = anahtarNormalize(r.satir[kolon])
       if (a) yeniAnahtar.set(`${kolon}=${a}`, [...(yeniAnahtar.get(`${kolon}=${a}`) ?? []), r])
@@ -398,16 +428,41 @@ async function main() {
   }
 
   // ── Yazma (yalnız --apply) ──
-  const yazilacak = sonuclar.filter((r) => r.karar === 'YENI' || r.karar === 'ANAHTARSIZ' || r.karar in ESKI_SILEN_KARARLAR)
+  const yazilacak = sonuclar.filter(
+    (r) => r.karar === 'YENI' || r.karar === 'ANAHTARSIZ' || r.karar === 'YENIDEN_AC' || r.karar in ESKI_SILEN_KARARLAR,
+  )
 
   // Depo kaydı alanları: iade akışının sonucu (PASIF + iadeTarihi/iadeAlanId), sahip = depo sorumlusu.
-  const depoAciklama = (s: Satir) => {
-    const mevcut = (s.aciklama ?? '').replace(/^\s*\[IT listesi 09\.2026\]\s*/, '').trim()
-    return mevcut ? `${DEPO_ACIKLAMA_ONEKI} · ${mevcut}` : DEPO_ACIKLAMA_ONEKI
-  }
+  const depoAciklama = (s: Satir) => aciklamaEtiketle(govdeAyir(s.aciklama ?? '').icerik, true)
+  const normalAciklama = (s: Satir) => (bos(s.aciklama) ? aciklamaEtiketle(govdeAyir(s.aciklama).icerik, false) : null)
   const depoNotu = (s: Satir) => {
     const oncekiSahip = s.zimmet_sahibi_excel && normalizeTr(s.zimmet_sahibi_excel) !== 'envanter' ? `; önceki sahip ${s.zimmet_sahibi_excel}` : ''
     return `IT listesi 09.2026 – depoya alındı (sorumlu: ${envanterSahibi?.name ?? envanterSahibi?.id})${oncekiSahip}`
+  }
+
+  // --alan-guncelle: id=ref kaydı silinmemişse yalnız marka/model (CSV'den farklıysa) ve aciklama etiketi
+  // (çift/eski etiket varsa) güncellenir.
+  type AlanDegisikligi = { marka?: string | null; model?: string | null; aciklama?: string | null }
+  const alanGuncelle = new Map<string, { durum: ZimmetOnayDurumu; data: AlanDegisikligi; notlar: string[] }>()
+  if (ALAN_GUNCELLE) {
+    for (const r of sonuclar) {
+      if (r.karar !== 'ATLA_ZATEN_VAR') continue
+      const k = varOlanById.get(r.satir.ref)
+      if (!k || k.silindiMi || !k.id.startsWith('itdevir-')) continue
+      const data: AlanDegisikligi = {}
+      const notlar: string[] = []
+      const yeni = markaModel(r.satir)
+      if (k.marka !== yeni.marka || k.model !== yeni.model) {
+        Object.assign(data, yeni)
+        notlar.push(`${ALAN_GUNCELLE_NOTU}: ${markaModelMetni(k)} → ${markaModelMetni(yeni)}`)
+      }
+      const aciklama = etiketDuzelt(k.aciklama)
+      if (aciklama !== k.aciklama) {
+        data.aciklama = aciklama
+        notlar.push(ETIKET_DUZELT_NOTU)
+      }
+      if (notlar.length) alanGuncelle.set(k.id, { durum: k.durum, data, notlar })
+    }
   }
 
   if (APPLY) {
@@ -432,40 +487,70 @@ async function main() {
               },
             })
           }
-          await tx.zimmetFormu.create({
-            data: {
-              id: s.ref,
-              zimmetSahibiId: r.userId!,
-              createdById: CREATED_BY!,
-              kaynak: ZimmetKaynak.SYTELINE_DEVIR,
-              durum: ZimmetOnayDurumu.ONAY_BEKLIYOR,
-              sonBildirimTarihi: null,
-              silindiMi: false,
-              tur: s.tur as ZimmetTuru,
-              turDiger: bos(s.turDiger),
-              // CSV'de marka ve model ayrı değil — birleşik metin model'e, marka boş.
-              model: bos(s.marka_model),
-              seriNumarasi: bos(s.seriNumarasi),
-              macAdresi: bos(s.macAdresi),
-              imeiNumarasi: bos(s.imeiNumarasi),
-              pcAdi: bos(s.pcAdi),
-              ozellik: bos(s.ozellik),
-              departman: bos(s.departman),
-              altZimmetSahibi: bos(s.altZimmetSahibi),
-              aciklama: r.depo ? depoAciklama(s) : bos(s.aciklama),
-              verilisTarihi: tarihCoz(s.zimmet_tarihi),
-              ...(r.depo
-                ? { cihazDurumu: ZimmetCihazDurumu.PASIF, iadeTarihi: simdi, iadeAlanId: envanterSahibi!.id }
-                : {}),
-            },
-          })
+          // Yeni kayıtla yeniden açılan kaydın ORTAK alanları — ikisi de CSV'nin güncel hâlini taşır.
+          const alanlar = {
+            zimmetSahibiId: r.userId!,
+            kaynak: ZimmetKaynak.SYTELINE_DEVIR,
+            durum: ZimmetOnayDurumu.ONAY_BEKLIYOR,
+            sonBildirimTarihi: null,
+            silindiMi: false,
+            tur: s.tur as ZimmetTuru,
+            turDiger: bos(s.turDiger),
+            ...markaModel(s),
+            seriNumarasi: bos(s.seriNumarasi),
+            macAdresi: bos(s.macAdresi),
+            imeiNumarasi: bos(s.imeiNumarasi),
+            pcAdi: bos(s.pcAdi),
+            ozellik: bos(s.ozellik),
+            departman: bos(s.departman),
+            altZimmetSahibi: bos(s.altZimmetSahibi),
+            aciklama: r.depo ? depoAciklama(s) : normalAciklama(s),
+            verilisTarihi: tarihCoz(s.zimmet_tarihi),
+            cihazDurumu: r.depo ? ZimmetCihazDurumu.PASIF : ZimmetCihazDurumu.AKTIF,
+            iadeTarihi: r.depo ? simdi : null,
+            iadeAlanId: r.depo ? envanterSahibi!.id : null,
+          }
+          if (r.karar === 'YENIDEN_AC') {
+            // Önceki onay/imza/red izi taşınmaz: kayıt sıfırdan ONAY_BEKLIYOR olarak geri açılır.
+            await tx.zimmetFormu.update({
+              where: { id: s.ref, silindiMi: true },
+              data: {
+                ...alanlar,
+                silinmeTarihi: null,
+                silenId: null,
+                onaylayanId: null,
+                onayTarihi: null,
+                zimmetSahibiImzaTarihi: null,
+                teslimEdenImzaTarihi: null,
+                imzaModu: null,
+                islakImzaDosyasi: null,
+                redSebebi: null,
+              },
+            })
+          } else {
+            await tx.zimmetFormu.create({ data: { ...alanlar, id: s.ref, createdById: CREATED_BY! } })
+          }
+          const olusturmaNotu = r.depo ? depoNotu(s) : `IT listesi 09.2026 aktarımı (${s.sayfa}!${s.excel_satir})`
           await tx.zimmetDurumGecmisi.create({
             data: {
               zimmetId: s.ref,
-              eskiDurum: null,
+              eskiDurum: r.karar === 'YENIDEN_AC' ? 'SILINDI' : null,
               yeniDurum: ZimmetOnayDurumu.ONAY_BEKLIYOR,
               islemYapanId: CREATED_BY!,
-              not: r.depo ? depoNotu(s) : `IT listesi 09.2026 aktarımı (${s.sayfa}!${s.excel_satir})`,
+              not: r.karar === 'YENIDEN_AC' ? `${YENIDEN_AC_NOTU} — ${olusturmaNotu}` : olusturmaNotu,
+            },
+          })
+        }
+        for (const [id, g] of alanGuncelle) {
+          // Yalnız marka/model/aciklama etiketi — durum, sahip, cihaz durumu ve sonBildirimTarihi değişmez.
+          await tx.zimmetFormu.update({ where: { id, silindiMi: false }, data: g.data })
+          await tx.zimmetDurumGecmisi.create({
+            data: {
+              zimmetId: id,
+              eskiDurum: g.durum,
+              yeniDurum: g.durum,
+              islemYapanId: CREATED_BY!,
+              not: g.notlar.join('; '),
             },
           })
         }
@@ -478,11 +563,17 @@ async function main() {
   const rapor = raporYolu('zimmet-it-devir', APPLY ? 'apply' : 'dry-run')
   csvYaz(
     rapor,
-    ['ref', 'karar', 'sahip', 'eslesen_user_id', 'eski_kayit_idler', 'sebep', 'depo'],
-    sonuclar.map((r) => [r.satir.ref, r.karar, r.sahipAdi, r.userId ?? '', r.eskiIdler.join(' '), r.sebep, r.depo ? 'evet' : '']),
+    ['ref', 'karar', 'sahip', 'eslesen_user_id', 'eski_kayit_idler', 'sebep', 'depo', 'alan_guncelle'],
+    sonuclar.map((r) => {
+      const g = alanGuncelle.get(r.satir.ref)
+      return [
+        r.satir.ref, r.karar, r.sahipAdi, r.userId ?? '', r.eskiIdler.join(' '), r.sebep, r.depo ? 'evet' : '',
+        g ? g.notlar.join('; ') : '',
+      ]
+    }),
   )
 
-  const sira: Karar[] = ['YENI', 'ATLA', 'ATLA_ZATEN_VAR', 'ATLA_IMZALI', 'TASI', 'TASI_IMZALI', 'YENILE', 'IMZALI_CAKISMA', 'COKLU_ESLESME', 'SAHIP_BELIRSIZ', 'TANIM_YOK', 'ANAHTARSIZ', 'BEKLET', 'ENVANTER']
+  const sira: Karar[] = ['YENI', 'YENIDEN_AC', 'ATLA', 'ATLA_ZATEN_VAR', 'ATLA_IMZALI', 'TASI', 'TASI_IMZALI', 'YENILE', 'IMZALI_CAKISMA', 'COKLU_ESLESME', 'SAHIP_BELIRSIZ', 'TANIM_YOK', 'ANAHTARSIZ', 'BEKLET', 'ENVANTER']
   console.log('\nKarar dağılımı:')
   for (const k of sira) console.log(`  ${k.padEnd(15)} ${sonuclar.filter((r) => r.karar === k).length}`)
   console.log(`  ${'TOPLAM'.padEnd(15)} ${sonuclar.length}`)
@@ -491,6 +582,12 @@ async function main() {
   console.log(
     `\n${APPLY ? 'Yazıldı' : 'Yazılacak'}: ${yazilacak.length} yeni kayıt (${depoYazilacak} depo), ${eskiSilinecek} eski kayıt soft-delete. Bildirim: YOK.`,
   )
+  if (ALAN_GUNCELLE) {
+    const gs = [...alanGuncelle.values()]
+    console.log(
+      `${APPLY ? 'Güncellendi' : 'Güncellenecek'} (--alan-guncelle): ${gs.length} kayıt — marka/model ${gs.filter((g) => 'model' in g.data).length}, açıklama etiketi ${gs.filter((g) => 'aciklama' in g.data).length}.`,
+    )
+  }
   if (depoYazilacak) {
     console.log(`\nDepo satırları (${depoYazilacak}, sahip ${envanterSahibi?.name}, PASIF):`)
     for (const r of yazilacak.filter((x) => x.depo)) console.log(`  ${r.satir.ref} | ${r.karar} | ${r.sebep}`)

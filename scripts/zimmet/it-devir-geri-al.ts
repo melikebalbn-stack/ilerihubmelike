@@ -9,10 +9,15 @@
  *  3) it-devir-temizle'nin sildiği kayıtları (son SILINDI notu TEMIZLIK_NOTU) geri açar.
  *  Her değişiklik ZimmetDurumGecmisi'ne yazılır. BİLDİRİM YOK.
  *
+ *  --sadece <ref,...>: YALNIZ verilen itdevir- kayıtları soft-delete edilir (kısmi geri alma). Temizlik
+ *  geri açılmaz; rapor verilirse yalnız bu ref'lerin TASI/TASI_IMZALI/YENILE eskileri geri açılır.
+ *  --not "<metin>": soft-delete geçmiş notu (varsayılan: GERI_ALMA_NOTU).
+ *
  * Kullanım (worktree kökünden):
  *   npx tsx --env-file=<.env yolu> scripts/zimmet/it-devir-geri-al.ts <import-apply-rapor.csv> [<rapor2.csv> …]
- *       --islem-yapan <User.id> [--apply --db-name <ad>]
+ *       --islem-yapan <User.id> [--sadece <ref,...>] [--not "<metin>"] [--apply --db-name <ad>]
  *   Varsayılan DRY-RUN. --apply: tek transaction; --db-name current_database() ile aynı değilse durur.
+ *   --sadece modunda rapor zorunlu değildir.
  */
 import { Pool } from 'pg'
 import { PrismaPg } from '@prisma/adapter-pg'
@@ -29,7 +34,7 @@ import {
 const pool = new Pool({ connectionString: process.env.DATABASE_URL })
 const prisma = new PrismaClient({ adapter: new PrismaPg(pool) })
 
-const DEGERLI_BAYRAKLAR = new Set(['--islem-yapan', '--db-name'])
+const DEGERLI_BAYRAKLAR = new Set(['--islem-yapan', '--db-name', '--sadece', '--not'])
 const APPLY = process.argv.includes('--apply')
 const RAPORLAR = process.argv
   .slice(2)
@@ -37,11 +42,21 @@ const RAPORLAR = process.argv
 const ISLEM_YAPAN = argDeger('--islem-yapan')
 const DB_NAME = argDeger('--db-name')
 const GERI_ALMA_NOTU = 'IT listesi 09.2026 aktarımı geri alındı'
+const SADECE_ARG = process.argv.includes('--sadece') ? argDeger('--sadece') ?? '' : null
+const SADECE: string[] | null =
+  SADECE_ARG === null ? null : [...new Set(SADECE_ARG.split(',').map((r) => r.trim()).filter(Boolean))]
+const SILME_NOTU = (process.argv.includes('--not') ? argDeger('--not') : null) ?? GERI_ALMA_NOTU
 
 async function main() {
-  if (!RAPORLAR.length) {
-    throw new Error('Kullanım: it-devir-geri-al.ts <import-apply-rapor.csv> [...] --islem-yapan <User.id> [--apply --db-name <ad>]')
+  if (!RAPORLAR.length && !SADECE) {
+    throw new Error('Kullanım: it-devir-geri-al.ts <import-apply-rapor.csv> [...] --islem-yapan <User.id> [--sadece <ref,...>] [--apply --db-name <ad>]')
   }
+  if (SADECE && !SADECE.length) throw new Error('--sadece için en az bir ref gerekli (virgülle ayrılmış)')
+  if (SADECE) {
+    const gecersiz = SADECE.filter((r) => !r.startsWith('itdevir-'))
+    if (gecersiz.length) throw new Error(`--sadece yalnız itdevir- kayıtları kabul eder: ${gecersiz.join(', ')}`)
+  }
+  if (process.argv.includes('--not') && !argDeger('--not')) throw new Error('--not için metin gerekli')
   if (!ISLEM_YAPAN) throw new Error('--islem-yapan <User.id> zorunlu')
 
   const [{ db }] = await prisma.$queryRaw<{ db: string }[]>`SELECT current_database() AS db`
@@ -49,17 +64,25 @@ async function main() {
     if (!DB_NAME) throw new Error('--apply için --db-name <ad> zorunlu')
     if (DB_NAME !== db) throw new Error(`GÜVENLİK DURDU: --db-name "${DB_NAME}" ≠ current_database() "${db}"`)
   }
-  console.log(`\n=== IT zimmet devir GERİ ALMA — ${APPLY ? 'APPLY (yazma)' : 'DRY-RUN (yazma yok)'} — DB: ${db} ===`)
+  console.log(
+    `\n=== IT zimmet devir GERİ ALMA${SADECE ? ` (--sadece ${SADECE.length} ref)` : ''} — ${APPLY ? 'APPLY (yazma)' : 'DRY-RUN (yazma yok)'} — DB: ${db} ===`,
+  )
+  console.log(`Silme notu: ${SILME_NOTU}`)
 
   const kullanici = await prisma.user.findUnique({ where: { id: ISLEM_YAPAN }, select: { id: true } })
   if (!kullanici) throw new Error(`--islem-yapan kullanıcısı bulunamadı: ${ISLEM_YAPAN}`)
 
-  // 1) Import'un açtığı kayıtlar
+  // 1) Import'un açtığı kayıtlar (--sadece: yalnız verilen ref'ler)
   const yeniKayitlar = await prisma.zimmetFormu.findMany({
-    where: { id: { startsWith: 'itdevir-' }, silindiMi: false },
+    where: SADECE ? { id: { in: SADECE }, silindiMi: false } : { id: { startsWith: 'itdevir-' }, silindiMi: false },
     select: { id: true, durum: true, zimmetSahibiImzaTarihi: true, cihazDurumu: true },
     orderBy: { id: 'asc' },
   })
+  if (SADECE) {
+    const bulunan = new Set(yeniKayitlar.map((k) => k.id))
+    const eksik = SADECE.filter((r) => !bulunan.has(r))
+    if (eksik.length) throw new Error(`--sadece: silinmemiş kayıt bulunamadı (yok ya da zaten silinmiş): ${eksik.join(', ')}`)
+  }
 
   // 2) TASI / TASI_IMZALI / YENILE ile silinen eski kayıtlar (raporlardan) — beklenen son silme notuyla
   const istekler: { ref: string; id: string; beklenenNot: string }[] = []
@@ -71,13 +94,18 @@ async function main() {
     for (const r of rapor) {
       const onek = ESKI_SILEN_KARARLAR[r.karar]
       if (!onek) continue
+      if (SADECE && !SADECE.includes(r.ref)) continue
       for (const id of r.eski_kayit_idler.split(' ').filter(Boolean)) istekler.push({ ref: r.ref, id, beklenenNot: `${onek}${r.ref}` })
     }
   }
-  // 3) it-devir-temizle'nin sildikleri
-  const temizlenenIdler = (
-    await prisma.zimmetDurumGecmisi.findMany({ where: { yeniDurum: 'SILINDI', not: TEMIZLIK_NOTU }, select: { zimmetId: true } })
-  ).map((g) => g.zimmetId)
+  // 3) it-devir-temizle'nin sildikleri (--sadece modunda geri açılmaz).
+  // `not` alanı where'de kullanılamıyor (Prisma 7.2 query compiler panic: alan adı filtre
+  // operatörüyle çakışıyor) — SILINDI satırları okunup not JS'te süzülür.
+  const temizlenenIdler = SADECE
+    ? []
+    : (await prisma.zimmetDurumGecmisi.findMany({ where: { yeniDurum: 'SILINDI' }, select: { zimmetId: true, not: true } }))
+        .filter((g) => g.not === TEMIZLIK_NOTU)
+        .map((g) => g.zimmetId)
   for (const id of new Set(temizlenenIdler)) {
     if (!istekler.some((t) => t.id === id)) istekler.push({ ref: 'TEMIZLIK', id, beklenenNot: TEMIZLIK_NOTU })
   }
@@ -116,7 +144,7 @@ async function main() {
             data: { silindiMi: true, silinmeTarihi: simdi, silenId: ISLEM_YAPAN },
           })
           await tx.zimmetDurumGecmisi.create({
-            data: { zimmetId: k.id, eskiDurum: k.durum, yeniDurum: 'SILINDI', islemYapanId: ISLEM_YAPAN!, not: GERI_ALMA_NOTU },
+            data: { zimmetId: k.id, eskiDurum: k.durum, yeniDurum: 'SILINDI', islemYapanId: ISLEM_YAPAN!, not: SILME_NOTU },
           })
         }
         for (const a of acilacak) {
@@ -147,7 +175,9 @@ async function main() {
   ])
 
   const imzalilar = yeniKayitlar.filter((k) => k.durum === 'ONAYLANDI' || k.zimmetSahibiImzaTarihi)
-  console.log(`\n${APPLY ? 'Soft-delete edildi' : 'Soft-delete edilecek'} (itdevir-%): ${yeniKayitlar.length}`)
+  console.log(`\n${APPLY ? 'Soft-delete edildi' : 'Soft-delete edilecek'} (${SADECE ? '--sadece' : 'itdevir-%'}): ${yeniKayitlar.length}`)
+  if (SADECE) for (const k of yeniKayitlar) console.log(`  ${k.id} (${k.durum}, ${k.cihazDurumu})`)
+  if (SADECE && !RAPORLAR.length) console.log('  (rapor verilmedi — bu ref\'lerin TASI/YENILE eskileri kontrol edilmedi)')
   const depoKayitlari = yeniKayitlar.filter((k) => k.cihazDurumu === 'PASIF').length
   if (depoKayitlari) console.log(`  (bunlardan ${depoKayitlari} kayıt depo — cihazDurumu PASIF)`)
   if (imzalilar.length) {

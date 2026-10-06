@@ -301,6 +301,7 @@ import {
   geriAlServisPersonelAtama,
   transferServisPersonelAtama,
   transferKapasiteOnizle,
+  PASIF_YERLESKE_GUZERGAH_MESAJI,
 } from './service'
 import { baslangicTarihiCoz, bugunTR } from './tarih-kurallari'
 
@@ -596,7 +597,7 @@ describe('ServisGuzergah — create/edit', () => {
 
   it('aynı kodla yeni kayıt oluşturmaz', async () => {
     mocks.guzergahFindUnique.mockResolvedValue({ id: 'baska', kod: 'DAR-1' })
-    mocks.yerleskeFindUnique.mockResolvedValue({ id: 'yer-1' })
+    mocks.yerleskeFindUnique.mockResolvedValue({ id: 'yer-1', aktif: true })
     await expect(createServisGuzergah(gecerliGuzergah)).rejects.toThrow('zaten kullanılıyor')
     expect(mocks.guzergahCreate).not.toHaveBeenCalled()
   })
@@ -605,6 +606,39 @@ describe('ServisGuzergah — create/edit', () => {
     mocks.guzergahFindUnique.mockResolvedValue(null)
     mocks.yerleskeFindUnique.mockResolvedValue(null)
     await expect(createServisGuzergah(gecerliGuzergah)).rejects.toThrow('Yerleşke bulunamadı')
+  })
+
+  describe('pasif yerleşke altına güzergâh (düzeltme 2)', () => {
+    it('pasif yerleşkeye yeni güzergâh oluşturulmaz (kayıt ve audit yazılmaz)', async () => {
+      mocks.guzergahFindUnique.mockResolvedValue(null)
+      mocks.yerleskeFindUnique.mockResolvedValue({ id: 'yer-1', aktif: false })
+      await expect(createServisGuzergah(gecerliGuzergah)).rejects.toThrow(PASIF_YERLESKE_GUZERGAH_MESAJI)
+      expect(PASIF_YERLESKE_GUZERGAH_MESAJI).toBe('Pasif yerleşkeye güzergâh eklenemez; önce yerleşkeyi geri alın.')
+      expect(mocks.guzergahCreate).not.toHaveBeenCalled()
+    })
+
+    it('güzergâhı pasif bir yerleşkeye TAŞIYAN güncelleme reddedilir', async () => {
+      mocks.guzergahFindUnique.mockResolvedValue({ id: 'g1', kod: 'DAR-1', yerleskeId: 'eski-yer' })
+      mocks.yerleskeFindUnique.mockResolvedValue({ id: 'yer-1', aktif: false })
+      await expect(updateServisGuzergah('g1', gecerliGuzergah)).rejects.toThrow(PASIF_YERLESKE_GUZERGAH_MESAJI)
+      expect(mocks.guzergahUpdate).not.toHaveBeenCalled()
+    })
+
+    it('zaten pasif yerleşkedeki güzergâhın DİĞER alanları düzenlenebilir (yerleşke değişmiyor)', async () => {
+      mocks.guzergahFindUnique.mockResolvedValue({ id: 'g1', kod: 'DAR-1', yerleskeId: 'yer-1' })
+      mocks.yerleskeFindUnique.mockResolvedValue({ id: 'yer-1', aktif: false })
+      mocks.guzergahUpdate.mockResolvedValue({ id: 'g1', kod: 'DAR-1', ad: 'Yeni Ad' })
+      const data = await updateServisGuzergah('g1', { ...gecerliGuzergah, ad: 'Yeni Ad' })
+      expect(data.ad).toBe('Yeni Ad')
+    })
+
+    it('güzergâhı AKTİF bir yerleşkeye taşıma serbest', async () => {
+      mocks.guzergahFindUnique.mockResolvedValue({ id: 'g1', kod: 'DAR-1', yerleskeId: 'eski-yer' })
+      mocks.yerleskeFindUnique.mockResolvedValue({ id: 'yer-1', aktif: true })
+      mocks.guzergahUpdate.mockResolvedValue({ id: 'g1', kod: 'DAR-1' })
+      await updateServisGuzergah('g1', gecerliGuzergah)
+      expect(mocks.guzergahUpdate).toHaveBeenCalled()
+    })
   })
 
   it('bitiş tarihi başlangıçtan önceyse DB çağrısı yapmaz', async () => {
@@ -618,7 +652,7 @@ describe('ServisGuzergah — create/edit', () => {
 
   it('mevcut güzergâhı günceller', async () => {
     mocks.guzergahFindUnique.mockResolvedValue({ id: 'g1', kod: 'DAR-1' })
-    mocks.yerleskeFindUnique.mockResolvedValue({ id: 'yer-1' })
+    mocks.yerleskeFindUnique.mockResolvedValue({ id: 'yer-1', aktif: true })
     mocks.guzergahUpdate.mockResolvedValue({ id: 'g1', kod: 'DAR-1', ad: 'Yeni Ad' })
     const data = await updateServisGuzergah('g1', { ...gecerliGuzergah, ad: 'Yeni Ad' })
     expect(data.ad).toBe('Yeni Ad')
@@ -640,7 +674,7 @@ describe('ServisGuzergah — create/edit', () => {
       yerleskeId: gecerliGuzergah.yerleskeId,
       gecerlilikBaslangici: new Date('2026-08-01T00:00:00.000Z'), gecerlilikBitisi: new Date('2026-12-31T00:00:00.000Z'),
     })
-    mocks.yerleskeFindUnique.mockResolvedValue({ id: 'yer-1' })
+    mocks.yerleskeFindUnique.mockResolvedValue({ id: 'yer-1', aktif: true })
     mocks.guzergahUpdate.mockResolvedValue({ id: 'g1', ad: 'Yeni Ad' })
     await updateServisGuzergah('g1', { ...gecerliGuzergah, ad: 'Yeni Ad' }, 'user-9')
     expect(mocks.islemGecmisiCreate).toHaveBeenCalledWith(expect.objectContaining({
@@ -658,7 +692,7 @@ describe('ServisGuzergah — create/edit', () => {
       yerleskeId: gecerliGuzergah.yerleskeId,
       gecerlilikBaslangici: new Date('2026-08-01T00:00:00.000Z'), gecerlilikBitisi: new Date('2026-12-31T00:00:00.000Z'),
     })
-    mocks.yerleskeFindUnique.mockResolvedValue({ id: 'yer-1' })
+    mocks.yerleskeFindUnique.mockResolvedValue({ id: 'yer-1', aktif: true })
     mocks.guzergahUpdate.mockResolvedValue({ id: 'g1' })
     await updateServisGuzergah('g1', gecerliGuzergah, 'user-9')
     expect(mocks.islemGecmisiCreate).not.toHaveBeenCalled()
@@ -3696,7 +3730,7 @@ describe('A4 — güzergâh / durak KODU kimliktir: kullanım kaydı varsa deği
   it('🔴 güzergâh: kod değişiyor + kullanım var → reddedilir (ad serbest notuyla), yazma yok', async () => {
     mocks.guzergahFindUnique.mockReset()
     mocks.guzergahFindUnique.mockResolvedValueOnce({ id: 'g1', kod: 'ESKI-KOD' }).mockResolvedValueOnce(null)
-    mocks.yerleskeFindUnique.mockResolvedValue({ id: 'yer-1' })
+    mocks.yerleskeFindUnique.mockResolvedValue({ id: 'yer-1', aktif: true })
     mocks.kodGuzergah.mockResolvedValueOnce(kullanim)
     await expect(updateServisGuzergah('g1', { ...gecerliGuzergah, kod: 'yeni-kod' }, 'u')).rejects.toThrow(
       'Bu güzergâhın kodu değiştirilemez: 3 personel ataması, 1 şikâyet bu kodla ilişkili. Ad serbestçe değiştirilebilir.',
@@ -3708,7 +3742,7 @@ describe('A4 — güzergâh / durak KODU kimliktir: kullanım kaydı varsa deği
   it('güzergâh: kullanım kaydı VARKEN yalnız ad (kod aynı) serbestçe değişir; kullanım sorgusu hiç yapılmaz', async () => {
     mocks.guzergahFindUnique.mockReset()
     mocks.guzergahFindUnique.mockResolvedValue({ id: 'g1', kod: 'DAR-1' })
-    mocks.yerleskeFindUnique.mockResolvedValue({ id: 'yer-1' })
+    mocks.yerleskeFindUnique.mockResolvedValue({ id: 'yer-1', aktif: true })
     mocks.guzergahUpdate.mockResolvedValue({ id: 'g1', ad: 'Yeni Ad' })
     mocks.kodGuzergah.mockClear()
     await updateServisGuzergah('g1', { ...gecerliGuzergah, kod: 'dar-1', ad: 'Yeni Ad' }, 'u')
@@ -3719,7 +3753,7 @@ describe('A4 — güzergâh / durak KODU kimliktir: kullanım kaydı varsa deği
   it('güzergâh: kullanım kaydı YOKSA kod değiştirilebilir', async () => {
     mocks.guzergahFindUnique.mockReset()
     mocks.guzergahFindUnique.mockResolvedValueOnce({ id: 'g1', kod: 'ESKI-KOD' }).mockResolvedValueOnce(null)
-    mocks.yerleskeFindUnique.mockResolvedValue({ id: 'yer-1' })
+    mocks.yerleskeFindUnique.mockResolvedValue({ id: 'yer-1', aktif: true })
     mocks.kodGuzergah.mockResolvedValueOnce([])
     mocks.guzergahUpdate.mockResolvedValue({ id: 'g1', kod: 'YENI-KOD' })
     await updateServisGuzergah('g1', { ...gecerliGuzergah, kod: 'yeni-kod' }, 'u')
@@ -4099,7 +4133,7 @@ describe('A7 — güzergâh geçerlilik tarihleri', () => {
     mocks.guzergahFindUnique.mockReset()
     mocks.guzergahCreate.mockReset()
     mocks.guzergahUpdate.mockReset()
-    mocks.yerleskeFindUnique.mockResolvedValue({ id: 'yer-1' })
+    mocks.yerleskeFindUnique.mockResolvedValue({ id: 'yer-1', aktif: true })
   })
   afterEach(() => vi.useRealTimers())
 

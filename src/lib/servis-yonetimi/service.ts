@@ -322,6 +322,8 @@ export async function listServisGuzergahlar(filtre?: { aktif?: boolean }) {
   })
 }
 
+export const PASIF_YERLESKE_GUZERGAH_MESAJI = 'Pasif yerleşkeye güzergâh eklenemez; önce yerleşkeyi geri alın.'
+
 export async function createServisGuzergah(form: ServisGuzergahForm, yapanId?: string | null) {
   const { valid, errors } = validateServisGuzergahForm(form)
   if (!valid) throw new Error(errors.join(' '))
@@ -334,6 +336,7 @@ export async function createServisGuzergah(form: ServisGuzergahForm, yapanId?: s
   ])
   if (kodCakismasi) throw new Error(`"${kod}" kodu zaten kullanılıyor.`)
   if (!yerleske) throw new Error('Yerleşke bulunamadı.')
+  if (!yerleske.aktif) throw new Error(PASIF_YERLESKE_GUZERGAH_MESAJI)
 
   const data = {
     kod,
@@ -375,6 +378,9 @@ export async function updateServisGuzergah(id: string, form: ServisGuzergahForm,
   ])
   if (kodCakismasi) throw new Error(`"${kod}" kodu zaten kullanılıyor.`)
   if (!yerleske) throw new Error('Yerleşke bulunamadı.')
+  // Yalnız güzergâh pasif bir yerleşkeye TAŞINIYORSA reddedilir; zaten pasif yerleşkedeki
+  // güzergâhın diğer alanları düzenlenebilir.
+  if (!yerleske.aktif && yerleske.id !== existing.yerleskeId) throw new Error(PASIF_YERLESKE_GUZERGAH_MESAJI)
 
   // A4: kod KİMLİKTİR — atama/şikâyet kaydı varsa değiştirilemez (ad serbest).
   if (kod !== existing.kod) {

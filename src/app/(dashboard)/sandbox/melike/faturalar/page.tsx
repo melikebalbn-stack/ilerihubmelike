@@ -23,7 +23,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Plus, Search, AlertCircle, Trash2, Pencil, FileSpreadsheet, FileDown, Download, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react'
+import { Plus, Search, AlertCircle, Trash2, Pencil, FileSpreadsheet, FileDown, Download, StickyNote, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react'
 import {
   Bar,
   BarChart,
@@ -811,7 +811,14 @@ export default function FaturaTakipPage() {
                 <TableRow key={inv.id}>
                   <TableCell>{formatDateTR(inv.invoiceDate)}</TableCell>
                   <TableCell className="max-w-[220px] truncate" title={inv.companyName}>
-                    {inv.companyName}
+                    <span className="inline-flex items-center gap-1">
+                      {inv.companyName}
+                      {inv.note && (
+                        <span title={inv.note}>
+                          <StickyNote className="h-3 w-3 flex-shrink-0 text-amber-600" />
+                        </span>
+                      )}
+                    </span>
                   </TableCell>
                   <TableCell className="text-muted-foreground">{inv.invoiceNumber}</TableCell>
                   <TableCell className="text-right">

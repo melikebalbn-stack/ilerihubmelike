@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -375,6 +376,17 @@ export function InvoiceFormDialog({ open, onOpenChange, onSaved, invoice }: Prop
               </div>
             )}
             {errors.split && <p className="text-xs text-destructive">{errors.split}</p>}
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="note">Not</Label>
+            <Textarea
+              id="note"
+              value={form.note}
+              onChange={(e) => setForm({ ...form, note: e.target.value })}
+              placeholder="ör. kim için, ne alındı..."
+              rows={2}
+            />
           </div>
 
           {errors.submit && <p className="text-xs text-destructive">{errors.submit}</p>}

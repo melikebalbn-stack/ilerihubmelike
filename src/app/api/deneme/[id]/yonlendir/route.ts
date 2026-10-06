@@ -16,6 +16,7 @@ import { prisma } from "@/lib/prisma";
 import { aktoruCoz } from "@/lib/deneme/deneme-aktor";
 import { ikMi, denemeRedLog } from "@/lib/deneme/deneme-yetki";
 import { degerlendiriciAtamasiGecerliMi } from "@/lib/deneme/deneme-degismezler";
+import { yonlendirmeAkisDuzeltmesi } from "@/lib/deneme/deneme-yonlendirme-akis";
 import { yonlendirmeBildirimiGonder } from "@/lib/deneme/deneme-yonlendirme-bildirim";
 import type { DenemeDurum, DenemeDegerlendiriciRol } from "@/generated/prisma";
 
@@ -165,20 +166,26 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   // Form zaten 2. adımda bekliyorsa durum da role göre düzeltilir; aksi hâlde
   // puanla ucu MUDUR_YRD_BEKLIYOR'dan ONAY_BEKLIYOR'a geçer ve onaylayan NULL
   // olduğu için form SAHİPSİZ kalırdı.
-  let yeniDurum: DenemeDurum = form.durum;
-  let yeniOnaylayanId: string | null = form.onaylayanId;
-  if (sira === 2) {
-    if (rol === "MUDUR") {
-      yeniOnaylayanId = null;
-      if (form.durum === "MUDUR_YRD_BEKLIYOR") yeniDurum = "MUDUR_BEKLIYOR";
-    } else {
-      const mudurId = dept?.mudurId ?? null;
-      // Müdür, değerlendirilen kişinin ya da yeni değerlendiricinin kendisiyse
-      // onay halkası kurulmaz (zincir çözücüsündeki kuralın aynısı).
-      yeniOnaylayanId = mudurId && mudurId !== form.personnelId && mudurId !== hedef.id ? mudurId : null;
-      if (form.durum === "MUDUR_BEKLIYOR" && yeniOnaylayanId) yeniDurum = "MUDUR_YRD_BEKLIYOR";
-    }
+  // Karar TEK KAYNAKTA (deneme-yonlendirme-akis.ts) — 2. adım mantığı aynen,
+  // 1. adım için 06.10.2026'da eklendi: takım lideri hedefte ve form tek puanlıysa
+  // 2. adım açılır, yoksa "Gönder" matriste tıkanıyordu.
+  const akis = yonlendirmeAkisDuzeltmesi({
+    sira,
+    rol,
+    durum: form.durum,
+    mevcutDeg2Id: form.degerlendirici2Id,
+    mevcutOnaylayanId: form.onaylayanId,
+    mudurId: dept?.mudurId ?? null,
+    mudurYardimcisiId: dept?.mudurYardimcisiId ?? null,
+    personnelId: form.personnelId,
+    hedefId: hedef.id,
+  });
+  if (akis.hata) {
+    denemeRedLog({ uc: "yonlendir", formId: id, from: form.durum, to: "-", reason: "akış kurulamadı", user: aktor.email });
+    return NextResponse.json({ error: akis.hata }, { status: 400 });
   }
+  const yeniDurum: DenemeDurum = akis.durum;
+  const yeniOnaylayanId: string | null = akis.onaylayanId;
 
   const eskiDurum = form.durum;
   const mevcut = mevcutId
@@ -190,7 +197,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       where: { id },
       data: {
         ...(sira === 1
-          ? { degerlendirici1Id: hedef.id, degerlendirici1Rol: rol }
+          ? {
+              degerlendirici1Id: hedef.id,
+              degerlendirici1Rol: rol,
+              // Tek puanlı formu akışa bağlamak için açılan 2. adım (varsa).
+              ...(akis.eklenenDeg2
+                ? {
+                    degerlendirici2Id: akis.eklenenDeg2.id,
+                    degerlendirici2Rol: akis.eklenenDeg2.rol,
+                    onaylayanId: yeniOnaylayanId,
+                  }
+                : {}),
+            }
           : { degerlendirici2Id: hedef.id, degerlendirici2Rol: rol, onaylayanId: yeniOnaylayanId }),
         durum: yeniDurum,
         // Yeni sahibe hatırlatma sıfırdan başlasın: eski sahip için yükselmiş

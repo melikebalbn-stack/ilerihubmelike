@@ -50,7 +50,7 @@ test.describe('Servis Yönetimi duman testi', () => {
   test('güzergâh detayına panelden gidilir', async ({ page }) => {
     await page.goto('/servis-yonetimi/panel')
     const baglanti = page.locator('a[href^="/servis-yonetimi/guzergah/"]').first()
-    test.skip((await baglanti.count()) === 0, 'dev DB\'de güzergâh yok')
+    await expect(baglanti).toBeVisible()
     await baglanti.click()
     await expect(page).toHaveURL(/\/servis-yonetimi\/guzergah\/.+/)
     await expect(page.getByText('Bir hata olustu')).toHaveCount(0)

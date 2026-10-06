@@ -39,6 +39,12 @@ export function RouteChangeProvider({ children }: { children: React.ReactNode })
           return
         }
 
+        // Dosya indirme linkleri (download özniteliği / /api/ uçları) sayfa değiştirmez;
+        // overlay kapanmayıp ekranı kilitler.
+        if (anchor.hasAttribute('download') || href?.startsWith('/api/')) {
+          return
+        }
+
         // Aynı sayfa içi linkleri atla, farklı sayfaya gidiyorsa loading göster
         if (href && href.startsWith('/') && !href.startsWith('#') && href !== pathname) {
           setIsLoading(true)

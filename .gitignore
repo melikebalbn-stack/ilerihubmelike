@@ -31,3 +31,7 @@ data/*.xls
 data/*.csv
 public/uploads
 
+
+# Playwright
+/test-results/
+/playwright-report/

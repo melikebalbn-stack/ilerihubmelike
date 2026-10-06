@@ -1,0 +1,11 @@
+-- İade türü "Garanti" → "Müşteri Şikayeti" (KAL-KYT-16 revizyonu, Kalite talebi).
+--
+-- ELLE YAZILDI. Prisma rename ALGILAMAZ; migrate diff şu diziyi üretirdi:
+--     CREATE TYPE "RmaIadeTuru_new" AS ENUM (...);
+--     ALTER TABLE "RmaKayit" ALTER COLUMN "iadeTuru" TYPE "RmaIadeTuru_new"
+--       USING ("iadeTuru"::text::"RmaIadeTuru_new");   -- ← 'GARANTI' satırında PATLAR
+-- Emsal: 20260813165110_envanter_beden_tipi_yeniden_adlandirma (aynı tuzak).
+--
+-- PG10+ yerinde yeniden adlandırma güvenli: kolonun DEFAULT'u yok, enum'a bağlı
+-- view / ifadeli index yok. Veri dönüşümü GEREKMEZ; prod'da 1 kayıt etkilenir.
+ALTER TYPE "RmaIadeTuru" RENAME VALUE 'GARANTI' TO 'MUSTERI_SIKAYETI';

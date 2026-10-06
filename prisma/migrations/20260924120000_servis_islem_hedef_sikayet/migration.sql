@@ -1,0 +1,1 @@
+ALTER TYPE "ServisIslemHedefTipi" ADD VALUE 'SIKAYET';

@@ -93,6 +93,35 @@ export async function getIsEmrileriByJobs(jobs: string[]): Promise<SytelineIsEmr
 }
 
 /**
+ * TEK iş emrini job no ile getirir — FORM DOLDURMA için (senkron akışının parçası DEĞİL).
+ *
+ * getIsEmrileriByJobs'tan farkı: stat/type/job_date/item filtreleri UYGULANMAZ. Sebep: senkron
+ * yalnız yeni serbest bırakılmış üretim iş emirlerini IFS'e taşır; form tarafında kullanıcı
+ * kapanmış ya da eski bir iş emrinin numarasını da yazabiliyor ve o kayıt da bulunmalı.
+ * site_ref filtresi (varsa) korunur — aynı job no farklı sitelerde tekrar edebiliyor.
+ *
+ * Aynı job birden çok suffix taşıyabilir; en güncel revizyon önce gelsin diye suffix DESC.
+ */
+export async function getIsEmriByJob(job: string): Promise<SytelineIsEmriBaslik[]> {
+  const temiz = job.trim()
+  if (!temiz) return []
+  const cfg = getSytelineConfig()
+  const pool = await sytePool()
+  const rq = pool.request().input('job', sql.NVarChar, temiz)
+  let siteClause = ''
+  if (cfg.site) {
+    rq.input('site', sql.NVarChar, cfg.site)
+    siteClause = ' AND site_ref = @site'
+  }
+  const query =
+    `SELECT job, suffix, item, qty_released, job_date, stat, description, RecordDate ` +
+    `FROM job_mst WHERE job = @job${siteClause} ` +
+    `ORDER BY suffix DESC`
+  const res = await rq.query<SytelineIsEmriBaslik>(query)
+  return res.recordset
+}
+
+/**
  * Bir iş emrinin (job + suffix) rota operasyonları — tezgah (wc), kaynak (RESID), çevrim
  * (pcs_per_mch_hr), setup ve alınan miktar. Parametreli. ORDER BY oper_num.
  */

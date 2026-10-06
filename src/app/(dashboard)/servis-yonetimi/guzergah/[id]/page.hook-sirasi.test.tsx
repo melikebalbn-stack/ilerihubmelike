@@ -27,7 +27,7 @@ const json = (status: number, body: unknown) => ({ ok: status < 400, status, jso
 function oturum(permissions: string[], status: 'loading' | 'authenticated' = 'authenticated') {
   vi.mocked(useSession).mockReturnValue({ data: status === 'loading' ? null : { user: { permissions } }, status } as unknown as ReturnType<typeof useSession>)
 }
-const hookHatasi = () => hataKaydi.mock.calls.some((c) => /Rendered (more|fewer) hooks/i.test(String(c[0]) + String(c[1] ?? '')))
+const hookHatasi = () => hataKaydi.mock.calls.some((c: unknown[]) => /Rendered (more|fewer) hooks/i.test(String(c[0]) + String(c[1] ?? '')))
 
 beforeEach(() => {
   hataKaydi = vi.spyOn(console, 'error').mockImplementation(() => {})

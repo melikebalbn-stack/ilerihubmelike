@@ -7,7 +7,7 @@ function satir(
   o: Partial<KapasiteGuzergahSatiri['ozet']> = {},
 ): KapasiteGuzergahSatiri {
   return {
-    guzergahId: kod, kod, ad, dilimKod: null, dilimSayisi: 1, aracliDilimSayisi: araclar.length, araclar,
+    guzergahId: kod, kod, ad, dilimKod: null, dilimSayisi: 1, aracliDilimSayisi: araclar.length, tekilPersonel: o.atananPersonelSayisi ?? 5, araclar,
     ozet: {
       kapasite: 10, atananPersonelSayisi: 5, bosKoltuk: 5, dolulukOrani: 50, aracSayisi: araclar.length,
       durum: 'UYGUN', asimMiktari: 0, ...o,

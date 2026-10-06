@@ -14,6 +14,12 @@ import { Input } from "@/components/ui/input"
 import { Loader2, ClipboardList, RotateCcw, Eye, ShieldAlert } from "lucide-react"
 import { apiFetch } from "@/lib/api-fetch"
 import { cn } from "@/lib/utils"
+import {
+  denemeSirala,
+  sonrakiSiralama,
+  type DenemeSiralama,
+  type DenemeSiralamaAlani,
+} from "@/lib/deneme/deneme-liste-siralama"
 
 const DURUM_ETIKET: Record<string, string> = {
   TASLAK: "Taslak",
@@ -52,6 +58,9 @@ export default function DenemeListesiPage() {
   const [kapsam, setKapsam] = useState<"tumu" | "zincir">("zincir")
   const iv = kapsam === "tumu"
   const [f, setF] = useState({ durum: "", tur: "", yaka: "", bolum: "", baslangic: "", bitis: "", hepsi: "false" })
+  // Sıralama İSTEMCİDE (liste en çok 500 satır, sunucu sırası varsayılan kalır).
+  // null = kapalı → sunucunun sırası (hedefTarih asc, id asc) AYNEN korunur.
+  const [siralama, setSiralama] = useState<DenemeSiralama>(null)
 
   const yukle = useCallback(async () => {
     setYukleniyor(true)
@@ -77,6 +86,39 @@ export default function DenemeListesiPage() {
   useEffect(() => { void yukle() }, [yukle])
 
   const sutunSayisi = iv ? 12 : 8
+  // Sıralama sunucudan gelen diziyi DEĞİŞTİRMEZ; kopya üzerinde çalışır.
+  const siraliSatirlar = useMemo(() => denemeSirala(satirlar, siralama, DURUM_ETIKET), [satirlar, siralama])
+
+  /** Tıklanabilir başlık — üç durumlu (artan ▲ / azalan ▼ / kapalı). */
+  const Baslik = ({
+    alan,
+    children,
+    sagaYatik,
+  }: {
+    alan: DenemeSiralamaAlani
+    children: React.ReactNode
+    sagaYatik?: boolean
+  }) => {
+    const aktif = siralama?.alan === alan
+    return (
+      <th className={sagaYatik ? "text-right" : undefined}>
+        <button
+          type="button"
+          onClick={() => setSiralama((s) => sonrakiSiralama(s, alan))}
+          className={cn(
+            "inline-flex items-center gap-1 hover:text-foreground",
+            aktif ? "font-semibold text-foreground" : "text-muted-foreground",
+          )}
+          title="Sıralamak için tıklayın (artan → azalan → kapalı)"
+        >
+          {children}
+          <span aria-hidden className="text-[10px]">
+            {aktif ? (siralama!.yon === "asc" ? "▲" : "▼") : "↕"}
+          </span>
+        </button>
+      </th>
+    )
+  }
   const bolumler = useMemo(
     () => [...new Set(satirlar.map((s) => s.personnel.bolum))].sort((a, b) => a.localeCompare(b, "tr")),
     [satirlar],
@@ -161,13 +203,20 @@ export default function DenemeListesiPage() {
           <table className="w-full text-sm">
             <thead className="border-b bg-muted/40 text-left">
               <tr className="[&>th]:whitespace-nowrap [&>th]:px-3 [&>th]:py-2 [&>th]:font-medium">
-                <th>Personel</th><th>Tür</th><th>Yaka</th><th>Bölüm</th>
-                <th>Hedef Tarih</th><th>Durum</th><th>Adım Sahibi</th>
+                <Baslik alan="personel">Personel</Baslik>
+                <Baslik alan="tur">Tür</Baslik>
+                <Baslik alan="yaka">Yaka</Baslik>
+                <Baslik alan="bolum">Bölüm</Baslik>
+                <Baslik alan="hedefTarih">Hedef Tarih</Baslik>
+                <Baslik alan="durum">Durum</Baslik>
+                <Baslik alan="adimSahibi">Adım Sahibi</Baslik>
                 {/* Puan/ortalama/sonuç yalnız İV — sunucu zaten zincir kapsamında null döner. */}
                 {iv && (
                   <>
-                    <th className="text-right">1. Puan</th><th className="text-right">2. Puan</th>
-                    <th className="text-right">Ortalama</th><th>Sonuç</th>
+                    <Baslik alan="puan1" sagaYatik>1. Puan</Baslik>
+                    <Baslik alan="puan2" sagaYatik>2. Puan</Baslik>
+                    <Baslik alan="ortalama" sagaYatik>Ortalama</Baslik>
+                    <Baslik alan="sonuc">Sonuç</Baslik>
                   </>
                 )}
                 <th className="text-right">İşlemler</th>
@@ -179,12 +228,12 @@ export default function DenemeListesiPage() {
                   <Loader2 className="mx-auto h-5 w-5 animate-spin" />
                 </td></tr>
               )}
-              {!yukleniyor && satirlar.length === 0 && (
+              {!yukleniyor && siraliSatirlar.length === 0 && (
                 <tr><td colSpan={sutunSayisi} className="p-8 text-center text-muted-foreground">
                   Görüntüleyebileceğiniz değerlendirme yok.
                 </td></tr>
               )}
-              {!yukleniyor && satirlar.map((s) => {
+              {!yukleniyor && siraliSatirlar.map((s) => {
                 const acik = !["TAMAMLANDI", "IPTAL"].includes(s.durum)
                 const kalan = gun(s.hedefTarih)
                 const gecikmis = acik && kalan < 0

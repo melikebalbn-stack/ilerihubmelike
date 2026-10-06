@@ -672,14 +672,17 @@ export default function FaturaTakipPage() {
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs text-muted-foreground">Ciro (€)</label>
-                    <Input
-                      value={monthCiro > 0 ? formatThousands(String(monthCiro)) : ''}
-                      onChange={(e) => handleRevenueChange(m.key, e.target.value.replace(/\D/g, ''))}
-                      onBlur={() => handleRevenueBlur(m.key)}
-                      placeholder="ciro gir"
-                      inputMode="numeric"
-                      className="h-9 w-40 text-right"
-                    />
+                    <div className="relative w-44">
+                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">€</span>
+                      <Input
+                        value={monthCiro > 0 ? formatThousands(String(monthCiro)) : ''}
+                        onChange={(e) => handleRevenueChange(m.key, e.target.value.replace(/\D/g, ''))}
+                        onBlur={() => handleRevenueBlur(m.key)}
+                        placeholder="ciro gir"
+                        inputMode="numeric"
+                        className="h-9 pl-6 text-right"
+                      />
+                    </div>
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs text-muted-foreground">Oran</label>

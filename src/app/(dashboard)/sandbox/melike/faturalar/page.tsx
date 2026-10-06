@@ -18,6 +18,7 @@ import {
   Table,
   TableBody,
   TableCell,
+  TableFooter,
   TableHead,
   TableHeader,
   TableRow,
@@ -426,6 +427,13 @@ export default function FaturaTakipPage() {
     return sorted
   }, [invoices, listMonthFilter, sortKey, sortDir])
 
+  // displayedInvoices zaten Bölüm + Ay filtresi + arama uygulanmış hali — toplam da
+  // aynı seti kullanıyor, filtre değişince otomatik güncellenir.
+  const displayedTotalEur = useMemo(
+    () => displayedInvoices.reduce((s, inv) => s + Number(inv.amountEUR), 0),
+    [displayedInvoices]
+  )
+
   if (status === 'loading' || !authorized) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -641,6 +649,22 @@ export default function FaturaTakipPage() {
                     </TableRow>
                   )
                 })}
+                {(() => {
+                  // Toplam satırı: tek tek bölümlerin değil, TÜMÜNÜN cirodaki gerçek payı.
+                  const totalTl = scopedDepartments.reduce((s, d) => s + d.tl, 0)
+                  const totalEur = scopedDepartments.reduce((s, d) => s + d.eur, 0)
+                  const totalOran = scopedCiro > 0 ? (totalEur / scopedCiro) * 100 : null
+                  return (
+                    <TableRow className="border-t-2 font-semibold">
+                      <TableCell>Toplam</TableCell>
+                      <TableCell className="text-right">{formatTL(totalTl)}</TableCell>
+                      <TableCell className="text-right">{formatEur(totalEur)}</TableCell>
+                      <TableCell className="text-right" style={{ color: totalOran == null ? '#BBB' : NAVY }}>
+                        {totalOran == null ? '—' : formatPercent(totalOran)}
+                      </TableCell>
+                    </TableRow>
+                  )
+                })()}
               </TableBody>
             </Table>
           )}
@@ -793,7 +817,9 @@ export default function FaturaTakipPage() {
                         onValueChange={(v) => handleDepartmentChange(inv.id, v)}
                       >
                         <SelectTrigger className="h-7 w-44 text-xs" style={{ color: inv.departmentOrgUnitId ? NAVY : '#5F5E5A' }}>
-                          <SelectValue />
+                          <SelectValue>
+                            <span className="block truncate text-left">{inv.departmentOrgUnitId || 'Genel'}</span>
+                          </SelectValue>
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="GENEL">Genel</SelectItem>
@@ -851,6 +877,17 @@ export default function FaturaTakipPage() {
               ))
             )}
           </TableBody>
+          {displayedInvoices.length > 0 && (
+            <TableFooter>
+              <TableRow>
+                <TableCell colSpan={4} className="font-semibold">
+                  Toplam ({displayedInvoices.length} fatura)
+                </TableCell>
+                <TableCell className="text-right font-semibold">{formatEur(displayedTotalEur)}</TableCell>
+                <TableCell colSpan={2} />
+              </TableRow>
+            </TableFooter>
+          )}
         </Table>
       </Card>
 

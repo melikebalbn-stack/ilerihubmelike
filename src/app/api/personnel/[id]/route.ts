@@ -9,6 +9,7 @@ import { computeTenure } from '@/lib/personnel-tenure'
 import { isInsanVarliklari } from '@/lib/auth/personnel-access'
 import { YAKA_DETAY_MAP } from '@/lib/personnel-constants'
 import { CIKIS_DEVIR_TIPLERI, CIKIS_TARAFLARI, sgkCikisKoduGecerliMi } from '@/lib/sgk-cikis-kodlari'
+import { koltukUyumsuzlugu } from '@/lib/bolum-talep/bolum-talep-gorev'
 import { personelPasiflestiginde, personelAktiflestiginde, personelGoreviDegisti, personelEklendiginde, KOLTUK_YOK_SEBEBI, type GorevDegisimSonuc, type YeniPersonelSonuc } from '@/lib/org/personel-koltuk-senkron'
 
 export const dynamic = 'force-dynamic'
@@ -249,17 +250,37 @@ export async function GET(
     // bu yüzden ayrı sorgu.
     const koltuklar = await prisma.orgEmployee.findMany({
       where: { personnelId: id, isActive: true },
-      select: { id: true, orgUnit: { select: { code: true, name: true } } },
+      select: { id: true, orgUnitId: true, orgUnit: { select: { code: true, name: true } } },
     })
-    const anaKoltuklar = koltuklar
-      .filter((k) => !k.orgUnit?.code?.startsWith('ORG-KR-'))
-      .map((k) => ({ id: k.id, code: k.orgUnit?.code ?? null, ad: k.orgUnit?.name ?? null }))
+    const anaKoltuklarHam = koltuklar.filter((k) => !k.orgUnit?.code?.startsWith('ORG-KR-'))
+    const anaKoltuklar = anaKoltuklarHam.map((k) => ({
+      id: k.id,
+      code: k.orgUnit?.code ?? null,
+      ad: k.orgUnit?.name ?? null,
+    }))
+
+    // KOLTUK ↔ KADRO UYUMU (06.10.2026): ana koltuğun DEPARTMENT atası ile
+    // Personnel.bolum farklıysa şema ile kadro ayrışmıştır. ILR-00925 vakasında
+    // bölüm transferi uygulandı ama koltuk eski bölümde kaldı ve bunu kimse
+    // görmedi (5 gün). Kontrol transferden BAĞIMSIZ: elle yapılan bölüm
+    // değişikliklerini de yakalar.
+    let koltukUyum: { uyumsuz: boolean; mesaj: string | null; koltukBolumu: string | null } = {
+      uyumsuz: false,
+      mesaj: null,
+      koltukBolumu: null,
+    }
+    if (anaKoltuklarHam.length === 1) {
+      const koltukBolumu = await koltugunBolumu(anaKoltuklarHam[0].orgUnitId)
+      const sonuc = koltukUyumsuzlugu({ personelBolumu: personnel.bolum, koltukBolumu })
+      koltukUyum = { ...sonuc, koltukBolumu }
+    }
 
     return NextResponse.json({
       ...personnel,
       employmentSummary,
       lastClosedPeriod,
       anaKoltuklar,
+      koltukUyum,
     })
   } catch (error) {
     console.error('Personel detayı alınırken hata:', error)
@@ -745,4 +766,25 @@ export async function DELETE(
     console.error('Personel silinirken hata:', error)
     return NextResponse.json({ error: 'Personel silinirken bir hata oluştu' }, { status: 500 })
   }
+}
+
+/**
+ * Koltuğun bağlı olduğu DEPARTMENT kutusunun adı — üst zincirde ilk
+ * DepartmentDefinition eşleşmesi. Bulunamazsa null (şema bağı eksik).
+ */
+async function koltugunBolumu(orgUnitId: string): Promise<string | null> {
+  let mevcut: string | null = orgUnitId
+  for (let i = 0; i < 12 && mevcut; i++) {
+    const dd = await prisma.departmentDefinition.findFirst({
+      where: { orgUnitId: mevcut },
+      select: { name: true },
+    })
+    if (dd) return dd.name
+    const u: { parentId: string | null } | null = await prisma.orgUnit.findUnique({
+      where: { id: mevcut },
+      select: { parentId: true },
+    })
+    mevcut = u?.parentId ?? null
+  }
+  return null
 }

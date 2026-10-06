@@ -26,6 +26,7 @@ type SeciciVeri = {
 const BOS_FORM = {
   personnelId: '',
   hedefBolum: '',
+  hedefGorev: '',
   transferTarihi: '',
   gerekceler: [] as string[],
   gerekceAciklamasi: '',
@@ -41,6 +42,11 @@ export default function BolumDegisiklikTalepPage() {
   const [formAcik, setFormAcik] = useState(false)
   const [form, setForm] = useState(BOS_FORM)
   const [kaydediliyor, setKaydediliyor] = useState(false)
+  // Hedef bölümün şemasındaki BOŞ kutuların unvanları (06.10.2026). Serbest metin
+  // değil: koltuk eşleşmesi {bolum, gorev} çiftine bakıyor, listede olmayan bir
+  // unvan seçilse koltuk yine taşınamazdı.
+  const [gorevSecenekleri, setGorevSecenekleri] = useState<{ ad: string; bosKutu: number }[]>([])
+  const [gorevUyari, setGorevUyari] = useState('')
   const [iptalEdilen, setIptalEdilen] = useState<BolumTalepSatiri | null>(null)
 
   const yukle = useCallback(async () => {
@@ -67,6 +73,30 @@ export default function BolumDegisiklikTalepPage() {
       .then(async (r) => (r.ok ? setSecici(await r.json()) : null))
       .catch(() => {})
   }, [yukle])
+
+  // Hedef bölüm değişince görev seçenekleri yenilenir; seçili görev listede
+  // kalmazsa temizlenir (bölüm değişti, eski unvan artık geçersiz olabilir).
+  useEffect(() => {
+    if (!form.hedefBolum) {
+      setGorevSecenekleri([])
+      setGorevUyari('')
+      return
+    }
+    fetch(`/api/bolum-degisiklik-talep/gorev-secenekleri?bolum=${encodeURIComponent(form.hedefBolum)}`)
+      .then(async (r) => (r.ok ? r.json() : null))
+      .then((d: { secenekler?: { ad: string; bosKutu: number }[]; uyari?: string } | null) => {
+        const liste = d?.secenekler ?? []
+        setGorevSecenekleri(liste)
+        setGorevUyari(
+          d?.uyari ??
+            (liste.length === 0
+              ? 'Hedef bölümde boş kadro kutusu yok — görev seçilemez, koltuk elle taşınır.'
+              : ''),
+        )
+        setForm((f) => (f.hedefGorev && !liste.some((x) => x.ad === f.hedefGorev) ? { ...f, hedefGorev: '' } : f))
+      })
+      .catch(() => {})
+  }, [form.hedefBolum])
 
   const seciliPersonel = useMemo(
     () => secici?.personeller.find((p) => p.id === form.personnelId) ?? null,
@@ -204,6 +234,27 @@ export default function BolumDegisiklikTalepPage() {
             </div>
 
             <div>
+              <label className="text-sm font-medium">Yeni görev</label>
+              <select
+                value={form.hedefGorev}
+                onChange={(e) => setForm((f) => ({ ...f, hedefGorev: e.target.value }))}
+                disabled={!form.hedefBolum || gorevSecenekleri.length === 0}
+                className="mt-1 h-10 w-full rounded-xl border px-3 text-sm disabled:bg-slate-50 disabled:text-slate-400"
+              >
+                <option value="">Değişmesin (mevcut görev korunur)</option>
+                {gorevSecenekleri.map((x) => (
+                  <option key={x.ad} value={x.ad}>
+                    {x.ad} ({x.bosKutu} boş kadro)
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {gorevUyari ||
+                  'Hedef bölümdeki boş kadro unvanları. Seçilirse şema koltuğu o kutuya taşınır; boş bırakılırsa görev aynı kalır ve koltuk taşınamayabilir.'}
+              </p>
+            </div>
+
+            <div>
               <label className="text-sm font-medium">Transfer tarihi</label>
               <input
                 type="date"
@@ -300,6 +351,7 @@ export default function BolumDegisiklikTalepPage() {
                 <th>Talep No</th>
                 <th>Personel</th>
                 <th>Bölüm değişikliği</th>
+                <th>Yeni görev</th>
                 <th>Talep tarihi</th>
                 <th>Transfer tarihi</th>
                 <th>Durum</th>
@@ -310,14 +362,14 @@ export default function BolumDegisiklikTalepPage() {
             <tbody className="divide-y">
               {yukleniyor && (
                 <tr>
-                  <td colSpan={8} className="p-8 text-center text-muted-foreground">
+                  <td colSpan={9} className="p-8 text-center text-muted-foreground">
                     <Loader2 className="mx-auto h-5 w-5 animate-spin" />
                   </td>
                 </tr>
               )}
               {!yukleniyor && talepler.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="p-8 text-center text-muted-foreground">
+                  <td colSpan={9} className="p-8 text-center text-muted-foreground">
                     Henüz talep açmadınız.
                   </td>
                 </tr>
@@ -333,6 +385,7 @@ export default function BolumDegisiklikTalepPage() {
                     <td className="whitespace-nowrap">
                       {t.mevcutBolum} → <span className="font-medium">{t.hedefBolum}</span>
                     </td>
+                    <td className="whitespace-nowrap text-muted-foreground">{t.hedefGorev ?? '—'}</td>
                     <td className="whitespace-nowrap tabular-nums">
                       {new Date(t.talepTarihi).toLocaleDateString('tr-TR')}
                     </td>

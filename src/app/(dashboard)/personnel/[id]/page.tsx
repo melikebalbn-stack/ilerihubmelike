@@ -65,6 +65,8 @@ type PersonnelData = {
   // Şemadaki ANA koltuklar (kurul/komite hariç — sunucu süzer). Boş dizi =
   // "Şemaya Yerleştir" düğmesi görünür.
   anaKoltuklar?: { id: string; code: string | null; ad: string | null }[]
+  /** Koltuk ↔ kadro uyumu (06.10.2026) — koltuk başka bölümdeyse uyarı gösterilir. */
+  koltukUyum?: { uyumsuz: boolean; mesaj: string | null; koltukBolumu: string | null }
   id: string
   sicilNo: string
   adSoyad: string
@@ -1294,6 +1296,21 @@ export default function PersonnelDetailPage() {
       )}
 
       {/* PR-PERSONNEL-DEPARTMENT-TRANSFER: Geçmiş kartı + Modal */}
+      {/* KOLTUK ↔ KADRO UYUMSUZLUĞU (06.10.2026): bölüm transferi uygulandığı hâlde
+          şema koltuğu eski bölümde kalabiliyor (koltuk eşleşmesi {bolum,gorev}
+          çiftine bakar; görev eski unvanda kalırsa hedef bölümde aday kutu yoktur).
+          Bu bilgi eskiden yalnız denetim kaydına düşüyordu — artık kartta görünür. */}
+      {isAdmin && data.koltukUyum?.uyumsuz && (
+        <div className="rounded-xl border border-amber-300 bg-amber-50 p-4">
+          <p className="text-sm font-semibold text-amber-900">⚠ Şema koltuğu farklı bölümde</p>
+          <p className="mt-1 text-sm text-amber-800">{data.koltukUyum.mesaj}</p>
+          <p className="mt-1 text-xs text-amber-700">
+            Düzeltmek için: görev alanını yeni bölümün unvanlarından biriyle güncelleyin — koltuk
+            kendiliğinden taşınır. Uygun boş kutu yoksa organizasyon şemasından elle yerleştirin.
+          </p>
+        </div>
+      )}
+
       {isAdmin && <PersonnelTransferHistory personnelId={id} refreshKey={transferRefreshKey} />}
 
       <PersonnelTransferModal

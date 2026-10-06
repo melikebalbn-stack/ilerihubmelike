@@ -160,6 +160,8 @@ export async function POST(request: NextRequest) {
           acanBolum: acanPersonnel?.bolum ?? null,
           mevcutBolum: personnel.bolum ?? '(belirtilmemiş)',
           hedefBolum,
+          // Yeni görev OPSİYONEL; boşsa onay anında mevcut görev korunur.
+          hedefGorev: typeof body.hedefGorev === 'string' && body.hedefGorev.trim() ? body.hedefGorev.trim() : null,
           transferTarihi: body.transferTarihi ? new Date(body.transferTarihi) : null,
           gerekceler: body.gerekceler,
           gerekceAciklamasi: body.gerekceAciklamasi || null,
@@ -184,6 +186,7 @@ export async function POST(request: NextRequest) {
             personnelName: personnel.adSoyad,
             mevcutBolum: olusan.mevcutBolum,
             hedefBolum: olusan.hedefBolum,
+            hedefGorev: olusan.hedefGorev,
             transferTarihi: olusan.transferTarihi?.toISOString() ?? null,
             gerekceler: olusan.gerekceler,
           },

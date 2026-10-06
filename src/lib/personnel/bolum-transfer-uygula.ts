@@ -15,6 +15,7 @@
 
 import type { Prisma, TransferOnay, TransferTalepEden } from '@/generated/prisma'
 import { bolumFkCoz } from '@/lib/personnel/fk-cozum'
+import { transferGorevKarari } from '@/lib/bolum-talep/bolum-talep-gorev'
 import {
   personelGoreviDegisti,
   personelEklendiginde,
@@ -24,8 +25,14 @@ import {
 } from '@/lib/org/personel-koltuk-senkron'
 
 export interface BolumTransferGirdisi {
-  personnel: { id: string; sicilNo: string | null; adSoyad: string; bolum: string | null }
+  personnel: { id: string; sicilNo: string | null; adSoyad: string; bolum: string | null; gorev?: string | null }
   yeniBolum: string
+  /**
+   * Yeni görev (unvan) — OPSİYONEL (06.10.2026). Doluysa Personnel.gorev de
+   * güncellenir; koltuk eşleşmesi {bolum, gorev} çiftine baktığı için koltuk
+   * ancak böyle yeni bölümün kutusuna taşınabiliyor. Boşsa görev KORUNUR.
+   */
+  yeniGorev?: string | null
   transferTarihi: Date
   talepTarihi: Date
   talepEden: TransferTalepEden
@@ -57,6 +64,12 @@ export async function bolumTransferiUygula(
   const oldDepartment = personnel.bolum ?? '(belirtilmemiş)'
   const newDepartment = girdi.yeniBolum.trim()
 
+  // Görev kararı SAF kuralda (bolum-talep-gorev.ts): boş ya da aynıysa dokunulmaz.
+  const gorevKarari = transferGorevKarari({
+    yeniGorev: girdi.yeniGorev,
+    mevcutGorev: personnel.gorev ?? null,
+  })
+
   const transfer = await tx.personnelDepartmentTransfer.create({
     data: {
       personnelId: personnel.id,
@@ -82,6 +95,9 @@ export async function bolumTransferiUygula(
     data: {
       bolum: newDepartment,
       departmentId: await bolumFkCoz(tx, newDepartment),
+      // Görev yalnız açıkça verildiyse değişir — koltuk taşıma bundan SONRA
+      // çağrıldığı için yeni unvanın kutusu bulunabilir hâle gelir.
+      ...(gorevKarari.guncellenecek ? { gorev: gorevKarari.deger! } : {}),
       updatedAt: new Date(),
     },
   })
@@ -137,6 +153,9 @@ export async function bolumTransferiUygula(
         doktorOnayi: transfer.doktorOnayi,
         gerekceler: transfer.gerekceler,
         transferId: transfer.id,
+        gorevDegisimi: gorevKarari.guncellenecek
+          ? { eski: personnel.gorev ?? null, yeni: gorevKarari.deger }
+          : null,
         // Talep formundan geldiyse kaynak talep numarası (doğrudan yolda null).
         talepNo: girdi.talepNo ?? null,
         // Prisma Json alanı düz nesne ister (arayüz tipi kabul etmiyor) — alanlar

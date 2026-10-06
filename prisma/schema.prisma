@@ -9623,6 +9623,17 @@ model BolumDegisiklikTalep {
   talepTarihi     DateTime          @default(now())
   transferTarihi  DateTime?         @db.Date // OPSİYONEL — boşsa İV onayda belirler
 
+  /**
+   * Yeni görev (unvan) — OPSİYONEL. Doluysa onay anında Personnel.gorev de
+   * güncellenir ve koltuk o unvanın boş kutusuna taşınır. Boş bırakılırsa
+   * mevcut görev KORUNUR (06.10.2026 öncesi davranış).
+   *
+   * NEDEN GEREKLİ: koltuk eşleşmesi {bolum, gorev} ÇİFTİNE bakıyor. Görev eski
+   * bölümün unvanında kalınca hedef bölümde aday kutu bulunamıyor ve koltuk
+   * taşınmıyordu (ILR-00925 / BDT-2026-001 vakası, 01.10 → 06.10 fark edildi).
+   */
+  hedefGorev String?
+
   gerekceler        String[] // KISI_* / IS_* (department-transfer ile aynı sabitler)
   gerekceAciklamasi String?  @db.Text
   gerekceDigerKisi  String?
@@ -9636,6 +9647,15 @@ model BolumDegisiklikTalep {
   redGerekcesi String?         @db.Text // REDDEDILDI'de zorunlu
   isgOnayi     TransferOnay? // İV onay ekranında doldurur
   doktorOnayi  TransferOnay? // "
+
+  /**
+   * Onay anındaki koltuk sonucu — İV listesinde rozet olarak gösterilir.
+   * null: henüz karara bağlanmadı · true: taşındı/açıldı · false: taşınmadı
+   * (sebep koltukSebep'te). Eskiden bu bilgi YALNIZ denetim kaydına ve anlık
+   * toast'a düşüyordu; kimse görmediği için tutarsızlık sessizce birikiyordu.
+   */
+  koltukTasindi Boolean?
+  koltukSebep   String?
 
   transferId String?                      @unique
   transfer   PersonnelDepartmentTransfer? @relation("TalepTransferi", fields: [transferId], references: [id], onDelete: SetNull)

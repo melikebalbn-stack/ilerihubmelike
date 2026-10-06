@@ -16,7 +16,10 @@ export async function POST(req: NextRequest) {
     // Bekleyenler: en fazla 50, en eski önce. qtyComplete>0 — yazılacak iyi yoksa cron'u meşgul etme.
     const bekleyenler = await prisma.iproProductionLog.findMany({
       where: { durum: 'KAPALI', ifsCompleteYazildi: false, qtyComplete: { gt: 0 } },
-      orderBy: { bitirildiAt: 'asc' },
+      // Hiç denenmemişler ÖNCE (ifsCompleteHata NULL), sonra hata almışlar. Eskiden yalnız bitirildiAt'e göre
+      // sıralanıyordu: IFS'in reddettiği (ör. INVALIDOP) en eski 50 kayıt her turda yeniden seçilip kuyruğu
+      // tıkıyordu (14.09–06.10: 909 kayıt hiç denenmedi, 0 yazıldı).
+      orderBy: [{ ifsCompleteHata: { sort: 'asc', nulls: 'first' } }, { bitirildiAt: 'asc' }],
       take: 50,
       select: { id: true, ifsOrderNo: true, ifsOperationNo: true, kaynak: true, personnelId: true },
     })

@@ -589,9 +589,26 @@ export default function FaturaTakipPage() {
                     >
                       <LabelList
                         dataKey={label}
-                        position="center"
-                        formatter={(v: number) => (v > 0 ? formatEur(v) : '')}
-                        style={{ fontSize: 9, fill: label === SG_LABEL ? '#fff' : '#334155' }}
+                        content={(props: any) => {
+                          // İnce segmentlerde (küçük bölüm/ay) etiketler üst üste binip
+                          // okunaksızlaşıyordu — segment görsel olarak yazıyı taşıyacak
+                          // kadar yüksek değilse (hover ile zaten Tooltip'te tam değer var)
+                          // etiket basılmıyor, yarım/üst üste yazı yerine boş bırakılıyor.
+                          const { x, y, width, height, value } = props
+                          if (!value || height < 16) return null
+                          return (
+                            <text
+                              x={x + width / 2}
+                              y={y + height / 2}
+                              dy={4}
+                              textAnchor="middle"
+                              fontSize={9}
+                              fill={label === SG_LABEL ? '#fff' : '#334155'}
+                            >
+                              {formatEur(value)}
+                            </text>
+                          )
+                        }}
                       />
                     </Bar>
                   ))}

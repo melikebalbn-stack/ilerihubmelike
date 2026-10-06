@@ -302,6 +302,7 @@ import {
   transferServisPersonelAtama,
   transferKapasiteOnizle,
 } from './service'
+import { baslangicTarihiCoz, bugunTR } from './tarih-kurallari'
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -2980,6 +2981,38 @@ describe('ServisPersonelAtama — oluşturma ve çakışma (EXCLUDE simülasyonu
     mocks.guzergahFindUnique.mockResolvedValue({ id: 'guzergah-1', aktif: false })
     await expect(createServisPersonelAtama(gecerliPersonelAtama, 'user-1')).rejects.toThrow('Pasif güzergaha')
     expect(mocks.personelAtamaCreate).not.toHaveBeenCalled()
+  })
+
+  // Düzeltme 1: manuel atama başlangıç/bitiş, Excel/transfer ile AYNI makul aralık kuralına bağlı.
+  describe('tarih aralığı (Excel ile aynı kural)', () => {
+    const gunEkle = (gun: string, n: number) => new Date(new Date(`${gun}T00:00:00.000Z`).getTime() + n * 86_400_000).toISOString().slice(0, 10)
+    const hataMetni = (fn: () => string) => { try { fn(); return null } catch (e) { return (e as Error).message } }
+
+    it.each([
+      ['1925-01-01', '2020-01-01 tarihinden önce olamaz'],
+      ['2019-12-31', '2020-01-01 tarihinden önce olamaz'],
+      ['2099-01-01', 'en fazla 1 yıl sonrası'],
+    ])('başlangıç %s reddedilir, kayıt yazılmaz', async (tarih, mesaj) => {
+      await expect(createServisPersonelAtama({ ...gecerliPersonelAtama, baslangicTarihi: tarih }, 'user-1')).rejects.toThrow(mesaj)
+      expect(mocks.personelAtamaCreate).not.toHaveBeenCalled()
+    })
+
+    it('başlangıç hata metni Excel yoluyla (baslangicTarihiCoz) birebir aynı', async () => {
+      const excel = hataMetni(() => (baslangicTarihiCoz('1925-01-01'), ''))
+      await expect(createServisPersonelAtama({ ...gecerliPersonelAtama, baslangicTarihi: '1925-01-01' }, 'user-1')).rejects.toThrow(excel!)
+    })
+
+    it('bitiş 2099 reddedilir; bitiş < başlangıç reddedilir', async () => {
+      await expect(createServisPersonelAtama({ ...gecerliPersonelAtama, bitisTarihi: '2099-01-01' }, 'user-1')).rejects.toThrow('en fazla 1 yıl sonrası')
+      await expect(createServisPersonelAtama({ ...gecerliPersonelAtama, baslangicTarihi: '2026-02-01', bitisTarihi: '2026-01-01' }, 'user-1')).rejects.toThrow('önce olamaz')
+      expect(mocks.personelAtamaCreate).not.toHaveBeenCalled()
+    })
+
+    it.each([['bugün', 0], ['yarın', 1], ['makul geçmiş (30 gün önce)', -30]])('başlangıç %s kabul edilir', async (_ad, fark) => {
+      const tarih = gunEkle(bugunTR(), fark as number)
+      await createServisPersonelAtama({ ...gecerliPersonelAtama, baslangicTarihi: tarih }, 'user-1')
+      expect(mocks.personelAtamaCreate).toHaveBeenCalledTimes(1)
+    })
   })
 
   it('durakId, seçilen güzergahın durağı değilse anlaşılır hata verir (çiğ FK hatası değil)', async () => {

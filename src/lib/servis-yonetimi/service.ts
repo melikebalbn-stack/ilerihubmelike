@@ -2128,8 +2128,10 @@ export async function createServisPersonelAtama(form: ServisPersonelAtamaForm, c
   const personnelId = form.personnelId.trim()
   const guzergahId = form.guzergahId.trim()
   const durakId = form.durakId?.trim() || null
-  const baslangic = dateOnlyOrNull(form.baslangicTarihi)!
-  const bitis = dateOnlyOrNull(form.bitisTarihi)
+  // A3: Excel/transfer/PATCH ile AYNI makul aralık kuralı (2020-01-01 .. bugün + 1 yıl); form doğrulaması
+  // yalnız biçimi/sırayı denetliyordu, 1925 ya da 2099 başlangıçlı atama açılabiliyordu.
+  const baslangic = baslangicTarihiCoz(form.baslangicTarihi)
+  const bitis = bitisTarihiCoz(form.bitisTarihi)
   const dilimIdleri = [...new Set(form.dilimIdleri.map((d) => d.trim()).filter(Boolean))]
 
   const [personnel, guzergah, dilimler] = await Promise.all([

@@ -219,6 +219,35 @@ export function UygunsuzlukFormClient({
       : [yeniSatir()],
   )
   const [kaydediliyor, setKaydediliyor] = useState(false)
+  const [sytelineAraniyor, setSytelineAraniyor] = useState(false)
+
+  /**
+   * İş emri no alanından çıkılınca (blur) Syteline'dan ürün kodu + iş emri
+   * adedini otomatik doldurur (Melih Bey, 6 Eki 2026). Kullanıcı sonradan
+   * elle değiştirebilir — alan KİLİTLENMEZ. Bulunamazsa alanlara dokunmadan
+   * yalnız uyarı verilir.
+   */
+  async function isEmriNoBlurOldu() {
+    const job = isEmriNo.trim()
+    if (!job) return
+    setSytelineAraniyor(true)
+    try {
+      const res = await fetch(`/api/entegrasyon/syteline/is-emri-ara?job=${encodeURIComponent(job)}`)
+      const json = await res.json().catch(() => null)
+      if (!res.ok || !json?.bulundu || !json.items?.length) {
+        toast.error('İş emri Syteline\'da bulunamadı')
+        return
+      }
+      // Suffix DESC gelir, ilk kayıt en güncel revizyon.
+      const ilk = json.items[0]
+      if (ilk.urunKodu) setMamulUrunKodu(ilk.urunKodu)
+      if (ilk.adet != null) setIsEmriAdeti(String(ilk.adet))
+    } catch {
+      toast.error('Syteline sorgusu başarısız')
+    } finally {
+      setSytelineAraniyor(false)
+    }
+  }
 
   // Seçiciler için hata kodu listesi — tek istek, tip'e göre burada süzülür.
   useEffect(() => {
@@ -386,7 +415,21 @@ export function UygunsuzlukFormClient({
           </div>
           <div>
             <Label className="text-xs text-slate-600">İş emri no *</Label>
-            <Input value={isEmriNo} disabled={ro} onChange={(e) => setIsEmriNo(e.target.value)} className="mt-1 h-9 font-quality-mono" />
+            <div className="relative">
+              <Input
+                value={isEmriNo}
+                disabled={ro}
+                onChange={(e) => setIsEmriNo(e.target.value)}
+                onBlur={isEmriNoBlurOldu}
+                className="mt-1 h-9 font-quality-mono pr-8"
+              />
+              {sytelineAraniyor && (
+                <Loader2 className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-slate-400" />
+              )}
+            </div>
+            <p className="mt-1 text-[11px] text-slate-400">
+              Girip alandan çıkınca Syteline'dan ürün kodu/adet otomatik dolar — elle değiştirilebilir
+            </p>
           </div>
           <div>
             <Label className="text-xs text-slate-600">İş emri adeti</Label>

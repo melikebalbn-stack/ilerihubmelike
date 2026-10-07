@@ -199,6 +199,46 @@ const icerik: EtkilesimliIcerik = {
   },
 }
 
+/**
+ * Durum (Objstate) değerlerinin Türkçe karşılıkları. Rapor motoru etiketleri
+ * rapor_katalog_deger'den okur (veri-seti-alanlar.ts · projeksiyonDegerEtiketleri):
+ * kaynakAd = PROJEKSİYON, alan adı; entity okumada dikkate alınmaz.
+ * Etiket YALNIZ gösterimdir — ham değer ve süzgeçler değişmez.
+ */
+const DURUM_ETIKET: Record<string, string> = {
+  Planned: 'Planlandı',
+  Released: 'Serbest Bırakıldı',
+  Reserved: 'Rezerve Edildi',
+  Picked: 'Toplandı',
+  PartiallyDelivered: 'Kısmi Sevk Edildi',
+  Delivered: 'Sevk Edildi',
+  Invoiced: 'Faturalandı',
+  Cancelled: 'İptal Edildi',
+  Blocked: 'Bloke',
+}
+
+async function durumEtiketleriYaz(projeksiyon: string) {
+  for (const [deger, etiket] of Object.entries(DURUM_ETIKET)) {
+    for (const entity of ['CustomerOrderLine', 'CustomerOrder']) {
+      await prisma.raporKatalogDeger.upsert({
+        where: { kaynakAd_entity_alan_deger: { kaynakAd: projeksiyon, entity, alan: 'Objstate', deger } },
+        create: { kaynakAd: projeksiyon, entity, alan: 'Objstate', deger, etiket, kaynak: 'ENUM' },
+        update: { etiket },
+      })
+    }
+  }
+  // Etiketi olmayan değer kaldıysa göster — IFS'te listede olmayan bir durum varsa
+  // ekranda İngilizce kalır, buradan görülür.
+  const eksik = await prisma.raporKatalogDeger.findMany({
+    where: { kaynakAd: projeksiyon, alan: 'Objstate', etiket: null },
+    select: { entity: true, deger: true },
+  })
+  console.log(`Durum etiketleri yazıldı (${Object.keys(DURUM_ETIKET).length} değer × 2 entity).`)
+  if (eksik.length) {
+    console.log(`  Etiketsiz kalan: ${eksik.map((e) => `${e.entity}.${e.deger}`).join(', ')}`)
+  }
+}
+
 const json = (v: unknown): Prisma.InputJsonValue => JSON.parse(JSON.stringify(v)) as Prisma.InputJsonValue
 
 const ACIKLAMA = 'Sevk tarihi aralığındaki açık müşteri sipariş satırları: net sipariş, stok ve rezerve'
@@ -219,6 +259,8 @@ async function main() {
     create: { kod: SABLON_KOD, ad: 'Açık Sipariş Listesi', aciklama: ACIKLAMA, veriSetiId: veriSeti.id, icerik: json(icerik), durum: 'TASLAK', izinAnahtari: null },
     update: { ad: 'Açık Sipariş Listesi', aciklama: ACIKLAMA, veriSetiId: veriSeti.id, icerik: json(icerik) },
   })
+
+  await durumEtiketleriYaz(c.CustomerOrderLine.projeksiyon)
 
   console.log(`\nVeri seti: ${veriSeti.ad}  id=${veriSeti.id}`)
   console.log(`Şablon:    ${sablon.kod}  id=${sablon.id}  durum=${sablon.durum}  sürüm=${sablon.surum}`)

@@ -86,4 +86,44 @@ async function main() {
   }
 }
 
-main().catch((e) => { console.error(e); process.exitCode = 1 })
+/**
+ * Stok kolonu boş kalınca: InventoryPart tarafında karşılık var mı?
+ * Açık satırların parça kodlarını alıp InventoryPartSet'te tek tek arar.
+ */
+async function stokKontrol() {
+  const filtre = `Contract eq ${S} and QtyToShip gt 0`
+  const yol = `${PROJEKSIYON}.svc/${ENTITY_SET}?$select=CatalogNo,PartNo&$filter=${encodeURIComponent(filtre)}&$top=20`
+  let acik: Record<string, unknown>[] = []
+  try {
+    acik = (await istek<Sayfa>(yol)).body.value ?? []
+  } catch (e) {
+    console.log(`\nStok kontrolü yapılamadı: ${(e as Error).message}`)
+    return
+  }
+  if (!acik.length) { console.log('\nAçık satır yok, stok kontrolü atlandı.'); return }
+
+  console.log('\nStok eşleşmesi (InventoryPartSet):')
+  const kodlar = [...new Set(acik.flatMap((s) => [s.CatalogNo, s.PartNo]).filter(Boolean).map(String))]
+  for (const kod of kodlar) {
+    const f = `Contract eq ${S} and PartNo eq '${kod.replace(/'/g, "''")}'`
+    const u = `InventoryPartHandling.svc/InventoryPartSet?$select=PartNo,Contract,OnHandQty,Description&$filter=${encodeURIComponent(f)}&$top=5`
+    try {
+      const r = (await istek<Sayfa>(u)).body.value ?? []
+      if (r.length) console.log(`  ${kod.padEnd(20)} VAR — OnHandQty=${String(r[0].OnHandQty)}  ${String(r[0].Description ?? '')}`)
+      else console.log(`  ${kod.padEnd(20)} YOK — bu sitede stok kartı bulunamadı`)
+    } catch (e) {
+      console.log(`  ${kod.padEnd(20)} HATA — ${(e as Error).message}`)
+    }
+  }
+
+  // Sitede kaç stok kartı var — kaynak hiç dönmüyorsa (0) sorun süzgeçte, eşleşmede değil.
+  const u = `InventoryPartHandling.svc/InventoryPartSet?$select=PartNo&$filter=${encodeURIComponent(`Contract eq ${S}`)}&$top=5`
+  try {
+    const r = (await istek<Sayfa>(u)).body.value ?? []
+    console.log(`  ${'(sitedeki ilk 5 kart)'.padEnd(20)} ${r.map((x) => String(x.PartNo)).join(', ') || '(hiç yok)'}`)
+  } catch (e) {
+    console.log(`  (site kartları) HATA — ${(e as Error).message}`)
+  }
+}
+
+main().then(stokKontrol).catch((e) => { console.error(e); process.exitCode = 1 })

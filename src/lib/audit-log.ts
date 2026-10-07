@@ -96,6 +96,11 @@ export type AuditTargetType =
   // İlk kullanan: MASTER madde 49 acil durum listesi görüntüleme
   // (action: SERVIS_ACIL_DURUM_GORUNTULENDI).
   | 'SERVIS'
+  // IV-FR-03 Tutanak Formu. action: TUTANAK_OLUSTURULDU / _GONDERILDI /
+  // _SAHIT_ONAYLADI / _SAHIT_REDDETTI / _YONETICI_ONAYLADI / _YONETICI_REDDETTI /
+  // _IV_KAPATTI / TUTANAK_EXPORT / TUTANAK_PDF_ACILDI. details'te AÇIKLAMA METNİ YOK
+  // (gizli disiplin verisi) — yalnız tutanakNo, personnelId, durum geçişi, not.
+  | 'TUTANAK'
 
 export interface AuditLogParams {
   action: string

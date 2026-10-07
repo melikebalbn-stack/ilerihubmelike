@@ -584,6 +584,8 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const [modulGorunur, setModulGorunur] = useState<Record<string, boolean>>({})
   const [ifsRaporGorunur, setIfsRaporGorunur] = useState(false)
   const [denemeGorunur, setDenemeGorunur] = useState(false)
+  // IV-FR-03 tutanak menüsü — SUNUCU bayrağı (menu-bayrak); client'ta yetki hesaplanmaz.
+  const [tutanakBayrak, setTutanakBayrak] = useState<{ gorunur: boolean; acabilir: boolean }>({ gorunur: false, acabilir: false })
   // IV-FR-27 menü başlığı sunucudan gelir: İV → "Deneme Değerlendirme", zincir üyesi → "Deneme Formlarım".
   const [denemeBaslik, setDenemeBaslik] = useState("Deneme Değerlendirme")
   const [avansBayrak, setAvansBayrak] = useState<{ kendim: boolean; sorumlu: boolean }>({ kendim: false, sorumlu: false })
@@ -724,6 +726,10 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   // Bölüm değişikliği talebi bayrağı — SUNUCUDA hesaplanır (bolum-talep-yetki).
   useEffect(() => {
     if (!session?.user) return
+    fetch('/api/tutanak/menu-bayrak')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => d && setTutanakBayrak({ gorunur: d.gorunur === true, acabilir: d.acabilir === true }))
+      .catch(() => {})
     fetch('/api/bolum-degisiklik-talep/menu-bayrak')
       .then(async (r) => {
         if (!r.ok) return
@@ -979,9 +985,12 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   // (yalnız kendi zincirindekiler, puansız). Client'ta yetki hesaplanmaz.
   const denemeItem = { name: denemeBaslik, icon: ClipboardList, href: "/deneme", roles: ["*"] }
   const iaIkItem = { name: "İş Analizi Onayları", icon: ClipboardCheck, href: "/strategic-hr/is-analizi/ik-onay", roles: ["*"] }
+  // IV-FR-03 — İV grubunda. Modül yayın kapısı ayrıca süzer (modul: "tutanak").
+  const tutanakItem = { name: "Tutanak Formu", icon: FileWarning, href: "/tutanak", roles: ["*"], modul: "tutanak" }
 
   const filteredStrategicHrItems = [
     ...filterStrategicHrItems(strategicHrMenuItems),
+    ...(tutanakBayrak.gorunur ? [tutanakItem] : []),
     ...(iaFlags.ik ? [iaIkItem] : []),
     // "Onayımdaki İş Analizleri" — form değil onay kuyruğu; iaIkItem'in yanına
     // taşındı. Koşul iaFlags.amir AYNEN. Sayıya dahil olduğu için yalnız amir
@@ -1016,6 +1025,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     // İV yetkisi olup canSeeIk kapısından geçmeyen kullanıcı da grubu görebilsin,
     // yoksa menü öğesi hesaplanır ama grup hiç çizilmediği için görünmezdi.
     denemeGorunur ||
+    tutanakBayrak.gorunur ||
     // İV kuyruk kalemi tek başına görünüyorsa grup da açılsın.
     bolumTalepBayrak.iv
   // Kadro talep — SUNUCU bayrağı (kadroTalepAcabilir) ile; client'ta yetki hesaplanmaz.

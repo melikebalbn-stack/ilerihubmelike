@@ -56,6 +56,8 @@ export const MODUL_KAYDI: readonly ModulKaydi[] = [
   { anahtar: 'servis-yonetimi', etiket: 'Servis ve Güzergâh', rota: '/servis-yonetimi' },
   { anahtar: 'izin', etiket: 'İzin', rota: '/izin' },
   { anahtar: 'faturalar', etiket: 'Fatura Takip', rota: '/sistem-gelistirme/faturalar' },
+  // IV-FR-03 Tutanak Formu — GIZLI olarak doğar (migration'daki SystemSetting satırı).
+  { anahtar: 'tutanak', etiket: 'Tutanak Formu', rota: '/tutanak' },
 ] as const
 
 export const durumAnahtari = (anahtar: string) => `modul_durum_${anahtar}`

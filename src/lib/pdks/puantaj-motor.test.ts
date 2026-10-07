@@ -263,3 +263,57 @@ describe('saatlik izin — mazeret (İzin Faz 4, kural sürümü 3)', () => {
     expect(orta.uyarilar).toContain('MAZERET_DK:60')
   })
 })
+
+describe('çeyrek yuvarlama (erken çıkış)', () => {
+  const y = { sensorZorunlu: false, yarimGunBitis: '13:00', ceyrekYuvarlama: true }
+  it('15:16 çıkış → 15:30 sayılır: erken 90 dk, net 450 (yemek 60 düşülü)', () => {
+    const r = puantajHesapla(gun({ gecisler: tamGun(PZT, '07:00', '15:16'), ayarlar: y }))
+    expect(r).toMatchObject({ erkenCikisDakika: 90, calismaDakika: 450 })
+  })
+  it('15:05 çıkış → 15:00 sayılır: erken 120 dk, net 420', () => {
+    const r = puantajHesapla(gun({ gecisler: tamGun(PZT, '07:00', '15:05'), ayarlar: y }))
+    expect(r).toMatchObject({ erkenCikisDakika: 120, calismaDakika: 420 })
+  })
+  it('15:15 sınırı → :00 (çeyrek dahil değil): erken 120', () => {
+    expect(puantajHesapla(gun({ gecisler: tamGun(PZT, '07:00', '15:15'), ayarlar: y })).erkenCikisDakika).toBe(120)
+  })
+  it('kapalıyken (varsayılan) yuvarlama yok: 15:16 → erken 104, net 436', () => {
+    const r = puantajHesapla(gun({ gecisler: tamGun(PZT, '07:00', '15:16') }))
+    expect(r).toMatchObject({ erkenCikisDakika: 104, calismaDakika: 436 })
+  })
+  it('zamanında/geç çıkışa dokunmaz: 17:00 çıkış → erken 0', () => {
+    expect(puantajHesapla(gun({ gecisler: tamGun(PZT, '07:00', '17:00'), ayarlar: y })).erkenCikisDakika).toBe(0)
+  })
+})
+
+describe('Cuma 13:00–14:00 muafiyeti', () => {
+  const CUMA = '2026-10-02' // PZT + 4
+  const y = { sensorZorunlu: false, yarimGunBitis: '13:00', cumaMuaf: { bas: '13:00', bit: '14:00' } }
+  const fg = (o: Partial<PuantajGirdi>) => gun({ gun: CUMA, ...o })
+  it('namaz çıkış-girişi (13:00 + 13:45) yok sayılır → TAM, uyarı yok, net 540', () => {
+    const r = puantajHesapla(fg({ ayarlar: y, gecisler: [
+      G(t(CUMA, '07:00'), 'GIRIS'), G(t(CUMA, '13:00'), 'CIKIS'), G(t(CUMA, '13:45'), 'GIRIS'), G(t(CUMA, '17:00'), 'CIKIS'),
+    ] }))
+    expect(r).toMatchObject({ durum: 'TAM', calismaDakika: 540 })
+    expect(r.uyarilar).not.toContain('CUMA_MUAF_TEK_HAREKET')
+  })
+  it('pencerede tek hareket (13:30 çıkış) → uyarı, kalan 07:00/17:00 ile TAM', () => {
+    const r = puantajHesapla(fg({ ayarlar: y, gecisler: [
+      G(t(CUMA, '07:00'), 'GIRIS'), G(t(CUMA, '13:30'), 'CIKIS'), G(t(CUMA, '17:00'), 'CIKIS'),
+    ] }))
+    expect(r.durum).toBe('TAM')
+    expect(r.uyarilar).toContain('CUMA_MUAF_TEK_HAREKET')
+  })
+  it('muaf kapalıyken pencere geçişleri normal işlenir', () => {
+    const r = puantajHesapla(fg({ gecisler: [
+      G(t(CUMA, '07:00'), 'GIRIS'), G(t(CUMA, '13:30'), 'CIKIS'), G(t(CUMA, '17:00'), 'CIKIS'),
+    ] }))
+    expect(r.uyarilar).not.toContain('CUMA_MUAF_TEK_HAREKET')
+  })
+  it('Cuma değilse (Pazartesi) muafiyet uygulanmaz', () => {
+    const r = puantajHesapla(gun({ ayarlar: y, gecisler: [
+      G(t(PZT, '07:00'), 'GIRIS'), G(t(PZT, '13:30'), 'CIKIS'), G(t(PZT, '17:00'), 'CIKIS'),
+    ] }))
+    expect(r.uyarilar).not.toContain('CUMA_MUAF_TEK_HAREKET')
+  })
+})

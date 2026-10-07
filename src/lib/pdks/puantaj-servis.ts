@@ -140,7 +140,7 @@ export async function gunuHesapla(
   const ids = personeller.map((p) => p.id)
   if (!ids.length) return { gun, hesaplanan: 0, yazilan: 0, kilitliAtlanan: 0, vardiyasiz: [], sonuclar: [] }
 
-  const [vardiyalar, atamalar, tatil, sensorZ, yarimBitis] = await Promise.all([
+  const [vardiyalar, atamalar, tatil, sensorZ, yarimBitis, ceyrekY, cumaBas, cumaBit] = await Promise.all([
     db.pdksVardiya.findMany({ where: { aktif: true }, include: { molalar: { where: { aktif: true } } }, orderBy: { sira: 'asc' } }),
     db.pdksPersonelVardiya.findMany({
       where: { personnelId: { in: ids }, baslangic: { lte: dbGun(gun) }, OR: [{ bitis: null }, { bitis: { gte: dbGun(gun) } }] },
@@ -150,7 +150,12 @@ export async function gunuHesapla(
     db.iproTatil.findUnique({ where: { tarih: dbGun(gun) }, select: { tip: true } }),
     ayarOku(db, 'pdks_gecis_sensoru_zorunlu', 'false'),
     ayarOku(db, 'pdks_yarim_gun_bitis', '13:00'),
+    ayarOku(db, 'pdks_ceyrek_yuvarlama', 'true'), // erken çıkış çeyrek/buçuk yuvarlaması (İV kuralı — açık)
+    ayarOku(db, 'pdks_cuma_muaf_bas', '13:00'), // Cuma öğle namazı muafiyet penceresi başlangıcı ('-' → kapalı)
+    ayarOku(db, 'pdks_cuma_muaf_bit', '14:00'),
   ])
+  const saatAyar = (s: string) => (/^\d{2}:\d{2}$/.test(s) ? s : null)
+  const cumaMuaf = saatAyar(cumaBas) && saatAyar(cumaBit) ? { bas: cumaBas, bit: cumaBit } : null
   const vById = new Map(vardiyalar.map((v) => [v.id, v]))
   const tanim = (v: (typeof vardiyalar)[number]): VardiyaTanim => ({
     id: v.id, kod: v.kod, girisSaat: v.girisSaat, cikisSaat: v.cikisSaat, gunDonumSaat: v.gunDonumSaat,
@@ -207,7 +212,12 @@ export async function gunuHesapla(
       mesaiFormlari: mesai
         .filter((m) => m.personnelId === p.id)
         .map((m) => ({ overtimePersonnelId: m.id, isFullDay: m.overtimeForm.isFullDay, startTime: saatGecerli(m.overtimeForm.startTime), endTime: saatGecerli(m.overtimeForm.endTime) })),
-      ayarlar: { sensorZorunlu: sensorZ === 'true', yarimGunBitis: /^\d{2}:\d{2}$/.test(yarimBitis) ? yarimBitis : '13:00' },
+      ayarlar: {
+        sensorZorunlu: sensorZ === 'true',
+        yarimGunBitis: /^\d{2}:\d{2}$/.test(yarimBitis) ? yarimBitis : '13:00',
+        ceyrekYuvarlama: ceyrekY === 'true',
+        cumaMuaf,
+      },
       izin: izinler.get(p.id) ?? null,
       simdi,
     })

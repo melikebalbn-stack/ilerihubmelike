@@ -25,6 +25,13 @@
  * - Saatlik izin (İzin Faz 4, kural sürümü 3 — MAZERET): onaylı saat aralığı vardiya BAŞINI kapsıyorsa beklenen
  *   başlangıç aralık sonuna, vardiya SONUNU kapsıyorsa beklenen bitiş aralık başına kayar → geç giriş / erken çıkış
  *   o kadar düşülür. Ortadaki aralık yalnız not. Uyarı MAZERET_DK:<toplam dk> ("Mazeret X sa").
+ * - Çeyrek yuvarlama (ayarlar.ceyrekYuvarlama; Melih 07.10): ERKEN çıkışta çıkış saati, saat içindeki
+ *   dakikaya göre yuvarlanır — dk ≤ 15 → o saatin başı (ör. 15:05 → 15:00), dk > 15 → buçuğu (ör. 15:16 → 15:30).
+ *   Net çalışma ve erken dakika bu yuvarlanmış çıkışa göre; gerçek sonCikis kaydı değişmez. Vardiya
+ *   bitişinde/sonrasında çıkışa uygulanmaz.
+ * - Cuma muafiyeti (ayarlar.cumaMuaf; Melih 07.10): Cuma günü [bas,bit) (ör. 13:00–14:00) arasındaki
+ *   geçişler puantaja girmez (öğle namazı çıkış-girişi gün içinde sayılır). Penceredeki hareket sayısı
+ *   TEK ise CUMA_MUAF_TEK_HAREKET uyarısı (çıkışı/girişi eksik olabilir).
  */
 
 export const KURAL_SURUMU = 3
@@ -98,7 +105,14 @@ export interface PuantajGirdi {
   gecisler: GecisGirdi[]
   kartFormlari: KartOkutamamaGirdi[]
   mesaiFormlari: MesaiGirdi[]
-  ayarlar: { sensorZorunlu: boolean; yarimGunBitis: string }
+  ayarlar: {
+    sensorZorunlu: boolean
+    yarimGunBitis: string
+    /** Erken çıkışta çeyrek/buçuk yuvarlaması (Melih 07.10). Belirtilmezse uygulanmaz. */
+    ceyrekYuvarlama?: boolean
+    /** Cuma öğle namazı muafiyet penceresi ("HH:mm"). null/yoksa uygulanmaz. */
+    cumaMuaf?: { bas: string; bit: string } | null
+  }
   /** Onaylı izin günü (İzin modülü). null = izin yok. */
   izin: IzinGunuGirdi | null
   simdi: Date
@@ -162,6 +176,17 @@ function vardiyaSaati(gun: string, hhmm: string, gunDonum: string): Date {
 }
 const dakikaFark = (a: Date, b: Date) => Math.floor((b.getTime() - a.getTime()) / 60_000)
 const baslamisDakika = (a: Date, b: Date) => Math.ceil((b.getTime() - a.getTime()) / 60_000)
+
+/** Erken çıkış yuvarlaması: saat içindeki dakika ≤ 15 → o saatin başı (:00), > 15 → buçuğu (:30). */
+export function ceyrekYuvarla(d: Date): Date {
+  const yerelTopDk = Math.floor((d.getTime() + OFSET_MS) / 60_000)
+  const saat = Math.floor(yerelTopDk / 60)
+  const dakikaKisim = yerelTopDk % 60
+  const yeniDk = dakikaKisim <= 15 ? 0 : 30
+  return new Date((saat * 60 + yeniDk) * 60_000 - OFSET_MS)
+}
+/** Gün dizgisinin haftagünü (0 Pazar … 5 Cuma … 6 Cumartesi), İstanbul yereli. */
+const haftaGunu = (gun: string) => new Date(`${gun}T12:00:00Z`).getUTCDay()
 
 /** Vardiya günü penceresi [bas, bit). */
 export function vardiyaGunuPenceresi(gun: string, v: Pick<VardiyaTanim, 'gunDonumSaat'>): { bas: Date; bit: Date } {
@@ -228,8 +253,20 @@ export function puantajHesapla(g: PuantajGirdi): PuantajSonucu {
     const atilan = g.gecisler.filter((x) => x.zaman >= pencere.bas && x.zaman < pencere.bit && !x.sensorBagli).length
     if (atilan) uyarilar.push(`SENSORSUZ_OKUTMA_SAYILMADI:${atilan}`)
   }
-  const ilkG = gecerli.find((x) => x.yon === 'GIRIS') ?? null
-  const cikislar = gecerli.filter((x) => x.yon === 'CIKIS' && (!ilkG || x.zaman > ilkG.zaman))
+  // 1b. Cuma öğle namazı muafiyeti: Cuma günü [bas,bit) arasındaki geçişler puantaja girmez.
+  let gecerliSon = gecerli
+  if (g.ayarlar.cumaMuaf && haftaGunu(g.gun) === 5) {
+    const mb = vardiyaSaati(g.gun, g.ayarlar.cumaMuaf.bas, v.gunDonumSaat)
+    const me = vardiyaSaati(g.gun, g.ayarlar.cumaMuaf.bit, v.gunDonumSaat)
+    const ici = gecerli.filter((x) => x.zaman >= mb && x.zaman < me)
+    if (ici.length) {
+      gecerliSon = gecerli.filter((x) => !(x.zaman >= mb && x.zaman < me))
+      if (ici.length % 2 === 1) uyarilar.push('CUMA_MUAF_TEK_HAREKET')
+    }
+  }
+
+  const ilkG = gecerliSon.find((x) => x.yon === 'GIRIS') ?? null
+  const cikislar = gecerliSon.filter((x) => x.yon === 'CIKIS' && (!ilkG || x.zaman > ilkG.zaman))
   const sonC = cikislar.at(-1) ?? null
 
   let ilkGiris = ilkG?.zaman ?? null
@@ -291,7 +328,7 @@ export function puantajHesapla(g: PuantajGirdi): PuantajSonucu {
       return { ...ortak, durum: 'MESAI', onayliMesaiDakika: formDakika, calismaDakika: formDakika, mesaiPersonelId: form.overtimePersonnelId,
         uyarilar: fiiliDakika === null ? [...uyarilar, 'MESAI_FORMU_VAR_TURNIKE_YOK'] : uyarilar }
     }
-    if (gecerli.length) uyarilar.push('ONAYSIZ_GUNDE_GECIS')
+    if (gecerliSon.length) uyarilar.push('ONAYSIZ_GUNDE_GECIS')
     return { ...ortak, durum: g.takvim, calismaDakika: null, uyarilar }
   }
 
@@ -315,7 +352,7 @@ export function puantajHesapla(g: PuantajGirdi): PuantajSonucu {
   if (tamIzin) {
     return {
       ...ortak, ...izinAlanlari, durum: 'IZINLI', calismaDakika: null,
-      uyarilar: gecerli.length ? [...uyarilar, 'IZINLI_GUNDE_GECIS'] : uyarilar,
+      uyarilar: gecerliSon.length ? [...uyarilar, 'IZINLI_GUNDE_GECIS'] : uyarilar,
     }
   }
   if (izin?.yarim) uyarilar.push('YARIM_GUN_IZINLI')
@@ -330,11 +367,17 @@ export function puantajHesapla(g: PuantajGirdi): PuantajSonucu {
     }
     uyarilar.push(`MAZERET_DK:${saatlik.reduce((t, a) => t + a.dakika, 0)}`)
   }
+  // Erken çıkışta çeyrek yuvarlaması — net/erken hesabında kullanılır; gerçek sonCikis kaydı değişmez.
+  let hesapCikis = sonCikis
+  if (sonCikis && g.ayarlar.ceyrekYuvarlama && sonCikis < beklenen.bit) {
+    const y = ceyrekYuvarla(sonCikis)
+    hesapCikis = y < beklenen.bit ? y : sonCikis
+  }
   // Normal çalışma vardiya penceresine kırpılır — vardiya dışı süre yalnız mesai formuyla sayılır.
   let normalNet: number | null = null
   if (ilkGiris && sonCikis && sonCikis > ilkGiris) {
     const a = ilkGiris > beklenen.bas ? ilkGiris : beklenen.bas
-    const b = sonCikis < beklenen.bit ? sonCikis : beklenen.bit
+    const b = hesapCikis! < beklenen.bit ? hesapCikis! : beklenen.bit
     normalNet = b > a ? dakikaFark(a, b) - dusulenMola(g.gun, v, molalar, a, b) : 0
   }
   const sonuc: PuantajSonucu = {
@@ -347,8 +390,8 @@ export function puantajHesapla(g: PuantajGirdi): PuantajSonucu {
     sonuc.gecDakika = baslamisDakika(beklenen.bas, ilkGiris)
   }
   // Onaylı akşam mesaisi varsa normal bitiş sonrası çıkış doğal; erken çıkış yine vardiya bitişine göre.
-  if (sonCikis && beklenen.bit.getTime() - sonCikis.getTime() > v.erkenToleransDk * 60_000) {
-    sonuc.erkenCikisDakika = baslamisDakika(sonCikis, beklenen.bit)
+  if (hesapCikis && beklenen.bit.getTime() - hesapCikis.getTime() > v.erkenToleransDk * 60_000) {
+    sonuc.erkenCikisDakika = baslamisDakika(hesapCikis, beklenen.bit)
   }
   if (sonCikis && sonCikis > beklenen.bit) {
     sonuc.fazlaDakika = dakikaFark(beklenen.bit, sonCikis)

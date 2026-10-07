@@ -78,9 +78,14 @@ export async function POST(request: Request) {
   const orgUnitId = typeof body.orgUnitId === 'string' && body.orgUnitId ? body.orgUnitId : ORG_UNIT_ID_IK
   const frequency = body.frequency === 'quarterly' ? 'quarterly' : 'monthly'
   const oranYonu = body.oranYonu === 'H_G' ? 'H_G' : 'G_H'
+  const oranBirimi = body.oranBirimi === 'kat' ? 'kat' : 'yuzde'
+  const yuzdeOlcek = body.yuzdeOlcek === 'dogrudan' ? 'dogrudan' : 'oran'
   const ozelAlanlar = ozelAlanlariNormalize(body.ozelAlanlar)
   const oranPayKaynagi = typeof body.oranPayKaynagi === 'string' && body.oranPayKaynagi.trim()
     ? body.oranPayKaynagi.trim()
+    : 'actual'
+  const ortalamaKaynagi = typeof body.ortalamaKaynagi === 'string' && body.ortalamaKaynagi.trim()
+    ? body.ortalamaKaynagi.trim()
     : 'actual'
 
   const kpi = await prisma.kPIDefinition.create({
@@ -93,7 +98,10 @@ export async function POST(request: Request) {
       gerceklesenEtiketi: typeof body.gerceklesenEtiketi === 'string' && body.gerceklesenEtiketi.trim() ? body.gerceklesenEtiketi.trim() : 'Gerçekleşen',
       hedefEtiketi: typeof body.hedefEtiketi === 'string' && body.hedefEtiketi.trim() ? body.hedefEtiketi.trim() : 'Hedef',
       oranYonu,
+      oranBirimi,
+      yuzdeOlcek,
       oranPayKaynagi,
+      ortalamaKaynagi,
       ozelAlanlar: {
         create: ozelAlanlar.map((a, i) => ({ key: a.key, label: a.label, siraNo: i })),
       },

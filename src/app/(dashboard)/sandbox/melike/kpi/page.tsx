@@ -85,6 +85,9 @@ interface Kpi {
   hedefEtiketi: string
   oranYonu: string
   oranPayKaynagi: string
+  oranBirimi: string
+  ortalamaKaynagi: string
+  yuzdeOlcek: string
   ozelAlanlar: OzelAlan[]
   measurements: Olcum[]
   baselines: Baseline[]
@@ -108,17 +111,49 @@ function donemSayisi(kpi: Kpi): number {
 // aylık kırılımı olmayan eski yıllarda (2020-2023 gibi) Excel'den/elle
 // girilmiş KPIYearlyBaseline değeri kullanılır. Grafik ve tablo aynı
 // fonksiyonu kullanır ki ikisi hep tutarlı olsun.
+// "Ort." (yıllık ortalama) ve oranın payı gibi yerlerde, seçili kaynağın (Gerçekleşen ya da bir
+// özel alan) belirli bir ay/yıldaki değerini okur.
+function kaynakDegeriAl(kpi: Kpi, kaynak: string, yil: number, ay: number): number | null {
+  if (kaynak === 'actual') {
+    return kpi.measurements.find(m => m.year === yil && m.month === ay)?.actual ?? null
+  }
+  const alan = kpi.ozelAlanlar.find(a => a.key === kaynak)
+  return alan?.degerler.find(d => d.year === yil && d.month === ay)?.value ?? null
+}
+
 function hesaplaOrtYillar(kpi: Kpi): [number, number][] {
-  const yillarKumesi = new Set<number>([...kpi.measurements.map(m => m.year), ...kpi.baselines.map(b => b.year)])
+  const yillarKumesi = new Set<number>([
+    ...kpi.measurements.map(m => m.year),
+    ...kpi.ozelAlanlar.flatMap(a => a.degerler.map(d => d.year)),
+    ...kpi.baselines.map(b => b.year),
+  ])
   const hesaplanan = new Map<number, number>()
   for (const yil of yillarKumesi) {
-    const degerler = kpi.measurements.filter(m => m.year === yil && m.actual != null).map(m => m.actual as number)
+    const degerler: number[] = []
+    for (let ay = 1; ay <= donemSayisi(kpi); ay++) {
+      const d = kaynakDegeriAl(kpi, kpi.ortalamaKaynagi, yil, ay)
+      if (d != null) degerler.push(d)
+    }
     if (degerler.length > 0) hesaplanan.set(yil, degerler.reduce((a, b) => a + b, 0) / degerler.length)
   }
   for (const b of kpi.baselines) {
     if (!hesaplanan.has(b.year)) hesaplanan.set(b.year, b.average)
   }
   return Array.from(hesaplanan.entries()).sort(([a], [b]) => a - b)
+}
+
+// Ort. hücresinin rengi için: o yılın Hedef ortalamasına karşı, seçili ortalamaKaynagi'nın
+// ortalamasını (basariSeviyesi ile) kıyaslar — aylık Gerçekleşen hücreleriyle aynı kural.
+function yillikHedefOrtalamasi(kpi: Kpi): Map<number, number> {
+  const sonuc = new Map<number, number>()
+  const yillar = new Set(kpi.measurements.map(m => m.year))
+  for (const yil of yillar) {
+    const degerler = kpi.measurements
+      .filter(m => m.year === yil && m.target != null && !m.hedefNA)
+      .map(m => m.target as number)
+    if (degerler.length > 0) sonuc.set(yil, degerler.reduce((a, b) => a + b, 0) / degerler.length)
+  }
+  return sonuc
 }
 
 interface OzelAlanTaslak { key: string; label: string }
@@ -136,12 +171,14 @@ function slugOlustur(etiket: string): string {
 }
 
 function OzelAlanlarDuzenleyici({
-  alanlar, onChange, oranPayKaynagi, onOranPayKaynagiChange,
+  alanlar, onChange, oranPayKaynagi, onOranPayKaynagiChange, ortalamaKaynagi, onOrtalamaKaynagiChange,
 }: {
   alanlar: OzelAlanTaslak[]
   onChange: (a: OzelAlanTaslak[]) => void
   oranPayKaynagi: string
   onOranPayKaynagiChange: (v: string) => void
+  ortalamaKaynagi: string
+  onOrtalamaKaynagiChange: (v: string) => void
 }) {
   function etiketDegistir(i: number, label: string) {
     const yeni = [...alanlar]
@@ -155,6 +192,7 @@ function OzelAlanlarDuzenleyici({
     const silinen = alanlar[i]
     onChange(alanlar.filter((_, idx) => idx !== i))
     if (silinen && oranPayKaynagi === silinen.key) onOranPayKaynagiChange('actual')
+    if (silinen && ortalamaKaynagi === silinen.key) onOrtalamaKaynagiChange('actual')
   }
 
   return (
@@ -188,6 +226,18 @@ function OzelAlanlarDuzenleyici({
           </SelectContent>
         </Select>
       </div>
+      <div>
+        <Label>"Ort." (yıllık ortalama) hangi alandan hesaplansın</Label>
+        <Select value={ortalamaKaynagi} onValueChange={onOrtalamaKaynagiChange}>
+          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="actual">Gerçekleşen</SelectItem>
+            {alanlar.filter(a => a.label.trim()).map(a => (
+              <SelectItem key={a.key} value={a.key}>{a.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
     </div>
   )
 }
@@ -201,8 +251,11 @@ function YeniKpiDialog({ orgUnitId, onCreated }: { orgUnitId: string; onCreated:
   const [gerceklesenEtiketi, setGerceklesenEtiketi] = useState('Gerçekleşen')
   const [hedefEtiketi, setHedefEtiketi] = useState('Hedef')
   const [oranYonu, setOranYonu] = useState('G_H')
+  const [oranBirimi, setOranBirimi] = useState('yuzde')
+  const [yuzdeOlcek, setYuzdeOlcek] = useState('oran')
   const [ozelAlanlar, setOzelAlanlar] = useState<OzelAlanTaslak[]>([])
   const [oranPayKaynagi, setOranPayKaynagi] = useState('actual')
+  const [ortalamaKaynagi, setOrtalamaKaynagi] = useState('actual')
   const [hedef, setHedef] = useState('')
   const [kaydediliyor, setKaydediliyor] = useState(false)
 
@@ -218,8 +271,11 @@ function YeniKpiDialog({ orgUnitId, onCreated }: { orgUnitId: string; onCreated:
           gerceklesenEtiketi: gerceklesenEtiketi.trim() || 'Gerçekleşen',
           hedefEtiketi: hedefEtiketi.trim() || 'Hedef',
           oranYonu,
+          oranBirimi,
+          yuzdeOlcek,
           ozelAlanlar,
           oranPayKaynagi,
+          ortalamaKaynagi,
         }),
       })
       if (res.ok) {
@@ -240,7 +296,8 @@ function YeniKpiDialog({ orgUnitId, onCreated }: { orgUnitId: string; onCreated:
         }
         setName(''); setUnit(''); setDirection('higher_is_better'); setFrequency('monthly')
         setGerceklesenEtiketi('Gerçekleşen'); setHedefEtiketi('Hedef'); setOranYonu('G_H'); setHedef('')
-        setOzelAlanlar([]); setOranPayKaynagi('actual')
+        setOranBirimi('yuzde'); setYuzdeOlcek('oran')
+        setOzelAlanlar([]); setOranPayKaynagi('actual'); setOrtalamaKaynagi('actual')
         setAcik(false)
         onCreated()
       }
@@ -300,16 +357,40 @@ function YeniKpiDialog({ orgUnitId, onCreated }: { orgUnitId: string; onCreated:
               <Input value={hedefEtiketi} onChange={e => setHedefEtiketi(e.target.value)} placeholder="Hedef..." />
             </div>
           </div>
-          <div>
-            <Label>Oran yönü</Label>
-            <Select value={oranYonu} onValueChange={setOranYonu}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="G_H">G/H (gerçekleşen ÷ hedef)</SelectItem>
-                <SelectItem value="H_G">H/G (hedef ÷ gerçekleşen)</SelectItem>
-              </SelectContent>
-            </Select>
+          <div className="flex gap-3">
+            <div className="flex-1">
+              <Label>Oran yönü</Label>
+              <Select value={oranYonu} onValueChange={setOranYonu}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="G_H">G/H (gerçekleşen ÷ hedef)</SelectItem>
+                  <SelectItem value="H_G">H/G (hedef ÷ gerçekleşen)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex-1">
+              <Label>Oran birimi</Label>
+              <Select value={oranBirimi} onValueChange={setOranBirimi}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="yuzde">Yüzde (%)</SelectItem>
+                  <SelectItem value="kat">Kat (x)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
+          {unit.trim() === '%' && (
+            <div>
+              <Label>Yüzde değerleri nasıl giriliyor</Label>
+              <Select value={yuzdeOlcek} onValueChange={setYuzdeOlcek}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="oran">0-1 arası oran (0,64 = %64)</SelectItem>
+                  <SelectItem value="dogrudan">Doğrudan yüzde (64 = %64)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <div>
             <Label>Hedef (opsiyonel)</Label>
             <Input
@@ -324,6 +405,8 @@ function YeniKpiDialog({ orgUnitId, onCreated }: { orgUnitId: string; onCreated:
             onChange={setOzelAlanlar}
             oranPayKaynagi={oranPayKaynagi}
             onOranPayKaynagiChange={setOranPayKaynagi}
+            ortalamaKaynagi={ortalamaKaynagi}
+            onOrtalamaKaynagiChange={setOrtalamaKaynagi}
           />
         </div>
         <DialogFooter>
@@ -398,18 +481,22 @@ function KpiDuzenleDialog({ kpi, onSaved }: { kpi: Kpi; onSaved: () => void }) {
   const [gerceklesenEtiketi, setGerceklesenEtiketi] = useState(kpi.gerceklesenEtiketi)
   const [hedefEtiketi, setHedefEtiketi] = useState(kpi.hedefEtiketi)
   const [oranYonu, setOranYonu] = useState(kpi.oranYonu)
+  const [oranBirimi, setOranBirimi] = useState(kpi.oranBirimi)
+  const [yuzdeOlcek, setYuzdeOlcek] = useState(kpi.yuzdeOlcek)
   const [ozelAlanlar, setOzelAlanlar] = useState<OzelAlanTaslak[]>(
     kpi.ozelAlanlar.map(a => ({ key: a.key, label: a.label })),
   )
   const [oranPayKaynagi, setOranPayKaynagi] = useState(kpi.oranPayKaynagi)
+  const [ortalamaKaynagi, setOrtalamaKaynagi] = useState(kpi.ortalamaKaynagi)
   const [kaydediliyor, setKaydediliyor] = useState(false)
 
   useEffect(() => {
     if (!acik) return
     setName(kpi.name); setUnit(kpi.unit ?? ''); setDirection(kpi.direction); setFrequency(kpi.frequency)
     setGerceklesenEtiketi(kpi.gerceklesenEtiketi); setHedefEtiketi(kpi.hedefEtiketi); setOranYonu(kpi.oranYonu)
+    setOranBirimi(kpi.oranBirimi); setYuzdeOlcek(kpi.yuzdeOlcek)
     setOzelAlanlar(kpi.ozelAlanlar.map(a => ({ key: a.key, label: a.label })))
-    setOranPayKaynagi(kpi.oranPayKaynagi)
+    setOranPayKaynagi(kpi.oranPayKaynagi); setOrtalamaKaynagi(kpi.ortalamaKaynagi)
   }, [acik, kpi])
 
   async function kaydet() {
@@ -424,8 +511,11 @@ function KpiDuzenleDialog({ kpi, onSaved }: { kpi: Kpi; onSaved: () => void }) {
           gerceklesenEtiketi: gerceklesenEtiketi.trim() || 'Gerçekleşen',
           hedefEtiketi: hedefEtiketi.trim() || 'Hedef',
           oranYonu,
+          oranBirimi,
+          yuzdeOlcek,
           ozelAlanlar,
           oranPayKaynagi,
+          ortalamaKaynagi,
         }),
       })
       if (res.ok) {
@@ -487,21 +577,47 @@ function KpiDuzenleDialog({ kpi, onSaved }: { kpi: Kpi; onSaved: () => void }) {
               <Input value={hedefEtiketi} onChange={e => setHedefEtiketi(e.target.value)} />
             </div>
           </div>
-          <div>
-            <Label>Oran yönü</Label>
-            <Select value={oranYonu} onValueChange={setOranYonu}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="G_H">G/H (gerçekleşen ÷ hedef)</SelectItem>
-                <SelectItem value="H_G">H/G (hedef ÷ gerçekleşen)</SelectItem>
-              </SelectContent>
-            </Select>
+          <div className="flex gap-3">
+            <div className="flex-1">
+              <Label>Oran yönü</Label>
+              <Select value={oranYonu} onValueChange={setOranYonu}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="G_H">G/H (gerçekleşen ÷ hedef)</SelectItem>
+                  <SelectItem value="H_G">H/G (hedef ÷ gerçekleşen)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex-1">
+              <Label>Oran birimi</Label>
+              <Select value={oranBirimi} onValueChange={setOranBirimi}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="yuzde">Yüzde (%)</SelectItem>
+                  <SelectItem value="kat">Kat (x)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
+          {unit.trim() === '%' && (
+            <div>
+              <Label>Yüzde değerleri nasıl giriliyor</Label>
+              <Select value={yuzdeOlcek} onValueChange={setYuzdeOlcek}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="oran">0-1 arası oran (0,64 = %64)</SelectItem>
+                  <SelectItem value="dogrudan">Doğrudan yüzde (64 = %64)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <OzelAlanlarDuzenleyici
             alanlar={ozelAlanlar}
             onChange={setOzelAlanlar}
             oranPayKaynagi={oranPayKaynagi}
             onOranPayKaynagiChange={setOranPayKaynagi}
+            ortalamaKaynagi={ortalamaKaynagi}
+            onOrtalamaKaynagiChange={setOrtalamaKaynagi}
           />
         </div>
         <DialogFooter>
@@ -666,13 +782,6 @@ function basariSeviyesi(kpi: Kpi, target: number | null, actual: number | null):
   return 'kotu'
 }
 
-function oranSeviyesi(oran: number | null): 'iyi' | 'yakin' | 'kotu' | null {
-  if (oran == null) return null
-  if (oran >= 100) return 'iyi'
-  if (oran >= YAKIN_ESIK) return 'yakin'
-  return 'kotu'
-}
-
 const SEVIYE_RENKLERI = {
   iyi: { bg: '#bbf7d0', fg: '#14532d' },
   yakin: { bg: '#fef3c7', fg: '#78350f' },
@@ -694,12 +803,14 @@ const PARA_SEMBOLLERI: Record<string, string> = {
   TL: '₺', TRY: '₺', LİRA: '₺', LIRA: '₺', '₺': '₺',
 }
 
-function sayiFormatBirimli(n: number | null, unit?: string | null): string {
+// yuzdeDogrudanMi: KPI'nın yuzdeOlcek ayarı "dogrudan" ise true — bazı KPI'larda yüzde değeri
+// 0-1 arası bir ORAN olarak değil, zaten 0-100 arası DOĞRUDAN giriliyor (ör. 99,18 = %99,18).
+// Eskiden her zaman "0-1 oran" varsayılıp ×100 yapılıyordu — bu, doğrudan girilen KPI'larda
+// %9918 gibi saçma rakamlar üretiyordu. Artık KPI başına seçilebiliyor (varsayılan: eski davranış).
+function sayiFormatBirimli(n: number | null, unit?: string | null, yuzdeDogrudanMi = false): string {
   if (n == null) return ''
   if (!unit) return sayiFormat(n)
-  // Birim "%" ise değer 0-1 arası bir oran olarak tutuluyor (0,64 = %64) —
-  // gösterirken 100 ile çarpıp yüzde işaretini ekliyoruz.
-  if (unit.trim() === '%') return `${sayiFormat(n * 100)}%`
+  if (unit.trim() === '%') return yuzdeDogrudanMi ? `${sayiFormat(n)}%` : `${sayiFormat(n * 100)}%`
   const normalize = unit.trim().toLocaleUpperCase('tr')
   const sembol = PARA_SEMBOLLERI[normalize]
   const s = sayiFormat(n)
@@ -709,11 +820,12 @@ function sayiFormatBirimli(n: number | null, unit?: string | null): string {
 
 // Sütun ve üstündeki çizgi aynı yılın aynı değerini taşıyor — tooltip'te iki kere
 // yazmasın diye aynı dataKey'e sahip girdilerden sadece ilkini gösteriyoruz.
-function GrafikTooltip({ active, payload, label, unit }: {
+function GrafikTooltip({ active, payload, label, unit, yuzdeDogrudanMi }: {
   active?: boolean
   payload?: { dataKey?: string | number; name?: string; value?: number; color?: string }[]
   label?: string
   unit?: string | null
+  yuzdeDogrudanMi?: boolean
 }) {
   if (!active || !payload || payload.length === 0) return null
   const gorulen = new Set<string | number | undefined>()
@@ -727,7 +839,7 @@ function GrafikTooltip({ active, payload, label, unit }: {
       <p className="font-semibold mb-1">{label}</p>
       {satirlar.map(p => (
         <div key={String(p.dataKey)} style={{ color: p.color }}>
-          {p.name}: {sayiFormatBirimli(p.value ?? null, unit)}
+          {p.name}: {sayiFormatBirimli(p.value ?? null, unit, yuzdeDogrudanMi)}
         </div>
       ))}
     </div>
@@ -739,7 +851,7 @@ function GrafikTooltip({ active, payload, label, unit }: {
 const NA_REGEX = /^n\/?a$/i
 
 function DuzenlenebilirHucre({
-  deger, naAktif = false, onKaydet, className, style, unit, duzYuzde = false,
+  deger, naAktif = false, onKaydet, className, style, unit, oranGosterim, yuzdeDogrudanMi = false,
 }: {
   deger: number | null
   naAktif?: boolean
@@ -747,14 +859,24 @@ function DuzenlenebilirHucre({
   className?: string
   style?: React.CSSProperties
   unit?: string | null
-  // true ise değer zaten "75" = %75 anlamında — unit="%" gibi 100 ile ÇARPILMADAN gösterilir.
-  // Oran hücresi (manuelOran) için: hesaplanan/girilen oran zaten yüzde cinsinden.
-  duzYuzde?: boolean
+  // Sadece Oran hücresi için: "yuzde" ise değer zaten "75" = %75 anlamında (100 ile ÇARPILMADAN
+  // "%75" gösterilir); "kat" ise KPI'nın oranı yüzde değil çarpan/kat anlamına geliyorsa (ör.
+  // hedefin 3 katı) aynı ham değer 100'e bölünüp "3 kat" olarak gösterilir — hesaba dokunmaz.
+  oranGosterim?: 'yuzde' | 'kat'
+  // KPI'nın yuzdeOlcek ayarı "dogrudan" ise true — unit="%" iken 100 ile çarpmadan gösterir.
+  yuzdeDogrudanMi?: boolean
 }) {
   const [duzenleniyor, setDuzenleniyor] = useState(false)
-  const [taslak, setTaslak] = useState(naAktif ? 'N/A' : deger == null ? '' : String(deger))
+  // "kat" gösteriminde elle düzenlerken de 100'e bölünmüş (ör. "3") hâli gösterilir/yazılır —
+  // kaydederken tekrar 100 ile çarpılıp oranın ham ölçeğine (0-100+) dönülür.
+  const katOlcek = oranGosterim === 'kat'
+  const gosterimDegeri = (d: number | null) => (katOlcek && d != null ? d / 100 : d)
+  const [taslak, setTaslak] = useState(naAktif ? 'N/A' : deger == null ? '' : String(gosterimDegeri(deger)))
 
-  useEffect(() => { setTaslak(naAktif ? 'N/A' : deger == null ? '' : String(deger)) }, [deger, naAktif])
+  useEffect(() => {
+    setTaslak(naAktif ? 'N/A' : deger == null ? '' : String(gosterimDegeri(deger)))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deger, naAktif])
 
   function bitir() {
     setDuzenleniyor(false)
@@ -763,7 +885,8 @@ function DuzenlenebilirHucre({
       if (!naAktif) onKaydet(null, true)
       return
     }
-    const sayi = metin === '' ? null : Number(metin.replace(',', '.'))
+    const girilen = metin === '' ? null : Number(metin.replace(',', '.'))
+    const sayi = katOlcek && girilen != null ? girilen * 100 : girilen
     if ((sayi !== deger || naAktif) && !(sayi == null && deger == null && !naAktif)) {
       onKaydet(Number.isNaN(sayi) ? null : sayi, false)
     }
@@ -792,7 +915,11 @@ function DuzenlenebilirHucre({
     >
       {naAktif
         ? 'N/A'
-        : (duzYuzde ? (deger == null ? '' : `%${sayiFormat(deger)}`) : sayiFormatBirimli(deger, unit))
+        : (oranGosterim === 'kat'
+            ? (deger == null ? '' : `${sayiFormat(deger / 100)} kat`)
+            : oranGosterim === 'yuzde'
+              ? (deger == null ? '' : `%${sayiFormat(deger)}`)
+              : sayiFormatBirimli(deger, unit, yuzdeDogrudanMi))
           || <span className="text-muted-foreground">·</span>}
     </td>
   )
@@ -833,6 +960,11 @@ function KpiVeriTablosu({
     for (const y of tumYillar) if (!hesap.has(y)) hesap.set(y, null)
     return Array.from(hesap.entries()).sort(([a], [b]) => a - b)
   }, [kpi, tumYillar])
+  const hedefOrtYillari = useMemo(() => yillikHedefOrtalamasi(kpi), [kpi])
+  function ortRenk(yil: number, ort: number | null) {
+    const seviye = basariSeviyesi(kpi, hedefOrtYillari.get(yil) ?? null, ort)
+    return seviye ? SEVIYE_RENKLERI[seviye] : { bg: '#e0f2fe', fg: '#0c4a6e' }
+  }
 
   async function ortalamaKaydet(yil: number, deger: number | null) {
     await fetch(`/api/sandbox/melike/kpi/${kpi.id}/ortalama`, {
@@ -984,14 +1116,16 @@ function KpiVeriTablosu({
                     {ilkYil
                       ? ortYillar.map(([y, ort]) =>
                           yillarIleOlcum.has(y) ? (
-                            <td key={y} className="p-2 text-center font-medium bg-sky-100 text-sky-900 border-l border-slate-200">{sayiFormatBirimli(ort, kpi.unit)}</td>
+                            <td key={y} className="p-2 text-center font-medium border-l border-slate-200" style={{ backgroundColor: ortRenk(y, ort).bg, color: ortRenk(y, ort).fg }}>{sayiFormatBirimli(ort, kpi.unit, kpi.yuzdeOlcek === 'dogrudan')}</td>
                           ) : (
                             <DuzenlenebilirHucre
                               key={y}
                               deger={ort}
                               onKaydet={(d) => ortalamaKaydet(y, d)}
-                              className="p-2 text-center font-medium bg-sky-100 text-sky-900 border-l border-slate-200"
+                              className="p-2 text-center font-medium border-l border-slate-200"
+                              style={{ backgroundColor: ortRenk(y, ort).bg, color: ortRenk(y, ort).fg }}
                               unit={kpi.unit}
+                              yuzdeDogrudanMi={kpi.yuzdeOlcek === 'dogrudan'}
                             />
                           ),
                         )
@@ -1008,6 +1142,7 @@ function KpiVeriTablosu({
                           className="p-2 text-center font-semibold border-l border-slate-200"
                           style={{ backgroundColor: renk.bg, color: renk.fg }}
                           unit={kpi.unit}
+                          yuzdeDogrudanMi={kpi.yuzdeOlcek === 'dogrudan'}
                         />
                       )
                     })}
@@ -1024,6 +1159,7 @@ function KpiVeriTablosu({
                           onKaydet={(d, na) => ozelAlanKaydet(alan.id, yil, i + 1, d, na)}
                           className="p-2 text-center font-medium bg-indigo-50 text-indigo-900 border-l border-slate-200"
                           unit={kpi.unit}
+                          yuzdeDogrudanMi={kpi.yuzdeOlcek === 'dogrudan'}
                         />
                       ))}
                     </tr>
@@ -1039,6 +1175,7 @@ function KpiVeriTablosu({
                         onKaydet={(d, na) => hucreKaydet(yil, i + 1, 'target', d, na)}
                         className="p-2 text-center font-medium bg-slate-200 text-slate-800 border-l border-slate-300"
                         unit={kpi.unit}
+                        yuzdeDogrudanMi={kpi.yuzdeOlcek === 'dogrudan'}
                       />
                     ))}
                   </tr>
@@ -1065,16 +1202,16 @@ function KpiVeriTablosu({
                             : payda === 0
                               ? 0
                               : Math.round((kpi.oranYonu === 'H_G' ? (v.target as number) / payda : (gEsdeger as number) / payda) * 100)
-                      const seviye = oranSeviyesi(oran)
-                      const renk = seviye ? SEVIYE_RENKLERI[seviye] : { bg: '#f0f9ff', fg: '#0c4a6e' }
+                      // Oran hücresinin rengi kurala (iyi/kötü) göre DEĞİL, sabit — ilerihub'ın
+                      // kendi marka rengiyle (lacivert tonu), değere bakılmaksızın hep aynı.
                       return (
                         <DuzenlenebilirHucre
                           key={i}
                           deger={oran}
                           onKaydet={(d) => oranKaydet(yil, i + 1, d)}
                           className="p-2 text-center font-semibold border-l border-slate-200"
-                          style={{ backgroundColor: renk.bg, color: renk.fg }}
-                          duzYuzde
+                          style={{ backgroundColor: '#EAF1F8', color: NAVY }}
+                          oranGosterim={kpi.oranBirimi === 'kat' ? 'kat' : 'yuzde'}
                         />
                       )
                     })}
@@ -1301,27 +1438,27 @@ export default function MelikeKpiPage() {
                       {guncelYilOrtalamasi != null && birlesikGrafikVerisi.yilA != null && (
                         <div className="absolute top-0 right-0 text-right z-10">
                           <div className="text-[11px] text-muted-foreground">{birlesikGrafikVerisi.yilA} Ortalaması</div>
-                          <div className="text-lg font-bold" style={{ color: NAVY }}>{sayiFormatBirimli(guncelYilOrtalamasi, secili.unit)}</div>
+                          <div className="text-lg font-bold" style={{ color: NAVY }}>{sayiFormatBirimli(guncelYilOrtalamasi, secili.unit, secili.yuzdeOlcek === 'dogrudan')}</div>
                         </div>
                       )}
                       <ResponsiveContainer width="100%" height={320}>
                         <ComposedChart data={birlesikGrafikVerisi.veri} margin={{ left: 4, right: 8, top: 20, bottom: 4 }}>
                           <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="ad" tick={{ fontSize: 11 }} interval={0} angle={-20} textAnchor="end" height={50} />
-                          <YAxis tick={{ fontSize: 11 }} />
-                          <Tooltip content={<GrafikTooltip unit={secili.unit} />} />
-                          <Legend wrapperStyle={{ fontSize: 11 }} />
+                          <XAxis dataKey="ad" tick={{ fontSize: 11, fill: '#9CA3AF' }} interval={0} angle={-20} textAnchor="end" height={50} />
+                          <YAxis tick={{ fontSize: 11, fill: '#9CA3AF' }} />
+                          <Tooltip content={<GrafikTooltip unit={secili.unit} yuzdeDogrudanMi={secili.yuzdeOlcek === 'dogrudan'} />} />
+                          <Legend wrapperStyle={{ fontSize: 11, color: '#9CA3AF' }} />
                           <Bar dataKey="Ortalama" fill="#f0a875" radius={[3, 3, 0, 0]}>
-                            <LabelList dataKey="Ortalama" position="top" style={{ fontSize: 10, fill: '#78350f' }} formatter={(v: number) => sayiFormatBirimli(v, secili.unit)} />
+                            <LabelList dataKey="Ortalama" position="top" style={{ fontSize: 10, fill: '#78350f' }} formatter={(v: number) => sayiFormatBirimli(v, secili.unit, secili.yuzdeOlcek === 'dogrudan')} />
                           </Bar>
                           {birlesikGrafikVerisi.yilB != null && (
                             <Bar dataKey={String(birlesikGrafikVerisi.yilB)} fill="#94a3b8" radius={[3, 3, 0, 0]}>
-                              <LabelList dataKey={String(birlesikGrafikVerisi.yilB)} position="top" style={{ fontSize: 10, fill: '#475569' }} formatter={(v: number) => sayiFormatBirimli(v, secili.unit)} />
+                              <LabelList dataKey={String(birlesikGrafikVerisi.yilB)} position="top" style={{ fontSize: 10, fill: '#475569' }} formatter={(v: number) => sayiFormatBirimli(v, secili.unit, secili.yuzdeOlcek === 'dogrudan')} />
                             </Bar>
                           )}
                           {birlesikGrafikVerisi.yilA != null && (
                             <Bar dataKey={String(birlesikGrafikVerisi.yilA)} fill={NAVY} radius={[3, 3, 0, 0]}>
-                              <LabelList dataKey={String(birlesikGrafikVerisi.yilA)} position="top" style={{ fontSize: 10, fill: NAVY }} formatter={(v: number) => sayiFormatBirimli(v, secili.unit)} />
+                              <LabelList dataKey={String(birlesikGrafikVerisi.yilA)} position="top" style={{ fontSize: 10, fill: NAVY }} formatter={(v: number) => sayiFormatBirimli(v, secili.unit, secili.yuzdeOlcek === 'dogrudan')} />
                             </Bar>
                           )}
                           <Line type="monotone" dataKey="Hedef" stroke={KIRMIZI} strokeDasharray="4 4" dot={false} connectNulls />

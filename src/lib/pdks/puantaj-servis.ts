@@ -140,7 +140,7 @@ export async function gunuHesapla(
   const ids = personeller.map((p) => p.id)
   if (!ids.length) return { gun, hesaplanan: 0, yazilan: 0, kilitliAtlanan: 0, vardiyasiz: [], sonuclar: [] }
 
-  const [vardiyalar, atamalar, tatil, sensorZ, yarimBitis, ceyrekY, cumaBas, cumaBit] = await Promise.all([
+  const [vardiyalar, atamalar, tatil, sensorZ, yarimBitis, ceyrekY, cumaBas, cumaBit, gecEsigiStr, aylikGecler] = await Promise.all([
     db.pdksVardiya.findMany({ where: { aktif: true }, include: { molalar: { where: { aktif: true } } }, orderBy: { sira: 'asc' } }),
     db.pdksPersonelVardiya.findMany({
       where: { personnelId: { in: ids }, baslangic: { lte: dbGun(gun) }, OR: [{ bitis: null }, { bitis: { gte: dbGun(gun) } }] },
@@ -153,9 +153,18 @@ export async function gunuHesapla(
     ayarOku(db, 'pdks_ceyrek_yuvarlama', 'true'), // erken çıkış çeyrek/buçuk yuvarlaması (İV kuralı — açık)
     ayarOku(db, 'pdks_cuma_muaf_bas', '13:00'), // Cuma öğle namazı muafiyet penceresi başlangıcı ('-' → kapalı)
     ayarOku(db, 'pdks_cuma_muaf_bit', '14:00'),
+    ayarOku(db, 'pdks_aylik_gec_esigi', '3'), // ay içi tolerans-içi geç eşiği; aşılınca AYLIK_GEC_ESIGI uyarısı
+    // Ay başı → bugün (hariç) kişi bazlı tolerans-içi-geç günleri (bugünkü hesaptan önce yazılmış olanlar)
+    db.pdksPuantajGun.groupBy({
+      by: ['personnelId'],
+      where: { personnelId: { in: ids }, gun: { gte: dbGun(`${gun.slice(0, 8)}01`), lt: dbGun(gun) }, uyarilar: { has: 'TOLERANS_ICI_GEC' } },
+      _count: { _all: true },
+    }),
   ])
   const saatAyar = (s: string) => (/^\d{2}:\d{2}$/.test(s) ? s : null)
   const cumaMuaf = saatAyar(cumaBas) && saatAyar(cumaBit) ? { bas: cumaBas, bit: cumaBit } : null
+  const gecEsigi = Number.isFinite(Number(gecEsigiStr)) ? Number(gecEsigiStr) : 3
+  const aylikGecBy = new Map(aylikGecler.map((r) => [r.personnelId, r._count._all]))
   const vById = new Map(vardiyalar.map((v) => [v.id, v]))
   const tanim = (v: (typeof vardiyalar)[number]): VardiyaTanim => ({
     id: v.id, kod: v.kod, girisSaat: v.girisSaat, cikisSaat: v.cikisSaat, gunDonumSaat: v.gunDonumSaat,
@@ -221,6 +230,11 @@ export async function gunuHesapla(
       izin: izinler.get(p.id) ?? null,
       simdi,
     })
+    // Aylık tolerans-içi geç eşiği: bu gün de geç ise ay içi sıra eşiği aşınca İV bilgi uyarısı.
+    if (sonuc.uyarilar.includes('TOLERANS_ICI_GEC')) {
+      const sira = (aylikGecBy.get(p.id) ?? 0) + 1
+      if (sira > gecEsigi) sonuc.uyarilar.push(`AYLIK_GEC_ESIGI:${sira}`)
+    }
     sonuclar.push({ personnelId: p.id, sonuc })
   }
   const yaz = kaydet ? await sonuclariYaz(prismaPuantajYazici(db), gun, sonuclar, simdi) : { yazilan: 0, kilitliAtlanan: 0 }

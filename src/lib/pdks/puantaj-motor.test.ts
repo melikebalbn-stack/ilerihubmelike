@@ -317,3 +317,19 @@ describe('Cuma 13:00–14:00 muafiyeti', () => {
     expect(r.uyarilar).not.toContain('CUMA_MUAF_TEK_HAREKET')
   })
 })
+
+describe('tolerans içi geç işareti', () => {
+  it('07:10 giriş (tolerans içi, 15 dk) → gecDakika 0 + TOLERANS_ICI_GEC', () => {
+    const r = puantajHesapla(gun({ gecisler: tamGun(PZT, '07:10', '17:00') }))
+    expect(r.gecDakika).toBe(0)
+    expect(r.uyarilar).toContain('TOLERANS_ICI_GEC')
+  })
+  it('07:00 tam giriş → işaret yok', () => {
+    expect(puantajHesapla(gun({ gecisler: tamGun(PZT, '07:00', '17:00') })).uyarilar).not.toContain('TOLERANS_ICI_GEC')
+  })
+  it('tolerans aşımı (07:20) → gecDakika>0, işaret yok', () => {
+    const r = puantajHesapla(gun({ gecisler: tamGun(PZT, '07:20', '17:00') }))
+    expect(r.gecDakika).toBeGreaterThan(0)
+    expect(r.uyarilar).not.toContain('TOLERANS_ICI_GEC')
+  })
+})

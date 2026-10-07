@@ -32,6 +32,9 @@
  * - Cuma muafiyeti (ayarlar.cumaMuaf; Melih 07.10): Cuma günü [bas,bit) (ör. 13:00–14:00) arasındaki
  *   geçişler puantaja girmez (öğle namazı çıkış-girişi gün içinde sayılır). Penceredeki hareket sayısı
  *   TEK ise CUMA_MUAF_TEK_HAREKET uyarısı (çıkışı/girişi eksik olabilir).
+ * - Tolerans içi geç (Melih 07.10): giriş vardiya başından SONRA ama tolerans içindeyse (gecDakika 0)
+ *   TOLERANS_ICI_GEC uyarısı — ceza yok. Servis katmanı (puantaj-servis) ay içi bu günleri sayar;
+ *   eşik (pdks_aylik_gec_esigi, vars. 3) aşılınca o güne AYLIK_GEC_ESIGI:<sıra> ekler (İV bilgilenir).
  */
 
 export const KURAL_SURUMU = 3
@@ -388,6 +391,9 @@ export function puantajHesapla(g: PuantajGirdi): PuantajSonucu {
 
   if (ilkGiris && ilkGiris.getTime() - beklenen.bas.getTime() > v.gecToleransDk * 60_000) {
     sonuc.gecDakika = baslamisDakika(beklenen.bas, ilkGiris)
+  } else if (ilkGiris && ilkGiris > beklenen.bas) {
+    // Tolerans İÇİNDE ama vardiya başından sonra geldi (ör. 07:10). Ceza yok; servis ay içi sayar.
+    uyarilar.push('TOLERANS_ICI_GEC')
   }
   // Onaylı akşam mesaisi varsa normal bitiş sonrası çıkış doğal; erken çıkış yine vardiya bitişine göre.
   if (hesapCikis && beklenen.bit.getTime() - hesapCikis.getTime() > v.erkenToleransDk * 60_000) {

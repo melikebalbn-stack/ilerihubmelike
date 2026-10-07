@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireKpiYaz } from '@/lib/yonetim/kpi-yetki'
+import { formulGecerliMi } from '../../formul-motoru'
 
 export const dynamic = 'force-dynamic'
 
@@ -25,6 +26,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const gerceklesenNA = body.gerceklesenNA === true
   const manuelOran = body.manuelOran === '' || body.manuelOran == null ? null : Number(body.manuelOran)
 
+  // KPI-FORMUL: Gerçekleşen ya da Hedef formülden hesaplanıyorsa elle girilen değer (varsa)
+  // yok sayılır — arayüz o alanı zaten salt-okunur gösteriyor (bkz. kpi/page.tsx), bu sadece
+  // ikinci bir güvenlik katmanı. Diğer alan (formülsüz olan) normal şekilde kaydedilmeye devam eder.
+  const kpiFormulKontrol = await prisma.kPIDefinition.findUnique({
+    where: { id }, select: { gerceklesenFormul: true, hedefFormul: true },
+  })
+  const gerceklesenFormulluMu = !!kpiFormulKontrol && formulGecerliMi(kpiFormulKontrol.gerceklesenFormul)
+  const hedefFormulluMu = !!kpiFormulKontrol && formulGecerliMi(kpiFormulKontrol.hedefFormul)
+
   // KPI-AYAR: "hedef tutturulamayan KPI'larda aksiyon zorunlu" ayarı açıksa,
   // kırmızı (hedef tutturulamamış) bir ölçüm için en az bir aksiyon şart.
   // N/A işaretli bir ölçümde "tutturulamadı" diye bir durum yok, kontrol atlanır.
@@ -45,10 +55,18 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     }
   }
 
+  let kaydedilecekTarget = target
+  let kaydedilecekActual = actual
+  if (gerceklesenFormulluMu || hedefFormulluMu) {
+    const oncekiOlcum = await prisma.kPIMeasurement.findUnique({ where: { kpiId_year_month: { kpiId: id, year, month } } })
+    if (gerceklesenFormulluMu) kaydedilecekActual = oncekiOlcum?.actual ?? null
+    if (hedefFormulluMu) kaydedilecekTarget = oncekiOlcum?.target ?? null
+  }
+
   const olcum = await prisma.kPIMeasurement.upsert({
     where: { kpiId_year_month: { kpiId: id, year, month } },
-    update: { target, actual, hedefNA, gerceklesenNA, manuelOran },
-    create: { kpiId: id, year, month, target, actual, hedefNA, gerceklesenNA, manuelOran },
+    update: { target: kaydedilecekTarget, actual: kaydedilecekActual, hedefNA, gerceklesenNA, manuelOran },
+    create: { kpiId: id, year, month, target: kaydedilecekTarget, actual: kaydedilecekActual, hedefNA, gerceklesenNA, manuelOran },
   })
 
   return NextResponse.json({ olcum })

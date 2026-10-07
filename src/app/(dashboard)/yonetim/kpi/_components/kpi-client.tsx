@@ -49,11 +49,17 @@ interface OzelAlanDeger {
   naMi: boolean
 }
 
+// KPI-FORMUL: bkz. api/sandbox/melike/kpi/formul-motoru.ts — aynı şekil.
+interface FormulReferans { token: string; kpiId: string; kaynak: string }
+interface FormulTanimi { ifade: string; referanslar: FormulReferans[] }
+
 interface OzelAlan {
   id: string
   key: string
   label: string
   siraNo: number
+  formul: FormulTanimi | null
+  formulMu: boolean
   degerler: OzelAlanDeger[]
 }
 
@@ -97,6 +103,10 @@ interface Kpi {
   oranBirimi: string
   ortalamaKaynagi: string
   yuzdeOlcek: string
+  gerceklesenFormul: FormulTanimi | null
+  hedefFormul: FormulTanimi | null
+  gerceklesenFormulMu: boolean
+  hedefFormulMu: boolean
   ozelAlanlar: OzelAlan[]
   measurements: Olcum[]
   baselines: Baseline[]
@@ -165,7 +175,98 @@ function yillikHedefOrtalamasi(kpi: Kpi): Map<number, number> {
   return sonuc
 }
 
-interface OzelAlanTaslak { key: string; label: string }
+interface OzelAlanTaslak { key: string; label: string; formul: FormulTanimi | null }
+
+interface FormulKpiSecenegi {
+  id: string
+  name: string
+  departman: string
+  kaynaklar: { kaynak: string; label: string }[]
+}
+
+// KPI-FORMUL: bir alanı (Gerçekleşen/Hedef/özel alan) elle giriş yerine başka KPI'ların
+// (farklı departmanlar dahil) değerlerinden hesaplayan formülü düzenler. Referans eklenince
+// otomatik t1, t2... token'ı atanır; formül ifadesi bu token'ları kullanır (ör. "(t1*100)/t2").
+function FormulDuzenleyici({
+  formul, onChange, tumKpiler,
+}: {
+  formul: FormulTanimi | null
+  onChange: (f: FormulTanimi | null) => void
+  tumKpiler: FormulKpiSecenegi[]
+}) {
+  const aktif = formul != null
+
+  function aktifDegistir(v: boolean) {
+    onChange(v ? { ifade: '', referanslar: [] } : null)
+  }
+  function referansEkle() {
+    if (!formul) return
+    const sonrakiToken = `t${formul.referanslar.length + 1}`
+    onChange({ ...formul, referanslar: [...formul.referanslar, { token: sonrakiToken, kpiId: '', kaynak: 'actual' }] })
+  }
+  function referansGuncelle(i: number, degisiklik: Partial<FormulReferans>) {
+    if (!formul) return
+    const yeni = [...formul.referanslar]
+    yeni[i] = { ...yeni[i], ...degisiklik }
+    onChange({ ...formul, referanslar: yeni })
+  }
+  function referansSil(i: number) {
+    if (!formul) return
+    onChange({ ...formul, referanslar: formul.referanslar.filter((_, idx) => idx !== i) })
+  }
+
+  return (
+    <div className="space-y-2 rounded-md border p-2 bg-slate-50">
+      <label className="flex items-center gap-2 text-xs font-medium cursor-pointer">
+        <input type="checkbox" checked={aktif} onChange={e => aktifDegistir(e.target.checked)} />
+        Formülden hesapla (başka KPI'lardan otomatik)
+      </label>
+      {aktif && formul && (
+        <div className="space-y-2 pl-1">
+          {formul.referanslar.map((r, i) => {
+            const secilenKpi = tumKpiler.find(k => k.id === r.kpiId)
+            return (
+              <div key={i} className="flex items-center gap-1 text-xs">
+                <span className="font-mono bg-white border rounded px-1.5 py-1">{r.token}</span>
+                <Select value={r.kpiId} onValueChange={v => referansGuncelle(i, { kpiId: v, kaynak: 'actual' })}>
+                  <SelectTrigger className="h-7 flex-1 text-xs"><SelectValue placeholder="KPI seç..." /></SelectTrigger>
+                  <SelectContent>
+                    {tumKpiler.map(k => (
+                      <SelectItem key={k.id} value={k.id}>{k.departman} — {k.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={r.kaynak} onValueChange={v => referansGuncelle(i, { kaynak: v })} disabled={!secilenKpi}>
+                  <SelectTrigger className="h-7 w-28 text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {(secilenKpi?.kaynaklar ?? []).map(kay => (
+                      <SelectItem key={kay.kaynak} value={kay.kaynak}>{kay.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button type="button" size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => referansSil(i)}>
+                  <Trash2 className="h-3 w-3" />
+                </Button>
+              </div>
+            )
+          })}
+          <Button type="button" size="sm" variant="outline" className="h-6 text-xs" onClick={referansEkle}>
+            <PlusCircle className="h-3 w-3 mr-1" /> Referans ekle
+          </Button>
+          <div>
+            <Label className="text-xs">Formül (ör. (t1*100)/(t2*1000000))</Label>
+            <Input
+              value={formul.ifade}
+              onChange={e => onChange({ ...formul, ifade: e.target.value })}
+              placeholder="(t1*100)/(t2*1000000)"
+              className="font-mono text-xs h-8"
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
 
 // KPI-OZEL-ALAN: Türkçe karakterleri sadeleştirip etiketten bir anahtar (key) üretir —
 // kullanıcı sadece etiketi (görünen ismi) girer, key arka planda otomatik oluşur.
@@ -180,7 +281,7 @@ function slugOlustur(etiket: string): string {
 }
 
 function OzelAlanlarDuzenleyici({
-  alanlar, onChange, oranPayKaynagi, onOranPayKaynagiChange, ortalamaKaynagi, onOrtalamaKaynagiChange,
+  alanlar, onChange, oranPayKaynagi, onOranPayKaynagiChange, ortalamaKaynagi, onOrtalamaKaynagiChange, tumKpiler,
 }: {
   alanlar: OzelAlanTaslak[]
   onChange: (a: OzelAlanTaslak[]) => void
@@ -188,14 +289,20 @@ function OzelAlanlarDuzenleyici({
   onOranPayKaynagiChange: (v: string) => void
   ortalamaKaynagi: string
   onOrtalamaKaynagiChange: (v: string) => void
+  tumKpiler: FormulKpiSecenegi[]
 }) {
   function etiketDegistir(i: number, label: string) {
     const yeni = [...alanlar]
-    yeni[i] = { key: slugOlustur(label), label }
+    yeni[i] = { ...yeni[i], key: slugOlustur(label), label }
+    onChange(yeni)
+  }
+  function formulDegistir(i: number, formul: FormulTanimi | null) {
+    const yeni = [...alanlar]
+    yeni[i] = { ...yeni[i], formul }
     onChange(yeni)
   }
   function alanEkle() {
-    onChange([...alanlar, { key: '', label: '' }])
+    onChange([...alanlar, { key: '', label: '', formul: null }])
   }
   function alanSil(i: number) {
     const silinen = alanlar[i]
@@ -216,11 +323,14 @@ function OzelAlanlarDuzenleyici({
         Gerçekleşen/Hedef'e ek, bu KPI'ya özel etiketli sayısal alanlar (ör. Gelen, Çözülen, Toplam).
       </p>
       {alanlar.map((a, i) => (
-        <div key={i} className="flex items-center gap-2">
-          <Input value={a.label} onChange={e => etiketDegistir(i, e.target.value)} placeholder="Örn: Toplam" className="flex-1" />
-          <Button type="button" size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => alanSil(i)}>
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
+        <div key={i} className="space-y-1 border-b pb-2 last:border-b-0">
+          <div className="flex items-center gap-2">
+            <Input value={a.label} onChange={e => etiketDegistir(i, e.target.value)} placeholder="Örn: Toplam" className="flex-1" />
+            <Button type="button" size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => alanSil(i)}>
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+          <FormulDuzenleyici formul={a.formul} onChange={f => formulDegistir(i, f)} tumKpiler={tumKpiler} />
         </div>
       ))}
       <div>
@@ -265,8 +375,16 @@ function YeniKpiDialog({ orgUnitId, onCreated }: { orgUnitId: string; onCreated:
   const [ozelAlanlar, setOzelAlanlar] = useState<OzelAlanTaslak[]>([])
   const [oranPayKaynagi, setOranPayKaynagi] = useState('actual')
   const [ortalamaKaynagi, setOrtalamaKaynagi] = useState('actual')
+  const [gerceklesenFormul, setGerceklesenFormul] = useState<FormulTanimi | null>(null)
+  const [hedefFormul, setHedefFormul] = useState<FormulTanimi | null>(null)
+  const [tumKpiler, setTumKpiler] = useState<FormulKpiSecenegi[]>([])
   const [hedef, setHedef] = useState('')
   const [kaydediliyor, setKaydediliyor] = useState(false)
+
+  useEffect(() => {
+    if (!acik) return
+    fetch('/api/sandbox/melike/kpi/tum-liste').then(r => r.json()).then(d => setTumKpiler(d.kpiler ?? [])).catch(() => {})
+  }, [acik])
 
   async function kaydet() {
     if (!name.trim()) return
@@ -285,12 +403,14 @@ function YeniKpiDialog({ orgUnitId, onCreated }: { orgUnitId: string; onCreated:
           ozelAlanlar,
           oranPayKaynagi,
           ortalamaKaynagi,
+          gerceklesenFormul,
+          hedefFormul,
         }),
       })
       if (res.ok) {
         const { kpi } = await res.json()
         // Hedef girildiyse bu yılın tüm dönemlerine (aylık: 12, çeyreklik: 4) tek seferde uygula.
-        if (hedef.trim() && !Number.isNaN(Number(hedef))) {
+        if (!hedefFormul && hedef.trim() && !Number.isNaN(Number(hedef))) {
           const yil = new Date().getFullYear()
           const donemSayisi = frequency === 'quarterly' ? 4 : 12
           await Promise.all(
@@ -307,6 +427,7 @@ function YeniKpiDialog({ orgUnitId, onCreated }: { orgUnitId: string; onCreated:
         setGerceklesenEtiketi('Gerçekleşen'); setHedefEtiketi('Hedef'); setOranYonu('G_H'); setHedef('')
         setOranBirimi('yuzde'); setYuzdeOlcek('oran')
         setOzelAlanlar([]); setOranPayKaynagi('actual'); setOrtalamaKaynagi('actual')
+        setGerceklesenFormul(null); setHedefFormul(null)
         setAcik(false)
         onCreated()
       }
@@ -366,6 +487,8 @@ function YeniKpiDialog({ orgUnitId, onCreated }: { orgUnitId: string; onCreated:
               <Input value={hedefEtiketi} onChange={e => setHedefEtiketi(e.target.value)} placeholder="Hedef..." />
             </div>
           </div>
+          <FormulDuzenleyici formul={gerceklesenFormul} onChange={setGerceklesenFormul} tumKpiler={tumKpiler} />
+          <FormulDuzenleyici formul={hedefFormul} onChange={setHedefFormul} tumKpiler={tumKpiler} />
           <div className="flex gap-3">
             <div className="flex-1">
               <Label>Oran yönü</Label>
@@ -400,15 +523,17 @@ function YeniKpiDialog({ orgUnitId, onCreated }: { orgUnitId: string; onCreated:
               </Select>
             </div>
           )}
-          <div>
-            <Label>Hedef (opsiyonel)</Label>
-            <Input
-              type="number"
-              value={hedef}
-              onChange={e => setHedef(e.target.value)}
-              placeholder="Girilirse bu yılın tüm dönemlerine otomatik uygulanır"
-            />
-          </div>
+          {!hedefFormul && (
+            <div>
+              <Label>Hedef (opsiyonel)</Label>
+              <Input
+                type="number"
+                value={hedef}
+                onChange={e => setHedef(e.target.value)}
+                placeholder="Girilirse bu yılın tüm dönemlerine otomatik uygulanır"
+              />
+            </div>
+          )}
           <OzelAlanlarDuzenleyici
             alanlar={ozelAlanlar}
             onChange={setOzelAlanlar}
@@ -416,6 +541,7 @@ function YeniKpiDialog({ orgUnitId, onCreated }: { orgUnitId: string; onCreated:
             onOranPayKaynagiChange={setOranPayKaynagi}
             ortalamaKaynagi={ortalamaKaynagi}
             onOrtalamaKaynagiChange={setOrtalamaKaynagi}
+            tumKpiler={tumKpiler}
           />
         </div>
         <DialogFooter>
@@ -501,10 +627,13 @@ function KpiDuzenleDialog({ kpi, onSaved }: { kpi: Kpi; onSaved: () => void }) {
   const [oranBirimi, setOranBirimi] = useState(kpi.oranBirimi)
   const [yuzdeOlcek, setYuzdeOlcek] = useState(kpi.yuzdeOlcek)
   const [ozelAlanlar, setOzelAlanlar] = useState<OzelAlanTaslak[]>(
-    kpi.ozelAlanlar.map(a => ({ key: a.key, label: a.label })),
+    kpi.ozelAlanlar.map(a => ({ key: a.key, label: a.label, formul: a.formul })),
   )
   const [oranPayKaynagi, setOranPayKaynagi] = useState(kpi.oranPayKaynagi)
   const [ortalamaKaynagi, setOrtalamaKaynagi] = useState(kpi.ortalamaKaynagi)
+  const [gerceklesenFormul, setGerceklesenFormul] = useState<FormulTanimi | null>(kpi.gerceklesenFormul)
+  const [hedefFormul, setHedefFormul] = useState<FormulTanimi | null>(kpi.hedefFormul)
+  const [tumKpiler, setTumKpiler] = useState<FormulKpiSecenegi[]>([])
   const [kaydediliyor, setKaydediliyor] = useState(false)
 
   useEffect(() => {
@@ -512,8 +641,10 @@ function KpiDuzenleDialog({ kpi, onSaved }: { kpi: Kpi; onSaved: () => void }) {
     setName(kpi.name); setUnit(kpi.unit ?? ''); setDirection(kpi.direction); setFrequency(kpi.frequency)
     setGerceklesenEtiketi(kpi.gerceklesenEtiketi); setHedefEtiketi(kpi.hedefEtiketi); setOranYonu(kpi.oranYonu)
     setOranBirimi(kpi.oranBirimi); setYuzdeOlcek(kpi.yuzdeOlcek)
-    setOzelAlanlar(kpi.ozelAlanlar.map(a => ({ key: a.key, label: a.label })))
+    setOzelAlanlar(kpi.ozelAlanlar.map(a => ({ key: a.key, label: a.label, formul: a.formul })))
     setOranPayKaynagi(kpi.oranPayKaynagi); setOrtalamaKaynagi(kpi.ortalamaKaynagi)
+    setGerceklesenFormul(kpi.gerceklesenFormul); setHedefFormul(kpi.hedefFormul)
+    fetch('/api/sandbox/melike/kpi/tum-liste').then(r => r.json()).then(d => setTumKpiler(d.kpiler ?? [])).catch(() => {})
   }, [acik, kpi])
 
   async function kaydet() {
@@ -533,6 +664,8 @@ function KpiDuzenleDialog({ kpi, onSaved }: { kpi: Kpi; onSaved: () => void }) {
           ozelAlanlar,
           oranPayKaynagi,
           ortalamaKaynagi,
+          gerceklesenFormul,
+          hedefFormul,
         }),
       })
       if (res.ok) {
@@ -594,6 +727,8 @@ function KpiDuzenleDialog({ kpi, onSaved }: { kpi: Kpi; onSaved: () => void }) {
               <Input value={hedefEtiketi} onChange={e => setHedefEtiketi(e.target.value)} />
             </div>
           </div>
+          <FormulDuzenleyici formul={gerceklesenFormul} onChange={setGerceklesenFormul} tumKpiler={tumKpiler} />
+          <FormulDuzenleyici formul={hedefFormul} onChange={setHedefFormul} tumKpiler={tumKpiler} />
           <div className="flex gap-3">
             <div className="flex-1">
               <Label>Oran yönü</Label>
@@ -635,6 +770,7 @@ function KpiDuzenleDialog({ kpi, onSaved }: { kpi: Kpi; onSaved: () => void }) {
             onOranPayKaynagiChange={setOranPayKaynagi}
             ortalamaKaynagi={ortalamaKaynagi}
             onOrtalamaKaynagiChange={setOrtalamaKaynagi}
+            tumKpiler={tumKpiler}
           />
         </div>
         <DialogFooter>
@@ -867,7 +1003,8 @@ function GrafikTooltip({ active, payload, label, unit, yuzdeDogrudanMi }: {
 const NA_REGEX = /^n\/?a$/i
 
 function DuzenlenebilirHucre({
-  deger, naAktif = false, onKaydet, className, style, unit, oranGosterim, yuzdeDogrudanMi = false, saltOkuma = false,
+  deger, naAktif = false, onKaydet, className, style, unit, oranGosterim, yuzdeDogrudanMi = false,
+  saltOkuma = false, formulMu = false,
 }: {
   deger: number | null
   naAktif?: boolean
@@ -881,8 +1018,11 @@ function DuzenlenebilirHucre({
   oranGosterim?: 'yuzde' | 'kat'
   // KPI'nın yuzdeOlcek ayarı "dogrudan" ise true — unit="%" iken 100 ile çarpmadan gösterir.
   yuzdeDogrudanMi?: boolean
-  // Kapsam dışı departman (müdür başka departmana bakıyor): hücre tıklanamaz.
+  // Kapsam dışı departman (müdür başka departmana bakıyor): hücre tıklanamaz, düz gösterilir.
   saltOkuma?: boolean
+  // KPI-FORMUL: alan başka KPI'lardan otomatik hesaplanıyor — elle değiştirilemez, küçük "ƒ"
+  // işaretiyle gösterilir. saltOkuma'dan ayrı tutulur: biri yetki, bu veri kaynağı.
+  formulMu?: boolean
 }) {
   const [duzenleniyor, setDuzenleniyor] = useState(false)
   // "kat" gösteriminde elle düzenlerken de 100'e bölünmüş (ör. "3") hâli gösterilir/yazılır —
@@ -895,22 +1035,6 @@ function DuzenlenebilirHucre({
     setTaslak(naAktif ? 'N/A' : deger == null ? '' : String(gosterimDegeri(deger)))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deger, naAktif])
-
-  // Kapsam dışı departman (müdür başka departmana bakıyor): tıklanamaz düz hücre.
-  if (saltOkuma) {
-    return (
-      <td className={className} style={naAktif ? { ...style, opacity: 0.7, fontStyle: 'italic' } : style}>
-        {naAktif
-          ? 'N/A'
-          : (oranGosterim === 'kat'
-              ? (deger == null ? '' : `${sayiFormat(deger / 100)} kat`)
-              : oranGosterim === 'yuzde'
-                ? (deger == null ? '' : `%${sayiFormat(deger)}`)
-                : sayiFormatBirimli(deger, unit, yuzdeDogrudanMi))
-            || <span className="text-muted-foreground">·</span>}
-      </td>
-    )
-  }
 
   function bitir() {
     setDuzenleniyor(false)
@@ -940,6 +1064,32 @@ function DuzenlenebilirHucre({
       </td>
     )
   }
+  const icerik = naAktif
+    ? 'N/A'
+    : (oranGosterim === 'kat'
+        ? (deger == null ? '' : `${sayiFormat(deger / 100)} kat`)
+        : oranGosterim === 'yuzde'
+          ? (deger == null ? '' : `%${sayiFormat(deger)}`)
+          : sayiFormatBirimli(deger, unit, yuzdeDogrudanMi))
+      || <span className="text-muted-foreground">·</span>
+
+  if (formulMu) {
+    return (
+      <td className={className} style={{ ...style, opacity: 0.85 }} title="Formülden hesaplanıyor — elle değiştirilemez">
+        {icerik} <span className="text-[9px] align-super opacity-60">ƒ</span>
+      </td>
+    )
+  }
+
+  // Kapsam dışı departman: tıklanamaz düz hücre.
+  if (saltOkuma) {
+    return (
+      <td className={className} style={naAktif ? { ...style, opacity: 0.7, fontStyle: 'italic' } : style}>
+        {icerik}
+      </td>
+    )
+  }
+
   return (
     <td
       className={`${className} cursor-pointer hover:ring-1 hover:ring-blue-300`}
@@ -947,14 +1097,7 @@ function DuzenlenebilirHucre({
       onClick={() => setDuzenleniyor(true)}
       title={naAktif ? 'Uygulanamaz (N/A) — düzenlemek için tıkla' : undefined}
     >
-      {naAktif
-        ? 'N/A'
-        : (oranGosterim === 'kat'
-            ? (deger == null ? '' : `${sayiFormat(deger / 100)} kat`)
-            : oranGosterim === 'yuzde'
-              ? (deger == null ? '' : `%${sayiFormat(deger)}`)
-              : sayiFormatBirimli(deger, unit, yuzdeDogrudanMi))
-          || <span className="text-muted-foreground">·</span>}
+      {icerik}
     </td>
   )
 }
@@ -1179,6 +1322,7 @@ function KpiVeriTablosu({
                           style={{ backgroundColor: renk.bg, color: renk.fg }}
                           unit={kpi.unit}
                           yuzdeDogrudanMi={kpi.yuzdeOlcek === 'dogrudan'}
+                          formulMu={kpi.gerceklesenFormulMu}
                         />
                       )
                     })}
@@ -1197,6 +1341,7 @@ function KpiVeriTablosu({
                           className="p-2 text-center font-medium bg-indigo-50 text-indigo-900 border-l border-slate-200"
                           unit={kpi.unit}
                           yuzdeDogrudanMi={kpi.yuzdeOlcek === 'dogrudan'}
+                          formulMu={alan.formulMu}
                         />
                       ))}
                     </tr>
@@ -1214,6 +1359,7 @@ function KpiVeriTablosu({
                         className="p-2 text-center font-medium bg-slate-200 text-slate-800 border-l border-slate-300"
                         unit={kpi.unit}
                         yuzdeDogrudanMi={kpi.yuzdeOlcek === 'dogrudan'}
+                        formulMu={kpi.hedefFormulMu}
                       />
                     ))}
                   </tr>

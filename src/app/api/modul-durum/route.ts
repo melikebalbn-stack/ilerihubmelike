@@ -17,14 +17,14 @@ export const dynamic = 'force-dynamic'
  * modulKapisiAcikMi yorumu). Oturumsuz kullanıcı zaten /login'e yönlenir.
  */
 export async function GET() {
-  const { user, error } = await requireUser()
-  if (error || !user) return NextResponse.json({ gorunur: {} }, { status: 401 })
+  const { user, session, error } = await requireUser()
+  if (error || !user || !session) return NextResponse.json({ gorunur: {} }, { status: 401 })
 
   const yayinlar = await modulYayinlari()
   const gorunur: Record<string, boolean> = {}
   for (const m of MODUL_KAYDI) {
     const y = yayinlar.get(m.anahtar)
-    gorunur[m.anahtar] = y ? yayinGorunurMu(y, user) : true
+    gorunur[m.anahtar] = y ? yayinGorunurMu(y, { ...user, personelBolum: session.user.personelBolum }) : true
   }
   return NextResponse.json({ gorunur })
 }

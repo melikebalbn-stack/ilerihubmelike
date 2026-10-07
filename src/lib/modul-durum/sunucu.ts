@@ -28,7 +28,12 @@ export interface ModulYayin {
   pilotBolumler: string[]
 }
 
-type Kisi = { role?: string | null; department?: string | null }
+/**
+ * `personelBolum` = Personnel.departmentId FK'sinden çözülen bölüm ADI (oturumdan); pilot bölüm
+ * listesi de bu adlardan seçilir. `department` AD'den gelen serbest metindir ("İnsan Varlıkları
+ * Departmanı" gibi, listedeki adla tutmaz, bazen boş) — yalnız yedek olarak karşılaştırılır.
+ */
+type Kisi = { role?: string | null; department?: string | null; personelBolum?: string | null }
 
 const ADMIN_ROLU = 'SUPER_ADMIN'
 
@@ -76,9 +81,9 @@ export function yayinGorunurMu(yayin: ModulYayin, kisi: Kisi): boolean {
   if (kisi.role === ADMIN_ROLU) return true
   if (yayin.durum !== 'PILOT') return false
 
-  const bolum = normalizeTr(kisi.department ?? '')
-  if (!bolum) return false
-  return yayin.pilotBolumler.some((b) => normalizeTr(b) === bolum)
+  const adaylar = [kisi.personelBolum, kisi.department].map((b) => normalizeTr(b ?? '')).filter(Boolean)
+  if (adaylar.length === 0) return false
+  return yayin.pilotBolumler.some((b) => adaylar.includes(normalizeTr(b)))
 }
 
 export async function modulGorunurMu(anahtar: string, kisi: Kisi): Promise<boolean> {
@@ -109,5 +114,5 @@ export async function modulGuard(anahtar: string): Promise<void> {
   if (yayin.durum === 'ACIK') return
   const oturum = await requireUser()
   if (oturum.error || !oturum.user) notFound()
-  if (!yayinGorunurMu(yayin, oturum.user)) notFound()
+  if (!yayinGorunurMu(yayin, { ...oturum.user, personelBolum: oturum.session.user.personelBolum })) notFound()
 }

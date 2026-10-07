@@ -88,6 +88,7 @@ export default async function UygunsuzlukDetayPage({
       redAdeti: s.redAdeti,
       reworkAdedi: s.reworkAdedi,
       hurdaAdedi: s.hurdaAdedi,
+      hataliParcaAdedi: s.hataliParcaAdedi,
       olusanBolumId: s.olusanBolumId,
       hataKoduId: s.hataKoduId,
       hataDetayi: s.hataDetayi,

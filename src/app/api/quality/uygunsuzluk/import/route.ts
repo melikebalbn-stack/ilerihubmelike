@@ -31,6 +31,7 @@ type SatirTaslak = {
   redAdeti: number
   reworkAdedi: number | null
   hurdaAdedi: number | null
+  hataliParcaAdedi: number | null
   /** Ham hücre: sayı ise kod, metin ise bölüm adı. */
   olusanBolumRaw: string | null
   hataKodu: number | null
@@ -275,6 +276,12 @@ export async function POST(request: NextRequest) {
       satirGecerli = false
     }
 
+    const hataliParcaRaw = intOrNull(cell(row, 'hataliParcaAdedi'))
+    if (hataliParcaRaw === 'NaN') {
+      rowHata('HATALI PARÇA ADETİ sayı olmalı')
+      satirGecerli = false
+    }
+
     const isEmriAdetiRaw = intOrNull(cell(row, 'isEmriAdeti'))
     if (isEmriAdetiRaw === 'NaN') {
       rowHata('İŞ EMRİ ADETİ sayı olmalı')
@@ -316,6 +323,7 @@ export async function POST(request: NextRequest) {
       redAdeti: redAdetiRaw as number,
       reworkAdedi: reworkRaw === 'NaN' ? null : reworkRaw,
       hurdaAdedi: hurdaRaw === 'NaN' ? null : hurdaRaw,
+      hataliParcaAdedi: hataliParcaRaw === 'NaN' ? null : hataliParcaRaw,
       olusanBolumRaw: str(cell(row, 'olusanBolum')) || null,
       hataKodu: hataKoduRaw === 'NaN' ? null : hataKoduRaw,
       hataDetayi: str(cell(row, 'hataDetayi')) || null,
@@ -608,6 +616,7 @@ export async function POST(request: NextRequest) {
                 redAdeti: s.redAdeti,
                 reworkAdedi: s.reworkAdedi,
                 hurdaAdedi: s.hurdaAdedi,
+                hataliParcaAdedi: s.hataliParcaAdedi,
                 olusanBolumId: s.olusanBolumId,
                 hataKoduId: s.hataKoduId,
                 hataDetayi: s.hataDetayi,

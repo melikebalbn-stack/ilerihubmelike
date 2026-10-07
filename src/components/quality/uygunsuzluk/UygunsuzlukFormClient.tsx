@@ -33,6 +33,7 @@ interface SatirState {
   key: string
   yariMamulKodu: string
   malzemeAdi: string
+  hataliParcaAdedi: string
   redAdeti: string
   reworkAdedi: string
   hurdaAdedi: string
@@ -84,6 +85,7 @@ export interface UygunsuzlukDetay {
     siraNo: number
     yariMamulKodu: string | null
     malzemeAdi: string | null
+    hataliParcaAdedi: number | null
     redAdeti: number
     reworkAdedi: number | null
     hurdaAdedi: number | null
@@ -99,6 +101,7 @@ const yeniSatir = (): SatirState => ({
   key: `s${keySeq++}`,
   yariMamulKodu: '',
   malzemeAdi: '',
+  hataliParcaAdedi: '',
   redAdeti: '',
   reworkAdedi: '',
   hurdaAdedi: '',
@@ -208,6 +211,7 @@ export function UygunsuzlukFormClient({
           key: `s${keySeq++}`,
           yariMamulKodu: s.yariMamulKodu ?? '',
           malzemeAdi: s.malzemeAdi ?? '',
+          hataliParcaAdedi: s.hataliParcaAdedi != null ? String(s.hataliParcaAdedi) : '',
           redAdeti: String(s.redAdeti),
           reworkAdedi: s.reworkAdedi != null ? String(s.reworkAdedi) : '',
           hurdaAdedi: s.hurdaAdedi != null ? String(s.hurdaAdedi) : '',
@@ -336,6 +340,7 @@ export function UygunsuzlukFormClient({
           siraNo: i + 1,
           yariMamulKodu: s.yariMamulKodu.trim() || null,
           malzemeAdi: s.malzemeAdi.trim() || null,
+          hataliParcaAdedi: s.hataliParcaAdedi ? Number(s.hataliParcaAdedi) : null,
           redAdeti: Number(s.redAdeti),
           reworkAdedi: s.reworkAdedi ? Number(s.reworkAdedi) : null,
           hurdaAdedi: s.hurdaAdedi ? Number(s.hurdaAdedi) : null,
@@ -658,8 +663,8 @@ export function UygunsuzlukFormClient({
                 <Input value={s.yariMamulKodu} disabled={ro} onChange={(e) => updSatir(i, { yariMamulKodu: e.target.value })} className="mt-1 h-9" />
               </div>
               <div>
-                <Label className="text-xs text-slate-600">Malzeme adı</Label>
-                <Input value={s.malzemeAdi} disabled={ro} onChange={(e) => updSatir(i, { malzemeAdi: e.target.value })} className="mt-1 h-9" />
+                <Label className="text-xs text-slate-600">Hatalı parça adedi</Label>
+                <Input type="number" min={0} value={s.hataliParcaAdedi} disabled={ro} onChange={(e) => updSatir(i, { hataliParcaAdedi: e.target.value })} className="mt-1 h-9" />
               </div>
               <div>
                 <Label className="text-xs text-slate-600">Red adeti *</Label>
@@ -672,6 +677,10 @@ export function UygunsuzlukFormClient({
               <div>
                 <Label className="text-xs text-slate-600">Hurda adedi</Label>
                 <Input type="number" min={0} value={s.hurdaAdedi} disabled={ro} onChange={(e) => updSatir(i, { hurdaAdedi: e.target.value })} className="mt-1 h-9" />
+              </div>
+              <div>
+                <Label className="text-xs text-slate-600">Malzeme adı</Label>
+                <Input value={s.malzemeAdi} disabled={ro} onChange={(e) => updSatir(i, { malzemeAdi: e.target.value })} className="mt-1 h-9" />
               </div>
             </div>
 

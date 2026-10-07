@@ -9637,7 +9637,6 @@ model BolumDegisiklikTalep {
    * Yeni görev (unvan) — OPSİYONEL. Doluysa onay anında Personnel.gorev de
    * güncellenir ve koltuk o unvanın boş kutusuna taşınır. Boş bırakılırsa
    * mevcut görev KORUNUR (06.10.2026 öncesi davranış).
-   *
    * NEDEN GEREKLİ: koltuk eşleşmesi {bolum, gorev} ÇİFTİNE bakıyor. Görev eski
    * bölümün unvanında kalınca hedef bölümde aday kutu bulunamıyor ve koltuk
    * taşınmıyordu (ILR-00925 / BDT-2026-001 vakası, 01.10 → 06.10 fark edildi).
@@ -11244,21 +11243,22 @@ model KaliteUygunsuzluk {
 
 /// Uygunsuzluk ürün satırı. Başlık silinince cascade.
 model KaliteUygunsuzlukSatir {
-  id            String            @id @default(cuid())
-  uygunsuzlukId String
-  uygunsuzluk   KaliteUygunsuzluk @relation(fields: [uygunsuzlukId], references: [id], onDelete: Cascade)
-  siraNo        Int
-  yariMamulKodu String?
-  malzemeAdi    String?
-  redAdeti      Int
-  reworkAdedi   Int?
-  hurdaAdedi    Int?
-  olusanBolumId String?
-  olusanBolum   HataKodu?         @relation("UygunsuzlukSatirOlusanBolum", fields: [olusanBolumId], references: [id], onDelete: Restrict)
-  hataKoduId    String?
-  hataKodu      HataKodu?         @relation("UygunsuzlukSatirHataKodu", fields: [hataKoduId], references: [id], onDelete: Restrict)
-  hataDetayi    String?           @db.Text
-  karar         UygunsuzlukKarar?
+  id               String            @id @default(cuid())
+  uygunsuzlukId    String
+  uygunsuzluk      KaliteUygunsuzluk @relation(fields: [uygunsuzlukId], references: [id], onDelete: Cascade)
+  siraNo           Int
+  yariMamulKodu    String?
+  malzemeAdi       String?
+  hataliParcaAdedi Int? // Melike'nin eskizindeki "Hatalı Parça Adedi" — redAdeti'nden ayrı, ayrı istendi
+  redAdeti         Int
+  reworkAdedi      Int?
+  hurdaAdedi       Int?
+  olusanBolumId    String?
+  olusanBolum      HataKodu?         @relation("UygunsuzlukSatirOlusanBolum", fields: [olusanBolumId], references: [id], onDelete: Restrict)
+  hataKoduId       String?
+  hataKodu         HataKodu?         @relation("UygunsuzlukSatirHataKodu", fields: [hataKoduId], references: [id], onDelete: Restrict)
+  hataDetayi       String?           @db.Text
+  karar            UygunsuzlukKarar?
 
   @@index([uygunsuzlukId])
   @@index([hataKoduId])
@@ -15380,24 +15380,24 @@ model KPIOzelAlanDegeri {
 }
 
 model KPIMeasurement {
-  id          String        @id @default(cuid())
-  kpiId       String
-  kpi         KPIDefinition @relation(fields: [kpiId], references: [id], onDelete: Cascade)
-  year        Int
-  month       Int
-  target      Float?
-  actual      Float?
+  id            String        @id @default(cuid())
+  kpiId         String
+  kpi           KPIDefinition @relation(fields: [kpiId], references: [id], onDelete: Cascade)
+  year          Int
+  month         Int
+  target        Float?
+  actual        Float?
   // KPI-NA: bu ayki değer "uygulanamaz" (N/A) işaretlenmişse true — boş (hiç girilmemiş)
   // durumdan farklı, oran hesabında %0 ve kötü (kırmızı) renk olarak değerlendirilir.
-  hedefNA       Boolean @default(false)
-  gerceklesenNA Boolean @default(false)
+  hedefNA       Boolean       @default(false)
+  gerceklesenNA Boolean       @default(false)
   // KPI-ELLE-ORAN: dolu ise otomatik oran hesabını (ve N/A kuralını) by-pass edip doğrudan bu
   // değer "oran %" olarak kullanılır — saçma/bozuk veri durumlarını anında düzeltebilmek için.
   manuelOran    Float?
-  enteredById String?
-  enteredBy   User?         @relation(fields: [enteredById], references: [id], onDelete: SetNull)
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  enteredById   String?
+  enteredBy     User?         @relation(fields: [enteredById], references: [id], onDelete: SetNull)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
 
   @@unique([kpiId, year, month])
 }

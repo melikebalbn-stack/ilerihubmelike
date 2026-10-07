@@ -52,6 +52,7 @@ export const IMPORT_COLS = {
   kapanisTarihi: 'KAPANIŞ TARİHİ',
   ogrenilmisDersler: 'ÖĞRENİLMİŞ DERSLER',
   kategori: 'KATEGORİ',
+  hataliParcaAdedi: 'HATALI PARÇA ADETİ',
 } as const
 
 /**
@@ -90,6 +91,7 @@ export const EXPORT_HEADERS = [
   'ÖĞRENİLMİŞ DERSLER',
   'ALT PARÇA KODU',
   'KATEGORİ',
+  'HATALI PARÇA ADETİ',
 ] as const
 
 /** RED ORANI kolonunun 0-tabanlı indeksi — hücre biçimi için. */

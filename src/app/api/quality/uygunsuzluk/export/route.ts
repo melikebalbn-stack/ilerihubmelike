@@ -109,6 +109,7 @@ export async function GET(request: NextRequest) {
         k.ogrenilmisDersler.join('\n'),
         k.altParcaKodu ?? '',
         k.kategori?.ad ?? '',
+        s?.hataliParcaAdedi ?? '',
       ])
     }
   }

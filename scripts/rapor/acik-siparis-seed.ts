@@ -123,6 +123,15 @@ function tanimKur(c: Record<string, Coz>): VeriSetiTanim {
       durum: 'satir.Objstate',
       stokMiktari: 'stok.OnHandQty',
       site: 'satir.Contract',
+
+      // ── Syteline özel alanları: IFS'te CF henüz açılmadı (07.10.2026 katalog ölçümü) ──
+      // Kaynak satırda bu anahtar yoksa veri-seti.ts · alanlariEsle null döndürür, hata
+      // VERMEZ → kolon boş görünür. $select'e EKLENMEDİ: olmayan bir alanı $select'e
+      // yazmak IFS'ten 400 döndürür, boş değil.
+      // CF'ler açılınca yapılacak tek iş: adları ilgili kaynağın select dizisine eklemek.
+      siparisTipi: 'siparis.Cf_SiparisTipi', // Syteline co.uf_SiparisTipi
+      gercekTarih: 'satir.Cf_GercekTarih', // Syteline coitem.Uf_GercekTarih
+      isMerkezi: 'stok.Cf_IsMerkezi', // Syteline TR_IM.wc (malzeme → iş merkezi tablosu)
     },
   }
 }
@@ -157,6 +166,11 @@ const icerik: EtkilesimliIcerik = {
       { alan: 'sevkTarihi', baslik: 'Sevk Tarihi', gorunur: true, bicim: 'gg.aa.yyyy' },
       { alan: 'siparisTarihi', baslik: 'Sipariş Tarihi', gorunur: true, bicim: 'gg.aa.yyyy' },
       { alan: 'musteriSiparisNo', baslik: 'Müşteri Sip. No', gorunur: true },
+      // CF'ler IFS'te açılana kadar boş gelir — kolonlar şimdiden dursun ki
+      // alan açıldığında rapora dokunmaya gerek kalmasın.
+      { alan: 'siparisTipi', baslik: 'Sipariş Tipi', gorunur: true },
+      { alan: 'isMerkezi', baslik: 'İş Merkezi', gorunur: true },
+      { alan: 'gercekTarih', baslik: 'Gerçek Tarih', gorunur: true, bicim: 'gg.aa.yyyy' },
       { alan: 'musteriMalzemeNo', baslik: 'Müşteri Malzeme No', gorunur: false },
       { alan: 'sozVerilenTarih', baslik: 'Söz Verilen Tarih', gorunur: false, bicim: 'gg.aa.yyyy' },
       { alan: 'sevkAdresi', baslik: 'Sevk Adresi', gorunur: false },

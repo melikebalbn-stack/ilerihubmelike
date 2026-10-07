@@ -6,12 +6,12 @@
  *
  *   npx tsx scripts/servis-pilot-atama-donustur.ts \
  *     --girdi=~/pilot-veri/personel.xlsx --cikti=~/pilot-veri/cikti \
- *     --dilim=SABAH_GIDIS,AKSAM_DONUS [--baslangic=2026-10-12]
+ *     [--dilim=SABAH_GIDIS,AKSAM_DONUS] [--baslangic=2026-10-12]
  *
  * Çıktılar (--cikti öneki): <önek>-atama-1.xlsx … (her biri en fazla 300 satır, toplu atama
  * ekranının sınırı) ve <önek>-eslesmeyenler.xlsx (Özet / Eşleşmeyen / Atama üretilmeyen).
  * 🔴 KİŞİSEL VERİ: dosyalar ~/pilot-veri/ altında tutulur, repoya girmez, iş bitince silinir.
- * Sefer dilimi parametredir (Elif kararı bekleniyor); verilmezse script durur.
+ * Sefer dilimi varsayılanı SABAH_GIDIS,AKSAM_DONUS (Elif kararı 2026-10-07, plan KARARLAR); --dilim ile değişir.
  */
 import * as XLSX from 'xlsx'
 import * as fs from 'node:fs'
@@ -52,9 +52,8 @@ function yaz(dosya: string, sayfalar: Record<string, unknown[][]>) {
 }
 
 function main() {
-  const girdi = arg('girdi'), cikti = arg('cikti'), dilim = arg('dilim')
+  const girdi = arg('girdi'), cikti = arg('cikti'), dilim = arg('dilim') ?? 'SABAH_GIDIS,AKSAM_DONUS'
   if (!girdi || !cikti) dur('--girdi ve --cikti zorunlu')
-  if (!dilim) dur('--dilim zorunlu (ör. --dilim=SABAH_GIDIS,AKSAM_DONUS); sefer dilimi kararı Elif\'te')
   const baslangic = arg('baslangic') ?? bugunTR()
   if (!/^\d{4}-\d{2}-\d{2}$/.test(baslangic)) dur('--baslangic YYYY-AA-GG olmalı')
   const dilimler = dilim.split(',').map((d) => d.trim()).filter(Boolean).join(', ')

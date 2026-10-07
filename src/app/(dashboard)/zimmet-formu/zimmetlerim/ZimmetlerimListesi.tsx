@@ -305,7 +305,7 @@ function ZimmetKart({ zimmet }: { zimmet: ZimmetItem }) {
           </div>
           <div>
             <span className="text-slate-400 block mb-0.5">Açıklama</span>
-            <span className="font-medium text-slate-700 truncate block">{zimmet.aciklama ?? '—'}</span>
+            <span className="font-medium text-slate-700 truncate block">{temizleAciklama(zimmet.aciklama) || '—'}</span>
           </div>
         </div>
 

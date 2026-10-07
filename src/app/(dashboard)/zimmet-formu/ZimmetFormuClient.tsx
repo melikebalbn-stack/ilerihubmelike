@@ -83,7 +83,8 @@ export function ZimmetFormuClient({ teslimEdenAdi }: Props) {
   // (kullanıcı boş formla ilerleyip Adım 4'te imzalayamasın diye).
   const step1EksikAlanlar = zimmetEksikZorunluAlanlar(step1)
   const step1IlerlemeEngelli = step === 0 && step1EksikAlanlar.length > 0
-  // Son adımda "İleri" gösterilmez - işlem adımın içindeki "Onayla gönder" ile yapılır.
+  // Son adımda "İleri" gösterilmez - işlem adımın içindeki "Onayla gönder" ile yapılır;
+  // gönderim başarılı olunca yerine "Bitir" çıkar (Zimmetlerim'e götürür).
   const ileriDisabled = step1IlerlemeEngelli
 
   // Adım 1'de "Geri" artık disabled değil - formdan tamamen çıkıp listeye
@@ -188,6 +189,16 @@ export function ZimmetFormuClient({ teslimEdenAdi }: Props) {
                 )}
               </Tooltip>
             </TooltipProvider>
+          )}
+          {isLastStep && submitStatus === 'success' && (
+            <Button
+              type="button"
+              onClick={() => router.push('/zimmet-formu/zimmetlerim')}
+              className="bg-[#1B4F72] hover:bg-[#1B4F72]/90"
+            >
+              Bitir
+              <ChevronRight className="w-4 h-4 ml-1" />
+            </Button>
           )}
         </div>
       </div>

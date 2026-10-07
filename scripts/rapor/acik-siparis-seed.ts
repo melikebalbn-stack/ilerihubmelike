@@ -230,7 +230,14 @@ async function durumEtiketleriYaz(projeksiyon: string) {
   // Etiketi olmayan değer kaldıysa göster — IFS'te listede olmayan bir durum varsa
   // ekranda İngilizce kalır, buradan görülür.
   const eksik = await prisma.raporKatalogDeger.findMany({
-    where: { kaynakAd: projeksiyon, alan: 'Objstate', etiket: null },
+    where: {
+      kaynakAd: projeksiyon,
+      alan: 'Objstate',
+      etiket: null,
+      // YALNIZ bu raporun kullandığı iki entity. Projeksiyonun tamamına bakmak
+      // 140 alakasız satır basıyordu (CcCaseTask, SalesRegion…).
+      entity: { in: ['CustomerOrderLine', 'CustomerOrder'] },
+    },
     select: { entity: true, deger: true },
   })
   console.log(`Durum etiketleri yazıldı (${Object.keys(DURUM_ETIKET).length} değer × 2 entity).`)

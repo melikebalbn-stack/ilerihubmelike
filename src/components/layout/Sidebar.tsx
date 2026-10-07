@@ -356,6 +356,7 @@ const pdksMenuItems = [
   { name: "Pano", icon: LayoutDashboard, href: "/pdks/dashboard", roles: [] as string[], permission: ["pdks.view", "pdks.manage"] },
   { name: "Günlük Puantaj", icon: ClipboardList, href: "/pdks/puantaj", roles: [] as string[], permission: ["pdks.view", "pdks.manage"] },
   { name: "Geçiş Kayıtları", icon: ScanLine, href: "/pdks/gecisler", roles: [] as string[], permission: ["pdks.view", "pdks.manage"], note: "canlı" },
+  { name: "Binadakiler", icon: Users, href: "/pdks/iceride", roles: [] as string[], permission: ["pdks.view", "pdks.manage"], note: "canlı" },
   { name: "Kartlar", icon: CreditCard, href: "/pdks/kartlar", roles: [] as string[], permission: ["pdks.view", "pdks.manage"] },
   { name: "Vardiyalar", icon: Clock, href: "/pdks/vardiyalar", roles: [] as string[], permission: ["pdks.manage"] },
   { name: "Tatil Takvimi", icon: CalendarDays, href: "/pdks/tatiller", roles: [] as string[], permission: ["pdks.manage", "ipro.takvim.yonet"] },

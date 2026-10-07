@@ -105,7 +105,10 @@ function tanimKur(c: Record<string, Coz>): VeriSetiTanim {
     ],
     birlestir: [
       { sol: 'satir.OrderNo', sag: 'siparis.OrderNo', tip: 'left' },
-      { sol: 'satir.PartNo', sag: 'stok.PartNo', tip: 'left' },
+      // Stok eşleşmesi CatalogNo üzerinden: satırın PartNo alanı IFS'te boş kalabiliyor
+      // (08.10.2026 ölçümü: Stok kolonu boş geliyordu), satış kalemi CatalogNo'da duruyor.
+      // Site ayrımı gerekmiyor — stok kaynağı zaten aynı Contract'a süzülü.
+      { sol: 'satir.CatalogNo', sag: 'stok.PartNo', tip: 'left' },
     ],
     alanlar: {
       siparisNo: 'satir.OrderNo',

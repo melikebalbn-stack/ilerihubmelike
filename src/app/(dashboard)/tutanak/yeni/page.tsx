@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { ArrowLeft, FilePlus2, ShieldAlert, X } from "lucide-react"
+import { ArrowLeft, FileWarning, ShieldAlert, X } from "lucide-react"
 import { toast } from "sonner"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -43,7 +43,6 @@ export default function YeniTutanakPage() {
   const [sebep, setSebep] = useState("")
   const [aciklama, setAciklama] = useState("")
   const [sahitIdler, setSahitIdler] = useState<string[]>([])
-  const [sahitSecici, setSahitSecici] = useState("")
   const [yoneticiId, setYoneticiId] = useState("")
   const [basamaklar, setBasamaklar] = useState<Basamak[]>([])
   const [sonYonetici, setSonYonetici] = useState<Basamak | null>(null)
@@ -131,7 +130,7 @@ export default function YeniTutanakPage() {
   }
 
   return (
-    <div className="space-y-6 max-w-3xl">
+    <div className="container mx-auto px-6 py-8 max-w-3xl space-y-6">
       <div>
         <Button variant="ghost" size="sm" asChild className="mb-2 -ml-2">
           <Link href="/tutanak">
@@ -139,25 +138,29 @@ export default function YeniTutanakPage() {
             Tutanaklar
           </Link>
         </Button>
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <FilePlus2 className="h-6 w-6 text-primary" />
+        <h1 className="text-2xl font-bold text-[#1B4F72] flex items-center gap-2">
+          <FileWarning className="h-6 w-6" />
           Yeni Tutanak
         </h1>
-        <p className="text-muted-foreground">IV-FR-03 · Tutanak Formu</p>
+        <p className="text-sm text-slate-500 mt-1">IV-FR-03 · Tutanak Formu</p>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm text-amber-900">
+        <ShieldAlert className="h-4 w-4 shrink-0" />
+        Gizli kayıt — hakkında tutanak tutulan personel bu tutanağı göremez.
       </div>
 
       <Card>
         <CardHeader>
           <CardTitle>Tutanak Bilgisi</CardTitle>
-          <CardDescription className="flex items-center gap-1.5">
-            <ShieldAlert className="h-3.5 w-3.5 text-amber-600" />
+          <CardDescription>
             Bölüm ve görev KAYIT ANINDA saklanır; personel sonradan transfer olursa tutanak değişmez.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-5">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <Label>Personel *</Label>
+              <Label className="text-xs text-slate-600">Personel *</Label>
               <AramaliSecim
                 secenekler={personeller.map((p) => ({
                   id: p.id,
@@ -170,21 +173,21 @@ export default function YeniTutanakPage() {
                 aramaPlaceholder="Ad, sicil, bölüm ara..."
               />
               {secilenPersonel && (
-                <p className="text-xs text-muted-foreground mt-1">
+                <p className="text-xs text-slate-500 mt-1">
                   {secilenPersonel.bolum ?? "—"} · {secilenPersonel.gorev ?? "—"}
                 </p>
               )}
             </div>
             <div>
-              <Label>Tutanak Tarihi *</Label>
-              <Input type="date" value={tutanakTarihi} onChange={(e) => setTutanakTarihi(e.target.value)} />
+              <Label className="text-xs text-slate-600">Tutanak Tarihi *</Label>
+              <Input type="date" value={tutanakTarihi} onChange={(e) => setTutanakTarihi(e.target.value)} className="mt-1 h-9" />
             </div>
           </div>
 
           <div>
-            <Label>Tutanak Sebebi *</Label>
+            <Label className="text-xs text-slate-600">Tutanak Sebebi *</Label>
             <Select value={sebep} onValueChange={setSebep}>
-              <SelectTrigger>
+              <SelectTrigger className="mt-1 h-9">
                 <SelectValue placeholder="Sebep seçin" />
               </SelectTrigger>
               <SelectContent>
@@ -198,7 +201,7 @@ export default function YeniTutanakPage() {
           </div>
 
           <div>
-            <Label>Açıklama *</Label>
+            <Label className="text-xs text-slate-600">Açıklama *</Label>
             <Textarea
               rows={6}
               value={aciklama}
@@ -235,7 +238,7 @@ export default function YeniTutanakPage() {
                 return (
                   <Badge key={id} variant="outline" className="gap-1.5 py-1">
                     {p?.adSoyad ?? id}
-                    <span className="text-muted-foreground">{p?.bolum ?? ""}</span>
+                    <span className="text-slate-500">{p?.bolum ?? ""}</span>
                     <button
                       type="button"
                       aria-label="Şahidi çıkar"
@@ -249,9 +252,6 @@ export default function YeniTutanakPage() {
               })}
             </div>
           )}
-          {/* Seçici kutusu her eklemeden sonra boş kalsın (deger="") — sahitSecici
-              yalnız bileşenin kontrollü kalması için tutuluyor. */}
-          <input type="hidden" value={sahitSecici} onChange={() => setSahitSecici("")} />
         </CardContent>
       </Card>
 
@@ -264,23 +264,23 @@ export default function YeniTutanakPage() {
         </CardHeader>
         <CardContent className="space-y-3">
           {!personnelId ? (
-            <p className="text-sm text-muted-foreground">Önce personel seçin.</p>
+            <p className="text-sm text-slate-500">Önce personel seçin.</p>
           ) : yoneticiUyari ? (
             <p className="text-sm text-amber-600">{yoneticiUyari}</p>
           ) : basamaklar.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Yönetici zinciri yükleniyor...</p>
+            <p className="text-sm text-slate-400">Yükleniyor…</p>
           ) : (
             <RadioGroup value={yoneticiId} onValueChange={setYoneticiId} className="space-y-2">
               {basamaklar.map((b) => (
                 <label
                   key={b.personnelId}
-                  className="flex items-start gap-3 rounded-md border p-3 cursor-pointer hover:bg-muted/40"
+                  className="flex items-start gap-3 rounded-md border p-3 cursor-pointer hover:bg-slate-50"
                 >
                   <RadioGroupItem value={b.personnelId} className="mt-0.5" />
                   <span>
                     <span className="font-medium">{b.adSoyad}</span>
-                    <span className="text-muted-foreground"> · {b.kademe}. yönetici</span>
-                    <span className="block text-xs text-muted-foreground">
+                    <span className="text-slate-500"> · {b.kademe}. yönetici</span>
+                    <span className="block text-xs text-slate-500">
                       {b.bolum ?? "—"} · {b.gorev ?? "—"}
                     </span>
                   </span>
@@ -290,13 +290,13 @@ export default function YeniTutanakPage() {
           )}
 
           {bilgilendirilecek && (
-            <p className="text-xs text-muted-foreground border-l-2 border-primary/40 pl-2">
+            <p className="text-xs text-slate-500 border-l-2 border-primary/40 pl-2">
               Bilgilendirilecek son yönetici: <strong>{bilgilendirilecek.adSoyad}</strong> — yalnız mail ve Hub
               bildirimi alır, onay adımında yer almaz.
             </p>
           )}
           {yoneticiId && !bilgilendirilecek && basamaklar.length > 0 && (
-            <p className="text-xs text-muted-foreground border-l-2 border-muted pl-2">
+            <p className="text-xs text-slate-500 border-l-2 border-muted pl-2">
               Seçilen yönetici zincirin en üstü — ayrı bir son yönetici bilgilendirmesi gönderilmez.
             </p>
           )}
@@ -307,7 +307,7 @@ export default function YeniTutanakPage() {
         <Button variant="outline" disabled={!gecerli || kaydediyor} onClick={() => kaydet(false)}>
           Taslak Kaydet
         </Button>
-        <Button disabled={!gecerli || kaydediyor} onClick={() => kaydet(true)}>
+        <Button className="bg-[#1B4F72] hover:bg-[#1B4F72]/90" disabled={!gecerli || kaydediyor} onClick={() => kaydet(true)}>
           Kaydet ve Şahit Onayına Gönder
         </Button>
       </div>

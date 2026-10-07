@@ -3,28 +3,20 @@
 import { useCallback, useEffect, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import Link from "next/link"
-import { ArrowLeft, Check, FileDown, FileText, ShieldAlert, X } from "lucide-react"
+import { ArrowLeft, Check, FileDown, FileWarning, ShieldAlert, X } from "lucide-react"
 import { toast } from "sonner"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import {
   DURUM_ETIKETLERI,
+  DURUM_RENK,
   SAHIT_DURUM_ETIKETLERI,
+  SAHIT_DURUM_RENK,
   SEBEP_ETIKETLERI,
   type AdimSahibi,
 } from "@/lib/tutanak/tutanak-durum"
-
-const DURUM_RENKLERI: Record<string, string> = {
-  TASLAK: "bg-slate-100 text-slate-700 border-slate-200",
-  SAHIT_BEKLIYOR: "bg-amber-50 text-amber-800 border-amber-200",
-  YONETICI_BEKLIYOR: "bg-blue-50 text-blue-800 border-blue-200",
-  IK_BEKLIYOR: "bg-violet-50 text-violet-800 border-violet-200",
-  TAMAMLANDI: "bg-emerald-50 text-emerald-800 border-emerald-200",
-  REDDEDILDI: "bg-rose-50 text-rose-800 border-rose-200",
-}
 
 const ADIM_ETIKETLERI: Record<string, string> = {
   OLUSTURULDU: "Tutanak oluşturuldu",
@@ -42,6 +34,12 @@ type Detay = {
   onaylayabilir: boolean
   adimSahibi: AdimSahibi
   iv: boolean
+}
+
+function Pill({ renk, children }: { renk: string; children: React.ReactNode }) {
+  return (
+    <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold ${renk}`}>{children}</span>
+  )
 }
 
 function tarihTR(d: string | null | undefined): string {
@@ -107,7 +105,7 @@ export default function TutanakDetayPage() {
     }
   }
 
-  if (yukleniyor) return <p className="text-sm text-muted-foreground">Yükleniyor...</p>
+  if (yukleniyor) return <p className="px-6 py-8 text-sm text-slate-400">Yükleniyor…</p>
   if (!d) return null
 
   const t = d.tutanak
@@ -132,24 +130,29 @@ export default function TutanakDetayPage() {
             : []
 
   return (
-    <div className="space-y-6 max-w-4xl">
-      <div className="flex items-start justify-between gap-4">
-        <div>
+    <div className="container mx-auto px-6 py-8 max-w-4xl space-y-6">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
           <Button variant="ghost" size="sm" asChild className="mb-2 -ml-2">
             <Link href="/tutanak">
               <ArrowLeft className="h-4 w-4 mr-1" />
               Tutanaklar
             </Link>
           </Button>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <FileText className="h-6 w-6 text-primary" />
-            {t.tutanakNo}
-          </h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold text-[#1B4F72] flex items-center gap-2">
+              <FileWarning className="h-6 w-6" />
+              Tutanak — {t.tutanakNo}
+            </h1>
+            <span className="text-[11px] font-medium uppercase tracking-wide text-slate-400 border rounded px-2 py-0.5">
+              IV-FR-03
+            </span>
+          </div>
           <div className="flex items-center gap-2 mt-1">
-            <Badge variant="outline" className={DURUM_RENKLERI[t.durum]}>
+            <Pill renk={DURUM_RENK[t.durum as keyof typeof DURUM_RENK]}>
               {DURUM_ETIKETLERI[t.durum as keyof typeof DURUM_ETIKETLERI]}
-            </Badge>
-            <span className="text-sm text-muted-foreground">{tarihTR(t.tutanakTarihi)}</span>
+            </Pill>
+            <span className="text-sm text-slate-500">{tarihTR(t.tutanakTarihi)}</span>
           </div>
         </div>
         <Button variant="outline" size="sm" asChild>
@@ -160,56 +163,58 @@ export default function TutanakDetayPage() {
         </Button>
       </div>
 
+      <div className="flex flex-wrap items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm text-amber-900">
+        <ShieldAlert className="h-4 w-4 shrink-0" />
+        Gizli kayıt — hakkında tutanak tutulan personel bu tutanağı göremez.
+      </div>
+
       <Card>
         <CardHeader>
           <CardTitle>Tutanak İçeriği</CardTitle>
-          <CardDescription className="flex items-center gap-1.5">
-            <ShieldAlert className="h-3.5 w-3.5 text-amber-600" />
-            Gizli kayıt. Bölüm/görev tutanak anındaki hâliyle saklanır.
-          </CardDescription>
+          <CardDescription>Bölüm ve görev tutanak anındaki hâliyle saklanır.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
             <div>
-              <span className="text-muted-foreground">Personel</span>
+              <span className="text-slate-500">Personel</span>
               <p className="font-medium">{t.adSoyadSnapshot}</p>
             </div>
             <div>
-              <span className="text-muted-foreground">Sicil</span>
+              <span className="text-slate-500">Sicil</span>
               <p className="font-mono text-xs mt-1">{t.sicilSnapshot ?? "—"}</p>
             </div>
             <div>
-              <span className="text-muted-foreground">Bölüm</span>
+              <span className="text-slate-500">Bölüm</span>
               <p className="font-medium">{t.bolumSnapshot}</p>
             </div>
             <div>
-              <span className="text-muted-foreground">Görev</span>
+              <span className="text-slate-500">Görev</span>
               <p className="font-medium">{t.gorevSnapshot ?? "—"}</p>
             </div>
             <div>
-              <span className="text-muted-foreground">Sebep</span>
+              <span className="text-slate-500">Sebep</span>
               <p className="font-medium">{SEBEP_ETIKETLERI[t.sebep as keyof typeof SEBEP_ETIKETLERI]}</p>
             </div>
             <div>
-              <span className="text-muted-foreground">Tutanağı tutan</span>
+              <span className="text-slate-500">Tutanağı tutan</span>
               <p className="font-medium">{t.acan?.name ?? t.acan?.email ?? "—"}</p>
             </div>
             <div>
-              <span className="text-muted-foreground">Yönetici</span>
+              <span className="text-slate-500">Yönetici</span>
               <p className="font-medium">
                 {t.yonetici?.adSoyad ?? "—"}{" "}
-                <span className="text-xs text-muted-foreground">({t.yoneticiKademe}. kademe)</span>
+                <span className="text-xs text-slate-500">({t.yoneticiKademe}. kademe)</span>
               </p>
             </div>
             <div>
-              <span className="text-muted-foreground">Son yönetici (bilgi)</span>
+              <span className="text-slate-500">Son yönetici (bilgi)</span>
               <p className="font-medium">{t.bilgilendirilenSonYonetici?.adSoyad ?? "—"}</p>
             </div>
           </div>
 
           <div>
-            <span className="text-sm text-muted-foreground">Açıklama</span>
-            <p className="mt-1 whitespace-pre-wrap rounded-md border bg-muted/30 p-3 text-sm">{t.aciklama}</p>
+            <span className="text-sm text-slate-500">Açıklama</span>
+            <p className="mt-1 whitespace-pre-wrap rounded-md border bg-slate-50 p-3 text-sm">{t.aciklama}</p>
           </div>
 
           {t.redSebebi && (
@@ -228,89 +233,64 @@ export default function TutanakDetayPage() {
         </CardHeader>
         <CardContent className="space-y-2">
           {(t.sahitler ?? []).map((s: Record<string, any>) => (
-            <div key={s.id} className="flex items-center justify-between rounded-md border p-3 text-sm">
+            <div key={s.id} className="flex items-center justify-between rounded-md border p-3 text-sm hover:bg-slate-50">
               <div>
                 <p className="font-medium">
                   {s.personnel?.adSoyad}{" "}
-                  <span className="text-xs text-muted-foreground">({s.personnel?.sicilNo ?? "—"})</span>
+                  <span className="text-xs text-slate-500">({s.personnel?.sicilNo ?? "—"})</span>
                 </p>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-xs text-slate-500">
                   Şahit · {s.bolumSnapshot}
                   {s.not ? ` · ${s.not}` : ""}
                 </p>
               </div>
               <div className="text-right">
-                <Badge
-                  variant="outline"
-                  className={
-                    s.durum === "ONAYLADI"
-                      ? "bg-emerald-50 text-emerald-800 border-emerald-200"
-                      : s.durum === "REDDETTI"
-                        ? "bg-rose-50 text-rose-800 border-rose-200"
-                        : "bg-slate-100 text-slate-700 border-slate-200"
-                  }
-                >
+                <Pill renk={SAHIT_DURUM_RENK[s.durum as keyof typeof SAHIT_DURUM_RENK]}>
                   {SAHIT_DURUM_ETIKETLERI[s.durum as keyof typeof SAHIT_DURUM_ETIKETLERI]}
-                </Badge>
-                <p className="text-xs text-muted-foreground mt-1">{anTR(s.kararAt)}</p>
+                </Pill>
+                <p className="text-xs text-slate-500 mt-1">{anTR(s.kararAt)}</p>
               </div>
             </div>
           ))}
-          <div className="flex items-center justify-between rounded-md border p-3 text-sm">
+          <div className="flex items-center justify-between rounded-md border p-3 text-sm hover:bg-slate-50">
             <div>
               <p className="font-medium">{t.yonetici?.adSoyad ?? "—"}</p>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-xs text-slate-500">
                 Yönetici ({t.yoneticiKademe}. kademe)
                 {t.yoneticiNot ? ` · ${t.yoneticiNot}` : ""}
               </p>
             </div>
             <div className="text-right">
-              <Badge
-                variant="outline"
-                className={
-                  t.yoneticiKarar === "ONAYLADI"
-                    ? "bg-emerald-50 text-emerald-800 border-emerald-200"
-                    : t.yoneticiKarar === "REDDETTI"
-                      ? "bg-rose-50 text-rose-800 border-rose-200"
-                      : "bg-slate-100 text-slate-700 border-slate-200"
-                }
-              >
+              <Pill renk={SAHIT_DURUM_RENK[(t.yoneticiKarar ?? "BEKLIYOR") as keyof typeof SAHIT_DURUM_RENK]}>
                 {t.yoneticiKarar ? SAHIT_DURUM_ETIKETLERI[t.yoneticiKarar as "ONAYLADI" | "REDDETTI"] : "Bekliyor"}
-              </Badge>
-              <p className="text-xs text-muted-foreground mt-1">{anTR(t.yoneticiKararAt)}</p>
+              </Pill>
+              <p className="text-xs text-slate-500 mt-1">{anTR(t.yoneticiKararAt)}</p>
             </div>
           </div>
-          <div className="flex items-center justify-between rounded-md border p-3 text-sm">
+          <div className="flex items-center justify-between rounded-md border p-3 text-sm hover:bg-slate-50">
             <div>
               <p className="font-medium">İnsan Varlıkları</p>
-              <p className="text-xs text-muted-foreground">Kapanış{t.ivNot ? ` · ${t.ivNot}` : ""}</p>
+              <p className="text-xs text-slate-500">Kapanış{t.ivNot ? ` · ${t.ivNot}` : ""}</p>
             </div>
             <div className="text-right">
-              <Badge
-                variant="outline"
-                className={
-                  t.ivKapanisAt
-                    ? "bg-emerald-50 text-emerald-800 border-emerald-200"
-                    : "bg-slate-100 text-slate-700 border-slate-200"
-                }
-              >
+              <Pill renk={t.ivKapanisAt ? SAHIT_DURUM_RENK.ONAYLADI : SAHIT_DURUM_RENK.BEKLIYOR}>
                 {t.ivKapanisAt ? "Kapattı" : "Bekliyor"}
-              </Badge>
-              <p className="text-xs text-muted-foreground mt-1">{anTR(t.ivKapanisAt)}</p>
+              </Pill>
+              <p className="text-xs text-slate-500 mt-1">{anTR(t.ivKapanisAt)}</p>
             </div>
           </div>
         </CardContent>
       </Card>
 
       {aksiyonlar.length > 0 && d.onaylayabilir && (
-        <Card className="border-primary/30">
+        <Card className="border-[#1B4F72]/30">
           <CardHeader>
             <CardTitle>Bu adım sizde</CardTitle>
             <CardDescription>Ret için gerekçe zorunludur.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             <div>
-              <Label>Not {aksiyonlar.some((a) => a.tur === "ret") ? "(ret için zorunlu)" : "(isteğe bağlı)"}</Label>
+              <Label className="text-xs text-slate-600">Not {aksiyonlar.some((a) => a.tur === "ret") ? "(ret için zorunlu)" : "(isteğe bağlı)"}</Label>
               <Textarea rows={3} value={not} onChange={(e) => setNot(e.target.value)} />
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -318,7 +298,7 @@ export default function TutanakDetayPage() {
                 <Button
                   key={a.kod}
                   variant={a.tur === "ret" ? "outline" : "default"}
-                  className={a.tur === "ret" ? "border-rose-300 text-rose-700 hover:bg-rose-50" : ""}
+                  className={a.tur === "ret" ? "border-rose-300 text-rose-700 hover:bg-rose-50" : "bg-[#1B4F72] hover:bg-[#1B4F72]/90"}
                   disabled={islemde || (a.retNotuZorunlu && !not.trim())}
                   onClick={() => islem(a.kod)}
                 >
@@ -340,10 +320,10 @@ export default function TutanakDetayPage() {
           <ol className="space-y-3">
             {(t.gecmis ?? []).map((g: Record<string, any>) => (
               <li key={g.id} className="flex gap-3">
-                <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-primary" />
+                <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-[#1B4F72]" />
                 <div className="text-sm">
                   <p className="font-medium">{ADIM_ETIKETLERI[g.adim] ?? g.adim}</p>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-xs text-slate-500">
                     {g.aktorAd} · {anTR(g.createdAt)}
                     {g.oncekiDurum && g.yeniDurum && g.oncekiDurum !== g.yeniDurum
                       ? ` · ${DURUM_ETIKETLERI[g.oncekiDurum as keyof typeof DURUM_ETIKETLERI]} → ${DURUM_ETIKETLERI[g.yeniDurum as keyof typeof DURUM_ETIKETLERI]}`

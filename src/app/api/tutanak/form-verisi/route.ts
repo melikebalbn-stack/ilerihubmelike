@@ -25,6 +25,11 @@ export async function GET() {
       return NextResponse.json({ error: TUTANAK_ACMA_YETKISI_YOK }, { status: 403 })
     }
 
+    // KAPSAM = açanın yetki kapsamındaki TÜM aktif personel. UNVAN AYRIMI YOK:
+    // müdür / müdür yardımcısı / yönetici kadrosundakiler de listelenir (08.10.2026
+    // ölçümü: koltuk sahibi 18 aktif personelin hepsi listede). Tek eleme kendisidir;
+    // kişi kendi hakkında tutanak açamaz (POST ayrıca doğrular). Buraya unvan/kademe
+    // süzgeci EKLENMEYECEK — İV'nin talebinde böyle bir kısıt yok.
     const kapsamAdlari = yetki.kapsamBolumler.map((b) => b.name)
     const personeller = await prisma.personnel.findMany({
       where: {

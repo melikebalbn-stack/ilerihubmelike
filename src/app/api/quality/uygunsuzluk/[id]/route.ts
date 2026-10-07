@@ -5,6 +5,7 @@ import { canManageUygunsuzluk } from '@/lib/quality/uygunsuzluk-access'
 import { uygunsuzlukInput } from '@/lib/quality/uygunsuzluk-validators'
 import { referanslariDogrula } from '@/lib/quality/uygunsuzluk-refs'
 import { hesaplaDurum } from '@/lib/quality/uygunsuzluk-labels'
+import { bildirSorumluAtandi } from '@/lib/quality/uygunsuzluk-notifications'
 
 export const dynamic = 'force-dynamic'
 
@@ -55,7 +56,7 @@ export async function PATCH(request: NextRequest, { params }: Ctx) {
 
   const mevcut = await prisma.kaliteUygunsuzluk.findUnique({
     where: { id },
-    select: { id: true, termin: true, kapanisTarihi: true },
+    select: { id: true, termin: true, kapanisTarihi: true, sorumluId: true },
   })
   if (!mevcut) return NextResponse.json({ error: 'Uygunsuzluk kaydı bulunamadı' }, { status: 404 })
 
@@ -148,6 +149,11 @@ export async function PATCH(request: NextRequest, { params }: Ctx) {
       },
     })
   })
+
+  // Sorumlu yeni atandıysa ya da değiştiyse bilgilendirme maili (aynı kişi kalıyorsa gönderilmez).
+  if (updated.sorumluId && updated.sorumluId !== mevcut.sorumluId) {
+    await bildirSorumluAtandi(updated.id, updated.sorumluId)
+  }
 
   return NextResponse.json({ ...updated, durum: hesaplaDurum(updated) })
 }

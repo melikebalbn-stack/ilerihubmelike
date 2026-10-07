@@ -7,6 +7,7 @@ import { referanslariDogrula } from '@/lib/quality/uygunsuzluk-refs'
 import { buildUygunsuzlukWhere } from '@/lib/quality/uygunsuzluk-query'
 import { generateNextUygunsuzlukNo } from '@/lib/quality/uygunsuzluk-no'
 import { hesaplaDurum } from '@/lib/quality/uygunsuzluk-labels'
+import { bildirSorumluAtandi } from '@/lib/quality/uygunsuzluk-notifications'
 
 export const dynamic = 'force-dynamic'
 
@@ -134,6 +135,12 @@ export async function POST(request: NextRequest) {
       },
     })
   })
+
+  // Sorumlu atandıysa bilgilendirme maili. Fonksiyon kendi içinde hata yutar,
+  // bu yüzden await edilse de kayıt akışını bozmaz.
+  if (created.sorumluId) {
+    await bildirSorumluAtandi(created.id, created.sorumluId)
+  }
 
   return NextResponse.json(
     { ...created, durum: hesaplaDurum(created) },

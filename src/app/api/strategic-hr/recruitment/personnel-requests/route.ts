@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { PersonnelRequestStatus, PersonnelRequestType, EmploymentType, JobPriority } from "@/generated/prisma";
 import { requireSession } from "@/lib/auth/require-session";
 import { talepAlanlariSchema, tarihDon } from "@/lib/recruitment/personnel-request-alanlar";
+import { talepBolumleriCoz, bolumKapsamdaMi } from "@/lib/kadro-talep/talep-bolumleri";
 import { kadroTalepYetkisi, kadroTalepYetkisiz, kadroTalepErisimiCore, kadroTalepErisimYok, kadroTalepKapsamCoz } from "@/lib/kadro-talep/kadro-talep-yetki";
 import { kadroTalepGorunurluk, maasKapisi } from "@/lib/kadro-talep/kadro-talep-gorunurluk";
 
@@ -100,6 +101,10 @@ export async function POST(request: NextRequest) {
       location,
       workModel,
       priority,
+      // Pozisyon adı org şemasından seçilir (07.10.2026): bolum + kod + "şemada yok".
+      bolum,
+      pozisyonOrgKodu,
+      pozisyonSemadaYok,
       // NOT: `status` body'den ALINMAZ — create DAİMA DRAFT yazar (aşağıya bakınız).
       // NOT: salaryMin/salaryMax/hasBudget body'den ALINMAZ — İK sonradan girer.
     } = body;
@@ -122,6 +127,30 @@ export async function POST(request: NextRequest) {
     }
     const a = alanKontrol.data;
 
+    // BÖLÜM (07.10.2026): talep edilen bölüm artık formdan gelir ve kapsam SUNUCUDA
+    // doğrulanır (kapsam = talep açma kapsamı; talepBolumleriCoz). Gövdede bölüm YOKSA
+    // eski davranış korunur: oturumun LDAP departman metni yazılır (geriye uyum —
+    // eski istemci / başka çağrı yolu kırılmasın).
+    let departmentAdi = session.user.department || "";
+    let kodKabul: string | null = null;
+    if (typeof bolum === "string" && bolum.trim()) {
+      const { bolumler } = await talepBolumleriCoz(userId, session.user.permissions ?? []);
+      const secili = bolumKapsamdaMi(bolumler, bolum.trim());
+      if (!secili) {
+        return NextResponse.json(
+          { error: "Bu bölüm için kadro talebi açma yetkiniz yok." },
+          { status: 403 }
+        );
+      }
+      departmentAdi = secili.name;
+    }
+    // Şema kodu YALNIZ "şemada yok" işaretlenmemişse saklanır — iki alan birbirini
+    // dışlar, çelişkili kayıt (hem kod hem "şemada yok") oluşamaz.
+    const semadaYok = pozisyonSemadaYok === true;
+    if (!semadaYok && typeof pozisyonOrgKodu === "string" && pozisyonOrgKodu.trim()) {
+      kodKabul = pozisyonOrgKodu.trim();
+    }
+
     const requestNumber = await generateRequestNumber();
 
     const personnelRequest = await prisma.personnelRequest.create({
@@ -130,8 +159,10 @@ export async function POST(request: NextRequest) {
         requesterId: userId,
         requesterEmail: session.user.email || "",
         requesterName: session.user.name || "",
-        department: session.user.department || "",
+        department: departmentAdi,
         title,
+        pozisyonOrgKodu: kodKabul,
+        pozisyonSemadaYok: semadaYok,
         requestType: (requestType as PersonnelRequestType) || "NEW_POSITION",
         headcount: headcount || 1,
         employmentType: (employmentType as EmploymentType) || "FULL_TIME",

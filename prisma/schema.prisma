@@ -5342,6 +5342,16 @@ model PersonnelRequest {
   ivOnayId               String? // İK onaylayan userId (approvedById deseni gibi düz alan; FK değil)
   ivOnayTarihi           DateTime?
 
+  // ── Pozisyon kaynağı (07.10.2026) — "Pozisyon adı" artık org şemasından seçilir.
+  // `title` METİN OLARAK KALIR (tek gösterim alanı, geriye uyum); bu iki alan yalnız
+  // hangi yoldan geldiğini söyler:
+  //   · pozisyonOrgKodu dolu            → şemadan seçildi (temsilci kutu kodu, ORG-…)
+  //   · pozisyonSemadaYok = true        → talep eden elle yazdı, şemada karşılığı yok
+  //   · ikisi de boş/false              → ESKİ KAYIT (07.10 öncesi serbest metin) — backfill YOK
+  // Kutu kodu FK DEĞİL: şema yeniden düzenlenince kod silinse bile talebin metni durur.
+  pozisyonOrgKodu   String?
+  pozisyonSemadaYok Boolean @default(false)
+
   // ── Soft delete (22.09.2026) — recruitment.admin / SUPER_ADMIN. Satır kalır,
   // listeler/detay/export/pdf silindiMi=false süzer; denetim kaydı PERSONNEL_REQUEST.
   silindiMi     Boolean   @default(false)

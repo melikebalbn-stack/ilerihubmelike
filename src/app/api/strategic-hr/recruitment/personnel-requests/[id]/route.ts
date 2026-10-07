@@ -368,6 +368,16 @@ export async function PUT(
           );
         updateData = {
           title: body.title ?? existingRequest.title,
+          // Pozisyon kaynağı (07.10.2026): yalnız `title` ile birlikte gönderilirse
+          // güncellenir; tek başına gönderilen kod yoksayılır (metinle çelişmesin).
+          // "Şemada yok" işareti kodu DAİMA siler — iki alan birbirini dışlar.
+          ...(body.title !== undefined
+            ? body.pozisyonSemadaYok === true
+              ? { pozisyonOrgKodu: null, pozisyonSemadaYok: true }
+              : body.pozisyonOrgKodu !== undefined
+                ? { pozisyonOrgKodu: body.pozisyonOrgKodu || null, pozisyonSemadaYok: false }
+                : {}
+            : {}),
           requestType: body.requestType ?? existingRequest.requestType,
           headcount: body.headcount ?? existingRequest.headcount,
           employmentType: body.employmentType ?? existingRequest.employmentType,

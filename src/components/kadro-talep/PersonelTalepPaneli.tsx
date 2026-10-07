@@ -62,6 +62,21 @@ import { TalepBilgisiEkSection } from "./TalepBilgisiEkSection"
 import { ArananYetkinliklerSection } from "./ArananYetkinliklerSection"
 import { InsanVarliklariSection } from "./InsanVarliklariSection"
 import { normalizeDept } from '@/lib/auth/personnel-access'
+import { AramaliSecim } from "@/components/envanter/AramaliSecim"
+import type { PozisyonSecenek } from "@/lib/kadro-talep/pozisyon-secenekleri"
+import type { TalepBolumu } from "@/lib/kadro-talep/talep-bolumleri"
+import {
+  POZISYON_SECIM_BOS,
+  bolumDegistiPozisyon,
+  elleModdaMi,
+  pozisyonElleYazildi,
+  pozisyonKaynagiEtiketi,
+  pozisyonKayitAlanlari,
+  pozisyonSecenekListesi,
+  pozisyonSecimDegisti,
+  pozisyonSecimGecerliMi,
+  type PozisyonSecim,
+} from "@/lib/kadro-talep/pozisyon-secimi"
 
 export interface PersonnelRequest {
   id: string
@@ -70,6 +85,9 @@ export interface PersonnelRequest {
   requesterEmail: string
   department: string
   title: string
+  // Pozisyon kaynağı (07.10.2026) — eski kayıtlarda ikisi de boş/false.
+  pozisyonOrgKodu?: string | null
+  pozisyonSemadaYok?: boolean
   requestType: string
   headcount: number
   employmentType: string
@@ -248,7 +266,16 @@ export function PersonelTalepPaneli() {
   const [rejectionReason, setRejectionReason] = useState("")
 
   // Personel talebi form
+  // ── Pozisyon seçimi (07.10.2026): "Pozisyon Adı" serbest metin DEĞİL, talep edilen
+  // bölümün org ağacından seçilir; listede yoksa "Yeni pozisyon ekle" ile elle yazılır.
+  // Karar mantığı saf modülde (lib/kadro-talep/pozisyon-secimi.ts) — burada yalnız durum.
+  const [bolumSecenekleri, setBolumSecenekleri] = useState<TalepBolumu[]>([])
+  const [pozisyonSecenekleri, setPozisyonSecenekleri] = useState<PozisyonSecenek[]>([])
+  const [pozisyonUyari, setPozisyonUyari] = useState<string | null>(null)
+  const [pozisyonSecim, setPozisyonSecim] = useState<PozisyonSecim>(POZISYON_SECIM_BOS)
+
   const [requestForm, setRequestForm] = useState({
+    bolum: "",
     title: "",
     requestType: "NEW_POSITION",
     headcount: 1,
@@ -317,8 +344,57 @@ export function PersonelTalepPaneli() {
   }
 
   // Personel Talebi fonksiyonlari
+  // Bölüm + o bölümün pozisyon unvanlarını TEK çağrıda getirir. Uç kapsamı sunucuda
+  // zorlar (403); liste boş dönerse `uyari` gösterilir ve elle yazma yolu açık kalır.
+  const pozisyonlariYukle = async (bolum?: string) => {
+    try {
+      const qs = bolum ? `?bolum=${encodeURIComponent(bolum)}` : ""
+      const res = await fetch(`/api/strategic-hr/recruitment/personnel-requests/pozisyon-secenekleri${qs}`)
+      if (!res.ok) {
+        setPozisyonSecenekleri([])
+        setPozisyonUyari("Pozisyon listesi alınamadı — pozisyonu elle yazabilirsiniz.")
+        return
+      }
+      const d = await res.json()
+      const yeni: PozisyonSecenek[] = d.secenekler ?? []
+      setBolumSecenekleri(d.bolumler ?? [])
+      setPozisyonSecenekleri(yeni)
+      setPozisyonUyari(d.uyari ?? null)
+      // Açılışta bölüm seçilmemişse sunucunun varsayılanı forma yazılır.
+      if (!bolum && d.bolum) setRequestForm((f) => ({ ...f, bolum: d.bolum }))
+      // Bölüm değiştiyse yeni listede karşılığı kalmayan seçim temizlenir.
+      setPozisyonSecim((mevcut) => bolumDegistiPozisyon(mevcut, yeni))
+    } catch {
+      setPozisyonSecenekleri([])
+      setPozisyonUyari("Pozisyon listesi alınamadı — pozisyonu elle yazabilirsiniz.")
+    }
+  }
+
+  // Modal her açılışta tazelenir (koltuk/şema değişmiş olabilir).
+  useEffect(() => {
+    if (isRequestDialogOpen) pozisyonlariYukle(requestForm.bolum || undefined)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isRequestDialogOpen])
+
+  const bolumDegisti = (bolumId: string) => {
+    const b = bolumSecenekleri.find((x) => x.id === bolumId)
+    if (!b) return
+    setRequestForm((f) => ({ ...f, bolum: b.name }))
+    pozisyonlariYukle(b.name)
+  }
+
+  const seciliBolumId = bolumSecenekleri.find((b) => b.name === requestForm.bolum)?.id ?? ""
+  const pozisyonAlanlari = pozisyonKayitAlanlari(pozisyonSecim)
+  const pozisyonHazir = pozisyonSecimGecerliMi(pozisyonSecim)
+
   const handleRequestSubmit = async (e: React.FormEvent, submitForApproval: boolean = false) => {
     e.preventDefault()
+
+    // Enter ile gonderimde de pozisyon zorunlu (butonlar disabled, form submit degil).
+    if (!pozisyonHazir) {
+      toast.error("Pozisyon adi zorunlu — listeden secin ya da elle yazin")
+      return
+    }
 
     try {
       const res = await fetch("/api/strategic-hr/recruitment/personnel-requests", {
@@ -326,6 +402,8 @@ export function PersonelTalepPaneli() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...requestForm,
+          // Pozisyon adı + kaynağı (şemadan seçim → kod; elle → "şemada yok").
+          ...pozisyonAlanlari,
           headcount: parseInt(requestForm.headcount.toString()),
           salaryMin: requestForm.salaryMin ? parseInt(requestForm.salaryMin) : null,
           salaryMax: requestForm.salaryMax ? parseInt(requestForm.salaryMax) : null,
@@ -505,7 +583,9 @@ export function PersonelTalepPaneli() {
   }
 
   const resetRequestForm = () => {
+    setPozisyonSecim(POZISYON_SECIM_BOS)
     setRequestForm({
+      bolum: "",
       title: "",
       requestType: "NEW_POSITION",
       headcount: 1,
@@ -760,13 +840,45 @@ export function PersonelTalepPaneli() {
           <form onSubmit={(e) => handleRequestSubmit(e, false)} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="col-span-2">
-                <Label>Pozisyon Adi *</Label>
-                <Input
-                  value={requestForm.title}
-                  onChange={(e) => setRequestForm({ ...requestForm, title: e.target.value })}
-                  placeholder="Yazilim Muhendisi"
-                  required
+                <Label>Bolum *</Label>
+                <AramaliSecim
+                  secenekler={bolumSecenekleri.map((b) => ({ id: b.id, etiket: b.name }))}
+                  deger={seciliBolumId}
+                  onChange={bolumDegisti}
+                  placeholder={bolumSecenekleri.length ? "Bolum secin" : "Bolum bulunamadi"}
+                  aramaPlaceholder="Bolum ara..."
                 />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Pozisyon listesi secilen bolumun organizasyon semasindan gelir.
+                </p>
+              </div>
+
+              <div className="col-span-2">
+                <Label>Pozisyon Adi *</Label>
+                <AramaliSecim
+                  secenekler={pozisyonSecenekListesi(pozisyonSecenekleri)}
+                  deger={pozisyonSecim.kod}
+                  onChange={(kod) => setPozisyonSecim((m) => pozisyonSecimDegisti(kod, pozisyonSecenekleri, m))}
+                  placeholder="Pozisyon secin"
+                  aramaPlaceholder="Pozisyon ara..."
+                />
+                {/* Listede yok: serbest metin. Kayitta "semada yok" isareti durur. */}
+                {elleModdaMi(pozisyonSecim) && (
+                  <Input
+                    className="mt-2"
+                    value={pozisyonSecim.unvan}
+                    onChange={(e) => setPozisyonSecim((m) => pozisyonElleYazildi(e.target.value, m))}
+                    placeholder="Yeni pozisyon adini yazin"
+                  />
+                )}
+                {pozisyonUyari && (
+                  <p className="text-xs text-amber-600 mt-1">{pozisyonUyari}</p>
+                )}
+                {elleModdaMi(pozisyonSecim) && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Bu pozisyon org semasinda bulunmuyor — talep "semada yok" isaretiyle kaydedilir.
+                  </p>
+                )}
               </div>
 
               <div>
@@ -922,14 +1034,14 @@ export function PersonelTalepPaneli() {
               <Button
                 type="button"
                 variant="outline"
-                disabled={!requestForm.title || !requestForm.justification}
+                disabled={!pozisyonHazir || !requestForm.justification}
                 onClick={(e) => handleRequestSubmit(e as any, false)}
               >
                 Taslak Kaydet
               </Button>
               <Button
                 type="button"
-                disabled={!requestForm.title || !requestForm.justification}
+                disabled={!pozisyonHazir || !requestForm.justification}
                 onClick={(e) => handleRequestSubmit(e as any, true)}
               >
                 Onaya Gonder
@@ -948,6 +1060,25 @@ export function PersonelTalepPaneli() {
                 <div className="flex items-center justify-between">
                   <div>
                     <DialogTitle className="text-xl">{selectedRequest.title}</DialogTitle>
+                    {/* Pozisyon kaynagi isareti (07.10.2026) — IV karar ekraninda gorunur.
+                        Eski kayitlarda (iki alan da bos) hicbir sey cizilmez. */}
+                    {(() => {
+                      const k = pozisyonKaynagiEtiketi(selectedRequest)
+                      if (!k) return null
+                      return (
+                        <Badge
+                          variant="outline"
+                          title={k.aciklama}
+                          className={
+                            k.tur === "ELLE"
+                              ? "mt-1 border-amber-300 bg-amber-50 text-amber-800"
+                              : "mt-1 border-emerald-300 bg-emerald-50 text-emerald-800 font-mono"
+                          }
+                        >
+                          {k.etiket}
+                        </Badge>
+                      )
+                    })()}
                     <DialogDescription className="flex items-center gap-2 mt-1">
                       <span className="font-mono">{selectedRequest.requestNumber}</span>
                       <Badge className={requestStatusColors[selectedRequest.status]}>

@@ -58,6 +58,7 @@ import {
   Briefcase,
   Network,
   ClipboardList,
+  LayoutDashboard,
   LogIn,
   X,
   Package,
@@ -352,6 +353,7 @@ const offboardingMenuItems = [
 // Faz 2: Kartlar, Faz 3: Geçiş Kayıtları, Faz 4: Günlük Puantaj (pdks.view) + Vardiyalar / Tatil (pdks.manage).
 // "Geçişlerim" (herkes, kendi verisi) Formlar › İV altında — SUNUCU bayrağıyla (pdks_gecislerim_acik).
 const pdksMenuItems = [
+  { name: "Pano", icon: LayoutDashboard, href: "/pdks/dashboard", roles: [] as string[], permission: ["pdks.view", "pdks.manage"] },
   { name: "Günlük Puantaj", icon: ClipboardList, href: "/pdks/puantaj", roles: [] as string[], permission: ["pdks.view", "pdks.manage"] },
   { name: "Geçiş Kayıtları", icon: ScanLine, href: "/pdks/gecisler", roles: [] as string[], permission: ["pdks.view", "pdks.manage"], note: "canlı" },
   { name: "Kartlar", icon: CreditCard, href: "/pdks/kartlar", roles: [] as string[], permission: ["pdks.view", "pdks.manage"] },

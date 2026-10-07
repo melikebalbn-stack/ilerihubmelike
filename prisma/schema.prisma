@@ -15322,6 +15322,12 @@ model KPIDefinition {
   // VARSAYILMIYOR artık — bazı KPI'larda değer zaten 0-100 arası (ör. 99,18 = %99,18) direkt
   // girilmiş. "oran" (varsayılan, eski davranış) ×100 ile gösterir; "dogrudan" olduğu gibi gösterir.
   yuzdeOlcek         String              @default("oran") // "oran" (0-1, ×100 gösterilir) | "dogrudan" (zaten 0-100)
+  // KPI-FORMUL: Gerçekleşen ya da Hedef elle girilmek yerine başka KPI'ların (farklı
+  // departmanlar dahil) değerlerinden otomatik hesaplanabilir. Json şekli:
+  // { ifade: string, referanslar: { token: string; kpiId: string; kaynak: string }[] }
+  // kaynak: "actual" | "target" | bir KPIOzelAlan.key. null ise elle giriş (eski davranış).
+  gerceklesenFormul  Json?
+  hedefFormul        Json?
   active             Boolean             @default(true)
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
@@ -15339,6 +15345,8 @@ model KPIOzelAlan {
   key       String
   label     String
   siraNo    Int                 @default(0)
+  // KPI-FORMUL: bkz. KPIDefinition.gerceklesenFormul — aynı Json şekli, bu özel alan için.
+  formul    Json?
   degerler  KPIOzelAlanDegeri[]
   createdAt DateTime            @default(now())
   updatedAt DateTime            @updatedAt

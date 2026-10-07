@@ -1,15 +1,19 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import {
+  formulGecerliMi, formulAyDegeriHesapla, formulReferansVerisiGetir, formulHesaplanacakDonemler,
+  type FormulTanimi,
+} from './formul-motoru'
 
 const ORG_UNIT_ID_IK = 'cmrzg1kr600037jpe4ge6rxe0' // İnsan Varlıkları Müdürlüğü (varsayılan)
 
-// KPI-OZEL-ALAN: gelen {label} listesini {key, label}'a çevirir — key boşsa label'dan üretilir,
-// çakışma olursa _2, _3... eklenir (ekrandan gelen label'lar benzersiz olmayabilir).
-function ozelAlanlariNormalize(input: unknown): { key: string; label: string }[] {
+// KPI-OZEL-ALAN: gelen {label} listesini {key, label, formul}'a çevirir — key boşsa label'dan
+// üretilir, çakışma olursa _2, _3... eklenir (ekrandan gelen label'lar benzersiz olmayabilir).
+function ozelAlanlariNormalize(input: unknown): { key: string; label: string; formul: FormulTanimi | null }[] {
   if (!Array.isArray(input)) return []
   const kullanilanKeyler = new Set<string>()
-  const sonuc: { key: string; label: string }[] = []
-  for (const ham of input as { key?: string; label?: string }[]) {
+  const sonuc: { key: string; label: string; formul: FormulTanimi | null }[] = []
+  for (const ham of input as { key?: string; label?: string; formul?: unknown }[]) {
     const label = typeof ham?.label === 'string' ? ham.label.trim() : ''
     if (!label) continue
     const temelKey = typeof ham?.key === 'string' && ham.key.trim()
@@ -19,9 +23,13 @@ function ozelAlanlariNormalize(input: unknown): { key: string; label: string }[]
     let i = 2
     while (kullanilanKeyler.has(key)) { key = `${temelKey}_${i}`; i++ }
     kullanilanKeyler.add(key)
-    sonuc.push({ key, label })
+    sonuc.push({ key, label, formul: formulGecerliMi(ham?.formul) ? ham.formul : null })
   }
   return sonuc
+}
+
+function formulAlaninaGetir(input: unknown): FormulTanimi | null {
+  return formulGecerliMi(input) ? input : null
 }
 
 export async function GET(request: Request) {
@@ -53,17 +61,73 @@ export async function GET(request: Request) {
   const orgEmployeeAd = new Map(orgEmployeeler.map(s => [s.id, s.displayName]))
   const personelAd = new Map(personeller.map(p => [p.id, p.adSoyad]))
 
-  const sonuc = kpiler.map(k => ({
-    ...k,
-    actions: k.actions.map(a => ({
-      ...a,
-      responsibleName: a.sorumluPersonelId
-        ? personelAd.get(a.sorumluPersonelId) ?? null
-        : a.responsibleId
-          ? orgEmployeeAd.get(a.responsibleId) ?? null
-          : null,
-    })),
-  }))
+  // KPI-FORMUL: bu departmandaki KPI'lardan formül kullananların referans verdiği (herhangi bir
+  // departmandaki) KPI'ların verisini TEK seferde çekip, her formüllü alan için ayı ayı hesaplıyoruz.
+  const tumFormuller: FormulTanimi[] = []
+  for (const k of kpiler) {
+    if (formulGecerliMi(k.gerceklesenFormul)) tumFormuller.push(k.gerceklesenFormul)
+    if (formulGecerliMi(k.hedefFormul)) tumFormuller.push(k.hedefFormul)
+    for (const a of k.ozelAlanlar) if (formulGecerliMi(a.formul)) tumFormuller.push(a.formul)
+  }
+  const kpiHaritasi = await formulReferansVerisiGetir(prisma, tumFormuller)
+
+  const sonuc = kpiler.map(k => {
+    let measurements = k.measurements
+    const gFormul = formulGecerliMi(k.gerceklesenFormul) ? k.gerceklesenFormul : null
+    const hFormul = formulGecerliMi(k.hedefFormul) ? k.hedefFormul : null
+    if (gFormul || hFormul) {
+      const donemler = formulHesaplanacakDonemler(kpiHaritasi, gFormul ?? hFormul!)
+      const harita = new Map(measurements.map(m => [`${m.year}-${m.month}`, { ...m }]))
+      for (const { year, month } of donemler) {
+        const anahtar = `${year}-${month}`
+        const mevcut = harita.get(anahtar) ?? {
+          id: `formul-${k.id}-${anahtar}`, kpiId: k.id, year, month,
+          target: null, actual: null, hedefNA: false, gerceklesenNA: false, manuelOran: null,
+          enteredById: null, createdAt: new Date(), updatedAt: new Date(),
+        }
+        if (gFormul) mevcut.actual = formulAyDegeriHesapla(gFormul, kpiHaritasi, year, month)
+        if (hFormul) mevcut.target = formulAyDegeriHesapla(hFormul, kpiHaritasi, year, month)
+        harita.set(anahtar, mevcut)
+      }
+      measurements = Array.from(harita.values()).sort((a, b) => a.year - b.year || a.month - b.month)
+    }
+
+    const ozelAlanlar = k.ozelAlanlar.map(a => {
+      if (!formulGecerliMi(a.formul)) return { ...a, formulMu: false }
+      const donemler = formulHesaplanacakDonemler(kpiHaritasi, a.formul)
+      const harita = new Map(a.degerler.map(d => [`${d.year}-${d.month}`, { ...d }]))
+      for (const { year, month } of donemler) {
+        const anahtar = `${year}-${month}`
+        const mevcut = harita.get(anahtar) ?? {
+          id: `formul-${a.id}-${anahtar}`, alanId: a.id, year, month, value: null, naMi: false,
+          createdAt: new Date(), updatedAt: new Date(),
+        }
+        mevcut.value = formulAyDegeriHesapla(a.formul, kpiHaritasi, year, month)
+        harita.set(anahtar, mevcut)
+      }
+      return {
+        ...a,
+        formulMu: true,
+        degerler: Array.from(harita.values()).sort((x, y) => x.year - y.year || x.month - y.month),
+      }
+    })
+
+    return {
+      ...k,
+      measurements,
+      ozelAlanlar,
+      gerceklesenFormulMu: !!gFormul,
+      hedefFormulMu: !!hFormul,
+      actions: k.actions.map(a => ({
+        ...a,
+        responsibleName: a.sorumluPersonelId
+          ? personelAd.get(a.sorumluPersonelId) ?? null
+          : a.responsibleId
+            ? orgEmployeeAd.get(a.responsibleId) ?? null
+            : null,
+      })),
+    }
+  })
 
   return NextResponse.json({ kpiler: sonuc })
 }
@@ -87,6 +151,8 @@ export async function POST(request: Request) {
   const ortalamaKaynagi = typeof body.ortalamaKaynagi === 'string' && body.ortalamaKaynagi.trim()
     ? body.ortalamaKaynagi.trim()
     : 'actual'
+  const gerceklesenFormul = formulAlaninaGetir(body.gerceklesenFormul)
+  const hedefFormul = formulAlaninaGetir(body.hedefFormul)
 
   const kpi = await prisma.kPIDefinition.create({
     data: {
@@ -102,8 +168,10 @@ export async function POST(request: Request) {
       yuzdeOlcek,
       oranPayKaynagi,
       ortalamaKaynagi,
+      gerceklesenFormul: gerceklesenFormul ?? undefined,
+      hedefFormul: hedefFormul ?? undefined,
       ozelAlanlar: {
-        create: ozelAlanlar.map((a, i) => ({ key: a.key, label: a.label, siraNo: i })),
+        create: ozelAlanlar.map((a, i) => ({ key: a.key, label: a.label, siraNo: i, formul: a.formul ?? undefined })),
       },
     },
     include: { ozelAlanlar: true },

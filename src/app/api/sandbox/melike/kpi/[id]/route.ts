@@ -1,13 +1,15 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { Prisma } from '@/generated/prisma'
+import { formulGecerliMi, type FormulTanimi } from '../formul-motoru'
 
-// KPI-OZEL-ALAN: gelen {key, label} listesini normalize eder — key boşsa label'dan üretilir,
-// çakışma olursa _2, _3... eklenir (bkz. ../route.ts'teki aynı fonksiyon).
-function ozelAlanlariNormalize(input: unknown): { key: string; label: string }[] {
+// KPI-OZEL-ALAN: gelen {key, label, formul} listesini normalize eder — key boşsa label'dan
+// üretilir, çakışma olursa _2, _3... eklenir (bkz. ../route.ts'teki aynı fonksiyon).
+function ozelAlanlariNormalize(input: unknown): { key: string; label: string; formul: FormulTanimi | null }[] {
   if (!Array.isArray(input)) return []
   const kullanilanKeyler = new Set<string>()
-  const sonuc: { key: string; label: string }[] = []
-  for (const ham of input as { key?: string; label?: string }[]) {
+  const sonuc: { key: string; label: string; formul: FormulTanimi | null }[] = []
+  for (const ham of input as { key?: string; label?: string; formul?: unknown }[]) {
     const label = typeof ham?.label === 'string' ? ham.label.trim() : ''
     if (!label) continue
     const temelKey = typeof ham?.key === 'string' && ham.key.trim()
@@ -17,9 +19,13 @@ function ozelAlanlariNormalize(input: unknown): { key: string; label: string }[]
     let i = 2
     while (kullanilanKeyler.has(key)) { key = `${temelKey}_${i}`; i++ }
     kullanilanKeyler.add(key)
-    sonuc.push({ key, label })
+    sonuc.push({ key, label, formul: formulGecerliMi(ham?.formul) ? ham.formul : null })
   }
   return sonuc
+}
+
+function formulAlaninaGetir(input: unknown): FormulTanimi | null {
+  return formulGecerliMi(input) ? input : null
 }
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -39,6 +45,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     : 'actual'
   const oranBirimi = body.oranBirimi === 'kat' ? 'kat' : 'yuzde'
   const yuzdeOlcek = body.yuzdeOlcek === 'dogrudan' ? 'dogrudan' : 'oran'
+  const gerceklesenFormul = formulAlaninaGetir(body.gerceklesenFormul)
+  const hedefFormul = formulAlaninaGetir(body.hedefFormul)
   const gelenAlanlar = ozelAlanlariNormalize(body.ozelAlanlar)
   const mevcutAlanlar = await prisma.kPIOzelAlan.findMany({ where: { kpiId: id }, select: { id: true, key: true } })
   const gelenKeyler = new Set(gelenAlanlar.map(a => a.key))
@@ -60,6 +68,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         yuzdeOlcek,
         oranPayKaynagi,
         ortalamaKaynagi,
+        gerceklesenFormul: gerceklesenFormul ?? Prisma.JsonNull,
+        hedefFormul: hedefFormul ?? Prisma.JsonNull,
       },
     }),
     ...(silinecekler.length > 0
@@ -68,8 +78,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     ...gelenAlanlar.map((a, i) => {
       const mevcutId = mevcutKeyHaritasi.get(a.key)
       return mevcutId
-        ? prisma.kPIOzelAlan.update({ where: { id: mevcutId }, data: { label: a.label, siraNo: i } })
-        : prisma.kPIOzelAlan.create({ data: { kpiId: id, key: a.key, label: a.label, siraNo: i } })
+        ? prisma.kPIOzelAlan.update({ where: { id: mevcutId }, data: { label: a.label, siraNo: i, formul: a.formul ?? Prisma.JsonNull } })
+        : prisma.kPIOzelAlan.create({ data: { kpiId: id, key: a.key, label: a.label, siraNo: i, formul: a.formul ?? undefined } })
     }),
   ])
 

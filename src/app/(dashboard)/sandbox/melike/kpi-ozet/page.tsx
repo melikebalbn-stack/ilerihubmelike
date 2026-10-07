@@ -410,7 +410,10 @@ export default function KpiOzetPage() {
                       className="flex items-center justify-between rounded-md px-3 py-2 hover:brightness-95 transition-[filter]"
                       style={{ backgroundColor: oranBgRengi(k.oran) }}
                     >
-                      <span className="text-sm font-medium">{k.name}</span>
+                      {/* Arka plan her zaman açık pastel (tema fark etmez) — koyu temada yazı
+                          rengi sayfanın varsayılanına (beyaza yakın) düşüp okunmaz oluyordu,
+                          burada sabit koyu renk veriyoruz. */}
+                      <span className="text-sm font-medium" style={{ color: '#1f2937' }}>{k.name}</span>
                       <span className="text-sm font-bold" style={{ color: oranRengi(k.oran) }}>%{k.oran}</span>
                     </Link>
                   ))}

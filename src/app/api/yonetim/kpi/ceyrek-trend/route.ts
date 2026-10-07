@@ -6,19 +6,45 @@ export const dynamic = 'force-dynamic'
 
 const UST_BIRIM_ID = 'cmrzg1kqr00027jpe7y4egyt9'
 
-// Oran, KPI'nın oranYonu (G/H ya da H/G) alanına göre DEĞİL, direction'a (düşük mü yüksek mi
-// iyi) göre yönlendirilir — oranYonu çoğu KPI'da hiç elle düzeltilmeden varsayılanda (G_H)
-// kalmış, direction ise zaten doğru giriliyor. Böylece yüksek oran HER ZAMAN "iyi" anlamına
-// gelir: lower_is_better'da hedef/gerçekleşen, higher_is_better'da gerçekleşen/hedef.
-// KASITLI OLARAK üst sınır/kırpma YOK — hedef ya da gerçekleşen sıfıra çok yakın girilen
-// ölçümler (ör. %33 yerine 0,33 girilmiş gibi veri atışı sırasında ölçek hatası) olduğu gibi
-// aşırı oranlar üretiyor; bu sınırlanırsa hatalı veri gizlenip kaynaktan düzeltilmesi atlanır.
-// Payda (bölen) sıfırsa (lower_is_better'da gerçekleşen) Infinity/NaN çıkıp ortalamayı
-// bozardı — bölüm hatasında %0 döndürülür (KPI Takip sayfasındaki G/H Oran satırıyla tutarlı).
-function basariOrani(direction: string, target: number, actual: number): number {
-  const payda = direction === 'lower_is_better' ? actual : target
+interface OlcumBenzeri {
+  year: number
+  month: number
+  target: number | null
+  actual: number | null
+  hedefNA: boolean
+  gerceklesenNA: boolean
+  manuelOran: number | null
+}
+
+interface KpiBenzeri {
+  oranYonu: string
+  oranPayKaynagi: string
+  ozelAlanlar: { key: string; degerler: { year: number; month: number; value: number | null; naMi: boolean }[] }[]
+}
+
+// Oran, KPI Takip sayfasındaki "G/H Oran"/"H/G Oran" satırıyla AYNI mantık — hangi tarafın G/H'nin
+// "G"si (payı) olacağını (Gerçekleşen mi yoksa özel bir alan mı) ve yönünü (G/H ya da H/G) KULLANICI
+// kendi belirler (oranPayKaynagi, oranYonu) — direction'a göre otomatik bir kural UYGULANMAZ, çünkü
+// bu alanları KPI bazında elle düzenleyebiliyor artık (Yeni/Düzenle KPI dialogları).
+// Elle girilmiş oran (manuelOran) varsa her şeyi by-pass eder. N/A (hedefNA ya da payın NA'sı)
+// işaretliyse %0 döner. KASITLI OLARAK üst sınır/kırpma YOK — veri kaynağından düzeltilir.
+function olcumOranHesapla(kpi: KpiBenzeri, m: OlcumBenzeri): number | null {
+  if (m.manuelOran != null) return m.manuelOran
+
+  const pay = kpi.oranPayKaynagi === 'actual'
+    ? { value: m.actual, na: m.gerceklesenNA }
+    : (() => {
+        const alan = kpi.ozelAlanlar.find(a => a.key === kpi.oranPayKaynagi)
+        const d = alan?.degerler.find(x => x.year === m.year && x.month === m.month)
+        return { value: d?.value ?? null, na: d?.naMi ?? false }
+      })()
+
+  if (m.hedefNA || pay.na) return 0
+  if (m.target == null || m.target === 0 || pay.value == null) return null
+
+  const payda = kpi.oranYonu === 'H_G' ? pay.value : m.target
   if (payda === 0) return 0
-  return (direction === 'lower_is_better' ? target / actual : actual / target) * 100
+  return (kpi.oranYonu === 'H_G' ? m.target / payda : pay.value / payda) * 100
 }
 
 // Aylık bir KPI için hangi ay hangi çeyreğe düşer (Ç1=Oca-Mar, Ç2=Nis-Haz, Ç3=Tem-Eyl, Ç4=Eki-Ara).
@@ -42,7 +68,7 @@ export async function GET(request: Request) {
 
   const kpiler = await prisma.kPIDefinition.findMany({
     where: { orgUnitId: { in: departmanlar.map(d => d.id) } },
-    include: { measurements: true },
+    include: { measurements: true, ozelAlanlar: { include: { degerler: true } } },
   })
 
   const mevcutYillar = Array.from(new Set(kpiler.flatMap(k => k.measurements.map(m => m.year)))).sort((a, b) => b - a)
@@ -55,10 +81,12 @@ export async function GET(request: Request) {
       const kpiOranlari: number[] = []
       for (const k of deptKpiler) {
         const gecerliOlcumler = k.measurements.filter(
-          m => m.target && m.actual != null && m.year === aktifYil && ceyrekNo(k.frequency, m.month) === ceyrek,
+          m => m.year === aktifYil && ceyrekNo(k.frequency, m.month) === ceyrek,
         )
-        if (gecerliOlcumler.length === 0) continue
-        const oranlar = gecerliOlcumler.map(m => basariOrani(k.direction, m.target as number, m.actual as number))
+        const oranlar = gecerliOlcumler
+          .map(m => olcumOranHesapla(k, m))
+          .filter((o): o is number => o != null)
+        if (oranlar.length === 0) continue
         kpiOranlari.push(oranlar.reduce((t, o) => t + o, 0) / oranlar.length)
       }
       const oran = kpiOranlari.length > 0

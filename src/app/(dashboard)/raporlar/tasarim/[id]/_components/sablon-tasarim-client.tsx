@@ -23,6 +23,7 @@ import { ArrowDown, ArrowUp, Columns3, FileBarChart2, GripVertical, LayoutTempla
 import { ifadeDogrula } from '@/lib/rapor/ifade'
 import { BICIMLER, veriSetiParametreleri } from '@/lib/rapor/sablon-dogrula'
 import { listedenTuval } from '@/lib/rapor/tuval-render'
+import { KATEGORILER } from '@/lib/rapor/kategoriler'
 import type { AltToplamFn, Bicim, GrupTanim, HesaplananAlan, Kolon, KosulluBicim, SablonIcerik, SablonParametre, VeriSetiTanim } from '@/lib/rapor/tipler'
 import { GeriRozet } from '../../../_components/rozet-link'
 import { apiGet, apiGonder, hataListesi, hataMetni, hataYapisi } from '../../../_components/api'
@@ -33,7 +34,7 @@ const NAVY = '#1B4F72'
 
 interface Props {
   veriSetleri: { id: string; ad: string }[]
-  kategoriler?: string[]
+
   mevcut?: { id: string; kod: string; ad: string; aciklama: string; veriSetiId: string; durum: 'TASLAK' | 'YAYINDA' | 'ARSIV'; surum: number; izinAnahtari: string; icerik: SablonIcerik }
 }
 
@@ -103,7 +104,7 @@ function IfadeKutusu({ deger, onChange, alanlar, placeholder, rows = 2 }: { dege
   )
 }
 
-export default function SablonTasarimClient({ veriSetleri, kategoriler = [], mevcut }: Props) {
+export default function SablonTasarimClient({ veriSetleri, mevcut }: Props) {
   const router = useRouter()
   const ic = mevcut?.icerik
 
@@ -318,7 +319,16 @@ export default function SablonTasarimClient({ veriSetleri, kategoriler = [], mev
             <NativeSelect id="s-durum" value={durum} onChange={(e) => setDurum(e.target.value as 'TASLAK' | 'YAYINDA')}><option value="TASLAK">Taslak</option><option value="YAYINDA">Yayında</option></NativeSelect>
           </div>
           <div className="space-y-1.5"><Label htmlFor="s-alt">Alt başlık</Label><Input id="s-alt" value={altBaslik} onChange={(e) => setAltBaslik(e.target.value)} /></div>
-          <div className="space-y-1.5"><Label htmlFor="s-kat">Kategori</Label><Input id="s-kat" list="kategori-onerileri" value={kategori} onChange={(e) => setKategori(e.target.value)} placeholder="Üretim" /><datalist id="kategori-onerileri">{kategoriler.map((k) => <option key={k} value={k} />)}</datalist></div>
+          {/* Kategori SABİT liste (07.10.2026) — serbest metinken aynı kategori iki ayrı
+              çip oluyordu ("Satın Alma" / "Satınalma"). Listede olmayan eski bir değer
+              varsa düzenlemede kaybolmasın diye tek seferlik seçenek olarak eklenir. */}
+          <div className="space-y-1.5"><Label htmlFor="s-kat">Kategori</Label>
+            <NativeSelect id="s-kat" value={kategori} onChange={(e) => setKategori(e.target.value)}>
+              <option value="">— Seçilmedi —</option>
+              {KATEGORILER.map((k) => <option key={k} value={k}>{k}</option>)}
+              {kategori && !(KATEGORILER as readonly string[]).includes(kategori) && <option value={kategori}>{kategori} (eski)</option>}
+            </NativeSelect>
+          </div>
           <div className="space-y-1.5 sm:col-span-2 xl:col-span-4"><Label htmlFor="s-aciklama">Kullanıcı açıklaması (listede ve rapor başlığının altında)</Label><Input id="s-aciklama" value={aciklama} onChange={(e) => setAciklama(e.target.value)} maxLength={500} placeholder="Raporun ne işe yaradığı, sade cümle" /></div>
           <div className="space-y-1.5 sm:col-span-2 xl:col-span-3"><Label htmlFor="s-teknik">Teknik açıklama (yalnız tasarımcıya)</Label><Input id="s-teknik" value={teknikAciklama} onChange={(e) => setTeknikAciklama(e.target.value)} maxLength={500} placeholder="Veri seti / IFS kaynak detayı" /></div>
         </CardContent>

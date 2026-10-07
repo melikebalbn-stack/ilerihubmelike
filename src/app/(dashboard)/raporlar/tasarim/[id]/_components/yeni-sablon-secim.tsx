@@ -21,12 +21,13 @@ import type { EtkilesimliIcerik, SablonIcerik, SablonParametre, VeriSetiTanim } 
 import { GeriRozet } from '../../../_components/rozet-link'
 import { apiGet, apiGonder, hataListesi, hataMetni } from '../../../_components/api'
 import { TUR_ACIKLAMA, TUR_ADI } from '@/lib/rapor/tur-adlari'
+import { KATEGORILER } from '@/lib/rapor/kategoriler'
 
 const NAVY = '#1B4F72'
 
-interface Props { veriSetleri: { id: string; ad: string }[]; kategoriler: string[]; belgeTasarim: ReactNode }
+interface Props { veriSetleri: { id: string; ad: string }[]; belgeTasarim: ReactNode }
 
-export default function YeniSablonSecim({ veriSetleri, kategoriler, belgeTasarim }: Props) {
+export default function YeniSablonSecim({ veriSetleri, belgeTasarim }: Props) {
   const router = useRouter()
   const [tur, setTur] = useState<'etkilesimli' | 'belge' | null>(null)
   /** Hazır Rapor için yerleşim: serbest tuval (varsayılan) ya da basit liste (eski form ekranı). */
@@ -147,7 +148,12 @@ export default function YeniSablonSecim({ veriSetleri, kategoriler, belgeTasarim
             <div className="grid gap-3 sm:grid-cols-[160px_1fr_1fr_1fr]">
               <div className="space-y-1.5"><Label htmlFor="y-kod">Kod <span className="text-red-600">*</span></Label><Input id="y-kod" className="font-mono" value={kod} onChange={(e) => setKod(e.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, ''))} placeholder="URT-010" /></div>
               <div className="space-y-1.5"><Label htmlFor="y-ad">Ad <span className="text-red-600">*</span></Label><Input id="y-ad" value={ad} onChange={(e) => setAd(e.target.value)} placeholder="İş Emri Listesi" /></div>
-              <div className="space-y-1.5"><Label htmlFor="y-kat">Kategori</Label><Input id="y-kat" list="kategori-onerileri" value={kategori} onChange={(e) => setKategori(e.target.value)} placeholder="Üretim" /><datalist id="kategori-onerileri">{kategoriler.map((k) => <option key={k} value={k} />)}</datalist></div>
+              <div className="space-y-1.5"><Label htmlFor="y-kat">Kategori</Label>
+                <NativeSelect id="y-kat" value={kategori} onChange={(e) => setKategori(e.target.value)}>
+                  <option value="">— Seçilmedi —</option>
+                  {KATEGORILER.map((k) => <option key={k} value={k}>{k}</option>)}
+                </NativeSelect>
+              </div>
               <div className="space-y-1.5"><Label htmlFor="y-vs">Veri seti <span className="text-red-600">*</span></Label>
                 <NativeSelect id="y-vs" value={veriSetiId} onChange={(e) => setVeriSetiId(e.target.value)}><option value="">Seçin…</option>{veriSetleri.map((v) => <option key={v.id} value={v.id}>{v.ad}</option>)}</NativeSelect>
               </div>

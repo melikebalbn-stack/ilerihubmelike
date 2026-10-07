@@ -3,6 +3,27 @@ import { prisma } from '@/lib/prisma'
 
 const ORG_UNIT_ID_IK = 'cmrzg1kr600037jpe4ge6rxe0' // İnsan Varlıkları Müdürlüğü (varsayılan)
 
+// KPI-OZEL-ALAN: gelen {label} listesini {key, label}'a çevirir — key boşsa label'dan üretilir,
+// çakışma olursa _2, _3... eklenir (ekrandan gelen label'lar benzersiz olmayabilir).
+function ozelAlanlariNormalize(input: unknown): { key: string; label: string }[] {
+  if (!Array.isArray(input)) return []
+  const kullanilanKeyler = new Set<string>()
+  const sonuc: { key: string; label: string }[] = []
+  for (const ham of input as { key?: string; label?: string }[]) {
+    const label = typeof ham?.label === 'string' ? ham.label.trim() : ''
+    if (!label) continue
+    const temelKey = typeof ham?.key === 'string' && ham.key.trim()
+      ? ham.key.trim()
+      : label.toLocaleLowerCase('tr').replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'alan'
+    let key = temelKey
+    let i = 2
+    while (kullanilanKeyler.has(key)) { key = `${temelKey}_${i}`; i++ }
+    kullanilanKeyler.add(key)
+    sonuc.push({ key, label })
+  }
+  return sonuc
+}
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const orgUnitId = searchParams.get('orgUnitId') || ORG_UNIT_ID_IK
@@ -13,6 +34,7 @@ export async function GET(request: Request) {
       measurements: { orderBy: [{ year: 'asc' }, { month: 'asc' }] },
       baselines: { orderBy: { year: 'asc' } },
       actions: true,
+      ozelAlanlar: { orderBy: { siraNo: 'asc' }, include: { degerler: true } },
     },
     orderBy: { name: 'asc' },
   })
@@ -56,6 +78,10 @@ export async function POST(request: Request) {
   const orgUnitId = typeof body.orgUnitId === 'string' && body.orgUnitId ? body.orgUnitId : ORG_UNIT_ID_IK
   const frequency = body.frequency === 'quarterly' ? 'quarterly' : 'monthly'
   const oranYonu = body.oranYonu === 'H_G' ? 'H_G' : 'G_H'
+  const ozelAlanlar = ozelAlanlariNormalize(body.ozelAlanlar)
+  const oranPayKaynagi = typeof body.oranPayKaynagi === 'string' && body.oranPayKaynagi.trim()
+    ? body.oranPayKaynagi.trim()
+    : 'actual'
 
   const kpi = await prisma.kPIDefinition.create({
     data: {
@@ -67,7 +93,12 @@ export async function POST(request: Request) {
       gerceklesenEtiketi: typeof body.gerceklesenEtiketi === 'string' && body.gerceklesenEtiketi.trim() ? body.gerceklesenEtiketi.trim() : 'Gerçekleşen',
       hedefEtiketi: typeof body.hedefEtiketi === 'string' && body.hedefEtiketi.trim() ? body.hedefEtiketi.trim() : 'Hedef',
       oranYonu,
+      oranPayKaynagi,
+      ozelAlanlar: {
+        create: ozelAlanlar.map((a, i) => ({ key: a.key, label: a.label, siraNo: i })),
+      },
     },
+    include: { ozelAlanlar: true },
   })
 
   return NextResponse.json({ kpi })

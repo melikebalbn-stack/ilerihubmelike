@@ -37,6 +37,24 @@ interface Olcum {
   month: number
   target: number | null
   actual: number | null
+  hedefNA: boolean
+  gerceklesenNA: boolean
+  manuelOran: number | null
+}
+
+interface OzelAlanDeger {
+  year: number
+  month: number
+  value: number | null
+  naMi: boolean
+}
+
+interface OzelAlan {
+  id: string
+  key: string
+  label: string
+  siraNo: number
+  degerler: OzelAlanDeger[]
 }
 
 interface Aksiyon {
@@ -66,6 +84,8 @@ interface Kpi {
   gerceklesenEtiketi: string
   hedefEtiketi: string
   oranYonu: string
+  oranPayKaynagi: string
+  ozelAlanlar: OzelAlan[]
   measurements: Olcum[]
   baselines: Baseline[]
   actions: Aksiyon[]
@@ -101,6 +121,77 @@ function hesaplaOrtYillar(kpi: Kpi): [number, number][] {
   return Array.from(hesaplanan.entries()).sort(([a], [b]) => a - b)
 }
 
+interface OzelAlanTaslak { key: string; label: string }
+
+// KPI-OZEL-ALAN: Türkçe karakterleri sadeleştirip etiketten bir anahtar (key) üretir —
+// kullanıcı sadece etiketi (görünen ismi) girer, key arka planda otomatik oluşur.
+function slugOlustur(etiket: string): string {
+  const harfler: Record<string, string> = { ğ: 'g', ü: 'u', ş: 's', ı: 'i', ö: 'o', ç: 'c' }
+  return etiket
+    .trim()
+    .toLocaleLowerCase('tr')
+    .split('').map(c => harfler[c] ?? c).join('')
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '') || 'alan'
+}
+
+function OzelAlanlarDuzenleyici({
+  alanlar, onChange, oranPayKaynagi, onOranPayKaynagiChange,
+}: {
+  alanlar: OzelAlanTaslak[]
+  onChange: (a: OzelAlanTaslak[]) => void
+  oranPayKaynagi: string
+  onOranPayKaynagiChange: (v: string) => void
+}) {
+  function etiketDegistir(i: number, label: string) {
+    const yeni = [...alanlar]
+    yeni[i] = { key: slugOlustur(label), label }
+    onChange(yeni)
+  }
+  function alanEkle() {
+    onChange([...alanlar, { key: '', label: '' }])
+  }
+  function alanSil(i: number) {
+    const silinen = alanlar[i]
+    onChange(alanlar.filter((_, idx) => idx !== i))
+    if (silinen && oranPayKaynagi === silinen.key) onOranPayKaynagiChange('actual')
+  }
+
+  return (
+    <div className="space-y-2 rounded-md border p-3">
+      <div className="flex items-center justify-between">
+        <Label>Ek alanlar (opsiyonel)</Label>
+        <Button type="button" size="sm" variant="outline" className="h-6 text-xs" onClick={alanEkle}>
+          <PlusCircle className="h-3 w-3 mr-1" /> Alan ekle
+        </Button>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Gerçekleşen/Hedef'e ek, bu KPI'ya özel etiketli sayısal alanlar (ör. Gelen, Çözülen, Toplam).
+      </p>
+      {alanlar.map((a, i) => (
+        <div key={i} className="flex items-center gap-2">
+          <Input value={a.label} onChange={e => etiketDegistir(i, e.target.value)} placeholder="Örn: Toplam" className="flex-1" />
+          <Button type="button" size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => alanSil(i)}>
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      ))}
+      <div>
+        <Label>Oranın payı (G/H'nin üst kısmı) hangi alandan gelsin</Label>
+        <Select value={oranPayKaynagi} onValueChange={onOranPayKaynagiChange}>
+          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="actual">Gerçekleşen</SelectItem>
+            {alanlar.filter(a => a.label.trim()).map(a => (
+              <SelectItem key={a.key} value={a.key}>{a.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    </div>
+  )
+}
+
 function YeniKpiDialog({ orgUnitId, onCreated }: { orgUnitId: string; onCreated: () => void }) {
   const [acik, setAcik] = useState(false)
   const [name, setName] = useState('')
@@ -110,6 +201,8 @@ function YeniKpiDialog({ orgUnitId, onCreated }: { orgUnitId: string; onCreated:
   const [gerceklesenEtiketi, setGerceklesenEtiketi] = useState('Gerçekleşen')
   const [hedefEtiketi, setHedefEtiketi] = useState('Hedef')
   const [oranYonu, setOranYonu] = useState('G_H')
+  const [ozelAlanlar, setOzelAlanlar] = useState<OzelAlanTaslak[]>([])
+  const [oranPayKaynagi, setOranPayKaynagi] = useState('actual')
   const [hedef, setHedef] = useState('')
   const [kaydediliyor, setKaydediliyor] = useState(false)
 
@@ -125,6 +218,8 @@ function YeniKpiDialog({ orgUnitId, onCreated }: { orgUnitId: string; onCreated:
           gerceklesenEtiketi: gerceklesenEtiketi.trim() || 'Gerçekleşen',
           hedefEtiketi: hedefEtiketi.trim() || 'Hedef',
           oranYonu,
+          ozelAlanlar,
+          oranPayKaynagi,
         }),
       })
       if (res.ok) {
@@ -145,6 +240,7 @@ function YeniKpiDialog({ orgUnitId, onCreated }: { orgUnitId: string; onCreated:
         }
         setName(''); setUnit(''); setDirection('higher_is_better'); setFrequency('monthly')
         setGerceklesenEtiketi('Gerçekleşen'); setHedefEtiketi('Hedef'); setOranYonu('G_H'); setHedef('')
+        setOzelAlanlar([]); setOranPayKaynagi('actual')
         setAcik(false)
         onCreated()
       }
@@ -223,6 +319,12 @@ function YeniKpiDialog({ orgUnitId, onCreated }: { orgUnitId: string; onCreated:
               placeholder="Girilirse bu yılın tüm dönemlerine otomatik uygulanır"
             />
           </div>
+          <OzelAlanlarDuzenleyici
+            alanlar={ozelAlanlar}
+            onChange={setOzelAlanlar}
+            oranPayKaynagi={oranPayKaynagi}
+            onOranPayKaynagiChange={setOranPayKaynagi}
+          />
         </div>
         <DialogFooter>
           <Button onClick={kaydet} disabled={kaydediliyor || !name.trim()} style={{ backgroundColor: NAVY }}>
@@ -296,12 +398,18 @@ function KpiDuzenleDialog({ kpi, onSaved }: { kpi: Kpi; onSaved: () => void }) {
   const [gerceklesenEtiketi, setGerceklesenEtiketi] = useState(kpi.gerceklesenEtiketi)
   const [hedefEtiketi, setHedefEtiketi] = useState(kpi.hedefEtiketi)
   const [oranYonu, setOranYonu] = useState(kpi.oranYonu)
+  const [ozelAlanlar, setOzelAlanlar] = useState<OzelAlanTaslak[]>(
+    kpi.ozelAlanlar.map(a => ({ key: a.key, label: a.label })),
+  )
+  const [oranPayKaynagi, setOranPayKaynagi] = useState(kpi.oranPayKaynagi)
   const [kaydediliyor, setKaydediliyor] = useState(false)
 
   useEffect(() => {
     if (!acik) return
     setName(kpi.name); setUnit(kpi.unit ?? ''); setDirection(kpi.direction); setFrequency(kpi.frequency)
     setGerceklesenEtiketi(kpi.gerceklesenEtiketi); setHedefEtiketi(kpi.hedefEtiketi); setOranYonu(kpi.oranYonu)
+    setOzelAlanlar(kpi.ozelAlanlar.map(a => ({ key: a.key, label: a.label })))
+    setOranPayKaynagi(kpi.oranPayKaynagi)
   }, [acik, kpi])
 
   async function kaydet() {
@@ -316,6 +424,8 @@ function KpiDuzenleDialog({ kpi, onSaved }: { kpi: Kpi; onSaved: () => void }) {
           gerceklesenEtiketi: gerceklesenEtiketi.trim() || 'Gerçekleşen',
           hedefEtiketi: hedefEtiketi.trim() || 'Hedef',
           oranYonu,
+          ozelAlanlar,
+          oranPayKaynagi,
         }),
       })
       if (res.ok) {
@@ -387,6 +497,12 @@ function KpiDuzenleDialog({ kpi, onSaved }: { kpi: Kpi; onSaved: () => void }) {
               </SelectContent>
             </Select>
           </div>
+          <OzelAlanlarDuzenleyici
+            alanlar={ozelAlanlar}
+            onChange={setOzelAlanlar}
+            oranPayKaynagi={oranPayKaynagi}
+            onOranPayKaynagiChange={setOranPayKaynagi}
+          />
         </div>
         <DialogFooter>
           <Button onClick={kaydet} disabled={kaydediliyor || !name.trim()} style={{ backgroundColor: NAVY }}>
@@ -550,6 +666,19 @@ function basariSeviyesi(kpi: Kpi, target: number | null, actual: number | null):
   return 'kotu'
 }
 
+function oranSeviyesi(oran: number | null): 'iyi' | 'yakin' | 'kotu' | null {
+  if (oran == null) return null
+  if (oran >= 100) return 'iyi'
+  if (oran >= YAKIN_ESIK) return 'yakin'
+  return 'kotu'
+}
+
+const SEVIYE_RENKLERI = {
+  iyi: { bg: '#bbf7d0', fg: '#14532d' },
+  yakin: { bg: '#fef3c7', fg: '#78350f' },
+  kotu: { bg: '#fecaca', fg: '#7f1d1d' },
+} as const
+
 function sayiFormat(n: number | null): string {
   if (n == null) return ''
   // maximumFractionDigits: 2 iken 0,003 gibi küçük ama sıfır OLMAYAN bir hedef "0" olarak
@@ -605,18 +734,39 @@ function GrafikTooltip({ active, payload, label, unit }: {
   )
 }
 
-function DuzenlenebilirHucre({
-  deger, onKaydet, className, style, unit,
-}: { deger: number | null; onKaydet: (v: number | null) => void; className?: string; style?: React.CSSProperties; unit?: string | null }) {
-  const [duzenleniyor, setDuzenleniyor] = useState(false)
-  const [taslak, setTaslak] = useState(deger == null ? '' : String(deger))
+// KPI-NA: hücreye "n/a" (büyük/küçük harf, "/" opsiyonel) yazılırsa sayı yerine N/A işaretlenir —
+// boş bırakmaktan (hiç girilmemiş) farklı, "bu ay bu KPI'ya uygulanamaz" anlamına gelir.
+const NA_REGEX = /^n\/?a$/i
 
-  useEffect(() => { setTaslak(deger == null ? '' : String(deger)) }, [deger])
+function DuzenlenebilirHucre({
+  deger, naAktif = false, onKaydet, className, style, unit, duzYuzde = false,
+}: {
+  deger: number | null
+  naAktif?: boolean
+  onKaydet: (v: number | null, na: boolean) => void
+  className?: string
+  style?: React.CSSProperties
+  unit?: string | null
+  // true ise değer zaten "75" = %75 anlamında — unit="%" gibi 100 ile ÇARPILMADAN gösterilir.
+  // Oran hücresi (manuelOran) için: hesaplanan/girilen oran zaten yüzde cinsinden.
+  duzYuzde?: boolean
+}) {
+  const [duzenleniyor, setDuzenleniyor] = useState(false)
+  const [taslak, setTaslak] = useState(naAktif ? 'N/A' : deger == null ? '' : String(deger))
+
+  useEffect(() => { setTaslak(naAktif ? 'N/A' : deger == null ? '' : String(deger)) }, [deger, naAktif])
 
   function bitir() {
     setDuzenleniyor(false)
-    const sayi = taslak.trim() === '' ? null : Number(taslak.replace(',', '.'))
-    if (sayi !== deger && !(sayi == null && deger == null)) onKaydet(Number.isNaN(sayi) ? null : sayi)
+    const metin = taslak.trim()
+    if (NA_REGEX.test(metin)) {
+      if (!naAktif) onKaydet(null, true)
+      return
+    }
+    const sayi = metin === '' ? null : Number(metin.replace(',', '.'))
+    if ((sayi !== deger || naAktif) && !(sayi == null && deger == null && !naAktif)) {
+      onKaydet(Number.isNaN(sayi) ? null : sayi, false)
+    }
   }
 
   if (duzenleniyor) {
@@ -636,10 +786,14 @@ function DuzenlenebilirHucre({
   return (
     <td
       className={`${className} cursor-pointer hover:ring-1 hover:ring-blue-300`}
-      style={style}
+      style={naAktif ? { ...style, opacity: 0.7, fontStyle: 'italic' } : style}
       onClick={() => setDuzenleniyor(true)}
+      title={naAktif ? 'Uygulanamaz (N/A) — düzenlemek için tıkla' : undefined}
     >
-      {sayiFormatBirimli(deger, unit) || <span className="text-muted-foreground">·</span>}
+      {naAktif
+        ? 'N/A'
+        : (duzYuzde ? (deger == null ? '' : `%${sayiFormat(deger)}`) : sayiFormatBirimli(deger, unit))
+          || <span className="text-muted-foreground">·</span>}
     </td>
   )
 }
@@ -662,6 +816,12 @@ function KpiVeriTablosu({
   }, [aktifYil, tumYillar, onAktifYilChange])
   const gosterilenYillar = aktifYil == null ? [] : [aktifYil, aktifYil - 1]
 
+  // Oran satırının "G/H'nin G'si" etiketi — oranPayKaynagi 'actual' ise Gerçekleşen etiketi,
+  // değilse seçili özel alanın etiketi (silinmişse Gerçekleşen'e düşer).
+  const oranPayEtiketi = kpi.oranPayKaynagi === 'actual'
+    ? kpi.gerceklesenEtiketi
+    : kpi.ozelAlanlar.find(a => a.key === kpi.oranPayKaynagi)?.label ?? kpi.gerceklesenEtiketi
+
   // Ortalama sütunu: aylık verisi olan yıllar için KENDİSİ hesaplanır (elle
   // ayrı bir "ortalama ekle" adımına gerek yok); aylık kırılımı olmayan eski
   // yıllar (2020-2023 gibi) için elle girilen/Excel'den gelen değer kullanılır.
@@ -683,16 +843,56 @@ function KpiVeriTablosu({
     onChanged()
   }
 
-  async function hucreKaydet(yil: number, ay: number, alan: 'target' | 'actual', deger: number | null) {
+  async function hucreKaydet(yil: number, ay: number, alan: 'target' | 'actual', deger: number | null, na: boolean) {
+    const mevcut = kpi.measurements.find(m => m.year === yil && m.month === ay)
     const res = await fetch(`/api/sandbox/melike/kpi/${kpi.id}/olcum`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         year: yil,
         month: ay,
-        target: alan === 'target' ? deger : kpi.measurements.find(m => m.year === yil && m.month === ay)?.target ?? null,
-        actual: alan === 'actual' ? deger : kpi.measurements.find(m => m.year === yil && m.month === ay)?.actual ?? null,
+        target: alan === 'target' ? deger : mevcut?.target ?? null,
+        actual: alan === 'actual' ? deger : mevcut?.actual ?? null,
+        hedefNA: alan === 'target' ? na : mevcut?.hedefNA ?? false,
+        gerceklesenNA: alan === 'actual' ? na : mevcut?.gerceklesenNA ?? false,
       }),
+    })
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}))
+      alert(d.error ?? 'Kaydedilemedi')
+      return
+    }
+    onChanged()
+  }
+
+  async function oranKaydet(yil: number, ay: number, manuelOran: number | null) {
+    const mevcut = kpi.measurements.find(m => m.year === yil && m.month === ay)
+    const res = await fetch(`/api/sandbox/melike/kpi/${kpi.id}/olcum`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        year: yil,
+        month: ay,
+        target: mevcut?.target ?? null,
+        actual: mevcut?.actual ?? null,
+        hedefNA: mevcut?.hedefNA ?? false,
+        gerceklesenNA: mevcut?.gerceklesenNA ?? false,
+        manuelOran,
+      }),
+    })
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}))
+      alert(d.error ?? 'Kaydedilemedi')
+      return
+    }
+    onChanged()
+  }
+
+  async function ozelAlanKaydet(alanId: string, yil: number, ay: number, deger: number | null, na: boolean) {
+    const res = await fetch(`/api/sandbox/melike/kpi/${kpi.id}/ozel-alan-deger`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ alanId, year: yil, month: ay, value: deger, naMi: na }),
     })
     if (!res.ok) {
       const d = await res.json().catch(() => ({}))
@@ -763,7 +963,19 @@ function KpiVeriTablosu({
               const ilkYil = yilIdx === 0
               const aylikVeri = Array.from({ length: donemSayisi(kpi) }, (_, i) => {
                 const m = kpi.measurements.find(x => x.year === yil && x.month === i + 1)
-                return { target: m?.target ?? null, actual: m?.actual ?? null }
+                const ozelDegerler: Record<string, { value: number | null; naMi: boolean }> = {}
+                for (const alan of kpi.ozelAlanlar) {
+                  const d = alan.degerler.find(x => x.year === yil && x.month === i + 1)
+                  ozelDegerler[alan.key] = { value: d?.value ?? null, naMi: d?.naMi ?? false }
+                }
+                return {
+                  target: m?.target ?? null,
+                  actual: m?.actual ?? null,
+                  hedefNA: m?.hedefNA ?? false,
+                  gerceklesenNA: m?.gerceklesenNA ?? false,
+                  manuelOran: m?.manuelOran ?? null,
+                  ozelDegerler,
+                }
               })
               return (
                 <Fragment key={yil}>
@@ -785,18 +997,14 @@ function KpiVeriTablosu({
                         )
                       : ortYillar.map(([y]) => <td key={y} className="p-2 bg-slate-50 border-l border-slate-200" />)}
                     {aylikVeri.map((v, i) => {
-                      const seviye = basariSeviyesi(kpi, v.target, v.actual)
-                      const renkler = {
-                        iyi: { bg: '#bbf7d0', fg: '#14532d' },
-                        yakin: { bg: '#fef3c7', fg: '#78350f' },
-                        kotu: { bg: '#fecaca', fg: '#7f1d1d' },
-                      } as const
-                      const renk = seviye ? renkler[seviye] : { bg: '#f8fafc', fg: '#475569' }
+                      const seviye = v.gerceklesenNA ? 'kotu' : basariSeviyesi(kpi, v.target, v.actual)
+                      const renk = seviye ? SEVIYE_RENKLERI[seviye] : { bg: '#f8fafc', fg: '#475569' }
                       return (
                         <DuzenlenebilirHucre
                           key={i}
                           deger={v.actual}
-                          onKaydet={(d) => hucreKaydet(yil, i + 1, 'actual', d)}
+                          naAktif={v.gerceklesenNA}
+                          onKaydet={(d, na) => hucreKaydet(yil, i + 1, 'actual', d, na)}
                           className="p-2 text-center font-semibold border-l border-slate-200"
                           style={{ backgroundColor: renk.bg, color: renk.fg }}
                           unit={kpi.unit}
@@ -804,6 +1012,22 @@ function KpiVeriTablosu({
                       )
                     })}
                   </tr>
+                  {kpi.ozelAlanlar.map(alan => (
+                    <tr key={alan.id}>
+                      <td className="p-2 text-slate-600 font-medium whitespace-nowrap bg-slate-50 sticky left-0 border-r border-slate-300">{alan.label}</td>
+                      {ortYillar.map(([y]) => <td key={y} className="p-2 bg-slate-50 border-l border-slate-200" />)}
+                      {aylikVeri.map((v, i) => (
+                        <DuzenlenebilirHucre
+                          key={i}
+                          deger={v.ozelDegerler[alan.key]?.value ?? null}
+                          naAktif={v.ozelDegerler[alan.key]?.naMi ?? false}
+                          onKaydet={(d, na) => ozelAlanKaydet(alan.id, yil, i + 1, d, na)}
+                          className="p-2 text-center font-medium bg-indigo-50 text-indigo-900 border-l border-slate-200"
+                          unit={kpi.unit}
+                        />
+                      ))}
+                    </tr>
+                  ))}
                   <tr>
                     <td className="p-2 text-slate-600 font-medium whitespace-nowrap bg-slate-50 sticky left-0 border-r border-slate-300">{kpi.hedefEtiketi}</td>
                     {ortYillar.map(([y]) => <td key={y} className="p-2 bg-slate-50 border-l border-slate-200" />)}
@@ -811,7 +1035,8 @@ function KpiVeriTablosu({
                       <DuzenlenebilirHucre
                         key={i}
                         deger={v.target}
-                        onKaydet={(d) => hucreKaydet(yil, i + 1, 'target', d)}
+                        naAktif={v.hedefNA}
+                        onKaydet={(d, na) => hucreKaydet(yil, i + 1, 'target', d, na)}
                         className="p-2 text-center font-medium bg-slate-200 text-slate-800 border-l border-slate-300"
                         unit={kpi.unit}
                       />
@@ -819,24 +1044,38 @@ function KpiVeriTablosu({
                   </tr>
                   <tr className="border-b-2 border-slate-400">
                     <td className="p-2 text-slate-600 font-medium whitespace-nowrap bg-slate-50 sticky left-0 border-r border-slate-300">
-                      {kpi.oranYonu === 'H_G' ? 'H/G Oran' : 'G/H Oran'}
+                      {kpi.oranYonu === 'H_G' ? `${kpi.hedefEtiketi}/${oranPayEtiketi} Oran` : `${oranPayEtiketi}/${kpi.hedefEtiketi} Oran`}
                     </td>
                     {ortYillar.map(([y]) => <td key={y} className="p-2 bg-slate-50 border-l border-slate-200" />)}
                     {aylikVeri.map((v, i) => {
-                      // Payda (bölen) sıfırsa (G/H'de hedef, H/G'de gerçekleşen) normalde
-                      // Infinity/NaN çıkıp "%Infinity" gibi anlamsız bir şey gösterirdi —
-                      // bölüm hatası durumunda %0 yazıyoruz. Değer hiç girilmemişse (null)
-                      // yine boş kalır, bu ayrı bir durum.
-                      const payda = (kpi.oranYonu === 'H_G' ? v.actual : v.target) as number | null
-                      const oran = v.target == null || v.actual == null || payda == null
-                        ? null
-                        : payda === 0
+                      // Öncelik sırası: elle girilmiş oran (manuelOran) varsa o kullanılır — otomatik
+                      // hesabı tamamen by-pass eder, absürt/bozuk veri durumlarını anında düzeltmek
+                      // için. Yoksa N/A işaretliyse (hedef ya da "G/H'nin G'si") %0 yazılır. Yoksa normal
+                      // G/H ya da H/G hesabı — payda (bölen) sıfırsa yine %0 (Infinity/NaN yerine).
+                      // "G/H'nin G'si" — oranPayKaynagi 'actual' ise Gerçekleşen, değilse seçili özel alan.
+                      const gEsdeger = kpi.oranPayKaynagi === 'actual' ? v.actual : v.ozelDegerler[kpi.oranPayKaynagi]?.value ?? null
+                      const gEsdegerNA = kpi.oranPayKaynagi === 'actual' ? v.gerceklesenNA : v.ozelDegerler[kpi.oranPayKaynagi]?.naMi ?? false
+                      const payda = (kpi.oranYonu === 'H_G' ? gEsdeger : v.target) as number | null
+                      const oran = v.manuelOran != null
+                        ? Math.round(v.manuelOran)
+                        : v.hedefNA || gEsdegerNA
                           ? 0
-                          : Math.round((kpi.oranYonu === 'H_G' ? (v.target as number) / payda : (v.actual as number) / payda) * 100)
+                          : v.target == null || gEsdeger == null || payda == null
+                            ? null
+                            : payda === 0
+                              ? 0
+                              : Math.round((kpi.oranYonu === 'H_G' ? (v.target as number) / payda : (gEsdeger as number) / payda) * 100)
+                      const seviye = oranSeviyesi(oran)
+                      const renk = seviye ? SEVIYE_RENKLERI[seviye] : { bg: '#f0f9ff', fg: '#0c4a6e' }
                       return (
-                        <td key={i} className="p-2 text-center font-semibold bg-sky-50 text-sky-900 border-l border-slate-200">
-                          {oran == null ? '' : `%${oran}`}
-                        </td>
+                        <DuzenlenebilirHucre
+                          key={i}
+                          deger={oran}
+                          onKaydet={(d) => oranKaydet(yil, i + 1, d)}
+                          className="p-2 text-center font-semibold border-l border-slate-200"
+                          style={{ backgroundColor: renk.bg, color: renk.fg }}
+                          duzYuzde
+                        />
                       )
                     })}
                   </tr>

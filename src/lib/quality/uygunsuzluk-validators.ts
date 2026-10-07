@@ -24,6 +24,7 @@ export const uygunsuzlukSatirInput = z.object({
   siraNo: z.number().int().min(1),
   yariMamulKodu: bosStr,
   malzemeAdi: bosStr,
+  hataliParcaAdedi: z.number().int().min(0).optional().nullable(),
   redAdeti: z.number().int().min(1, 'Red adeti en az 1 olmalı'),
   reworkAdedi: z.number().int().min(0).optional().nullable(),
   hurdaAdedi: z.number().int().min(0).optional().nullable(),

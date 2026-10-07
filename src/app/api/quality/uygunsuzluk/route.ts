@@ -120,6 +120,7 @@ export async function POST(request: NextRequest) {
             redAdeti: s.redAdeti,
             reworkAdedi: s.reworkAdedi ?? null,
             hurdaAdedi: s.hurdaAdedi ?? null,
+            hataliParcaAdedi: s.hataliParcaAdedi ?? null,
             olusanBolumId: s.olusanBolumId ?? null,
             hataKoduId: s.hataKoduId ?? null,
             hataDetayi: s.hataDetayi ?? null,

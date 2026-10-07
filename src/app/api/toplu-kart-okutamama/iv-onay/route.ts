@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
+import { gunStr, gunuHesapla } from '@/lib/pdks/puantaj-servis'
 import { getBulkCardScanAccess } from '../_lib/access'
 
 export const dynamic = 'force-dynamic'
@@ -80,6 +81,27 @@ export async function POST(request: NextRequest) {
         },
       })
       approved = result.count
+
+      // İV onayı sonrası PDKS puantajını yeniden hesapla: onaylı form eksik giriş/çıkışı tamamlar
+      // (TAM_FORMLA) ve o gün anında düzelir. Kilitli (ay kapanmış) günler gunuHesapla içinde atlanır.
+      const onaylanan = await prisma.bulkCardScanFailure.findMany({
+        where: { id: { in: toApprove } },
+        select: { tarih: true, personnelId: true },
+      })
+      const gunPersonel = new Map<string, Set<string>>()
+      for (const r of onaylanan) {
+        if (!r.personnelId) continue
+        const g = gunStr(r.tarih)
+        if (!gunPersonel.has(g)) gunPersonel.set(g, new Set())
+        gunPersonel.get(g)!.add(r.personnelId)
+      }
+      for (const [g, pset] of gunPersonel) {
+        try {
+          await gunuHesapla(prisma, g, { personelIdleri: [...pset], kaydet: true })
+        } catch (e) {
+          console.error('[iv-onay] puantaj yeniden hesap hatası', g, e)
+        }
+      }
     }
 
     return NextResponse.json({ approved, errors })

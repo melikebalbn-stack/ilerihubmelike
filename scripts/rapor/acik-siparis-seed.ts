@@ -40,7 +40,13 @@ async function entitySetCoz(): Promise<Record<string, Coz>> {
       try {
         esleme = await entitySetleri(p)
       } catch (e) {
-        console.warn(`  ${p}: $metadata okunamadı — ${(e as Error).message}`)
+        // fetch'in "fetch failed" mesajı tek başına hiçbir şey anlatmıyor; asıl sebep
+        // cause zincirinde (ENOTFOUND / ECONNREFUSED / sertifika / token ucu).
+        const hata = e as Error & { cause?: unknown }
+        const sebep = hata.cause instanceof Error
+          ? ` · sebep: ${hata.cause.message}${(hata.cause as { code?: string }).code ? ` (${(hata.cause as { code?: string }).code})` : ''}`
+          : hata.cause ? ` · sebep: ${String(hata.cause)}` : ''
+        console.warn(`  ${p}: $metadata okunamadı — ${hata.message}${sebep}`)
         continue
       }
       const setler = esleme.get(entity)

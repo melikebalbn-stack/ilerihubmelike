@@ -5,6 +5,10 @@ import { getAllSubordinates } from '@/lib/ldap'
 import { requireSession } from '@/lib/auth/require-session'
 import { requireUser } from '@/lib/auth/require-user'
 import { atamaBildirimiGonder, sorumlulariCoz, yeniEklenenler } from '@/lib/tasks/atama-bildirimi'
+import {
+  GOREV_DURUM_YETKI_HATASI,
+  gorevDurumDegistirebilir,
+} from '@/lib/tasks/gorev-tamamlama-yetki'
 
 // GET - Tek bir görevi getir
 export async function GET(
@@ -98,37 +102,51 @@ export async function PUT(
       )
     }
 
-    // Yetki kontrolü: Görevi kim güncelleyebilir/tamamlayabilir?
-    const userEmail = user.email
-    const userRole = user.role
-    const userDN = session.user.distinguishedName
-
-    // Admin ve Super Admin her şeyi yapabilir
-    const isAdmin = userRole === 'ADMIN' || userRole === 'SUPER_ADMIN'
-
-    // Görevin sorumlusu mu?
-    const isResponsible = existingTask.responsiblePersonEmail?.toLowerCase() === userEmail
-
-    // Bölüm müdürü mü? (Sorumlu kişinin yöneticisi mi?)
-    let isManager = false
-    if (userDN && existingTask.responsiblePersonEmail) {
-      try {
-        const subordinateEmails = await getAllSubordinates(userDN)
-        isManager = subordinateEmails.some(
-          email => email.toLowerCase() === existingTask.responsiblePersonEmail?.toLowerCase()
-        )
-      } catch (error) {
-        console.error('Ast kontrolü yapılırken hata:', error)
-      }
-    }
-
-    // Durum değişikliği için yetki kontrolü
+    // ── DURUM DEĞİŞTİRME YETKİSİ (07.10.2026 — liste kapsamıyla hizalandı) ────
+    // Karar gorevDurumDegistirebilir()'de (saf, testli). Burada yalnız girdiler
+    // toplanır. Kontrol SADECE durum değişiminde yapılır; LDAP sorgusu da yalnız
+    // diğer tüm yollar kapalı kalırsa atılır (eskiden her PUT'ta atılıyordu).
     if (status && status !== existingTask.status) {
-      if (!isAdmin && !isResponsible && !isManager) {
-        return NextResponse.json(
-          { error: 'Bu görevi güncelleme yetkiniz yok. Sadece görev sorumlusu, bölüm müdürü veya yönetici bu işlemi yapabilir.' },
-          { status: 403 }
-        )
+      const kullaniciKaydi = await prisma.user.findUnique({
+        where: { id: user.id },
+        select: { employeeId: true, personnelId: true },
+      })
+      const bolumler = existingTask.responsibleDepartment
+        ? await prisma.departmentDefinition.findMany({
+            where: { isActive: true },
+            select: { id: true, name: true, mudurId: true, mudurYardimcisiId: true },
+          })
+        : []
+
+      const girdi = {
+        kullanici: {
+          email: user.email,
+          sicilNo: kullaniciKaydi?.employeeId ?? null,
+          personnelId: kullaniciKaydi?.personnelId ?? null,
+          rol: user.role,
+        },
+        gorev: {
+          responsiblePersonEmail: existingTask.responsiblePersonEmail,
+          responsiblePersons: existingTask.responsiblePersons,
+          responsibleDepartment: existingTask.responsibleDepartment,
+        },
+        bolumler,
+        astEpostalari: [] as string[],
+      }
+
+      let karar = gorevDurumDegistirebilir(girdi)
+      const userDN = session.user.distinguishedName
+      if (!karar.izinli && userDN) {
+        try {
+          karar = gorevDurumDegistirebilir({ ...girdi, astEpostalari: await getAllSubordinates(userDN) })
+        } catch (err) {
+          // LDAP erişilemezse amir yolu kapanır, diğer yollar zaten denendi.
+          console.error('Ast kontrolü yapılırken hata:', err)
+        }
+      }
+
+      if (!karar.izinli) {
+        return NextResponse.json({ error: GOREV_DURUM_YETKI_HATASI }, { status: 403 })
       }
     }
 

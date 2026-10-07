@@ -399,9 +399,15 @@ export default function TasksPage() {
 
       if (response.ok) {
         fetchTasks()
+        return
       }
+      // 403/400'de SESSİZ KALMA: sunucunun mesajı gösterilir. Eskiden non-ok
+      // yanıt yutuluyordu; kullanıcı butona basıyor, hiçbir şey olmuyordu.
+      const hata = await response.json().catch(() => null)
+      toast.error(hata?.error || 'Durum güncellenemedi')
     } catch (error) {
       console.error('Durum güncellenemedi:', error)
+      toast.error('Durum güncellenemedi — bağlantı hatası')
     }
   }
 
@@ -569,9 +575,16 @@ export default function TasksPage() {
           setTimelineData(data)
         }
         fetchTasks()
+        return
+      }
+      if (!response.ok) {
+        // Zaman çizelgesindeki periyot düğmesi aynı uca gidiyor — aynı sessizlik.
+        const hata = await response.json().catch(() => null)
+        toast.error(hata?.error || 'Durum güncellenemedi')
       }
     } catch (error) {
       console.error('Durum güncellenemedi:', error)
+      toast.error('Durum güncellenemedi — bağlantı hatası')
     }
   }
 

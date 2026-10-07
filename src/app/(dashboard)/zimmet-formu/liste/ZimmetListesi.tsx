@@ -116,6 +116,7 @@ type ZimmetItem = {
   cihazDurumu: string
   iadeTarihi: string | null
   iadeAlanId: string | null
+  gonderimTarihi?: string | null
   durum: string
   kaynak: string
   redSebebi: string | null
@@ -460,6 +461,16 @@ function fmtDate(d: string | null | undefined) {
   return d
     ? new Date(d).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' })
     : '—'
+}
+
+function fmtDateTime(d: string) {
+  return new Date(d).toLocaleString('tr-TR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
 }
 
 // ── PDF / belge indirme ──────────────────────────────────────────────────────
@@ -1329,6 +1340,11 @@ export function ZimmetListesi() {
                           <TableCell className="text-slate-600">{fmtDate(z.verilisTarihi)}</TableCell>
                           <TableCell>
                             <ZimmetDurumBadge zimmet={z} />
+                            {z.durum === 'ONAY_BEKLIYOR' && z.gonderimTarihi && (
+                              <span className="mt-1 block text-[11px] text-slate-500">
+                                Gönderildi: {fmtDateTime(z.gonderimTarihi)}
+                              </span>
+                            )}
                             {z.iadeTarihi && (
                               <span className="mt-1 block text-[11px] text-slate-500">
                                 İade alındı: {fmtDate(z.iadeTarihi)}

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth/require-user'
 import { requirePermission } from '@/lib/auth/require-permission'
-import { ZimmetOnayDurumu } from '@/generated/prisma'
+import { ZimmetKaynak, ZimmetOnayDurumu } from '@/generated/prisma'
 
 export const dynamic = 'force-dynamic'
 
@@ -44,5 +44,30 @@ export async function GET(request: NextRequest) {
     },
   })
 
-  return NextResponse.json(zimmetler)
+  // Onay bekleyen kayıtlar için "Gönderildi" tarihi (gösterim): devir kaydında
+  // sonBildirimTarihi, MANUEL kayıtta geçmişteki en son ONAYA_GONDERILDI. Tek groupBy
+  // sorgusu — kayıt başına ayrı sorgu yok.
+  const manuelBekleyenIds = zimmetler
+    .filter((z) => z.durum === ZimmetOnayDurumu.ONAY_BEKLIYOR && z.kaynak !== ZimmetKaynak.SYTELINE_DEVIR)
+    .map((z) => z.id)
+  const gonderimler = manuelBekleyenIds.length
+    ? await prisma.zimmetDurumGecmisi.groupBy({
+        by: ['zimmetId'],
+        where: { zimmetId: { in: manuelBekleyenIds }, yeniDurum: 'ONAYA_GONDERILDI' },
+        _max: { createdAt: true },
+      })
+    : []
+  const gonderimById = new Map(gonderimler.map((g) => [g.zimmetId, g._max.createdAt]))
+
+  return NextResponse.json(
+    zimmetler.map((z) => ({
+      ...z,
+      gonderimTarihi:
+        z.durum !== ZimmetOnayDurumu.ONAY_BEKLIYOR
+          ? null
+          : z.kaynak === ZimmetKaynak.SYTELINE_DEVIR
+            ? z.sonBildirimTarihi
+            : (gonderimById.get(z.id) ?? null),
+    })),
+  )
 }

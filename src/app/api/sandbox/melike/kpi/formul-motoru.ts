@@ -123,8 +123,11 @@ export function formulAyDegeriHesapla(
 
 // Formülün referans verdiği KPI'ların (kendi departmanı dahil, HERHANGİ bir departmandan)
 // ölçüm + özel alan verisini tek seferde çeker — N+1 sorgu yerine tek toplu sorgu.
+// prisma parametresi gerçek PrismaClient'ın tipiyle (çok sayıda model/overload) birebir
+// eşleşmesi gerekmeyen gevşek bir tip alıyor — çağıranlar hep gerçek `prisma` örneğini verir.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function formulReferansVerisiGetir(
-  prisma: { kPIDefinition: { findMany: (args: unknown) => Promise<KpiVeriKaynagi[]> } },
+  prisma: any,
   formuller: FormulTanimi[],
 ): Promise<Map<string, KpiVeriKaynagi>> {
   const kpiIdler = Array.from(new Set(formuller.flatMap(f => f.referanslar.map(r => r.kpiId))))
@@ -137,7 +140,7 @@ export async function formulReferansVerisiGetir(
       ozelAlanlar: { select: { key: true, degerler: { select: { year: true, month: true, value: true } } } },
     },
   })
-  return new Map(kpilar.map(k => [k.id, k]))
+  return new Map((kpilar as KpiVeriKaynagi[]).map(k => [k.id, k]))
 }
 
 // Hangi (yıl, ay) çiftleri için hesaplama yapılacağını belirler — formülün referans verdiği

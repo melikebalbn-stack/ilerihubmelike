@@ -28,6 +28,11 @@ function formulAlaninaGetir(input: unknown): FormulTanimi | null {
   return formulGecerliMi(input) ? input : null
 }
 
+// Prisma'nın Json? alanları update'te açıkça Prisma.JsonNull bekliyor (plain null, alanı temizlemez).
+function formulJsonDegeri(f: FormulTanimi | null): Prisma.InputJsonValue | typeof Prisma.JsonNull {
+  return f == null ? Prisma.JsonNull : (f as unknown as Prisma.InputJsonValue)
+}
+
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const body = await request.json()
@@ -68,8 +73,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         yuzdeOlcek,
         oranPayKaynagi,
         ortalamaKaynagi,
-        gerceklesenFormul: gerceklesenFormul ?? Prisma.JsonNull,
-        hedefFormul: hedefFormul ?? Prisma.JsonNull,
+        gerceklesenFormul: formulJsonDegeri(gerceklesenFormul),
+        hedefFormul: formulJsonDegeri(hedefFormul),
       },
     }),
     ...(silinecekler.length > 0
@@ -78,8 +83,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     ...gelenAlanlar.map((a, i) => {
       const mevcutId = mevcutKeyHaritasi.get(a.key)
       return mevcutId
-        ? prisma.kPIOzelAlan.update({ where: { id: mevcutId }, data: { label: a.label, siraNo: i, formul: a.formul ?? Prisma.JsonNull } })
-        : prisma.kPIOzelAlan.create({ data: { kpiId: id, key: a.key, label: a.label, siraNo: i, formul: a.formul ?? undefined } })
+        ? prisma.kPIOzelAlan.update({ where: { id: mevcutId }, data: { label: a.label, siraNo: i, formul: formulJsonDegeri(a.formul) } })
+        : prisma.kPIOzelAlan.create({ data: { kpiId: id, key: a.key, label: a.label, siraNo: i, formul: a.formul != null ? (a.formul as unknown as Prisma.InputJsonValue) : undefined } })
     }),
   ])
 

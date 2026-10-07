@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import type { Prisma } from '@/generated/prisma'
 import {
   formulGecerliMi, formulAyDegeriHesapla, formulReferansVerisiGetir, formulHesaplanacakDonemler,
   type FormulTanimi,
@@ -168,10 +169,13 @@ export async function POST(request: Request) {
       yuzdeOlcek,
       oranPayKaynagi,
       ortalamaKaynagi,
-      gerceklesenFormul: gerceklesenFormul ?? undefined,
-      hedefFormul: hedefFormul ?? undefined,
+      gerceklesenFormul: (gerceklesenFormul as unknown as Prisma.InputJsonValue) ?? undefined,
+      hedefFormul: (hedefFormul as unknown as Prisma.InputJsonValue) ?? undefined,
       ozelAlanlar: {
-        create: ozelAlanlar.map((a, i) => ({ key: a.key, label: a.label, siraNo: i, formul: a.formul ?? undefined })),
+        create: ozelAlanlar.map((a, i) => ({
+          key: a.key, label: a.label, siraNo: i,
+          formul: (a.formul as unknown as Prisma.InputJsonValue) ?? undefined,
+        })),
       },
     },
     include: { ozelAlanlar: true },

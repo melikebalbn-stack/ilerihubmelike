@@ -9,7 +9,7 @@
  * | servis.history         | ✓ | ✓ | ✓ | ✓ |
  * | servis.tanim.manage    | ✓ | ✓ | ✓ | ✓ |
  * | servis.sorumlu.manage  | ✓ | ✓ | ✓ | ✓ |
- * | servis.passive         | ✓ | ✓ | ✓ | — |
+ * | servis.passive         | ✓ | ✓ | ✓ | ✓ |
  * | servis.restore         | ✓ | ✓ | ✓ | — |
  * | servis.export          | ✓ | ✓ | ✓ | — |
  * | servis.kvkk.view       | ✓ | — | ✓ | — |
@@ -62,7 +62,7 @@ const ROLE_MAPPING: Record<string, string[]> = {
   'servis.history': ['super-admin', 'admin', 'hr-yoneticisi', 'idari-isler'],
   'servis.tanim.manage': ['super-admin', 'admin', 'hr-yoneticisi', 'idari-isler'],
   'servis.sorumlu.manage': ['super-admin', 'admin', 'hr-yoneticisi', 'idari-isler'],
-  'servis.passive': ['super-admin', 'admin', 'hr-yoneticisi'],
+  'servis.passive': ['super-admin', 'admin', 'hr-yoneticisi', 'idari-isler'],
   'servis.restore': ['super-admin', 'admin', 'hr-yoneticisi'],
   'servis.export': ['super-admin', 'admin', 'hr-yoneticisi'],
   'servis.kvkk.view': ['super-admin', 'hr-yoneticisi'],

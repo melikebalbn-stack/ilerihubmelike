@@ -95,9 +95,39 @@ export interface PushCozum {
 }
 
 /**
+ * Hikvision XML push gövdesi (EventNotificationAlert) → pushGovdesiCoz'un beklediği JSON string.
+ * DS-K2604T (V1.1.3) parameterFormatType yalnız XML destekler; bu köprü XML'i JSON'a çevirir, böylece
+ * aşağıdaki çözümleyici tek yol üzerinden çalışır. Düz Hikvision XML'i (iç içe tek seviye) regex ile
+ * okur — ek bağımlılık yok. EventNotificationAlert değilse null (route parçayı atlar).
+ */
+export function hikPushXmlToJson(xml: string): string | null {
+  if (!/<EventNotificationAlert/i.test(xml)) return null
+  const al = (kaynak: string, tag: string): string | undefined => {
+    const m = kaynak.match(new RegExp(`<${tag}(?:\\s[^>]*)?>([\\s\\S]*?)</${tag}>`, 'i'))
+    return m ? m[1].trim() : undefined
+  }
+  const obj: Record<string, unknown> = {}
+  const eventType = al(xml, 'eventType')
+  const dateTime = al(xml, 'dateTime')
+  if (eventType) obj.eventType = eventType
+  if (dateTime) obj.dateTime = dateTime
+  const aceBlok = xml.match(/<AccessControllerEvent[\s\S]*?<\/AccessControllerEvent>/i)?.[0]
+  if (aceBlok) {
+    const ace: Record<string, unknown> = {}
+    for (const tag of ['majorEventType', 'subEventType', 'major', 'minor', 'cardNo', 'employeeNoString', 'employeeNo', 'doorNo', 'cardReaderNo', 'serialNo', 'time']) {
+      const v = al(aceBlok, tag)
+      if (v !== undefined) ace[tag] = v
+    }
+    obj.AccessControllerEvent = ace
+  }
+  return JSON.stringify(obj)
+}
+
+/**
  * Push gövdesi (EventNotificationAlert, JSON). multipart gelirse route JSON parçalarını (event_log /
- * AccessControllerEvent) metin olarak verir. Kalp atışı (heartBeat) olay değildir ama cihazın canlı
- * olduğunu gösterir. Ayrıştırılamayan parça atlanır ve sayılır — istek düşmez.
+ * AccessControllerEvent) metin olarak verir. XML parçaları route'ta hikPushXmlToJson ile JSON'a
+ * çevrilir. Kalp atışı (heartBeat) olay değildir ama cihazın canlı olduğunu gösterir. Ayrıştırılamayan
+ * parça atlanır ve sayılır — istek düşmez.
  */
 export function pushGovdesiCoz(jsonParcalari: string[]): PushCozum {
   const sonuc: PushCozum = { olaylar: [], nabiz: false, atlanan: 0 }

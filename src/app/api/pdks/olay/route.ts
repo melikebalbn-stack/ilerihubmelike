@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { imleciIlerlet, olaylariIsle, pushGovdesiCoz, pushYetkisi } from '@/lib/pdks/olay-alim'
+import { hikPushXmlToJson, imleciIlerlet, olaylariIsle, pushGovdesiCoz, pushYetkisi } from '@/lib/pdks/olay-alim'
 import { olayEslemesiOku, prismaOlayDeposu } from '@/lib/pdks/olay-depo'
 
 export const runtime = 'nodejs'
@@ -33,16 +33,25 @@ export async function POST(req: NextRequest) {
   try {
     const tip = req.headers.get('content-type') ?? ''
     const parcalar: string[] = []
+    // Parça JSON ise doğrudan, XML (Hikvision EventNotificationAlert) ise JSON'a çevrilerek eklenir.
+    const parcaEkle = (s: string) => {
+      const t = s.trim()
+      if (t.startsWith('{')) parcalar.push(s)
+      else if (t.startsWith('<')) {
+        const j = hikPushXmlToJson(t)
+        if (j) parcalar.push(j)
+      }
+    }
     if (/multipart\/form-data/i.test(tip)) {
       const fd = await req.formData()
       for (const [, v] of fd.entries()) {
         const s = typeof v === 'string' ? v : await v.text()
-        if (s.trim().startsWith('{')) parcalar.push(s)
+        parcaEkle(s)
       }
     } else {
       const s = await req.text()
       if (s.length > MAKS_GOVDE) return NextResponse.json({ ok: false }, { status: 413 })
-      if (s.trim()) parcalar.push(s)
+      if (s.trim()) parcaEkle(s)
     }
 
     const c = pushGovdesiCoz(parcalar)

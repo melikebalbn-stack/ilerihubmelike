@@ -6,6 +6,7 @@ import {
   imleciIlerlet,
   olaylariIsle,
   pushGovdesiCoz,
+  hikPushXmlToJson,
   pushYetkisi,
   zamanCoz,
   type BoslukUyarisi,
@@ -109,6 +110,30 @@ describe('push gövdesi ve yetki', () => {
     expect(r.atlanan).toBe(2)
     expect(r.olaylar).toHaveLength(1)
     expect(r.olaylar[0]).toMatchObject({ serialNo: 101, major: 5, minor: 1, cardNo: '11863577', employeeNo: 'ILR-00001', doorNo: 1, cardReaderNo: 1 })
+  })
+
+  it('hikPushXmlToJson: Hikvision XML push → JSON → olay', () => {
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<EventNotificationAlert version="2.0" xmlns="http://www.isapi.org/ver20/XMLSchema">
+  <ipAddress>192.168.2.91</ipAddress>
+  <dateTime>2026-10-07T06:00:00+03:00</dateTime>
+  <eventType>AccessControllerEvent</eventType>
+  <AccessControllerEvent>
+    <majorEventType>5</majorEventType>
+    <subEventType>75</subEventType>
+    <cardNo>11517339</cardNo>
+    <employeeNoString>ILR-00859</employeeNoString>
+    <doorNo>1</doorNo>
+    <cardReaderNo>1</cardReaderNo>
+    <serialNo>66</serialNo>
+  </AccessControllerEvent>
+</EventNotificationAlert>`
+    const j = hikPushXmlToJson(xml)
+    expect(j).not.toBeNull()
+    const r = pushGovdesiCoz([j!])
+    expect(r.olaylar).toHaveLength(1)
+    expect(r.olaylar[0]).toMatchObject({ serialNo: 66, major: 5, minor: 75, cardNo: '11517339', employeeNo: 'ILR-00859', doorNo: 1, cardReaderNo: 1 })
+    expect(hikPushXmlToJson('<foo/>')).toBeNull()
   })
 
   it('zamanCoz: ofsetsiz zaman İstanbul (+03:00) kabul edilir', () => {

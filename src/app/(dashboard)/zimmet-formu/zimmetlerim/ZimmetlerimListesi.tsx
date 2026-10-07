@@ -219,7 +219,7 @@ function ZimmetKart({ zimmet }: { zimmet: ZimmetItem }) {
             <div className="min-w-0">
               <p className="text-sm font-semibold text-slate-900 truncate">{turLabel}</p>
               <p className="text-xs text-slate-500 truncate">
-                {zimmet.model ?? zimmet.marka ?? zimmet.seriNumarasi ?? '—'}
+                {[zimmet.marka, zimmet.model].filter(Boolean).join(' ') || zimmet.seriNumarasi || '—'}
               </p>
             </div>
           </div>

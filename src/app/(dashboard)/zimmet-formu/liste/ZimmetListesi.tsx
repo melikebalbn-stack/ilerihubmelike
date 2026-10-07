@@ -160,15 +160,16 @@ const BOS_DUZENLE_FORM: DuzenleFormData = {
 
 // ── Sabitler ────────────────────────────────────────────────────────────────
 
-// Model doluysa "Tür / Model" formatında gosterilir (PENDING migration'dan once
-// yazilmis eski kayitlarda model olmayabilir). Tür etiketi src/lib/zimmet/tur.ts'ten
+// Marka/model doluysa "Tür / Marka Model" formatında gösterilir (marka boşsa yalnız
+// model; eski kayıtlarda ikisi de olmayabilir). Tür etiketi src/lib/zimmet/tur.ts'ten
 // (zimmetTurGosterim) - Office 365/Diğer artık "Yazılım" olarak birleşik gösteriliyor.
 function turGosterim(
-  zimmet: Pick<ZimmetItem, 'tur' | 'turDiger' | 'model'>,
+  zimmet: Pick<ZimmetItem, 'tur' | 'turDiger' | 'marka' | 'model'>,
   bilinenOzelTurler: readonly string[] = []
 ): string {
   const tur = zimmetTurGosterim(zimmet, bilinenOzelTurler)
-  return zimmet.model ? `${tur} / ${zimmet.model}` : tur
+  const markaModel = [zimmet.marka, zimmet.model].filter(Boolean).join(' ')
+  return markaModel ? `${tur} / ${markaModel}` : tur
 }
 
 const FILTRELER = [
@@ -363,6 +364,8 @@ function eslesirArama(z: ZimmetItem, aramaMetni: string): boolean {
       // turDiger ayrıca eklendi - zimmetTurGosterim DIGER dışında turDiger'ı
       // göstermiyor (ör. OFFICE_365'te turDiger hep null zaten, zararsız).
       z.turDiger,
+      z.marka,
+      z.model,
     ],
     aramaMetni
   )
@@ -1589,6 +1592,7 @@ export function ZimmetListesi() {
               value={yeniSahipId}
               onSelect={setYeniSahipId}
               placeholder="Personel seçin"
+              emptyText="Personel bulunamadı. Envanter bir kişi değildir. Cihazı depoya almak için listede İade al'ı kullanın."
             />
           </div>
           <DialogFooter>

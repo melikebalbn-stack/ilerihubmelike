@@ -1,6 +1,7 @@
 'use client'
 
-import { CheckCircle2, Clock, Eye, PenLine } from 'lucide-react'
+import { AlertCircle, CheckCircle2, Clock, Eye, PenLine } from 'lucide-react'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -183,25 +184,23 @@ export function ZimmetFormuStep4({
         </CardContent>
       </Card>
 
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <span className={!teslimEdenImzalandi ? 'cursor-not-allowed' : ''}>
-              <Button
-                type="button"
-                onClick={onSubmit}
-                disabled={submitStatus === 'submitting' || !teslimEdenImzalandi}
-                className="w-full bg-[#1B4F72] hover:bg-[#1B4F72]/90"
-              >
-                {submitStatus === 'submitting' ? 'Gönderiliyor...' : 'Onayla gönder'}
-              </Button>
-            </span>
-          </TooltipTrigger>
-          {!teslimEdenImzalandi && (
-            <TooltipContent>Önce imzalamanız gerekiyor</TooltipContent>
-          )}
-        </Tooltip>
-      </TooltipProvider>
+      <div className="space-y-2">
+        {/* İmza uyarısı ekranda sürekli görünür (hover gerektiren tooltip mobilde çıkmıyordu). */}
+        {!teslimEdenImzalandi && (
+          <Alert className="border-amber-300 bg-amber-50 text-amber-800 [&>svg]:text-amber-600">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>Onaya göndermek için önce İmzala butonuna basın.</AlertDescription>
+          </Alert>
+        )}
+        <Button
+          type="button"
+          onClick={onSubmit}
+          disabled={submitStatus === 'submitting' || !teslimEdenImzalandi}
+          className="w-full bg-[#1B4F72] hover:bg-[#1B4F72]/90"
+        >
+          {submitStatus === 'submitting' ? 'Gönderiliyor...' : 'Onayla gönder'}
+        </Button>
+      </div>
     </div>
   )
 }

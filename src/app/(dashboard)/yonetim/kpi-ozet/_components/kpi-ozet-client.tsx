@@ -233,20 +233,20 @@ export default function KpiOzetClient() {
               <ResponsiveContainer width="100%" height={280}>
                 <ComposedChart data={departmanCeyrekKarsilastirma} margin={{ left: 4, right: 8, top: 4, bottom: 4 }}>
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="departman" tick={{ fontSize: 12 }} interval={0} />
-                  <YAxis tick={{ fontSize: 12 }} />
+                  <XAxis dataKey="departman" tick={{ fontSize: 12, fill: '#9CA3AF' }} interval={0} />
+                  <YAxis tick={{ fontSize: 12, fill: '#9CA3AF' }} />
                   <Tooltip
                     formatter={(v: number) => (v == null ? '—' : `%${v}`)}
                     labelFormatter={(_, payload) => payload?.[0]?.payload?.tamAd ?? ''}
                   />
-                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                  <Legend wrapperStyle={{ fontSize: 11, color: '#9CA3AF' }} />
                   {[1, 2, 3, 4].map((ceyrek, i) => (
                     <Bar key={ceyrek} dataKey={`Ç${ceyrek}`} fill={CEYREK_RENKLERI[i]} radius={[3, 3, 0, 0]}>
                       <LabelList
                         dataKey={`Ç${ceyrek}`}
                         position="top"
                         fontSize={9}
-                        fill="#52514e"
+                        fill="#9CA3AF"
                         formatter={(v: number | null) => (v == null ? '' : `%${v}`)}
                       />
                     </Bar>
@@ -275,8 +275,8 @@ export default function KpiOzetClient() {
             <ResponsiveContainer width="100%" height={200}>
               <ComposedChart data={egilimEkle(sirketGeneliCeyrekOrtalama, 'Oran')} margin={{ left: 4, right: 8, top: 4, bottom: 4 }}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="ad" tick={{ fontSize: 12 }} />
-                <YAxis tick={{ fontSize: 12 }} />
+                <XAxis dataKey="ad" tick={{ fontSize: 12, fill: '#9CA3AF' }} />
+                <YAxis tick={{ fontSize: 12, fill: '#9CA3AF' }} />
                 <Tooltip formatter={(v: number) => (v == null ? '—' : `%${v}`)} />
                 <Bar dataKey="Oran" radius={[4, 4, 0, 0]}>
                   {[1, 2, 3, 4].map(ceyrek => (
@@ -286,7 +286,7 @@ export default function KpiOzetClient() {
                     dataKey="Oran"
                     position="top"
                     fontSize={11}
-                    fill="#52514e"
+                    fill="#9CA3AF"
                     formatter={(v: number | null) => (v == null ? '' : `%${v}`)}
                   />
                 </Bar>
@@ -363,8 +363,8 @@ export default function KpiOzetClient() {
                     margin={{ left: 4, right: 8, top: 4, bottom: 4 }}
                   >
                     <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="ad" tick={{ fontSize: 12 }} />
-                    <YAxis tick={{ fontSize: 12 }} />
+                    <XAxis dataKey="ad" tick={{ fontSize: 12, fill: '#9CA3AF' }} />
+                    <YAxis tick={{ fontSize: 12, fill: '#9CA3AF' }} />
                     <Tooltip formatter={(v: number) => (v == null ? '—' : `%${v}`)} />
                     <Bar dataKey="Oran" radius={[4, 4, 0, 0]}>
                       {[1, 2, 3, 4].map(ceyrek => (
@@ -374,7 +374,7 @@ export default function KpiOzetClient() {
                         dataKey="Oran"
                         position="top"
                         fontSize={11}
-                        fill="#52514e"
+                        fill="#9CA3AF"
                         formatter={(v: number | null) => (v == null ? '' : `%${v}`)}
                       />
                     </Bar>

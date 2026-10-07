@@ -15322,6 +15322,16 @@ model KPIDefinition {
   // Oranın payını (G/H ya da H/G'nin "G" tarafı) hangi kaynaktan alacağı — "actual" ise yerleşik
   // Gerçekleşen kullanılır, aksi halde bir KPIOzelAlan.key değeridir. Payda (Hedef) hep target kalır.
   oranPayKaynagi     String              @default("actual")
+  // KPI-ORAN-BIRIM: bazı KPI'larda oran yüzde değil "kat" (çarpan) anlamına geliyor — gösterimi
+  // değiştirir (%300 yerine "3 kat"), hesaba (0-1 arası oran) dokunmaz.
+  oranBirimi         String              @default("yuzde") // "yuzde" | "kat"
+  // KPI-ORT-KAYNAK: "Ort." (yıllık ortalama) sütunu hangi alandan hesaplanacak — "actual" ise
+  // Gerçekleşen, aksi halde bir KPIOzelAlan.key değeri (ör. "Toplam").
+  ortalamaKaynagi    String              @default("actual")
+  // KPI-YUZDE-OLCEK: birim "%" olan KPI'larda değer her zaman 0-1 arası bir oran olarak
+  // VARSAYILMIYOR artık — bazı KPI'larda değer zaten 0-100 arası (ör. 99,18 = %99,18) direkt
+  // girilmiş. "oran" (varsayılan, eski davranış) ×100 ile gösterir; "dogrudan" olduğu gibi gösterir.
+  yuzdeOlcek         String              @default("oran") // "oran" (0-1, ×100 gösterilir) | "dogrudan" (zaten 0-100)
   active             Boolean             @default(true)
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt

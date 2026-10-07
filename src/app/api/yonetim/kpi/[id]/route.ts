@@ -48,6 +48,11 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const oranPayKaynagi = typeof body.oranPayKaynagi === 'string' && body.oranPayKaynagi.trim()
     ? body.oranPayKaynagi.trim()
     : 'actual'
+  const ortalamaKaynagi = typeof body.ortalamaKaynagi === 'string' && body.ortalamaKaynagi.trim()
+    ? body.ortalamaKaynagi.trim()
+    : 'actual'
+  const oranBirimi = body.oranBirimi === 'kat' ? 'kat' : 'yuzde'
+  const yuzdeOlcek = body.yuzdeOlcek === 'dogrudan' ? 'dogrudan' : 'oran'
   const gelenAlanlar = ozelAlanlariNormalize(body.ozelAlanlar)
   const mevcutAlanlar = await prisma.kPIOzelAlan.findMany({ where: { kpiId: id }, select: { id: true, key: true } })
   const gelenKeyler = new Set(gelenAlanlar.map(a => a.key))
@@ -65,7 +70,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         gerceklesenEtiketi: typeof body.gerceklesenEtiketi === 'string' && body.gerceklesenEtiketi.trim() ? body.gerceklesenEtiketi.trim() : 'Gerçekleşen',
         hedefEtiketi: typeof body.hedefEtiketi === 'string' && body.hedefEtiketi.trim() ? body.hedefEtiketi.trim() : 'Hedef',
         oranYonu: body.oranYonu === 'H_G' ? 'H_G' : 'G_H',
+        oranBirimi,
+        yuzdeOlcek,
         oranPayKaynagi,
+        ortalamaKaynagi,
       },
     }),
     ...(silinecekler.length > 0

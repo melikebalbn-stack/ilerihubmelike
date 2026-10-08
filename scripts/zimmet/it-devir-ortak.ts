@@ -2,6 +2,8 @@
  * it-devir-* script'lerinin ortak yardımcıları.
  */
 import fs from 'fs'
+import os from 'os'
+import path from 'path'
 import { normalizeTr } from '../../src/lib/normalize-tr'
 
 // TASI'da eski kayda yazılan durum geçmişi notunun öneki — geri alma bu önekle
@@ -94,7 +96,9 @@ function csvAlan(v: string): string {
 
 export function csvYaz(yol: string, baslik: string[], satirlar: string[][]): void {
   const govde = [baslik, ...satirlar].map((s) => s.map(csvAlan).join(',')).join('\n')
-  fs.writeFileSync(yol, govde + '\n', 'utf-8')
+  // Raporlar gerçek personel verisi içerir: yalnız sahibi okuyabilir.
+  fs.writeFileSync(yol, govde + '\n', { encoding: 'utf-8', mode: 0o600 })
+  fs.chmodSync(yol, 0o600)
 }
 
 // ── Sahip eşleştirme (import ve yeniden atama aynı kuralı kullanır) ──
@@ -171,10 +175,18 @@ export function sahipEslestirici(kullanicilar: Kullanici[], override: Record<str
   }
 }
 
-// /tmp/<ad>-<mod>-YYYYMMDD-HHMM.csv
+// <rapor klasörü>/<ad>-<mod>-YYYYMMDD-HHMM.csv
+// Klasör: ZIMMET_RAPOR_DIR; yoksa ~/zimmet-it-devir-arsiv/raporlar. Yoksa 700 ile oluşturulur;
+// rapor dosyaları 600 yazılır (csvYaz). /tmp'ye hiçbir şey yazılmaz.
+export function raporDizini(): string {
+  const dizin = path.resolve(process.env.ZIMMET_RAPOR_DIR?.trim() || path.join(os.homedir(), 'zimmet-it-devir-arsiv', 'raporlar'))
+  fs.mkdirSync(dizin, { recursive: true, mode: 0o700 })
+  return dizin
+}
+
 export function raporYolu(ad: string, mod: string): string {
   const d = new Date()
   const p = (n: number) => String(n).padStart(2, '0')
   const damga = `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}`
-  return `/tmp/${ad}-${mod}-${damga}.csv`
+  return path.join(raporDizini(), `${ad}-${mod}-${damga}.csv`)
 }

@@ -13,10 +13,16 @@ export const dynamic = 'force-dynamic'
  * (email: null döner) — İK'nın atayacağı mavi yaka personelin çoğunun
  * kurumsal e-postası yok (185 aktif personelin 97'si).
  *
- * E-POSTA ÇÖZÜMÜ (sırayla): Personnel.mailAdresi → Personnel.azureAdEmail →
- * User.email (employeeId = sicilNo eşleşmesi). Hiçbiri yoksa null.
- * Personnel'da kurumsal e-posta alanı yok; `mailAdresi` çoğunlukla kişisel,
- * bu yüzden User join'i asıl kurumsal kaynak.
+ * E-POSTA ÇÖZÜMÜ — YALNIZ KURUMSAL (08.10.2026 düzeltmesi):
+ *   User.email (employeeId = sicilNo) → Personnel.azureAdEmail, ikisi de
+ *   @ilerigroup.com ise. Başka hiçbir alan kullanılmaz; kurumsal adres yoksa
+ *   `email: null` döner ve form adres alanını BOŞ + salt okunur gösterir.
+ *
+ * ESKİ SIRA TERSİYDİ: `mailAdresi → azureAdEmail → User.email`. `mailAdresi`
+ * çoğunlukla KİŞİSEL adres tutuyor (prod 08.10: Elif/Gökçe/Mehtap/Ayser'in
+ * dördünde de gmail/hotmail) ve ilk sırada olduğu için kurumsal adresi eziyordu.
+ * Sonuç: 20 planlı görev kişisel adrese kayıtlanmış, hatırlatmalar kişisel
+ * kutulara gitmiş. Kişisel adres artık BU UÇTAN HİÇ dönmüyor.
  *
  * Auth: requireSession — içerik yalnız ad/sicil/bölüm (maaş vb. hassas alan yok).
  */
@@ -53,7 +59,8 @@ export async function GET(request: NextRequest) {
       sicilNo: true,
       adSoyad: true,
       bolum: true,
-      mailAdresi: true,
+      // mailAdresi KASITLI OLARAK OKUNMUYOR: kişisel adres taşıyor ve bu uca
+      // girerse forma sızar. Kurumsal kaynak User.email + azureAdEmail.
       azureAdEmail: true,
     },
     orderBy: { adSoyad: 'asc' },
@@ -71,17 +78,25 @@ export async function GET(request: NextRequest) {
     : []
   const emailBySicil = new Map(kullanicilar.map((u) => [u.employeeId!, u.email]))
 
+  const KURUMSAL_ALAN = '@ilerigroup.com'
+  const kurumsalMi = (e: string | null | undefined): string | null => {
+    const v = e?.trim().toLowerCase()
+    return v && v.endsWith(KURUMSAL_ALAN) ? v : null
+  }
+
   const sonuc = personeller.map((p) => ({
     // `id`: combobox listeyi bununla anahtarlıyor. Spec'te sayılmadı ama
     // olmadan React key çakışırdı; sicilNo zaten @unique.
     id: p.sicilNo ?? p.adSoyad,
     sicilNo: p.sicilNo,
     name: p.adSoyad,
+    // Kurumsal adres yoksa null — personel YİNE SEÇİLEBİLİR (Melih kararı
+    // 08.10): kayıt sicille bağlanır, görev Hub'da takip edilir, hatırlatma
+    // maili gitmez ve görev özet raporunda "adres çözülemedi" olarak çıkar.
+    // Aktif 188 personelin 131'i bu durumda (116 mavi, 12 gri, 3 beyaz yaka).
     email:
-      p.mailAdresi?.trim() ||
-      p.azureAdEmail?.trim() ||
-      (p.sicilNo ? emailBySicil.get(p.sicilNo) ?? null : null) ||
-      null,
+      (p.sicilNo ? kurumsalMi(emailBySicil.get(p.sicilNo)) : null) ??
+      kurumsalMi(p.azureAdEmail),
     department: p.bolum,
     source: 'personnel' as const,
   }))

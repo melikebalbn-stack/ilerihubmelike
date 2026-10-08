@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse, after } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { sorumlulariKurumsallastir } from '@/lib/tasks/kurumsal-adres'
 import { TaskStatus, TaskPriority } from '@/generated/prisma'
 import { getAllSubordinates } from '@/lib/ldap'
 import { requireSession } from '@/lib/auth/require-session'
@@ -156,17 +157,25 @@ export async function PUT(
       finalCompletedDate = new Date()
     }
 
+    // ADRES KURUMSAL KAYNAKTAN — POST ile AYNI kural (kurumsal-adres.ts).
+    // Güncelleme yolu da korunmalı; aksi hâlde kayıt düzenlenince kişisel adres
+    // geri yazılabilirdi.
+    const kurumsalSorumlular =
+      responsiblePersons && responsiblePersons.length > 0
+        ? await sorumlulariKurumsallastir(responsiblePersons)
+        : []
+
     // Çoklu kişiler varsa JSON string olarak kaydet
-    const responsiblePersonsJson = responsiblePersons && responsiblePersons.length > 0
-      ? JSON.stringify(responsiblePersons)
+    const responsiblePersonsJson = kurumsalSorumlular.length > 0
+      ? JSON.stringify(kurumsalSorumlular)
       : undefined
 
     // Geriye uyumluluk: Eğer çoklu kişi varsa, ilk kişiyi eski alanlara da yaz
     let finalResponsiblePerson = responsiblePerson
     let finalResponsiblePersonEmail = responsiblePersonEmail
-    if (responsiblePersons && responsiblePersons.length > 0) {
-      finalResponsiblePerson = responsiblePersons[0].name
-      finalResponsiblePersonEmail = responsiblePersons[0].email
+    if (kurumsalSorumlular.length > 0) {
+      finalResponsiblePerson = kurumsalSorumlular[0].name
+      finalResponsiblePersonEmail = kurumsalSorumlular[0].email ?? null
     }
 
     // Çoklu departmanlar

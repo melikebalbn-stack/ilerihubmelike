@@ -1217,18 +1217,43 @@ export default function TasksPage() {
                       bırakırsanız görev size atanır.
                     </p>
                   )}
-                {/* Seçilen kişiler */}
+                {/* Seçilen kişiler — ADRES SALT OKUNUR.
+                    Formda elle yazılabilir adres alanı YOK; adres personel
+                    seçicisinden, kurumsal kaynaktan (User.email/azureAdEmail)
+                    gelir ve burada yalnız GÖSTERİLİR. Sunucu da sicili olan
+                    sorumlunun adresini yeniden çözer (lib/tasks/kurumsal-adres),
+                    yani gövdeye elle adres yazılsa bile kayda geçmez. */}
                 {formData.responsiblePersons.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mt-2">
+                  <div className="mt-2 space-y-1.5">
                     {formData.responsiblePersons.map((person, idx) => (
-                      <span
+                      <div
                         key={idx}
-                        className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded-full text-xs"
+                        className="flex items-start justify-between gap-2 rounded-md border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/30 px-2.5 py-1.5"
                       >
-                        <User className="h-3 w-3" />
-                        {person.name}
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1 text-xs font-medium text-blue-800 dark:text-blue-200">
+                            <User className="h-3 w-3 shrink-0" />
+                            {person.name}
+                            {person.sicilNo && (
+                              <span className="font-normal text-blue-600 dark:text-blue-400">({person.sicilNo})</span>
+                            )}
+                          </div>
+                          {person.email ? (
+                            <div
+                              className="mt-0.5 text-[11px] text-gray-600 dark:text-gray-400 truncate"
+                              title="Kurumsal adres — değiştirilemez"
+                            >
+                              {person.email}
+                            </div>
+                          ) : (
+                            <div className="mt-0.5 text-[11px] text-amber-700 dark:text-amber-400">
+                              Kurumsal adresi yok — hatırlatma maili gönderilemeyecek, görev özet raporuna düşer.
+                            </div>
+                          )}
+                        </div>
                         <button
                           type="button"
+                          aria-label="Sorumluyu çıkar"
                           onClick={() => {
                             const newPersons = formData.responsiblePersons.filter((_, i) => i !== idx)
                             setFormData({
@@ -1238,11 +1263,11 @@ export default function TasksPage() {
                               responsiblePersonEmail: newPersons[0]?.email || '',
                             })
                           }}
-                          className="ml-1 text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-200"
+                          className="shrink-0 text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-200"
                         >
                           <X className="h-3 w-3" />
                         </button>
-                      </span>
+                      </div>
                     ))}
                   </div>
                 )}

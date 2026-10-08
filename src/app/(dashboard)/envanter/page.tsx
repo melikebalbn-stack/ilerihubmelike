@@ -284,7 +284,7 @@ function EnvanterPageInner() {
         <p className="text-sm font-medium text-teal-700">
           İnsan Varlıkları / İdari İşler
         </p>
-        <h1 className="mt-1 flex items-center gap-2 text-2xl font-semibold text-slate-900">
+        <h1 className="mt-1 flex items-center gap-2 text-xl font-semibold text-slate-900">
           Envanter Yönetimi
           <button
             type="button"
@@ -3278,7 +3278,7 @@ function UrunDetayModal({
           />
         )}
 
-        <div className="space-y-6 p-6">
+        <div className="space-y-6">
           {durumHata && (
             <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
               {durumHata}

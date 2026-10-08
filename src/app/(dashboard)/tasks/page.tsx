@@ -685,7 +685,7 @@ export default function TasksPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
         <div>
-          <h1 className="text-lg sm:text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+          <h1 className="flex items-center gap-2 text-xl font-semibold text-gray-900 dark:text-white">
             <ListTodo className="h-5 w-5 sm:h-6 sm:w-6 text-blue-500" />
             Planlı Görevler
           </h1>

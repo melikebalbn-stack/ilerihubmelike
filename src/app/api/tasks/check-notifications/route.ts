@@ -4,10 +4,15 @@ import { TaskStatus, TaskEmailType } from '@/generated/prisma'
 import { sendEmail } from '@/lib/email'
 import { requireUser } from '@/lib/auth/require-user'
 import {
+  bolumBilgisiGerekirMi,
+  bolumSorumluSatiri,
+  gorevBolumleri,
   gorevHatirlatmaAlicilariAdli,
+  kurumsalAlicilar,
   sorumluSatiri,
   type GorevAlicisi,
 } from '@/lib/tasks/hatirlatma-alicilari'
+import { gorevBolumunuEslestir } from '@/lib/tasks/gorev-tamamlama-yetki'
 
 /**
  * Sorumlusu çözülemeyen görevlerin özet raporu BU adrese gider — görev başına
@@ -49,6 +54,44 @@ export async function POST(request: NextRequest) {
     // kez yazılmış mail; sorumluya ise AYRI bir mail. Artık tek mail, tek
     // kaynak, CC yok, admin/sistem rolü alıcı değil.
     const cozulemeyenler: { title: string; dueDate: Date; sebep: string }[] = []
+
+    // Bölüm adı → DepartmentDefinition eşleştirmesi için tek sorgu (28 satır).
+    // NEDEN SEZGİSEL: PlannedTask.responsibleDepartment LDAP türevi
+    // Department.name tutuyor, Personnel ise DepartmentDefinition FK'sına bağlı
+    // ve adlar birebir tutmuyor (08.10 ölçümü: 6 bölüm adından yalnız "Yönetim"
+    // birebir eşleşiyor; "İnsan Varlıkları" → "İnsan Varlıkları Müdürlüğü"
+    // ancak ön ekle bulunuyor). Kural gorevBolumunuEslestir'de, fail-closed.
+    const tanimliBolumler = await prisma.departmentDefinition.findMany({
+      where: { isActive: true },
+      select: { id: true, name: true, mudurId: true, mudurYardimcisiId: true },
+    })
+
+    /**
+     * Bölüme atanmış görevin alıcıları: eşleşen bölümlerin TÜM aktif
+     * personelinin KURUMSAL adresleri. Hiç bölüm eşleşmezse null döner ve
+     * görev özet rapora düşer.
+     */
+    async function bolumAlicilari(
+      gorev: { responsibleDepartment: string | null; responsibleDepartments: string[] },
+    ): Promise<{ alicilar: GorevAlicisi[]; eslesen: string[]; eslesmeyen: string[] } | null> {
+      const adlar = gorevBolumleri(gorev)
+      const eslesen: { id: string; name: string }[] = []
+      const eslesmeyen: string[] = []
+      for (const ad of adlar) {
+        const dd = gorevBolumunuEslestir(ad, tanimliBolumler)
+        if (dd) eslesen.push({ id: dd.id, name: dd.name })
+        else eslesmeyen.push(ad)
+      }
+      if (eslesen.length === 0) return null
+      const kisiler = await prisma.user.findMany({
+        where: { isActive: true, personnel: { aktif: true, departmentId: { in: eslesen.map((e) => e.id) } } },
+        select: { email: true, name: true, personnel: { select: { adSoyad: true } } },
+      })
+      const alicilar = kurumsalAlicilar(
+        kisiler.map((k) => ({ email: k.email, ad: k.personnel?.adSoyad ?? k.name })),
+      )
+      return { alicilar, eslesen: eslesen.map((e) => e.name), eslesmeyen }
+    }
 
     // Get active tasks that are not completed or cancelled
     const tasks = await prisma.plannedTask.findMany({
@@ -93,28 +136,46 @@ export async function POST(request: NextRequest) {
 
         // TEK mail, TEK alıcı kümesi: görevin sorumluları. Eskiden iki ayrı
         // gönderim vardı (admin listesi + "kişisel"); ikisi birleştirildi.
-        const alicilar: GorevAlicisi[] = gorevHatirlatmaAlicilariAdli(task)
+        let alicilar: GorevAlicisi[] = gorevHatirlatmaAlicilariAdli(task)
+        // Kişi sorumlusu yok ama bölüme atanmışsa: komple bölüme BİLGİ maili.
+        let bolumMaili = false
+        if (alicilar.length === 0 && bolumBilgisiGerekirMi(task)) {
+          const bolum = await bolumAlicilari(task)
+          if (bolum && bolum.alicilar.length > 0) {
+            alicilar = bolum.alicilar
+            bolumMaili = true
+          } else {
+            cozulemeyenler.push({
+              title: task.title,
+              dueDate: task.dueDate,
+              sebep: bolum
+                ? `bölüm eşleşti (${bolum.eslesen.join(', ')}) ama kurumsal adresli aktif personel yok`
+                : `bölüm adı organizasyonda bulunamadı: ${gorevBolumleri(task).join(', ')}`,
+            })
+            continue
+          }
+        }
         if (alicilar.length === 0) {
           // Mail GÖNDERİLMEZ; görev başına ayrı mail yerine tek özet rapora girer.
           cozulemeyenler.push({
             title: task.title,
             dueDate: task.dueDate,
-            sebep: task.responsibleDepartment
-              ? `yalnız bölüme atanmış (${task.responsibleDepartment}), kişi sorumlusu yok`
-              : 'sorumlu e-postası yok ya da çözülemedi',
+            sebep: 'sorumlu e-postası yok ya da çözülemedi',
           })
           continue
         }
 
         const subject = generateReminderSubject(task, daysUntilDue)
-        const body = generateReminderBody(task, daysUntilDue)
+        const body = bolumMaili
+          ? generateBolumBilgiBody(task, daysUntilDue)
+          : generateReminderBody(task, daysUntilDue)
 
         try {
           const result = await sendEmail(alicilar, subject, body)
 
           if (result.success) {
             notificationsSent++
-            console.log(`✅ Sent reminder for task: ${task.title} (${daysUntilDue} days) → ${alicilar.map((a) => a.email).join(', ')}`)
+            console.log(`✅ Sent ${bolumMaili ? 'DEPARTMENT' : 'reminder'} for task: ${task.title} (${daysUntilDue} days) → ${alicilar.length} alıcı`)
 
             await prisma.taskEmailLog.create({
               data: {
@@ -156,7 +217,11 @@ export async function POST(request: NextRequest) {
           const overdueSubject = `🚨 GECİKMİŞ GÖREV: ${task.title}`
           const overdueBody = generateOverdueBody(task, Math.abs(daysUntilDue))
 
-          const gecikmisAlicilar: GorevAlicisi[] = gorevHatirlatmaAlicilariAdli(task)
+          let gecikmisAlicilar: GorevAlicisi[] = gorevHatirlatmaAlicilariAdli(task)
+          if (gecikmisAlicilar.length === 0 && bolumBilgisiGerekirMi(task)) {
+            const bolum = await bolumAlicilari(task)
+            if (bolum) gecikmisAlicilar = bolum.alicilar
+          }
           if (gecikmisAlicilar.length === 0) {
             cozulemeyenler.push({
               title: task.title,
@@ -319,6 +384,59 @@ ${task.notes ? `• Notlar: ${task.notes}` : ''}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ${daysUntilDue <= 7 ? '⚠️ UYARI: Bitiş tarihi yaklaşıyor! Lütfen gerekli aksiyonları alınız.' : 'Lütfen görevin zamanında tamamlanmasını sağlayınız.'}
+
+--
+Bu e-posta otomatik olarak ILERIHub Planlı Görevler Sistemi tarafından gönderilmiştir.
+© 2025 İleri Group - System Development Team
+  `.trim()
+}
+
+/**
+ * Bölüme atanmış görev — BİLGİ gövdesi.
+ *
+ * Kişiye atanmış görevin gövdesinden ayrı tutuldu: burada "sorumluluğunuzdaki
+ * görev" ya da "siz tamamlayın" dili YOK. Mail bölümün tüm personeline gidiyor;
+ * herkese "senin görevin" demek yanlış olurdu. "Sorumlu:" satırı kişi adı değil
+ * BÖLÜM adını taşır (bolumSorumluSatiri) — TO ile tutarlı.
+ */
+function generateBolumBilgiBody(
+  task: {
+    title: string
+    description: string | null
+    category: { name: string } | null
+    dueDate: Date
+    responsibleDepartment: string | null
+    responsibleDepartments: string[]
+    priority: string
+    notes: string | null
+  },
+  daysUntilDue: number,
+): string {
+  const daysText =
+    daysUntilDue === 0 ? 'Son gün bugün' : daysUntilDue === 1 ? 'Son gün yarın' : `${daysUntilDue} gün kaldı`
+
+  return `
+📅 Bölüm Görevi — Bilgilendirme
+
+Aşağıdaki planlı görev bölümünüze atanmıştır; kişi bazlı bir sorumlu
+tanımlanmamıştır. Bu mesaj bilgilendirme amaçlıdır.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📌 Görev Bilgileri:
+
+• Görev: ${task.title}
+${task.category ? `• Kategori: ${task.category.name}` : ''}
+${task.description ? `• Açıklama: ${task.description}` : ''}
+• Bitiş Tarihi: ${task.dueDate.toLocaleDateString('tr-TR')}
+• ⏱️ ${daysText}
+• Sorumlu: ${bolumSorumluSatiri(task)}
+${task.notes ? `• Notlar: ${task.notes}` : ''}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Görevin takibi bölüm içinde yapılacaktır. Kişi bazlı sorumlu atanmasını
+isterseniz görevi ILERIHub üzerinden güncelleyebilirsiniz.
 
 --
 Bu e-posta otomatik olarak ILERIHub Planlı Görevler Sistemi tarafından gönderilmiştir.

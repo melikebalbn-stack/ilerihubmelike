@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import {
+  bolumBilgisiGerekirMi,
+  bolumSorumluSatiri,
+  gorevBolumleri,
+  kurumsalAlicilar,
   gorevHatirlatmaAlicilari,
   gorevHatirlatmaAlicilariAdli,
   hatirlatmaGonderilebilirMi,
@@ -169,5 +173,61 @@ describe('gövdedeki "Sorumlu:" satırı TO ile birebir', () => {
 
   it('sorumlu yoksa satır boş (gövdede hiç çizilmez)', () => {
     expect(sorumluSatiri({})).toBe('')
+  })
+})
+
+describe('bölüme atanmış görevler (madde 3)', () => {
+  it('tek bölüm: çoklu alan boşsa tek alandan okunur', () => {
+    const g = { responsibleDepartment: 'İnsan Varlıkları', responsibleDepartments: [] }
+    expect(gorevBolumleri(g)).toEqual(['İnsan Varlıkları'])
+    expect(bolumBilgisiGerekirMi(g)).toBe(true)
+    expect(bolumSorumluSatiri(g)).toBe('İnsan Varlıkları (bölüme atanmış görev)')
+  })
+
+  it('çoklu bölüm: dizi + tek alan birleşir, mükerrer tekilleşir', () => {
+    const g = {
+      responsibleDepartment: 'İnsan Varlıkları',
+      responsibleDepartments: ['İnsan Varlıkları', 'Kalite', 'insan varlıkları'],
+    }
+    expect(gorevBolumleri(g)).toEqual(['İnsan Varlıkları', 'Kalite'])
+    expect(bolumSorumluSatiri(g)).toBe('İnsan Varlıkları, Kalite (bölüme atanmış görev)')
+  })
+
+  it('bölüm bulunamadı / bölüm yok: bilgi maili gerekmez', () => {
+    expect(bolumBilgisiGerekirMi({ responsibleDepartment: null, responsibleDepartments: [] })).toBe(false)
+    expect(bolumBilgisiGerekirMi({ responsibleDepartment: '   ', responsibleDepartments: [''] })).toBe(false)
+    expect(gorevBolumleri({ responsibleDepartment: null })).toEqual([])
+    expect(bolumSorumluSatiri({ responsibleDepartments: [] })).toBe('')
+  })
+
+  it('KİŞİ sorumlusu varsa bölüm maili GÖNDERİLMEZ (kişi kuralı önce)', () => {
+    expect(
+      bolumBilgisiGerekirMi({
+        responsiblePersonEmail: 'ayse@ileri.com',
+        responsibleDepartment: 'İnsan Varlıkları',
+        responsibleDepartments: ['Kalite'],
+      }),
+    ).toBe(false)
+  })
+
+  it('bölüm alıcıları YALNIZ kurumsal adres; tekil ve küçük harf', () => {
+    expect(
+      kurumsalAlicilar([
+        { email: 'Elif.Karadeniz@ilerigroup.com', ad: 'ELİF KARADENİZ' },
+        { email: 'elif.karadeniz@ilerigroup.com', ad: 'ELİF KARADENİZ' },
+        { email: 'kisisel@hotmail.com', ad: 'GÖKÇE' },
+        { email: 'baska@gmail.com', ad: 'X' },
+        { email: null, ad: 'E-postasız' },
+        { email: 'gecersiz', ad: 'Bozuk' },
+        { email: 'nurgul.tastan@ilerigroup.com', ad: null },
+      ]),
+    ).toEqual([
+      { email: 'elif.karadeniz@ilerigroup.com', name: 'ELİF KARADENİZ' },
+      { email: 'nurgul.tastan@ilerigroup.com', name: 'nurgul.tastan@ilerigroup.com' },
+    ])
+  })
+
+  it('kurumsal adresli kimse yoksa boş liste (görev özete düşer)', () => {
+    expect(kurumsalAlicilar([{ email: 'a@hotmail.com' }, { email: null }])).toEqual([])
   })
 })

@@ -1205,6 +1205,18 @@ export default function TasksPage() {
                   }}
                   placeholder="Kişi ara ve ekle..."
                 />
+                {/* Sorumlu boş + bölüm de seçilmemişse: sunucu AÇANI sorumlu
+                    yazıyor (api/tasks POST). Kullanıcı bunu önceden görsün,
+                    kayıttan sonra şaşırmasın. Bölüm seçiliyse istisna geçerli:
+                    görev komple bölüme gider, açan sorumlu yazılmaz. */}
+                {formData.responsiblePersons.length === 0 &&
+                  !formData.responsiblePersonEmail &&
+                  formData.responsibleDepartments.length === 0 && (
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      Varsayılan: siz{session?.user?.name ? ` (${session.user.name})` : ''} — boş
+                      bırakırsanız görev size atanır.
+                    </p>
+                  )}
                 {/* Seçilen kişiler */}
                 {formData.responsiblePersons.length > 0 && (
                   <div className="flex flex-wrap gap-2 mt-2">

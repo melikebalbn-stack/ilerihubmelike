@@ -299,6 +299,26 @@ export async function POST(request: NextRequest) {
       finalResponsiblePersonEmail = responsiblePersons[0].email
     }
 
+    // ── SORUMLUSUZ GÖREV AÇILAMAZ (08.10.2026) ──────────────────────────
+    // Sorumlu boş bırakılırsa görevi AÇAN kişi sorumlu yazılır. Eskiden kayıt
+    // sorumlusuz doğabiliyordu ve hatırlatma hiç kimseye gitmiyordu: prod'da
+    // aktif 43 görevin 16'sı böyle, 13'ü hâlâ açık (2 tanesi OVERDUE).
+    //
+    // BÖLÜME ATANMIŞ GÖREV İSTİSNA: `responsibleDepartment(s)` doluysa görev
+    // bilinçli olarak komple bölüme verilmiştir; açanı tek sorumlu yazmak
+    // yanlış sahiplik üretirdi. Bu görevler bölüm bilgi maili alır.
+    const bolumeAtanmis =
+      (Array.isArray(responsibleDepartments) && responsibleDepartments.length > 0) ||
+      (typeof responsibleDepartment === 'string' && responsibleDepartment.trim() !== '')
+    const sorumluBos =
+      !finalResponsiblePersonEmail &&
+      (!responsiblePersons || responsiblePersons.length === 0)
+    if (sorumluBos && !bolumeAtanmis) {
+      finalResponsiblePerson = user.name || user.email
+      finalResponsiblePersonEmail = user.email
+      console.log(`[gorev-create] sorumlu boş → açan atandı: ${user.email} ("${title}")`)
+    }
+
     // Çoklu departmanlar varsa kullan, yoksa eski alanı array'e çevir
     let finalResponsibleDepartments = responsibleDepartments || []
     if (finalResponsibleDepartments.length === 0 && responsibleDepartment) {

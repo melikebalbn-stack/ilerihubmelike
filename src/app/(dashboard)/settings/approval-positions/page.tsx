@@ -129,7 +129,7 @@ export default function ApprovalPositionsPage() {
   }
 
   return (
-    <div className="container mx-auto py-6 space-y-6">
+    <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-4">
@@ -141,7 +141,7 @@ export default function ApprovalPositionsPage() {
           </Link>
           <div className="flex items-center gap-3">
             <UserCheck className="h-6 w-6 text-primary" />
-            <h1 className="text-2xl font-bold">Onay Pozisyonları</h1>
+            <h1 className="text-xl font-semibold">Onay Pozisyonları</h1>
           </div>
         </div>
         <Button onClick={handleSave} disabled={saving}>

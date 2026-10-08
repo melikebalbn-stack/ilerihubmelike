@@ -748,8 +748,8 @@ export default function TalentManagementPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-xl lg:text-3xl font-bold flex items-center gap-2">
-            <Users className="h-8 w-8" />
+          <h1 className="text-xl font-semibold flex items-center gap-2">
+            <Users className="h-5 w-5" />
             Yetenek Yonetimi
           </h1>
           <p className="text-muted-foreground">

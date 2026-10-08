@@ -314,7 +314,7 @@ export default function NewMeetingPage() {
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <div>
-          <h1 className="text-2xl font-bold">Yeni Toplanti</h1>
+          <h1 className="text-xl font-semibold">Yeni Toplanti</h1>
           <p className="text-muted-foreground">Yeni bir toplanti planlayin</p>
         </div>
       </div>

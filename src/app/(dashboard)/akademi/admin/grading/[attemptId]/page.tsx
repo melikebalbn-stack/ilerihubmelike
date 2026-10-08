@@ -194,7 +194,7 @@ export default function GradingDetailPage({
         style={{ borderColor: "var(--ak-border-default)" }}
       >
         <h1
-          className="text-xl font-bold"
+          className="text-xl font-semibold"
           style={{ color: "var(--ak-text-primary)" }}
         >
           {exam.title}

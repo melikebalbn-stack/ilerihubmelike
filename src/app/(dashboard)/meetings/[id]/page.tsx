@@ -522,7 +522,7 @@ export default function MeetingDetailPage({ params }: { params: Promise<{ id: st
           </Button>
           <div>
             <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-2xl font-bold">{meeting.title}</h1>
+              <h1 className="text-xl font-semibold">{meeting.title}</h1>
               <Badge className={statusColors[meeting.status]}>
                 {statusLabels[meeting.status]}
               </Badge>

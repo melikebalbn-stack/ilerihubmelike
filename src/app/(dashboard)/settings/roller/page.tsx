@@ -45,8 +45,8 @@ export default async function RollerPage() {
 
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <ShieldCheck className="h-6 w-6 text-teal-600" />
+          <h1 className="text-xl font-semibold flex items-center gap-2">
+            <ShieldCheck className="h-5 w-5" />
             Roller
           </h1>
           <p className="text-sm text-muted-foreground mt-1">

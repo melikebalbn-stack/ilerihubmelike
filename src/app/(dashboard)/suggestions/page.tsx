@@ -700,7 +700,7 @@ function SuggestionsPageContent() {
                 Geri
               </Button>
               <div>
-                <h1 className="text-xl sm:text-2xl font-bold">
+                <h1 className="text-xl sm:text-xl font-semibold">
                   {moduleCards.find(m => m.id === activeModule)?.title || 'Modül'}
                 </h1>
                 <p className="text-sm text-muted-foreground">
@@ -714,7 +714,7 @@ function SuggestionsPageContent() {
                 <Lightbulb className="h-5 w-5 text-white" />
               </div>
               <div>
-                <h1 className="text-xl sm:text-2xl font-bold">Öneriler & Sürekli İyileştirme</h1>
+                <h1 className="text-xl sm:text-xl font-semibold">Öneriler & Sürekli İyileştirme</h1>
                 <p className="text-sm text-muted-foreground">Fikirlerinizi paylaşın, değişimi başlatın</p>
               </div>
             </div>

@@ -608,7 +608,7 @@ export default function AnnouncementManagePage() {
             </Link>
           </Button>
           <div>
-            <h1 className="text-2xl font-bold">Duyuru Yonetimi</h1>
+            <h1 className="text-xl font-semibold">Duyuru Yonetimi</h1>
             <p className="text-sm text-muted-foreground">
               Duyurulari ve kategorileri yonetin
             </p>

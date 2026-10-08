@@ -158,7 +158,7 @@ export default function LoginLogsPage() {
     <div className="p-6 space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold">Login Aktiviteleri</h1>
+        <h1 className="text-xl font-semibold">Login Aktiviteleri</h1>
         <p className="text-muted-foreground">Kullanıcı giriş işlemlerini takip edin</p>
       </div>
 

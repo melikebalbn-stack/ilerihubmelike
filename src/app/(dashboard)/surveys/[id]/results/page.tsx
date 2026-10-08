@@ -599,7 +599,7 @@ export default function SurveyResultsPage() {
             <div>
               <div className="flex items-center gap-2">
                 <Bot className="h-6 w-6 text-purple-600" />
-                <h1 className="text-2xl font-bold">{survey.title}</h1>
+                <h1 className="text-xl font-semibold">{survey.title}</h1>
               </div>
               <p className="text-muted-foreground">{survey.surveyNumber} • Yapay Zeka Kullanım Analizi</p>
             </div>
@@ -1110,7 +1110,7 @@ export default function SurveyResultsPage() {
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
-            <h1 className="text-2xl font-bold">{survey.title}</h1>
+            <h1 className="text-xl font-semibold">{survey.title}</h1>
             <p className="text-muted-foreground">{survey.surveyNumber} • Anket Raporu</p>
           </div>
         </div>

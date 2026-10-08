@@ -1,4 +1,5 @@
 import 'server-only'
+import * as XLSX from 'xlsx'
 import { prisma } from '@/lib/prisma'
 import type { Prisma } from '@/generated/prisma'
 import { KartNoHatasi, kartHamCoz, kartHamPanelden, kartNoBicimiOku, kartNoDonustur, kartNoGoster, type KartNoBicimi } from './kart-no'
@@ -211,4 +212,72 @@ export async function gecisEkrani(f: GecisFiltre) {
     sonMutabakat: mutabakat?.zaman ?? null,
     tanimsizlar,
   }
+}
+
+const OLAY_ETIKET: Record<string, string> = {
+  GECERLI_KART: 'Geçerli kart',
+  TANIMSIZ_KART: 'Tanımsız kart',
+  PASIF_KART: 'Pasif kart',
+  YETKISIZ: 'Yetkisiz',
+  GECIS_SENSORU: 'Geçiş sensörü',
+  YANGIN_ALARMI: 'Yangın alarmı',
+  DIGER: 'Diğer',
+}
+
+/**
+ * Geçiş Kayıtları — seçili günün TÜM kayıtlarını Excel olarak üretir (ekrandaki 500 sınırı YOK).
+ * Filtreler (kapı/tip/arama) ekranla aynı. KVKK: sunucuda dosya yazılmaz, buffer döner.
+ */
+export async function gecisExcel(f: GecisFiltre): Promise<{ buffer: Buffer; satir: number; tarih: string }> {
+  const gun = gunAraligi(f.tarih)
+  const bicim = await kartNoBicimiOku(prisma).catch(() => 'BIRLESIK' as KartNoBicimi)
+
+  const kapilar = await prisma.pdksKapi.findMany({
+    where: { aktif: true, cihaz: { aktif: true } },
+    select: { id: true, ad: true, kapiNo: true, cihazId: true },
+  })
+  const kapiAdi = new Map(kapilar.map((k) => [`${k.cihazId}:${k.kapiNo}`, k.ad]))
+
+  const q = (f.q ?? '').trim()
+  const secKapi = f.kapiId ? kapilar.find((k) => k.id === f.kapiId) : undefined
+  const qKart = q ? aramaKartNo(q, bicim) : null
+  const where: Prisma.PdksGecisWhereInput = {
+    olayZamani: { gte: gun.bas, lt: gun.bit },
+    ...(secKapi ? { cihazId: secKapi.cihazId, kapiNo: secKapi.kapiNo } : {}),
+    ...(f.tip && (HUB_OLAY_TIPLERI as string[]).includes(f.tip) ? { olayTipi: f.tip } : {}),
+    ...(q
+      ? {
+          OR: [
+            { personnel: { sicilNo: { contains: q, mode: 'insensitive' } } },
+            { personnel: { adSoyad: { contains: q, mode: 'insensitive' } } },
+            { kartNo: { contains: q.replace(/[\s-]/g, '') } },
+            ...(qKart ? [{ kartNo: qKart }] : []),
+          ],
+        }
+      : {}),
+  }
+
+  const gecisler = await prisma.pdksGecis.findMany({
+    where,
+    orderBy: [{ olayZamani: 'asc' }, { seriNo: 'asc' }],
+    select: {
+      olayZamani: true, cihazId: true, kapiNo: true, yon: true, kartNo: true, olayTipi: true, kaynak: true,
+      personnel: { select: { sicilNo: true, adSoyad: true } },
+    },
+  })
+
+  const satirlar = gecisler.map((g) => ({
+    Zaman: g.olayZamani.toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul' }),
+    Kapı: g.kapiNo !== null ? kapiAdi.get(`${g.cihazId}:${g.kapiNo}`) ?? `Kapı ${g.kapiNo}` : '—',
+    Yön: g.yon === 'GIRIS' ? 'Giriş' : g.yon === 'CIKIS' ? 'Çıkış' : '—',
+    'Kart No': kartGoster(g.kartNo, bicim) ?? '',
+    Sicil: g.personnel?.sicilNo ?? '',
+    'Ad Soyad': g.personnel?.adSoyad ?? '',
+    'Olay Tipi': OLAY_ETIKET[g.olayTipi] ?? g.olayTipi,
+    Kaynak: g.kaynak ?? '',
+  }))
+
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(satirlar), 'Geçişler')
+  return { buffer: XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer, satir: satirlar.length, tarih: gun.tarih }
 }

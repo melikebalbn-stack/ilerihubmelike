@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { AlertTriangle, ArrowDownLeft, ArrowUpRight, Clock, Flame, Loader2, Search, Server, Users } from 'lucide-react'
+import { AlertTriangle, ArrowDownLeft, ArrowUpRight, Clock, Download, Flame, Loader2, Search, Server, Users } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -195,6 +196,20 @@ export function GecislerClient({ canManage }: { canManage: boolean }) {
           <Input value={arama} onChange={(e) => setArama(e.target.value)} placeholder="Sicil, ad veya kart no" className="pl-8" />
         </div>
         <Input type="date" value={tarih} max={bugunIstanbul()} onChange={(e) => e.target.value && setTarih(e.target.value)} className="w-40" />
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            const p = new URLSearchParams({ tarih })
+            if (kapiId !== 'HEPSI') p.set('kapiId', kapiId)
+            if (tip !== 'HEPSI') p.set('tip', tip)
+            if (q) p.set('q', q)
+            window.location.href = `/api/pdks/gecisler/excel?${p}`
+          }}
+          title="Seçili günün tüm geçişleri (filtreli, 500 sınırı yok)"
+        >
+          <Download className="mr-1 h-4 w-4" /> Excel
+        </Button>
       </div>
 
       {hata && <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">{hata}</div>}
@@ -245,7 +260,7 @@ export function GecislerClient({ canManage }: { canManage: boolean }) {
           </table>
           {veri && veri.toplamSatir > veri.satirlar.length && (
             <div className="border-t px-3 py-2 text-xs text-slate-500">
-              En yeni {veri.satirlar.length} kayıt gösteriliyor (toplam {veri.toplamSatir}) — filtreyle daraltın.
+              En yeni {veri.satirlar.length} kayıt gösteriliyor (toplam {veri.toplamSatir}) — filtreyle daraltın ya da tümü için Excel&apos;e aktarın.
             </div>
           )}
         </div>

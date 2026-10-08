@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse, after } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { sorumlulariKurumsallastir } from '@/lib/tasks/kurumsal-adres'
 import { TaskStatus, TaskPriority, TaskEmailType } from '@/generated/prisma'
 import { sendTaskNotification, TaskEmailData, EmailRecipient } from '@/lib/email'
 import { getAllSubordinates } from '@/lib/ldap'
@@ -285,18 +286,45 @@ export async function POST(request: NextRequest) {
       status = TaskStatus.OVERDUE
     }
 
+    // ADRES KURUMSAL KAYNAKTAN (08.10.2026): gövdeden gelen `email` sicili olan
+    // sorumlular için YOKSAYILIR, User.email/azureAdEmail'den yeniden çözülür.
+    const kurumsalSorumlular =
+      responsiblePersons && responsiblePersons.length > 0
+        ? await sorumlulariKurumsallastir(responsiblePersons)
+        : []
+
     // Çoklu kişiler varsa JSON string olarak kaydet
-    const responsiblePersonsJson = responsiblePersons && responsiblePersons.length > 0
-      ? JSON.stringify(responsiblePersons)
+    const responsiblePersonsJson = kurumsalSorumlular.length > 0
+      ? JSON.stringify(kurumsalSorumlular)
       : null
 
     // Geriye uyumluluk: Eğer çoklu kişi yoksa eski alanları kullan
     // Eğer çoklu kişi varsa, ilk kişiyi eski alanlara da yaz
     let finalResponsiblePerson = responsiblePerson
     let finalResponsiblePersonEmail = responsiblePersonEmail
-    if (responsiblePersons && responsiblePersons.length > 0) {
-      finalResponsiblePerson = responsiblePersons[0].name
-      finalResponsiblePersonEmail = responsiblePersons[0].email
+    if (kurumsalSorumlular.length > 0) {
+      finalResponsiblePerson = kurumsalSorumlular[0].name
+      finalResponsiblePersonEmail = kurumsalSorumlular[0].email ?? null
+    }
+
+    // ── SORUMLUSUZ GÖREV AÇILAMAZ (08.10.2026) ──────────────────────────
+    // Sorumlu boş bırakılırsa görevi AÇAN kişi sorumlu yazılır. Eskiden kayıt
+    // sorumlusuz doğabiliyordu ve hatırlatma hiç kimseye gitmiyordu: prod'da
+    // aktif 43 görevin 16'sı böyle, 13'ü hâlâ açık (2 tanesi OVERDUE).
+    //
+    // BÖLÜME ATANMIŞ GÖREV İSTİSNA: `responsibleDepartment(s)` doluysa görev
+    // bilinçli olarak komple bölüme verilmiştir; açanı tek sorumlu yazmak
+    // yanlış sahiplik üretirdi. Bu görevler bölüm bilgi maili alır.
+    const bolumeAtanmis =
+      (Array.isArray(responsibleDepartments) && responsibleDepartments.length > 0) ||
+      (typeof responsibleDepartment === 'string' && responsibleDepartment.trim() !== '')
+    const sorumluBos =
+      !finalResponsiblePersonEmail &&
+      (!responsiblePersons || responsiblePersons.length === 0)
+    if (sorumluBos && !bolumeAtanmis) {
+      finalResponsiblePerson = user.name || user.email
+      finalResponsiblePersonEmail = user.email
+      console.log(`[gorev-create] sorumlu boş → açan atandı: ${user.email} ("${title}")`)
     }
 
     // Çoklu departmanlar varsa kullan, yoksa eski alanı array'e çevir

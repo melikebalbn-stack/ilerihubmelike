@@ -31,6 +31,12 @@ export type HatirlatmaGorevi = {
   responsiblePersons?: string | null
 }
 
+/** Bölüme atanmış görev — kişi sorumlusu yoksa komple bölüm bilgilendirilir. */
+export type BolumluGorev = HatirlatmaGorevi & {
+  responsibleDepartment?: string | null
+  responsibleDepartments?: string[] | null
+}
+
 export type GorevAlicisi = { email: string; name: string }
 
 /** En yalın e-posta biçim kontrolü — boşluksuz, tek @, noktalı alan adı. */
@@ -105,4 +111,56 @@ export function sorumluSatiri(gorev: HatirlatmaGorevi): string {
 /** Mail gönderilebilir mi — alıcı yoksa gönderim YAPILMAZ, özet rapora düşer. */
 export function hatirlatmaGonderilebilirMi(gorev: HatirlatmaGorevi): boolean {
   return gorevHatirlatmaAlicilari(gorev).length > 0
+}
+
+// ── BÖLÜME ATANMIŞ GÖREVLER (08.10.2026) ────────────────────────────────────
+//
+// Kişi sorumlusu olmayan ama bir bölüme atanmış görevler eskiden HİÇ mail
+// almıyordu: hatırlatma yalnız kişi adresine bakıyordu, bölüm alanı hiç
+// okunmuyordu. Prod'da aktif 43 görevin 11'i bu durumdaydı (2'si OVERDUE).
+//
+// Bu görev "senin görevin" değil; bölümün tamamına BİLGİ olarak gider.
+
+/** Görevin bölüm adları — çoklu alan ∪ tek alan, trim + tekil, sırası korunur. */
+export function gorevBolumleri(gorev: BolumluGorev): string[] {
+  const hepsi = [...(gorev.responsibleDepartments ?? []), gorev.responsibleDepartment]
+  const tekil: string[] = []
+  for (const ham of hepsi) {
+    const b = ham?.trim()
+    if (!b) continue
+    if (!tekil.some((x) => x.toLocaleLowerCase('tr') === b.toLocaleLowerCase('tr'))) tekil.push(b)
+  }
+  return tekil
+}
+
+/** Kişi sorumlusu yok ama bölümü var → bölüm bilgi maili gönderilecek görev. */
+export function bolumBilgisiGerekirMi(gorev: BolumluGorev): boolean {
+  return gorevHatirlatmaAlicilari(gorev).length === 0 && gorevBolumleri(gorev).length > 0
+}
+
+/**
+ * KURUMSAL adres süzgeci. Bölüm maili şirket içi bir bilgilendirmedir; kişisel
+ * adreslere (hotmail/gmail) bölümün tamamının görev listesi gönderilmez.
+ * Tekilleştirme + küçük harf, kişi listesiyle aynı kural.
+ */
+export const KURUMSAL_ALAN = '@ilerigroup.com'
+
+export function kurumsalAlicilar(
+  kisiler: { email: string | null | undefined; ad?: string | null }[],
+): GorevAlicisi[] {
+  const sonuc: GorevAlicisi[] = []
+  for (const k of kisiler) {
+    const e = k.email?.trim().toLowerCase()
+    if (!e || !epostaGecerliMi(e) || !e.endsWith(KURUMSAL_ALAN)) continue
+    if (sonuc.some((x) => x.email === e)) continue
+    sonuc.push({ email: e, name: k.ad?.trim() || e })
+  }
+  return sonuc
+}
+
+/** Gövdedeki "Sorumlu:" satırı — bölüme atanmış görevde kişi adı değil bölüm adı. */
+export function bolumSorumluSatiri(gorev: BolumluGorev): string {
+  const bolumler = gorevBolumleri(gorev)
+  if (bolumler.length === 0) return ''
+  return `${bolumler.join(', ')} (bölüme atanmış görev)`
 }

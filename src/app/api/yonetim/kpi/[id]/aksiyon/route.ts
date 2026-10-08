@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { kurumsalAdresPersonelId } from '@/lib/tasks/kurumsal-adres'
 import { requireKpiGoruntule, requireKpiYaz } from '@/lib/yonetim/kpi-yetki'
 
 export const dynamic = 'force-dynamic'
@@ -68,17 +69,23 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   })
 
   // KPI Aksiyonu → ILERIHub Planlı Görevler (bkz. five-s/[id]/action-plan/route.ts deseni)
-  const sorumlu = sorumluPersonelId
-    ? await prisma.personnel.findUnique({ where: { id: sorumluPersonelId }, select: { adSoyad: true, mailAdresi: true } })
-    : null
+  //
+  // ADRES KURUMSAL KAYNAKTAN (08.10.2026): burada `Personnel.mailAdresi`
+  // okunuyordu — o alan KİŞİSEL adres tutuyor (aktif 188 personelin 183'ünde
+  // gmail/hotmail; 54'ünde kurumsal karşılığı DA var). Yazdığı görev hatırlatma
+  // cron'una girdiği için kişisel kutuya mail gidiyordu. Kural artık
+  // tasks POST/PUT ve personnel/search ile AYNI: User.email → azureAdEmail,
+  // ikisi de @ilerigroup.com olmak zorunda, yoksa null (mail gitmez, görev
+  // özet raporunda "adres çözülemedi" olarak çıkar).
+  const sorumlu = await kurumsalAdresPersonelId(sorumluPersonelId)
   await prisma.plannedTask.create({
     data: {
       title: `KPI Aksiyon: ${kpi.name ?? ''} — ${action}`,
       description: reason ? `**Neden:** ${reason}\n\n**Aksiyon:** ${action}` : action,
       dueDate: endDate ?? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
       startDate,
-      responsiblePerson: sorumlu?.adSoyad ?? null,
-      responsiblePersonEmail: sorumlu?.mailAdresi ?? null,
+      responsiblePerson: sorumlu.adSoyad,
+      responsiblePersonEmail: sorumlu.email,
       status: 'PENDING',
       priority: 'NORMAL',
       reminderDays: [7, 3, 1],

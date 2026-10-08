@@ -62,3 +62,36 @@ export async function sorumlulariKurumsallastir(
 export function ilkSorumluAdresi(sorumlular: SorumluGirdisi[]): string | null {
   return sorumlular[0]?.email?.trim().toLowerCase() || null
 }
+
+/**
+ * Personnel.id'den kurumsal adres. KPI Aksiyonu gibi personeli SİCİL yerine
+ * id ile tutan yollar için; kural `sorumlulariKurumsallastir` ile AYNI:
+ * User.email → Personnel.azureAdEmail, ikisi de @ilerigroup.com olmak zorunda.
+ *
+ * User eşleşmesi önce `personnelId` FK'sı, sonra employeeId ↔ sicilNo ile
+ * aranır: iki bağ da prod'da kullanılıyor ve biri boş olabiliyor.
+ */
+export async function kurumsalAdresPersonelId(
+  personnelId: string | null | undefined,
+): Promise<{ adSoyad: string | null; email: string | null }> {
+  if (!personnelId) return { adSoyad: null, email: null }
+
+  const p = await prisma.personnel.findUnique({
+    where: { id: personnelId },
+    select: { adSoyad: true, sicilNo: true, azureAdEmail: true },
+  })
+  if (!p) return { adSoyad: null, email: null }
+
+  const u = await prisma.user.findFirst({
+    where: {
+      isActive: true,
+      OR: [{ personnelId }, ...(p.sicilNo ? [{ employeeId: p.sicilNo }] : [])],
+    },
+    select: { email: true },
+  })
+
+  return {
+    adSoyad: p.adSoyad,
+    email: kurumsalMi(u?.email) ?? kurumsalMi(p.azureAdEmail),
+  }
+}

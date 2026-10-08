@@ -14,9 +14,10 @@ import type { StokBilgisiSatir } from '@/lib/ifs/stok-bilgisi'
 
 type Mod = 'MENU' | 'OLUSTUR' | 'ICERIK' | 'TASI' | 'DEGISTIR'
 // Okutma ALAN BAZLI: değer, o an beklenen alana gider (palet alanında çıplak sayı = palet no).
-type Alan = 'PALET' | 'LOKASYON' | 'MALZEME' | 'HEDEF_LOK' | 'HEDEF_PALET' | null
+type Alan = 'PALET' | 'LOKASYON' | 'MALZEME' | 'HEDEF_LOK' | 'HEDEF_PALET' | 'TUR' | null
 type EkleAdim = 'LOKASYON' | 'MALZEME' | 'MIKTAR'
 
+const trUst = (v: string) => v.toLocaleUpperCase('tr-TR')
 const fmt = (n: number) => n.toLocaleString('tr-TR', { maximumFractionDigits: 3 })
 const tire = (v: string) => (!v || v === '*' ? '—' : v)
 // Palet alanı: palet etiketindeki önekli "P413" ya da çıplak "413".
@@ -50,6 +51,7 @@ export function TasimaBirimiClient({ baslangicPalet = null }: { baslangicPalet?:
   // Oluştur
   const [turler, setTurler] = useState<PaletTuru[]>([])
   const [secTur, setSecTur] = useState('')
+  const [turAra, setTurAra] = useState('')
   const [olusan, setOlusan] = useState<number | null>(null)
   // Ortak: işlenen (kaynak) palet
   const [palet, setPalet] = useState<Palet | null>(null)
@@ -209,6 +211,7 @@ export function TasimaBirimiClient({ baslangicPalet = null }: { baslangicPalet?:
 
   const alan: Alan = (() => {
     if (mod === 'MENU') return 'PALET'
+    if (mod === 'OLUSTUR') return olusan ? null : 'TUR'
     if (mod === 'ICERIK') return !palet ? 'PALET' : ekleAcik ? (ekleAdim === 'LOKASYON' ? 'LOKASYON' : 'MALZEME') : cikarSatir ? null : 'PALET'
     if (mod === 'TASI') return !palet ? 'PALET' : 'HEDEF_LOK'
     if (mod === 'DEGISTIR') return !palet ? 'PALET' : degSatir && !hedefPalet ? 'HEDEF_PALET' : null
@@ -229,6 +232,12 @@ export function TasimaBirimiClient({ baslangicPalet = null }: { baslangicPalet?:
       const tam = sonuclar.filter((x) => String(x.id) === s)
       if (sonuclar.length === 1 || tam.length === 1) return void paletSec((tam[0] ?? sonuclar[0]).id, alan)
       setArama({ q: s, alan, sonuclar })
+      return
+    }
+    if (alan === 'TUR') {
+      // Tür kodu okutuldu/yazıldı: birebir eşleşme seçilir, yoksa liste bu metinle süzülür.
+      const tam = turler.find((t) => trUst(t.id) === trUst(s))
+      if (tam) { setSecTur(tam.id); setTurAra('') } else setTurAra(s)
       return
     }
     if (alan === 'LOKASYON') return void lokasyonOkut(s)
@@ -261,6 +270,7 @@ export function TasimaBirimiClient({ baslangicPalet = null }: { baslangicPalet?:
     LOKASYON: { baslik: 'Lokasyon okut', alt: 'eklenecek malzemenin rafı' },
     MALZEME: { baslik: 'Malzeme barkodu okut', alt: palet?.lokasyonNo && lokasyon && palet.lokasyonNo !== lokasyon ? `lokasyon ${lokasyon} · palet ${palet.lokasyonNo}'ten buraya taşınacak` : `lokasyon ${lokasyon}` },
     HEDEF_LOK: { baslik: 'Hedef lokasyonu okut', alt: 'paletin gideceği raf' },
+    TUR: { baslik: 'Tür kodu okut ya da ara', alt: 'kod ya da açıklama (örn. 50500013, palet, koli)' },
     HEDEF_PALET: { baslik: 'Hedef palet / kutu okut ya da ara', alt: 'numara, tür kodu, SSCC ya da lokasyon' },
   }
   const baslik = mod === 'MENU' ? 'Taşıma Birimi' : KARTLAR.find((k) => k.mod === mod)?.label ?? ''
@@ -320,7 +330,7 @@ export function TasimaBirimiClient({ baslangicPalet = null }: { baslangicPalet?:
           {manualOpen ? (
             <div className="flex w-full gap-2">
               <input autoFocus value={manualVal} onChange={(e) => setManualVal(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && submitManual()}
-                placeholder={alan === 'PALET' || alan === 'HEDEF_PALET' ? 'Palet/kutu no, tür kodu, SSCC, lokasyon' : alan === 'MALZEME' ? 'Stok no' : 'Lokasyon'}
+                placeholder={alan === 'TUR' ? 'Tür kodu ya da açıklama' : alan === 'PALET' || alan === 'HEDEF_PALET' ? 'Palet/kutu no, tür kodu, SSCC, lokasyon' : alan === 'MALZEME' ? 'Stok no' : 'Lokasyon'}
                 className="h-11 flex-1 rounded-xl border bg-background px-3 text-base outline-none focus:ring-1 focus:ring-ring" />
               <button type="button" onClick={submitManual} className="h-11 rounded-xl px-4 text-sm font-semibold text-white" style={{ background: TERMINAL_ACCENT }}>Getir</button>
             </div>
@@ -367,7 +377,9 @@ export function TasimaBirimiClient({ baslangicPalet = null }: { baslangicPalet?:
         ) : (
           <div className="flex flex-col gap-2">
             <div className="text-sm font-semibold text-muted-foreground">Tür seçin</div>
-            {turler.map((t) => (
+            <input value={turAra} onChange={(e) => setTurAra(e.target.value)} placeholder="Ara: kod ya da açıklama"
+              className="h-11 rounded-xl border bg-background px-3 text-base outline-none focus:ring-1 focus:ring-ring" />
+            {turler.filter((t) => !turAra.trim() || t.id === secTur || trUst(`${t.id} ${t.ad} ${t.kategori}`).includes(trUst(turAra.trim()))).map((t) => (
               <button key={t.id} type="button" onClick={() => setSecTur(t.id)} className={cn('flex items-center justify-between rounded-xl border p-3 text-left', secTur === t.id && 'ring-2')} style={secTur === t.id ? { borderColor: TERMINAL_ACCENT } : undefined}>
                 <span className="min-w-0"><span className="font-semibold">{t.id}</span> <span className="text-sm text-muted-foreground">{t.ad}</span></span>
                 <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold', t.kategori === 'PALLET' ? 'text-white' : 'border text-muted-foreground')} style={t.kategori === 'PALLET' ? { background: TERMINAL_ACCENT } : undefined}>{t.kategori}</span>

@@ -261,8 +261,8 @@ export default function PerformanceManagementPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <Target className="h-6 w-6 text-primary" />
+          <h1 className="text-xl font-semibold flex items-center gap-2">
+            <Target className="h-5 w-5" />
             Performans Yonetimi
           </h1>
           <p className="text-muted-foreground">

@@ -595,7 +595,7 @@ export default function JobApplicationDetailPage() {
           </Button>
           <div>
             <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-bold">{app.fullName}</h1>
+              <h1 className="text-xl font-semibold">{app.fullName}</h1>
               <JobApplicationStatusBadge status={app.status} />
               {/* Sınav rozeti — başlıkta, statünün yanında. İV kartı açmadan sonucu görür.
                   Liste ile AYNI bileşen ve AYNI kaynak alanlar (aktif oturum yoksa en yeni

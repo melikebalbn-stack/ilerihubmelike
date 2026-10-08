@@ -41,6 +41,12 @@ const saat = (iso: string | null) =>
   iso ? new Date(iso).toLocaleTimeString('tr-TR', { timeZone: 'Europe/Istanbul', hour: '2-digit', minute: '2-digit' }) : '—'
 const sure = (dk: number | null) => (dk === null ? '—' : `${Math.floor(dk / 60)} sa ${String(dk % 60).padStart(2, '0')} dk`)
 const bugun = () => new Date(Date.now() + 3 * 3600_000).toISOString().slice(0, 10)
+// Seçili günün ayının ilk/son günü (YYYY-MM-DD)
+const ayAralik = (gun: string) => {
+  const [y, m] = gun.slice(0, 7).split('-').map(Number)
+  const sonGun = new Date(Date.UTC(y, m, 0)).getUTCDate()
+  return { bas: `${gun.slice(0, 7)}-01`, bit: `${gun.slice(0, 7)}-${String(sonGun).padStart(2, '0')}` }
+}
 
 export function PuantajClient({ canManage }: { canManage: boolean }) {
   const [gun, setGun] = useState(bugun())
@@ -147,6 +153,20 @@ export function PuantajClient({ canManage }: { canManage: boolean }) {
               <Lock className="mr-1 h-4 w-4" /> Günü kilitle
             </Button>
           )}
+          <span className="mx-1 hidden h-5 w-px bg-slate-200 sm:inline-block" />
+          <span className="text-xs text-slate-400">Ay ({gun.slice(0, 7)}):</span>
+          <Button size="sm" variant="outline" disabled={isliyor}
+            onClick={() => { const a = ayAralik(gun); islem('/api/pdks/puantaj/hesapla', a, (d) => `${gun.slice(0, 7)}: ${d.gunSayisi} gün, ${d.yazilan} kayıt hesaplandı${Number(d.kilitliAtlanan) ? `, ${d.kilitliAtlanan} kilitli atlandı` : ''}`) }}>
+            <RefreshCw className="mr-1 h-4 w-4" /> Ayı yeniden hesapla
+          </Button>
+          <Button size="sm" variant="outline" disabled={isliyor}
+            onClick={() => { const a = ayAralik(gun); confirm(`${gun.slice(0, 7)} ayının TÜM günleri kilitlensin mi? Kilitli gün yeniden hesaplanmaz.`) && islem('/api/pdks/puantaj/kilit', { ...a, kilitli: true }, (d) => `${d.adet} satır kilitlendi`) }}>
+            <Lock className="mr-1 h-4 w-4" /> Ayı kilitle
+          </Button>
+          <Button size="sm" variant="outline" disabled={isliyor}
+            onClick={() => { const a = ayAralik(gun); confirm(`${gun.slice(0, 7)} ayının kilidi açılsın mı? (denetim kaydına yazılır)`) && islem('/api/pdks/puantaj/kilit', { ...a, kilitli: false }, (d) => `${d.adet} satırın kilidi açıldı`) }}>
+            <LockOpen className="mr-1 h-4 w-4" /> Ay kilidini aç
+          </Button>
           {mesaj && <span className={cn('text-sm', mesaj.startsWith('Hata') ? 'text-amber-800' : 'text-slate-600')}>{mesaj}</span>}
         </div>
       )}

@@ -51,6 +51,8 @@ const ayAralik = (gun: string) => {
 export function PuantajClient({ canManage }: { canManage: boolean }) {
   const [gun, setGun] = useState(bugun())
   const [dep, setDep] = useState('HEPSI')
+  const [vardiyaF, setVardiyaF] = useState('HEPSI')
+  const [durumF, setDurumF] = useState('HEPSI')
   const [arama, setArama] = useState('')
   const [q, setQ] = useState('')
   const [veri, setVeri] = useState<Veri | null>(null)
@@ -98,6 +100,10 @@ export function PuantajClient({ canManage }: { canManage: boolean }) {
 
   const o = veri?.ozet
   const m = veri?.meta
+  const vardiyalar = [...new Set((veri?.satirlar ?? []).map((s) => s.vardiya).filter((v): v is string => !!v))].sort()
+  const satirlar = (veri?.satirlar ?? []).filter(
+    (s) => (vardiyaF === 'HEPSI' || s.vardiya === vardiyaF) && (durumF === 'HEPSI' || s.durum === durumF),
+  )
 
   return (
     <div className="space-y-5">
@@ -112,6 +118,20 @@ export function PuantajClient({ canManage }: { canManage: boolean }) {
           <SelectContent>
             <SelectItem value="HEPSI">Tüm departmanlar</SelectItem>
             {(veri?.departmanlar ?? []).map((d) => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Select value={vardiyaF} onValueChange={setVardiyaF}>
+          <SelectTrigger className="w-40"><SelectValue placeholder="Vardiya" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="HEPSI">Tüm vardiyalar</SelectItem>
+            {vardiyalar.map((v) => <SelectItem key={v} value={v}>{v}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Select value={durumF} onValueChange={setDurumF}>
+          <SelectTrigger className="w-44"><SelectValue placeholder="Durum" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="HEPSI">Tüm durumlar</SelectItem>
+            {(Object.keys(DURUM) as Durum[]).map((d) => <SelectItem key={d} value={d}>{DURUM[d].etiket}</SelectItem>)}
           </SelectContent>
         </Select>
         <div className="relative min-w-[200px] flex-1 sm:max-w-xs">
@@ -191,7 +211,7 @@ export function PuantajClient({ canManage }: { canManage: boolean }) {
             </tr>
           </thead>
           <tbody>
-            {veri?.satirlar.map((s) => (
+            {satirlar.map((s) => (
               <tr key={s.personnelId} className="border-t">
                 <td className="whitespace-nowrap px-3 py-1.5">{s.sicil ?? '—'}</td>
                 <td className="px-3 py-1.5">{s.adSoyad}</td>
@@ -226,9 +246,11 @@ export function PuantajClient({ canManage }: { canManage: boolean }) {
                 </td>
               </tr>
             ))}
-            {veri && veri.satirlar.length === 0 && (
+            {veri && satirlar.length === 0 && (
               <tr><td colSpan={11} className="px-3 py-10 text-center text-slate-400">
-                Bu gün için hesaplanmış puantaj yok{canManage ? ' — “Yeniden hesapla” ile hesaplayın' : ''}
+                {veri.satirlar.length === 0
+                  ? `Bu gün için hesaplanmış puantaj yok${canManage ? ' — “Yeniden hesapla” ile hesaplayın' : ''}`
+                  : 'Seçili filtrelere uyan kayıt yok'}
               </td></tr>
             )}
             {!veri && !hata && <tr><td colSpan={11} className="px-3 py-10 text-center"><Loader2 className="mx-auto h-5 w-5 animate-spin text-slate-400" /></td></tr>}

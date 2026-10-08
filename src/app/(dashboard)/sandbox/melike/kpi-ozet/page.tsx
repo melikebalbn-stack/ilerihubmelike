@@ -50,6 +50,7 @@ interface OzetKpiSirasi {
   id: string
   name: string
   oran: number
+  oranBirimi: string
 }
 
 interface DepartmanOzeti {
@@ -70,6 +71,14 @@ function oranBgRengi(oran: number): string {
   if (oran >= 80) return '#dcfce7'
   if (oran >= 50) return '#fef3c7'
   return '#fee2e2'
+}
+
+// KPI Takip'teki Oran birimiyle (Yüzde/Kat) AYNI gösterim — oran sayısı aynı ham ölçekte
+// hesaplanıyor, sadece KPI "kat" seçtiyse 100'e bölünüp "x kat" olarak yazılıyor.
+function oranMetni(oran: number, oranBirimi: string): string {
+  return oranBirimi === 'kat'
+    ? `${(oran / 100).toLocaleString('tr-TR', { maximumFractionDigits: 2 })} kat`
+    : `%${oran}`
 }
 
 // Basit doğrusal regresyon (en küçük kareler) — çubukların üzerine genel eğilimi (yukarı/aşağı)
@@ -414,7 +423,7 @@ export default function KpiOzetPage() {
                           rengi sayfanın varsayılanına (beyaza yakın) düşüp okunmaz oluyordu,
                           burada sabit koyu renk veriyoruz. */}
                       <span className="text-sm font-medium" style={{ color: '#1f2937' }}>{k.name}</span>
-                      <span className="text-sm font-bold" style={{ color: oranRengi(k.oran) }}>%{k.oran}</span>
+                      <span className="text-sm font-bold" style={{ color: oranRengi(k.oran) }}>{oranMetni(k.oran, k.oranBirimi)}</span>
                     </Link>
                   ))}
                 </div>

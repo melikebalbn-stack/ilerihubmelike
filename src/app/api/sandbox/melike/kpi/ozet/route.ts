@@ -16,6 +16,7 @@ interface OlcumBenzeri {
 interface KpiBenzeri {
   oranYonu: string
   oranPayKaynagi: string
+  oranBirimi: string
   ozelAlanlar: { key: string; degerler: { year: number; month: number; value: number | null; naMi: boolean }[] }[]
 }
 
@@ -76,9 +77,9 @@ export async function GET(request: Request) {
           .filter((o): o is number => o != null)
         if (oranlar.length === 0) return null
         const ort = oranlar.reduce((t, o) => t + o, 0) / oranlar.length
-        return { id: k.id, name: k.name, oran: Math.round(ort) }
+        return { id: k.id, name: k.name, oran: Math.round(ort), oranBirimi: k.oranBirimi }
       })
-      .filter((x): x is { id: string; name: string; oran: number } => x !== null)
+      .filter((x): x is { id: string; name: string; oran: number; oranBirimi: string } => x !== null)
 
     const genelOran = kpiOranlari.length > 0
       ? Math.round(kpiOranlari.reduce((t, k) => t + k.oran, 0) / kpiOranlari.length)

@@ -63,7 +63,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { getZimmetDurumRozeti, zimmetSahibiBaslik, zimmetSahibiAltBaslik } from '@/lib/zimmet/constants'
+import { DEVIR_BILDIRIM_AKTIF, getZimmetDurumRozeti, zimmetSahibiBaslik, zimmetSahibiAltBaslik } from '@/lib/zimmet/constants'
 import { cokluAlandaAra, esitlikIcinNormalize } from '@/lib/zimmet/arama'
 import { temizleAciklama } from '@/lib/zimmet/aciklama'
 import { EK_ALAN_KATALOG, varsayilanEkAlanlar, type EkAlanKey } from '@/lib/zimmet/ek-alanlar'
@@ -1110,7 +1110,7 @@ export function ZimmetListesi() {
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <h1 className="text-2xl font-medium text-slate-900">Zimmet geçmişi</h1>
           <div className="flex items-center gap-2 flex-wrap">
-            {devirAdaylar && devirAdaylar.length > 0 && (
+            {DEVIR_BILDIRIM_AKTIF && devirAdaylar && devirAdaylar.length > 0 && (
               <button
                 type="button"
                 onClick={() => setDevirDialogAcik(true)}

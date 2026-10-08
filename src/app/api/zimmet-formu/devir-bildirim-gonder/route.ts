@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { requirePermission } from '@/lib/auth/require-permission'
 import { ZimmetOnayDurumu, ZimmetKaynak } from '@/generated/prisma'
 import { dispatchZimmetDevirOnayIstegi } from '@/lib/zimmet/notifications'
+import { DEVIR_BILDIRIM_AKTIF } from '@/lib/zimmet/constants'
 
 export const dynamic = 'force-dynamic'
 
@@ -73,6 +74,11 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   const { error } = await requirePermission('zimmet-formu.approve')
   if (error) return error
+
+  // Kilit: bildirim de damga da yok (bkz. DEVIR_BILDIRIM_AKTIF).
+  if (!DEVIR_BILDIRIM_AKTIF) {
+    return NextResponse.json({ error: 'Devir bildirimi geçici olarak kapalı' }, { status: 409 })
+  }
 
   let userIds: string[] | null = null
   try {

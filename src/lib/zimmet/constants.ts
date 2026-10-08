@@ -10,6 +10,11 @@ export const APPROVER_USER_ID = 'ad_melih.dilben'
 export const APPROVER_EMAIL = 'melih.dilben@ilerigroup.com'
 export const APPROVER_NAME = 'Melih Dilben'
 
+// Devir bildirimi kilidi: false iken liste ekranındaki "Devir bildirimi gönder" butonu
+// gizlenir, devir-bildirim-gonder POST'u 409 döner, devir-hatirlatma cron'u hiçbir şey
+// göndermez. Teslim koşulları düzeltmesi canlıya çıkınca true yapılacak.
+export const DEVIR_BILDIRIM_AKTIF: boolean = false
+
 export function getZimmetDurumRozeti(zimmet: {
   durum: string
   imzaModu: string | null

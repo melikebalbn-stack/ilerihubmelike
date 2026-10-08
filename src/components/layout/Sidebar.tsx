@@ -363,6 +363,7 @@ const pdksMenuItems = [
   { name: "Cihazlar & Kapılar", icon: DoorOpen, href: "/pdks/cihazlar", roles: [] as string[], permission: ["pdks.manage"] },
   { name: "Anomaliler", icon: ShieldAlert, href: "/pdks/anomaliler", roles: [] as string[], permission: ["pdks.manage"] },
   { name: "IFS Puantaj Aktarımı", icon: ArrowRightLeft, href: "/pdks/ifs-aktarim", roles: [] as string[], permission: ["pdks.manage"] },
+  { name: "Ayarlar", icon: Settings, href: "/pdks/ayarlar", roles: [] as string[], permission: ["pdks.manage"] },
 ]
 
 // İV › İzin alt grubu — sayfa guard'larıyla birebir (permission; PDKS deseni). Faz 2: Bakiyeler,

@@ -341,7 +341,7 @@ export default function EditVisitReportPage() {
   }
 
   return (
-    <div className="container mx-auto py-6 space-y-6">
+    <div className="space-y-6">
       <div className="flex items-center gap-4">
         <Link href={`/forms/visit-reports/${id}`}>
           <Button variant="ghost" size="icon">
@@ -349,7 +349,7 @@ export default function EditVisitReportPage() {
           </Button>
         </Link>
         <div>
-          <h1 className="text-lg lg:text-2xl font-bold">Raporu Duzenle</h1>
+          <h1 className="text-lg lg:text-xl font-semibold">Raporu Duzenle</h1>
           <p className="text-muted-foreground">
             {reportNumber} - {companyName}
           </p>

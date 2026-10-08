@@ -388,7 +388,7 @@ export default function EditOvertimeFormPage() {
             <Clock className="h-6 w-6 text-teal-700" />
           </div>
           <div>
-            <h1 className="text-lg font-bold text-gray-900">{kind.toUpperCase() === "VARDIYA" ? "VARDİYA" : "MESAİ"} FORMU DÜZENLE</h1>
+            <h1 className="text-xl font-semibold text-gray-900">{kind.toUpperCase() === "VARDIYA" ? "VARDİYA" : "MESAİ"} FORMU DÜZENLE</h1>
             <p className="text-sm text-gray-500">{formNo}</p>
           </div>
         </div>

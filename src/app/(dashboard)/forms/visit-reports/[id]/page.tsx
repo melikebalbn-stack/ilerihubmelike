@@ -319,7 +319,7 @@ export default function VisitReportDetailPage() {
         }
       `}</style>
 
-      <div className="container mx-auto py-6 space-y-6">
+      <div className="space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between no-print">
           <div className="flex items-center gap-4">
@@ -330,7 +330,7 @@ export default function VisitReportDetailPage() {
             </Link>
             <div>
               <div className="flex items-center gap-3">
-                <h1 className="text-lg lg:text-2xl font-bold">{report.reportNumber}</h1>
+                <h1 className="text-lg lg:text-xl font-semibold">{report.reportNumber}</h1>
                 <Badge variant={statusLabels[report.status]?.variant || "secondary"}>
                   {statusLabels[report.status]?.label || report.status}
                 </Badge>
@@ -382,7 +382,7 @@ export default function VisitReportDetailPage() {
           <div className="hidden print:block mb-6 pb-4 border-b-2 border-[#1e3a5f]">
             <div className="flex justify-between items-start">
               <div>
-                <h1 className="text-xl font-bold text-[#1e3a5f]">İLERİ GRUP</h1>
+                <h1 className="text-xl font-semibold text-[#1e3a5f]">İLERİ GRUP</h1>
                 <p className="text-xs text-gray-600">Savunma Sanayi Çözümleri</p>
               </div>
               <div className="text-right">

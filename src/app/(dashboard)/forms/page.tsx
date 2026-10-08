@@ -36,7 +36,7 @@ const formTypes = [
 
 export default function FormsPage() {
   return (
-    <div className="container mx-auto py-6 space-y-6">
+    <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-xl lg:text-3xl font-bold">Formlar</h1>

@@ -233,9 +233,13 @@ export async function runIsEmriSync(opts: { dryRun?: boolean; batch?: number } =
         data: { hash: yeni.hash, payload: asJson({ baslik: yeni.baslik, operasyonlar: yeni.operasyonlar }) },
       })
     } else {
+      // Syteline'da artık serbest (stat='R') değil → saklı payload. Eski payload'larda IFS'in zorunlu
+      // OperationDescription alanı yok (ORA-20124) → eksikse mapper'daki biçimle tamamla.
       const p = kayit.payload as Payload | null
       baslik = p?.baslik
-      operasyonlar = p?.operasyonlar
+      operasyonlar = p?.operasyonlar?.map((o) =>
+        o.OperationDescription ? o : { ...o, OperationDescription: `Op ${o.OperationNo} ${o.WorkCenterNo}`.slice(0, 35) },
+      )
     }
     if (!baslik || !operasyonlar) continue
 

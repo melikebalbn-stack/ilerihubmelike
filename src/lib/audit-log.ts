@@ -77,6 +77,8 @@ export type AuditTargetType =
   // PDKS puantaj. action: PDKS_PUANTAJ_KILITLENDI / _KILIT_ACILDI (targetId "bas..bit"),
   // PDKS_PUANTAJ_HESAPLANDI (elle yeniden hesap), PDKS_PUANTAJ_EXPORT (Excel).
   | 'PDKS_PUANTAJ'
+  // PDKS geçiş kayıtları. action: PDKS_GECIS_EXPORT (Excel; targetId = gün). Kimlik bilgisi YOK.
+  | 'PDKS_GECIS'
   // PDKS vardiya / mola / personel-vardiya ataması. action: PDKS_VARDIYA_* / PDKS_MOLA_* / PDKS_ATAMA_*
   | 'PDKS_VARDIYA'
   // İzin defteri. action: IZIN_ACILIS_IMPORT (targetId boş, özet) / IZIN_HAK_EDIS_YAZILDI (cron özeti) /

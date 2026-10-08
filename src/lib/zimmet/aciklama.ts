@@ -5,9 +5,13 @@
 // Önceden zimmetlerim/ZimmetlerimListesi.tsx içinde yerel bir kopyası vardı
 // (temizAciklama) - tüm gösterim noktalarının (Düzenle dialogu, Liste, detay/
 // onay/imzala sayfaları, PDF) AYNI mantığı kullanması için buraya taşındı.
-const SYTELINE_DEVIR_ONEKI = /^\s*\[Syteline devri\]\s*/
+// IT listesi aktarımının "[IT listesi 10.2026]" damgası da (tarih ne olursa olsun) aynı
+// şekilde yalnız gösterimde temizlenir; baştaki birden fazla damga da atılır.
+const TEKNIK_ONEK = /^\s*(?:\[Syteline devri\]|\[IT listesi [^\]]*\])\s*/
 
 export function temizleAciklama(aciklama: string | null | undefined): string {
   if (!aciklama) return ''
-  return aciklama.replace(SYTELINE_DEVIR_ONEKI, '').trim()
+  let s = aciklama
+  while (TEKNIK_ONEK.test(s)) s = s.replace(TEKNIK_ONEK, '')
+  return s.trim()
 }

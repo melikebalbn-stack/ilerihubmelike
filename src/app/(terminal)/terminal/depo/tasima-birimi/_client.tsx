@@ -9,7 +9,7 @@ import { useScanner } from '@/lib/depo/use-scanner'
 import { miktarOku, rezerveMesaji } from '@/lib/depo/miktar'
 import { paletNoAday, type EtiketKaynak } from '@/lib/depo/etiket-parse'
 import { TERMINAL_ACCENT } from '../../_shared'
-import type { HuStokSatiri, Palet, PaletIcerik, PaletTuru } from '@/lib/ifs/tasima-birimi'
+import type { HuStokSatiri, Palet, PaletAramaSonuc, PaletIcerik, PaletTuru } from '@/lib/ifs/tasima-birimi'
 import type { StokBilgisiSatir } from '@/lib/ifs/stok-bilgisi'
 
 type Mod = 'MENU' | 'OLUSTUR' | 'ICERIK' | 'TASI' | 'DEGISTIR'
@@ -69,6 +69,8 @@ export function TasimaBirimiClient({ baslangicPalet = null }: { baslangicPalet?:
   const [degSatir, setDegSatir] = useState<PaletIcerik | null>(null)
   const [degMiktar, setDegMiktar] = useState('')
   const [hedefPalet, setHedefPalet] = useState<Palet | null>(null)
+  // Palet/kutu arama sonuçları (numara, tür kodu, SSCC, lokasyon) — hangi alan için arandığıyla.
+  const [arama, setArama] = useState<{ q: string; alan: 'PALET' | 'HEDEF_PALET'; sonuclar: PaletAramaSonuc[] } | null>(null)
 
   const showError = useCallback((msg: string) => {
     setErrorMsg(msg)
@@ -89,7 +91,7 @@ export function TasimaBirimiClient({ baslangicPalet = null }: { baslangicPalet?:
   const sifirla = useCallback(() => {
     setPalet(null); setOlusan(null); setEkleAcik(false); setEkleAdim('LOKASYON'); setLokasyon(''); setAdaylar(null)
     setSecAday(null); setMiktar(''); setCikarSatir(null); setCikarMiktar(''); setHedefLok(''); setDegSatir(null)
-    setDegMiktar(''); setHedefPalet(null); setManualOpen(false); setManualVal('')
+    setDegMiktar(''); setHedefPalet(null); setManualOpen(false); setManualVal(''); setArama(null)
   }, [])
   const modAc = (m: Mod) => { sifirla(); setMod(m) }
 
@@ -206,6 +208,7 @@ export function TasimaBirimiClient({ baslangicPalet = null }: { baslangicPalet?:
   }
 
   const alan: Alan = (() => {
+    if (mod === 'MENU') return 'PALET'
     if (mod === 'ICERIK') return !palet ? 'PALET' : ekleAcik ? (ekleAdim === 'LOKASYON' ? 'LOKASYON' : 'MALZEME') : cikarSatir ? null : 'PALET'
     if (mod === 'TASI') return !palet ? 'PALET' : 'HEDEF_LOK'
     if (mod === 'DEGISTIR') return !palet ? 'PALET' : degSatir && !hedefPalet ? 'HEDEF_PALET' : null
@@ -216,12 +219,16 @@ export function TasimaBirimiClient({ baslangicPalet = null }: { baslangicPalet?:
     const s = v.trim()
     if (!s || !alan) return
     if (alan === 'PALET' || alan === 'HEDEF_PALET') {
-      const id = paletNoOf(s)
-      if (!id) return showError(`Geçersiz palet no: ${s}`)
-      if (alan === 'HEDEF_PALET' && palet && id === palet.id) return showError('Hedef palet kaynakla aynı')
-      const p = await paletYukle(id)
-      if (!p) return
-      if (alan === 'PALET') { sifirla(); setPalet(p) } else setHedefPalet(p)
+      // Palet etiketi "P1620" → doğrudan aç. Çıplak sayı, tür kodu, SSCC, lokasyon → ara; tek sonuç açılır.
+      const etiketNo = /^[Pp]\d+$/.test(s) ? paletNoOf(s) : null
+      if (etiketNo) return void paletSec(etiketNo, alan)
+      const d = await api(`/api/depo/tasima-birimi/ara?q=${encodeURIComponent(s)}`)
+      if (!d) return
+      const sonuclar = (d.sonuclar ?? []) as PaletAramaSonuc[]
+      if (!sonuclar.length) return showError(`Palet / kutu bulunamadı: ${s}`)
+      const tam = sonuclar.filter((x) => String(x.id) === s)
+      if (sonuclar.length === 1 || tam.length === 1) return void paletSec((tam[0] ?? sonuclar[0]).id, alan)
+      setArama({ q: s, alan, sonuclar })
       return
     }
     if (alan === 'LOKASYON') return void lokasyonOkut(s)
@@ -231,6 +238,16 @@ export function TasimaBirimiClient({ baslangicPalet = null }: { baslangicPalet?:
       setHedefLok(s)
     }
   }
+  async function paletSec(id: number, hangi: 'PALET' | 'HEDEF_PALET') {
+    if (hangi === 'HEDEF_PALET' && palet && id === palet.id) return showError('Hedef palet kaynakla aynı')
+    const p = await paletYukle(id)
+    if (!p) return
+    setArama(null)
+    if (hangi === 'HEDEF_PALET') return setHedefPalet(p)
+    const hedefMod = mod === 'MENU' ? 'ICERIK' : mod
+    sifirla(); setMod(hedefMod); setPalet(p)
+  }
+
   const { inputProps } = useScanner(!!alan && !manualOpen && !loading, (v) => void dispatch(v, 'okutma'))
   const submitManual = () => {
     const v = manualVal.trim()
@@ -240,11 +257,11 @@ export function TasimaBirimiClient({ baslangicPalet = null }: { baslangicPalet?:
   }
 
   const serit: Record<Exclude<Alan, null>, { baslik: string; alt: string }> = {
-    PALET: { baslik: 'Palet okut', alt: 'taşıma birimi numarası' },
+    PALET: { baslik: 'Palet / kutu okut ya da ara', alt: 'numara, tür kodu, SSCC ya da lokasyon' },
     LOKASYON: { baslik: 'Lokasyon okut', alt: 'eklenecek malzemenin rafı' },
     MALZEME: { baslik: 'Malzeme barkodu okut', alt: palet?.lokasyonNo && lokasyon && palet.lokasyonNo !== lokasyon ? `lokasyon ${lokasyon} · palet ${palet.lokasyonNo}'ten buraya taşınacak` : `lokasyon ${lokasyon}` },
     HEDEF_LOK: { baslik: 'Hedef lokasyonu okut', alt: 'paletin gideceği raf' },
-    HEDEF_PALET: { baslik: 'Hedef paleti okut', alt: 'aktarılacak palet' },
+    HEDEF_PALET: { baslik: 'Hedef palet / kutu okut ya da ara', alt: 'numara, tür kodu, SSCC ya da lokasyon' },
   }
   const baslik = mod === 'MENU' ? 'Taşıma Birimi' : KARTLAR.find((k) => k.mod === mod)?.label ?? ''
 
@@ -303,8 +320,7 @@ export function TasimaBirimiClient({ baslangicPalet = null }: { baslangicPalet?:
           {manualOpen ? (
             <div className="flex w-full gap-2">
               <input autoFocus value={manualVal} onChange={(e) => setManualVal(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && submitManual()}
-                inputMode={alan === 'PALET' || alan === 'HEDEF_PALET' ? 'numeric' : undefined}
-                placeholder={alan === 'PALET' || alan === 'HEDEF_PALET' ? 'Palet no' : alan === 'MALZEME' ? 'Stok no' : 'Lokasyon'}
+                placeholder={alan === 'PALET' || alan === 'HEDEF_PALET' ? 'Palet/kutu no, tür kodu, SSCC, lokasyon' : alan === 'MALZEME' ? 'Stok no' : 'Lokasyon'}
                 className="h-11 flex-1 rounded-xl border bg-background px-3 text-base outline-none focus:ring-1 focus:ring-ring" />
               <button type="button" onClick={submitManual} className="h-11 rounded-xl px-4 text-sm font-semibold text-white" style={{ background: TERMINAL_ACCENT }}>Getir</button>
             </div>
@@ -315,6 +331,25 @@ export function TasimaBirimiClient({ baslangicPalet = null }: { baslangicPalet?:
       )}
 
       {loading && <div className="flex items-center justify-center gap-2 py-4 text-sm text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin" /> IFS ile işlem yapılıyor…</div>}
+
+      {/* Palet / kutu arama sonuçları */}
+      {arama && !loading && (alan === arama.alan) && (
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <div className="text-sm font-semibold" style={{ color: TERMINAL_ACCENT }}>&quot;{arama.q}&quot; · {arama.sonuclar.length} sonuç{arama.sonuclar.length === 50 ? '+' : ''}</div>
+            <button type="button" onClick={() => setArama(null)} aria-label="Kapat" className="flex h-8 w-8 items-center justify-center rounded-lg border"><X className="h-4 w-4" /></button>
+          </div>
+          {arama.sonuclar.map((x) => (
+            <button key={x.id} type="button" onClick={() => void paletSec(x.id, arama.alan)} className="flex items-center justify-between gap-2 rounded-2xl border bg-card p-3 text-left active:opacity-70" style={{ borderColor: TERMINAL_ACCENT }}>
+              <div className="min-w-0">
+                <div className="font-semibold">{x.kategori === 'PALLET' ? 'Palet' : 'Birim'} {x.id}</div>
+                <div className="truncate text-xs text-muted-foreground">{x.tur}{x.turAdi ? ` · ${x.turAdi}` : ''}{x.sscc ? ` · SSCC ${x.sscc}` : ''}</div>
+              </div>
+              <span className="flex shrink-0 items-center gap-1 text-sm font-semibold"><MapPin className="h-4 w-4" /> {x.lokasyonNo || '—'}</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* OLUŞTUR */}
       {mod === 'OLUSTUR' && !loading && (

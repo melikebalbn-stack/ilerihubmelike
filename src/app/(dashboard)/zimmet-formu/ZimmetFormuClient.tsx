@@ -83,7 +83,9 @@ export function ZimmetFormuClient({ teslimEdenAdi }: Props) {
   // (kullanıcı boş formla ilerleyip Adım 4'te imzalayamasın diye).
   const step1EksikAlanlar = zimmetEksikZorunluAlanlar(step1)
   const step1IlerlemeEngelli = step === 0 && step1EksikAlanlar.length > 0
-  const ileriDisabled = isLastStep || step1IlerlemeEngelli
+  // Son adımda "İleri" gösterilmez - işlem adımın içindeki "Onayla gönder" ile yapılır;
+  // gönderim başarılı olunca yerine "Bitir" çıkar (Zimmetlerim'e götürür).
+  const ileriDisabled = step1IlerlemeEngelli
 
   // Adım 1'de "Geri" artık disabled değil - formdan tamamen çıkıp listeye
   // (yetkisi yoksa dashboard'a) döner. Form doldurulmuşsa veri kaybı uyarısı
@@ -166,26 +168,38 @@ export function ZimmetFormuClient({ teslimEdenAdi }: Props) {
             <ChevronLeft className="w-4 h-4 mr-1" />
             Geri
           </Button>
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span className={step1IlerlemeEngelli ? 'cursor-not-allowed' : ''}>
-                  <Button
-                    type="button"
-                    onClick={nextStep}
-                    disabled={ileriDisabled}
-                    className="bg-[#1B4F72] hover:bg-[#1B4F72]/90"
-                  >
-                    İleri
-                    <ChevronRight className="w-4 h-4 ml-1" />
-                  </Button>
-                </span>
-              </TooltipTrigger>
-              {step1IlerlemeEngelli && (
-                <TooltipContent>Eksik: {step1EksikAlanlar.join(', ')}</TooltipContent>
-              )}
-            </Tooltip>
-          </TooltipProvider>
+          {!isLastStep && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className={step1IlerlemeEngelli ? 'cursor-not-allowed' : ''}>
+                    <Button
+                      type="button"
+                      onClick={nextStep}
+                      disabled={ileriDisabled}
+                      className="bg-[#1B4F72] hover:bg-[#1B4F72]/90"
+                    >
+                      İleri
+                      <ChevronRight className="w-4 h-4 ml-1" />
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                {step1IlerlemeEngelli && (
+                  <TooltipContent>Eksik: {step1EksikAlanlar.join(', ')}</TooltipContent>
+                )}
+              </Tooltip>
+            </TooltipProvider>
+          )}
+          {isLastStep && submitStatus === 'success' && (
+            <Button
+              type="button"
+              onClick={() => router.push('/zimmet-formu/zimmetlerim')}
+              className="bg-[#1B4F72] hover:bg-[#1B4F72]/90"
+            >
+              Bitir
+              <ChevronRight className="w-4 h-4 ml-1" />
+            </Button>
+          )}
         </div>
       </div>
 

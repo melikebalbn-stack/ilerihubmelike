@@ -201,6 +201,67 @@ export async function paletGetir(id: number): Promise<Palet | null> {
   }
 }
 
+export interface PaletAramaSonuc {
+  id: number
+  tur: string
+  turAdi: string
+  kategori: string
+  lokasyonNo: string
+  sscc: string
+}
+
+/**
+ * Taşıma birimi (palet/kutu) arama — bu sitenin HandlingUnits kayıtlarında: numara, tür kodu (öneki),
+ * SSCC, alternatif etiket no ya da lokasyon. Alan başına ayrı sorgu: bir alan bu ortamda filtrelenemiyorsa
+ * (400) o sorgu sessizce atlanır, diğerleri sonucu verir. En fazla 50 sonuç, en yeni önce.
+ */
+export async function paletAra(q: string): Promise<PaletAramaSonuc[]> {
+  const v = q.trim()
+  if (!v) return []
+  const { contract } = getIfsConfig()
+  const e = esc(v)
+  const kosullar: string[] = [
+    `startswith(HandlingUnitTypeId,'${e}')`,
+    `Sscc eq '${e}'`,
+    `AltHandlingUnitLabelId eq '${e}'`,
+    `LocationNo eq '${e}'`,
+  ]
+  if (/^\d+$/.test(v) && Number.isSafeInteger(Number(v))) kosullar.unshift(`HandlingUnitId eq ${Number(v)}`)
+  type Raw = { HandlingUnitId?: number; HandlingUnitTypeId?: string; HandlingUnitTypeDescription?: string; HandlingUnitCategoryId?: string; LocationNo?: string; Sscc?: string }
+  const sonuclar = await Promise.allSettled(
+    kosullar.map((k) =>
+      istek<{ value?: Raw[] }>(
+        'GET',
+        `HandlingUnitsHandling.svc/HandlingUnits?$filter=${encodeURIComponent(`Contract eq '${esc(contract)}' and ${k}`)}&$orderby=HandlingUnitId desc&$top=50`,
+      ),
+    ),
+  )
+  const map = new Map<number, Raw>()
+  for (const r of sonuclar) {
+    if (r.status !== 'fulfilled' || r.value.status !== 200) continue
+    for (const x of r.value.body?.value ?? []) {
+      const id = num(x.HandlingUnitId)
+      if (id && !map.has(id)) map.set(id, x)
+    }
+  }
+  const turler = map.size ? await paletTurleri().catch(() => [] as PaletTuru[]) : []
+  return [...map.values()]
+    .sort((a, b) => num(b.HandlingUnitId) - num(a.HandlingUnitId))
+    .slice(0, 50)
+    .map((x) => {
+      const tur = str(x.HandlingUnitTypeId)
+      const t = turler.find((y) => y.id === tur)
+      return {
+        id: num(x.HandlingUnitId),
+        tur,
+        turAdi: str(x.HandlingUnitTypeDescription) || t?.ad || '',
+        kategori: str(x.HandlingUnitCategoryId) || t?.kategori || '',
+        lokasyonNo: str(x.LocationNo),
+        sscc: str(x.Sscc),
+      }
+    })
+}
+
 /** Lokasyon ILER2'de tanımlı mı (hedef lokasyon doğrulama). */
 export async function lokasyonVarMi(locationNo: string): Promise<boolean> {
   const { contract } = getIfsConfig()

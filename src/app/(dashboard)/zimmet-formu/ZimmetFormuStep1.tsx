@@ -142,6 +142,20 @@ export function ZimmetFormuStep1({
     // döndürür - gerçek id'yi kokTanimlar'dan bul (kök kayıt yoksa null kalır,
     // alt-dal kutusu yine dropdown gösterir, sentinel parentId ile - bkz. render).
     setTurAilesiId(ad === YAZILIM_KOK_ADI ? (kokTanimlar.find((t) => t.ad === YAZILIM_KOK_ADI)?.id ?? null) : id)
+    // kokTanimlar mount'ta bir kez çekiliyor - "+ Yeni tür ekle" ile O AN
+    // oluşturulan (veya kalemle yeniden adlandırılan) kök bu listede yok/eski
+    // adla duruyor. Yukarıdaki useEffect data.tur değişince turAilesiId'yi
+    // kokTanimlar'dan yeniden türettiği için kök bulunamayınca null'a düşüp
+    // alt-dal kutusunu gizliyordu. Seçilen kök id'siyle listeye eklenir/adı
+    // güncellenir - effect aynı id'yi bulur, kutu görünür kalır.
+    if (id && ad !== YAZILIM_KOK_ADI) {
+      setKokTanimlar((onceki) => {
+        const i = onceki.findIndex((t) => t.id === id)
+        if (i === -1) return [...onceki, { id, ad }]
+        if (onceki[i].ad === ad) return onceki
+        return onceki.map((t) => (t.id === id ? { id, ad } : t))
+      })
+    }
     setAltDalSecimi('')
     setField('turDiger', '')
   }
@@ -272,8 +286,12 @@ export function ZimmetFormuStep1({
 
         {(turAilesiId || data.tur === YAZILIM_KOK_ADI) && (
           <div className="space-y-2">
+            {/* Özel (ZimmetTanim) türde alt-dal HER ZAMAN görünür ve opsiyoneldir -
+                hiç alt-dalı olmayan yeni bir türde de "+ Yeni alt dal ekle" ile ilk
+                alt-dal eklenebilir. Seçilmezse turDiger = "Tür", seçilirse
+                "Tür · Alt dal" (bkz. tur.ts ozelTurKaydi). */}
             <Label htmlFor="turDiger">
-              {data.tur === YAZILIM_KOK_ADI ? 'Hangi yazılım?' : `${data.tur} - alt tür`}{' '}
+              {data.tur === YAZILIM_KOK_ADI ? 'Hangi yazılım?' : 'Alt dal'}{' '}
               {data.tur === YAZILIM_KOK_ADI ? <RequiredMark /> : <OptionalMark />}
             </Label>
             {/* "Yazılım" kök id'si (henüz) çözülemediyse (tablo migration'ı
@@ -290,9 +308,9 @@ export function ZimmetFormuStep1({
               onValueChange={handleAltDalSecimi}
               sabitSecenekler={data.tur === YAZILIM_KOK_ADI ? [...YAZILIM_ALT_DAL_SABIT_SECENEKLERI] : []}
               haricTutulacaklar={data.tur === YAZILIM_KOK_ADI ? [...YAZILIM_ALT_DAL_SABIT_SECENEKLERI] : []}
-              placeholder={data.tur === YAZILIM_KOK_ADI ? 'Yazılım seçin' : 'Alt tür seçin'}
+              placeholder={data.tur === YAZILIM_KOK_ADI ? 'Yazılım seçin' : `${data.tur} için alt dal seçin`}
               aramaPlaceholder="Ara..."
-              ekleEtiketi="Yeni alt-dal ekle"
+              ekleEtiketi="Yeni alt dal ekle"
               className={
                 data.tur === YAZILIM_KOK_ADI && !altDalSecimi
                   ? 'border-rose-300 ring-1 ring-rose-200'
@@ -303,7 +321,7 @@ export function ZimmetFormuStep1({
               <Input
                 value={data.turDiger}
                 onChange={(e) => setField('turDiger', e.target.value)}
-                placeholder={data.tur === YAZILIM_KOK_ADI ? 'Yazılımı yazın' : 'Alt türü yazın'}
+                placeholder={data.tur === YAZILIM_KOK_ADI ? 'Yazılımı yazın' : 'Alt dalı yazın'}
                 className={
                   data.tur === YAZILIM_KOK_ADI && !data.turDiger.trim()
                     ? 'border-rose-300 ring-1 ring-rose-200'

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { ZimmetOnayDurumu, ZimmetKaynak } from '@/generated/prisma'
 import { dispatchZimmetDevirOnayIstegi } from '@/lib/zimmet/notifications'
+import { DEVIR_BILDIRIM_AKTIF } from '@/lib/zimmet/constants'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,6 +20,11 @@ export async function GET(request: NextRequest) {
   const secret = request.headers.get('x-cron-secret')
   if (!secret || secret !== process.env.CRON_SECRET) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  // Kilit: hiçbir bildirim gönderilmez, damga yapılmaz (bkz. DEVIR_BILDIRIM_AKTIF).
+  if (!DEVIR_BILDIRIM_AKTIF) {
+    return NextResponse.json({ ok: true, gonderilen: 0, atlandi: 'DEVIR_BILDIRIM_AKTIF=false' })
   }
 
   const esik = new Date(Date.now() - HATIRLATMA_ESIGI_MS)

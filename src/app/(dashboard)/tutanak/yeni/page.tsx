@@ -2,11 +2,9 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import Link from "next/link"
-import { ArrowLeft, FileWarning, ShieldAlert, X } from "lucide-react"
+import { FileWarning, X } from "lucide-react"
 import { toast } from "sonner"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
+import { SplitBadge } from "@/components/akademi/SplitBadge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -130,34 +128,23 @@ export default function YeniTutanakPage() {
   }
 
   return (
-    <div className="container mx-auto px-6 py-8 max-w-3xl space-y-6">
-      <div>
-        <Button variant="ghost" size="sm" asChild className="mb-2 -ml-2">
-          <Link href="/tutanak">
-            <ArrowLeft className="h-4 w-4 mr-1" />
-            Tutanaklar
-          </Link>
-        </Button>
-        <h1 className="text-2xl font-bold text-[#1B4F72] flex items-center gap-2">
-          <FileWarning className="h-6 w-6" />
-          Yeni Tutanak
-        </h1>
-        <p className="text-sm text-slate-500 mt-1">IV-FR-03 · Tutanak Formu</p>
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="flex items-center gap-2 text-xl font-semibold">
+            <FileWarning className="h-5 w-5" /> Yeni Tutanak
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            IV-FR-03 · Bölüm ve görev kayıt anında saklanır · Hakkında tutanak tutulan personel bu
+            tutanağı göremez.
+          </p>
+        </div>
+        <SplitBadge color="gray" left="Liste" right="Tutanaklar" href="/tutanak" />
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm text-amber-900">
-        <ShieldAlert className="h-4 w-4 shrink-0" />
-        Gizli kayıt — hakkında tutanak tutulan personel bu tutanağı göremez.
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Tutanak Bilgisi</CardTitle>
-          <CardDescription>
-            Bölüm ve görev KAYIT ANINDA saklanır; personel sonradan transfer olursa tutanak değişmez.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-5">
+      <div className="space-y-4 rounded-2xl border bg-white p-6 shadow-sm">
+        <p className="text-sm font-medium text-slate-600">Tutanak Bilgisi</p>
+        <div className="space-y-5">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <Label className="text-xs text-slate-600">Personel *</Label>
@@ -209,15 +196,17 @@ export default function YeniTutanakPage() {
               placeholder="Olayın ne zaman, nerede ve nasıl gerçekleştiğini yazın."
             />
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Şahitler</CardTitle>
-          <CardDescription>En az bir şahit zorunlu. Onaylar paralel ilerler; biri reddederse tutanak reddedilir.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
+      <div className="space-y-4 rounded-2xl border bg-white p-6 shadow-sm">
+        <div>
+          <p className="text-sm font-medium text-slate-600">Şahitler</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            En az bir şahit zorunlu. Onaylar paralel ilerler; biri reddederse tutanak reddedilir.
+          </p>
+        </div>
+        <div className="space-y-3">
           <AramaliSecim
             secenekler={sahitSecenekleri.map((p) => ({
               id: p.id,
@@ -252,17 +241,17 @@ export default function YeniTutanakPage() {
               })}
             </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Onaylayacak Yönetici</CardTitle>
-          <CardDescription>
+      <div className="space-y-4 rounded-2xl border bg-white p-6 shadow-sm">
+        <div>
+          <p className="text-sm font-medium text-slate-600">Onaylayacak Yönetici</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
             Personelin organizasyon şemasındaki 1. veya 2. yöneticisi arasından seçilir.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
+          </p>
+        </div>
+        <div className="space-y-3">
           {!personnelId ? (
             <p className="text-sm text-slate-500">Önce personel seçin.</p>
           ) : yoneticiUyari ? (
@@ -300,16 +289,24 @@ export default function YeniTutanakPage() {
               Seçilen yönetici zincirin en üstü — ayrı bir son yönetici bilgilendirmesi gönderilmez.
             </p>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
-      <div className="flex items-center justify-end gap-2 pb-6">
-        <Button variant="outline" disabled={!gecerli || kaydediyor} onClick={() => kaydet(false)}>
-          Taslak Kaydet
-        </Button>
-        <Button className="bg-[#1B4F72] hover:bg-[#1B4F72]/90" disabled={!gecerli || kaydediyor} onClick={() => kaydet(true)}>
-          Kaydet ve Şahit Onayına Gönder
-        </Button>
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <SplitBadge
+          color="gray"
+          left="Tutanak"
+          right={kaydediyor ? "Kaydediliyor..." : "Taslak Kaydet"}
+          onClick={() => void kaydet(false)}
+          disabled={!gecerli || kaydediyor}
+        />
+        <SplitBadge
+          color="green"
+          left="Şahit onayı"
+          right={kaydediyor ? "Gönderiliyor..." : "Kaydet ve Gönder"}
+          onClick={() => void kaydet(true)}
+          disabled={!gecerli || kaydediyor}
+        />
       </div>
     </div>
   )

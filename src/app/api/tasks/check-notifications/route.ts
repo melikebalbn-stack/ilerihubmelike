@@ -3,6 +3,17 @@ import { prisma } from '@/lib/prisma'
 import { TaskStatus, TaskEmailType } from '@/generated/prisma'
 import { sendEmail } from '@/lib/email'
 import { requireUser } from '@/lib/auth/require-user'
+import {
+  gorevHatirlatmaAlicilariAdli,
+  sorumluSatiri,
+  type GorevAlicisi,
+} from '@/lib/tasks/hatirlatma-alicilari'
+
+/**
+ * Sorumlusu çözülemeyen görevlerin özet raporu BU adrese gider — görev başına
+ * ayrı mail YOK (Melih kararı, 08.10.2026).
+ */
+const COZULEMEYEN_RAPOR_ADRESI = 'melih.dilben@ilerigroup.com'
 
 /**
  * POST /api/tasks/check-notifications
@@ -29,24 +40,15 @@ export async function POST(request: NextRequest) {
     let notificationsSent = 0
     let errors = 0
 
-    // Get notification email recipients (use calibration notification emails)
-    const notificationEmails = await prisma.calibrationNotificationEmail.findMany({
-      where: { isActive: true },
-    })
-
-    if (notificationEmails.length === 0) {
-      console.log('⚠️ No notification email recipients configured')
-      return NextResponse.json({
-        success: true,
-        message: 'No notification recipients configured',
-        stats: { notificationsSent: 0, errors: 0 },
-      })
-    }
-
-    const adminRecipients = notificationEmails.map((e) => ({
-      email: e.email,
-      name: e.name || e.email,
-    }))
+    // ALICI = YALNIZ görevin sorumluları (lib/tasks/hatirlatma-alicilari).
+    //
+    // KALDIRILDI (08.10.2026): alıcı listesi `CalibrationNotificationEmail`
+    // tablosundan geliyordu — KALİBRASYON bildirim listesi planlı görev
+    // hatırlatmasına bağlanmış. Prod'da 6 aktif satır / 3 tekil adres vardı
+    // (her adres mükerrer), sonuç: görevle ilgisiz üç kişiye, her birine iki
+    // kez yazılmış mail; sorumluya ise AYRI bir mail. Artık tek mail, tek
+    // kaynak, CC yok, admin/sistem rolü alıcı değil.
+    const cozulemeyenler: { title: string; dueDate: Date; sebep: string }[] = []
 
     // Get active tasks that are not completed or cancelled
     const tasks = await prisma.plannedTask.findMany({
@@ -89,17 +91,30 @@ export async function POST(request: NextRequest) {
           continue
         }
 
-        // Send reminder notification
+        // TEK mail, TEK alıcı kümesi: görevin sorumluları. Eskiden iki ayrı
+        // gönderim vardı (admin listesi + "kişisel"); ikisi birleştirildi.
+        const alicilar: GorevAlicisi[] = gorevHatirlatmaAlicilariAdli(task)
+        if (alicilar.length === 0) {
+          // Mail GÖNDERİLMEZ; görev başına ayrı mail yerine tek özet rapora girer.
+          cozulemeyenler.push({
+            title: task.title,
+            dueDate: task.dueDate,
+            sebep: task.responsibleDepartment
+              ? `yalnız bölüme atanmış (${task.responsibleDepartment}), kişi sorumlusu yok`
+              : 'sorumlu e-postası yok ya da çözülemedi',
+          })
+          continue
+        }
+
         const subject = generateReminderSubject(task, daysUntilDue)
         const body = generateReminderBody(task, daysUntilDue)
 
         try {
-          // Send to admin recipients
-          const result = await sendEmail(adminRecipients, subject, body)
+          const result = await sendEmail(alicilar, subject, body)
 
           if (result.success) {
             notificationsSent++
-            console.log(`✅ Sent reminder for task: ${task.title} (${daysUntilDue} days)`)
+            console.log(`✅ Sent reminder for task: ${task.title} (${daysUntilDue} days) → ${alicilar.map((a) => a.email).join(', ')}`)
 
             await prisma.taskEmailLog.create({
               data: {
@@ -108,7 +123,7 @@ export async function POST(request: NextRequest) {
                 subject,
                 body: `Reminder sent: ${daysUntilDue} days until due`,
                 status: 'SENT',
-                recipientEmails: adminRecipients.map((r) => r.email).join(', '),
+                recipientEmails: alicilar.map((r) => r.email).join(', '),
               },
             })
           } else {
@@ -118,27 +133,6 @@ export async function POST(request: NextRequest) {
         } catch (error) {
           errors++
           console.error('❌ Error sending reminder:', error)
-        }
-
-        // Send to responsible person if assigned
-        if (task.responsiblePersonEmail) {
-          try {
-            const personalSubject = `⚠️ Görev Hatırlatması: ${task.title}`
-            const personalBody = generatePersonalReminderBody(task, daysUntilDue)
-            const personalRecipients = [{
-              email: task.responsiblePersonEmail,
-              name: task.responsiblePerson || task.responsiblePersonEmail,
-            }]
-
-            const personalResult = await sendEmail(personalRecipients, personalSubject, personalBody)
-
-            if (personalResult.success) {
-              notificationsSent++
-              console.log(`✅ Sent personal reminder to ${task.responsiblePerson}`)
-            }
-          } catch (error) {
-            console.error(`❌ Error sending personal reminder:`, error)
-          }
         }
       }
 
@@ -162,29 +156,66 @@ export async function POST(request: NextRequest) {
           const overdueSubject = `🚨 GECİKMİŞ GÖREV: ${task.title}`
           const overdueBody = generateOverdueBody(task, Math.abs(daysUntilDue))
 
-          try {
-            const result = await sendEmail(adminRecipients, overdueSubject, overdueBody)
+          const gecikmisAlicilar: GorevAlicisi[] = gorevHatirlatmaAlicilariAdli(task)
+          if (gecikmisAlicilar.length === 0) {
+            cozulemeyenler.push({
+              title: task.title,
+              dueDate: task.dueDate,
+              sebep: 'GECİKMİŞ — sorumlu e-postası yok ya da çözülemedi',
+            })
+          } else {
+            try {
+              const result = await sendEmail(gecikmisAlicilar, overdueSubject, overdueBody)
 
-            if (result.success) {
-              notificationsSent++
-              console.log(`✅ Sent overdue notification for task: ${task.title}`)
+              if (result.success) {
+                notificationsSent++
+                console.log(`✅ Sent overdue notification for task: ${task.title} → ${gecikmisAlicilar.map((a) => a.email).join(', ')}`)
 
-              await prisma.taskEmailLog.create({
-                data: {
-                  taskId: task.id,
-                  emailType: 'OVERDUE',
-                  subject: overdueSubject,
-                  body: `Overdue notification sent: ${Math.abs(daysUntilDue)} days overdue`,
-                  status: 'SENT',
-                  recipientEmails: adminRecipients.map((r) => r.email).join(', '),
-                },
-              })
+                await prisma.taskEmailLog.create({
+                  data: {
+                    taskId: task.id,
+                    emailType: 'OVERDUE',
+                    subject: overdueSubject,
+                    body: `Overdue notification sent: ${Math.abs(daysUntilDue)} days overdue`,
+                    status: 'SENT',
+                    recipientEmails: gecikmisAlicilar.map((r) => r.email).join(', '),
+                  },
+                })
+              }
+            } catch (error) {
+              errors++
+              console.error('❌ Error sending overdue notification:', error)
             }
-          } catch (error) {
-            errors++
-            console.error('❌ Error sending overdue notification:', error)
           }
         }
+      }
+    }
+
+    // ── SORUMLUSU ÇÖZÜLEMEYEN GÖREVLER: TEK özet mail ──
+    // Görev başına mail atılmaz; aksi hâlde sorunlu her görev için ayrı bildirim
+    // yağardı. Liste boşsa mail hiç gönderilmez.
+    if (cozulemeyenler.length > 0) {
+      const satirlar = cozulemeyenler
+        .map((c) => `• ${c.title} — bitiş ${c.dueDate.toLocaleDateString('tr-TR')} — ${c.sebep}`)
+        .join('\n')
+      const ozetGovde = [
+        'Aşağıdaki planlı görevler için hatırlatma maili GÖNDERİLEMEDİ: sorumlu kişinin',
+        'e-posta adresi çözülemedi. Görevlerin sorumlu alanını düzeltmek gerekiyor.',
+        '',
+        satirlar,
+        '',
+        '--',
+        'ILERIHub Planlı Görevler — otomatik özet (hatırlatma cron\'u, günde bir kez)',
+      ].join('\n')
+      try {
+        await sendEmail(
+          [{ email: COZULEMEYEN_RAPOR_ADRESI, name: 'ILERIHub' }],
+          `Planlı görev: ${cozulemeyenler.length} görevin sorumlusu çözülemedi`,
+          ozetGovde,
+        )
+        console.log(`📋 Sorumlusu çözülemeyen ${cozulemeyenler.length} görev için özet rapor gönderildi`)
+      } catch (error) {
+        console.error('❌ Özet rapor gönderilemedi:', error)
       }
     }
 
@@ -195,7 +226,7 @@ export async function POST(request: NextRequest) {
         tasksChecked: tasks.length,
         notificationsSent,
         errors,
-        recipientCount: adminRecipients.length,
+        sorumlusuCozulemeyen: cozulemeyenler.length,
       },
     })
   } catch (error) {
@@ -237,11 +268,17 @@ function generateReminderBody(
     category: { name: string } | null
     dueDate: Date
     responsiblePerson: string | null
+    responsiblePersonEmail: string | null
+    responsiblePersons: string | null
     priority: string
     notes: string | null
   },
   daysUntilDue: number
 ): string {
+  // "Sorumlu:" satırı TO listesiyle AYNI kaynaktan (sorumluSatiri) gelir —
+  // eskiden yalnız responsiblePerson metni yazılıyordu ve TO'daki kalibrasyon
+  // listesiyle hiç tutmuyordu.
+  const sorumlular = sorumluSatiri(task)
   const now = new Date()
   const dateStr = now.toLocaleDateString('tr-TR', {
     weekday: 'long',
@@ -276,57 +313,12 @@ ${task.description ? `• Açıklama: ${task.description}` : ''}
 • Bitiş Tarihi: ${task.dueDate.toLocaleDateString('tr-TR')}
 • ⏱️ ${daysText}
 • Öncelik: ${priorityLabels[task.priority] || task.priority}
-${task.responsiblePerson ? `• Sorumlu: ${task.responsiblePerson}` : ''}
+${sorumlular ? `• Sorumlu: ${sorumlular}` : ''}
 ${task.notes ? `• Notlar: ${task.notes}` : ''}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ${daysUntilDue <= 7 ? '⚠️ UYARI: Bitiş tarihi yaklaşıyor! Lütfen gerekli aksiyonları alınız.' : 'Lütfen görevin zamanında tamamlanmasını sağlayınız.'}
-
---
-Bu e-posta otomatik olarak ILERIHub Planlı Görevler Sistemi tarafından gönderilmiştir.
-© 2025 İleri Group - System Development Team
-  `.trim()
-}
-
-/**
- * Generate personal reminder email body
- */
-function generatePersonalReminderBody(
-  task: {
-    title: string
-    description: string | null
-    dueDate: Date
-    responsiblePerson: string | null
-    notes: string | null
-  },
-  daysUntilDue: number
-): string {
-  const daysText =
-    daysUntilDue === 0 ? 'Bugün son gün!' :
-    daysUntilDue === 1 ? 'Yarın son gün!' :
-    `${daysUntilDue} gün kaldı`
-
-  return `
-Sayın ${task.responsiblePerson || 'Yetkili'},
-
-Sorumluluğunuzdaki aşağıdaki görevin bitiş tarihi yaklaşmaktadır.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-📌 Görev Bilgileri:
-
-• Görev: ${task.title}
-${task.description ? `• Açıklama: ${task.description}` : ''}
-• Bitiş Tarihi: ${task.dueDate.toLocaleDateString('tr-TR')}
-• ⏱️ ${daysText}
-${task.notes ? `• Notlar: ${task.notes}` : ''}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-⚠️ Lütfen görevin zamanında tamamlanması için gerekli işlemleri başlatınız.
-
-Herhangi bir sorunuz varsa lütfen ilgili departman ile iletişime geçiniz.
 
 --
 Bu e-posta otomatik olarak ILERIHub Planlı Görevler Sistemi tarafından gönderilmiştir.
@@ -344,10 +336,13 @@ function generateOverdueBody(
     category: { name: string } | null
     dueDate: Date
     responsiblePerson: string | null
+    responsiblePersonEmail: string | null
+    responsiblePersons: string | null
     priority: string
   },
   daysOverdue: number
 ): string {
+  const sorumlular = sorumluSatiri(task)
   const now = new Date()
   const dateStr = now.toLocaleDateString('tr-TR', {
     weekday: 'long',
@@ -371,7 +366,7 @@ ${task.category ? `• Kategori: ${task.category.name}` : ''}
 ${task.description ? `• Açıklama: ${task.description}` : ''}
 • Bitiş Tarihi: ${task.dueDate.toLocaleDateString('tr-TR')}
 • ⏱️ ${daysOverdue} gün geçti!
-${task.responsiblePerson ? `• Sorumlu: ${task.responsiblePerson}` : ''}
+${sorumlular ? `• Sorumlu: ${sorumlular}` : ''}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 

@@ -119,7 +119,7 @@ export default function ApprovalPositionsPage() {
 
   if (loading) {
     return (
-      <div className="container mx-auto py-6">
+      <div className="space-y-6">
         <div className="flex items-center justify-center py-24">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
           <span className="ml-3 text-muted-foreground">Yükleniyor...</span>

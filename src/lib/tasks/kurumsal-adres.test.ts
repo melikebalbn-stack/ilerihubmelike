@@ -3,20 +3,33 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 // prisma mock'u import'tan ÖNCE kurulmalı (kurumsal-adres modülü onu çağırıyor).
 const userFindMany = vi.fn()
 const personnelFindMany = vi.fn()
+const userFindFirst = vi.fn()
+const personnelFindUnique = vi.fn()
 vi.mock('@/lib/prisma', () => ({
   prisma: {
-    user: { findMany: (...a: unknown[]) => userFindMany(...a) },
-    personnel: { findMany: (...a: unknown[]) => personnelFindMany(...a) },
+    user: {
+      findMany: (...a: unknown[]) => userFindMany(...a),
+      findFirst: (...a: unknown[]) => userFindFirst(...a),
+    },
+    personnel: {
+      findMany: (...a: unknown[]) => personnelFindMany(...a),
+      findUnique: (...a: unknown[]) => personnelFindUnique(...a),
+    },
   },
 }))
 
-const { sorumlulariKurumsallastir, ilkSorumluAdresi, KURUMSAL_ALAN } = await import('./kurumsal-adres')
+const { sorumlulariKurumsallastir, ilkSorumluAdresi, kurumsalAdresPersonelId, KURUMSAL_ALAN } =
+  await import('./kurumsal-adres')
 
 beforeEach(() => {
   userFindMany.mockReset()
   personnelFindMany.mockReset()
+  userFindFirst.mockReset()
+  personnelFindUnique.mockReset()
   userFindMany.mockResolvedValue([])
   personnelFindMany.mockResolvedValue([])
+  userFindFirst.mockResolvedValue(null)
+  personnelFindUnique.mockResolvedValue(null)
 })
 
 describe('personel seçilince adres kurumsal kaynaktan gelir', () => {
@@ -101,5 +114,40 @@ describe('çoklu sorumlu', () => {
 
   it('kurumsal alan sabiti', () => {
     expect(KURUMSAL_ALAN).toBe('@ilerigroup.com')
+  })
+})
+
+describe('kurumsalAdresPersonelId (KPI Aksiyonu yolu)', () => {
+  it('User.email kurumsalsa onu döner, mailAdresi hiç okunmaz', async () => {
+    personnelFindUnique.mockResolvedValue({ adSoyad: 'GÖKÇE EKŞİOĞLU', sicilNo: 'ILR-00825', azureAdEmail: null })
+    userFindFirst.mockResolvedValue({ email: 'Gokce.Eksioglu@ilerigroup.com' })
+    expect(await kurumsalAdresPersonelId('p-1')).toEqual({
+      adSoyad: 'GÖKÇE EKŞİOĞLU',
+      email: 'gokce.eksioglu@ilerigroup.com',
+    })
+    // select'te mailAdresi İSTENMİYOR
+    expect(JSON.stringify(personnelFindUnique.mock.calls[0])).not.toContain('mailAdresi')
+  })
+
+  it('User yoksa azureAdEmail yedeği', async () => {
+    personnelFindUnique.mockResolvedValue({ adSoyad: 'AD', sicilNo: null, azureAdEmail: 'ad@ilerigroup.com' })
+    userFindFirst.mockResolvedValue(null)
+    expect((await kurumsalAdresPersonelId('p-2')).email).toBe('ad@ilerigroup.com')
+  })
+
+  it('kurumsal adres yoksa null (ad yine döner, görev kaydedilir)', async () => {
+    personnelFindUnique.mockResolvedValue({ adSoyad: 'MAVİ YAKA', sicilNo: 'ILR-9', azureAdEmail: null })
+    userFindFirst.mockResolvedValue({ email: 'kisisel@gmail.com' })
+    expect(await kurumsalAdresPersonelId('p-3')).toEqual({ adSoyad: 'MAVİ YAKA', email: null })
+  })
+
+  it('personnelId yoksa DB sorgusu acilmaz', async () => {
+    expect(await kurumsalAdresPersonelId(null)).toEqual({ adSoyad: null, email: null })
+    expect(personnelFindUnique).not.toHaveBeenCalled()
+  })
+
+  it('personel bulunamazsa ikisi de null', async () => {
+    personnelFindUnique.mockResolvedValue(null)
+    expect(await kurumsalAdresPersonelId('yok')).toEqual({ adSoyad: null, email: null })
   })
 })

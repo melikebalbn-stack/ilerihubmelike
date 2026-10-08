@@ -134,3 +134,24 @@ export const SAHIT_DURUM_ETIKETLERI: Record<TutanakSahitDurum, string> = {
   ONAYLADI: 'Onayladı',
   REDDETTI: 'Reddetti',
 }
+
+/**
+ * Durum rozeti sınıfları — FİF/uygunsuzluk listelerindeki pill deseniyle aynı
+ * (`inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold` kabuğu
+ * çağıranda, renk burada). Renkler referans sayfaların slate/amber/blue/
+ * violet/emerald/rose paletinden.
+ */
+export const DURUM_RENK: Record<TutanakDurum, string> = {
+  TASLAK: 'bg-slate-100 text-slate-700',
+  SAHIT_BEKLIYOR: 'bg-amber-100 text-amber-800',
+  YONETICI_BEKLIYOR: 'bg-blue-100 text-blue-800',
+  IK_BEKLIYOR: 'bg-violet-100 text-violet-800',
+  TAMAMLANDI: 'bg-emerald-100 text-emerald-800',
+  REDDEDILDI: 'bg-rose-100 text-rose-800',
+}
+
+export const SAHIT_DURUM_RENK: Record<TutanakSahitDurum, string> = {
+  BEKLIYOR: 'bg-slate-100 text-slate-700',
+  ONAYLADI: 'bg-emerald-100 text-emerald-800',
+  REDDETTI: 'bg-rose-100 text-rose-800',
+}

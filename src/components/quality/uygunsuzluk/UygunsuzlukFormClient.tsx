@@ -158,7 +158,12 @@ export function UygunsuzlukFormClient({
   const [tarih, setTarih] = useState(initial ? isoToDate(initial.tarih) : '')
   const [mamulUrunKodu, setMamulUrunKodu] = useState(initial?.mamulUrunKodu ?? '')
   const [altParcaKodu, setAltParcaKodu] = useState(initial?.altParcaKodu ?? '')
-  const [musteriAdi, setMusteriAdi] = useState(initial?.musteriAdi ?? '')
+  // Müşteri artık aranabilir listeden seçilir (RMA ile aynı seçici, CostCustomer kaynağı).
+  // DB'de musteriAdi DÜZ METİN kalıyor (FK değil — Melih'in kararı): kayıtta yalnız ad
+  // saklanıyor, eski kayıtlar da id'siz metin olarak geldiği için seçiciye ad ile beslenir.
+  const [musteri, setMusteri] = useState<MusteriOption | null>(
+    initial?.musteriAdi ? { id: '', code: '', name: initial.musteriAdi } : null,
+  )
   const [isEmriNo, setIsEmriNo] = useState(initial?.isEmriNo ?? '')
   const [isEmriAdeti, setIsEmriAdeti] = useState(
     initial?.isEmriAdeti != null ? String(initial.isEmriAdeti) : '',
@@ -318,7 +323,7 @@ export function UygunsuzlukFormClient({
         tarih,
         mamulUrunKodu: mamulUrunKodu.trim(),
         altParcaKodu: altParcaKodu.trim() || null,
-        musteriAdi: musteriAdi.trim() || null,
+        musteriAdi: musteri?.name.trim() || null,
         isEmriNo: isEmriNo.trim(),
         isEmriAdeti: isEmriAdeti ? Number(isEmriAdeti) : null,
         kategoriId,
@@ -416,7 +421,17 @@ export function UygunsuzlukFormClient({
           </div>
           <div>
             <Label className="text-xs text-slate-600">Müşteri adı</Label>
-            <Input value={musteriAdi} disabled={ro} onChange={(e) => setMusteriAdi(e.target.value)} className="mt-1 h-9" />
+            <div className="mt-1">
+              <MusteriSecici
+                value={musteri}
+                onChange={(m) => setMusteri(m)}
+                disabled={ro}
+                placeholder="Müşteri adı veya kodu ile ara…"
+              />
+            </div>
+            <p className="mt-1 text-[11px] text-slate-400">
+              İş emrinden gelmiyor — listeden seçilir (Melih, 8 Eki 2026)
+            </p>
           </div>
           <div>
             <Label className="text-xs text-slate-600">İş emri no *</Label>

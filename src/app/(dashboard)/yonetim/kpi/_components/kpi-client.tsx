@@ -49,7 +49,7 @@ interface OzelAlanDeger {
   naMi: boolean
 }
 
-// KPI-FORMUL: bkz. api/sandbox/melike/kpi/formul-motoru.ts — aynı şekil.
+// KPI-FORMUL: bkz. api/yonetim/kpi/formul-motoru.ts — aynı şekil.
 interface FormulReferans { token: string; kpiId: string; kaynak: string }
 interface FormulTanimi { ifade: string; referanslar: FormulReferans[] }
 
@@ -383,7 +383,7 @@ function YeniKpiDialog({ orgUnitId, onCreated }: { orgUnitId: string; onCreated:
 
   useEffect(() => {
     if (!acik) return
-    fetch('/api/sandbox/melike/kpi/tum-liste').then(r => r.json()).then(d => setTumKpiler(d.kpiler ?? [])).catch(() => {})
+    fetch('/api/yonetim/kpi/tum-liste').then(r => r.json()).then(d => setTumKpiler(d.kpiler ?? [])).catch(() => {})
   }, [acik])
 
   async function kaydet() {
@@ -644,7 +644,7 @@ function KpiDuzenleDialog({ kpi, onSaved }: { kpi: Kpi; onSaved: () => void }) {
     setOzelAlanlar(kpi.ozelAlanlar.map(a => ({ key: a.key, label: a.label, formul: a.formul })))
     setOranPayKaynagi(kpi.oranPayKaynagi); setOrtalamaKaynagi(kpi.ortalamaKaynagi)
     setGerceklesenFormul(kpi.gerceklesenFormul); setHedefFormul(kpi.hedefFormul)
-    fetch('/api/sandbox/melike/kpi/tum-liste').then(r => r.json()).then(d => setTumKpiler(d.kpiler ?? [])).catch(() => {})
+    fetch('/api/yonetim/kpi/tum-liste').then(r => r.json()).then(d => setTumKpiler(d.kpiler ?? [])).catch(() => {})
   }, [acik, kpi])
 
   async function kaydet() {

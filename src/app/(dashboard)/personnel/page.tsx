@@ -224,10 +224,9 @@ function PersonnelTab({ isAdmin }: { isAdmin: boolean }) {
 
   return (
     <div className="space-y-4">
-      {/* Filters */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* Süzgeçler AYRI KART DEĞİL — bkz. components/ui/FORM-SAYFA-STANDARDI.md */}
+      <div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
@@ -264,8 +263,7 @@ function PersonnelTab({ isAdmin }: { isAdmin: boolean }) {
               <option value="TUMU">Tümü</option>
             </Select>
           </div>
-        </CardContent>
-      </Card>
+      </div>
 
       {/* Admin Actions */}
       {isAdmin && (
@@ -765,10 +763,14 @@ export default function PersonnelPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <Users className="h-6 w-6 text-primary" />
-          <h1 className="text-2xl font-bold">Personel Yönetimi</h1>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="flex items-center gap-2 text-xl font-semibold">
+            <Users className="h-5 w-5" /> Personel Yönetimi
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Aktif ve pasif personel kayıtları — arama, bölüm, yaka ve durum süzgeçleriyle.
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <Link href="/personnel/reports">

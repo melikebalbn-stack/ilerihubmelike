@@ -187,7 +187,7 @@ export default function PersonnelImportPage() {
             Geri
           </Link>
         </Button>
-        <h1 className="text-2xl font-bold">Excel İçe Aktarma</h1>
+        <h1 className="text-xl font-semibold">Excel İçe Aktarma</h1>
       </div>
 
       {/* Step 1: Template */}

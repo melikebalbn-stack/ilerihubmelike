@@ -85,7 +85,7 @@ export default function NewConsultantPage() {
             Geri
           </Link>
         </Button>
-        <h1 className="text-2xl font-bold">Yeni Danisman</h1>
+        <h1 className="text-xl font-semibold">Yeni Danisman</h1>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">

@@ -385,7 +385,7 @@ export default function NewPersonnelPage() {
             Geri
           </Link>
         </Button>
-        <h1 className="text-2xl font-bold">Yeni Personel</h1>
+        <h1 className="text-xl font-semibold">Yeni Personel</h1>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">

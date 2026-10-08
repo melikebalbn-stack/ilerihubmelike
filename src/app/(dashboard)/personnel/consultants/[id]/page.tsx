@@ -127,7 +127,7 @@ export default function ConsultantDetailPage() {
               Geri
             </Link>
           </Button>
-          <h1 className="text-2xl font-bold">
+          <h1 className="text-xl font-semibold">
             {editMode ? "Danisman Duzenle" : "Danisman Detay"}
           </h1>
         </div>

@@ -16412,6 +16412,41 @@ model PdksPuantajGun {
   @@map("pdks_puantaj_gun")
 }
 
+// PDKS → IFS puantaj (devam) aktarımı — AYLIK özet. İK kararı: Hub'da MAAŞ/ÜCRET bilgisi TUTULMAZ.
+// Bu tabloda yalnız DEVAM verisi vardır (gün/saat); ücret, ek ödeme, kesinti, net/brüt YOKTUR.
+// IFS tarafında yalnız puantaj (saat) alanları doldurulur; para alanlarına Hub dokunmaz.
+// FK yok (personel silinmez, deaktive edilir) — personnelId/gonderenId düz kolon.
+model PdksIfsPuantajAktarim {
+  id             String    @id @default(cuid())
+  donem          String // "YYYY-MM"
+  personnelId    String
+  sicil          String? // IFS EmpNo (anlık kopya)
+  adSoyad        String // anlık kopya (önizleme/log okunurluğu)
+  // --- Devam (puantaj) özeti — ÜCRET/MAAŞ BİLGİSİ YOK ---
+  calismaSaat    Decimal   @default(0) @db.Decimal(7, 2) // net çalışma saati (mola düşülmüş)
+  fazlaMesaiSaat Decimal   @default(0) @db.Decimal(7, 2)
+  geceSaat       Decimal   @default(0) @db.Decimal(7, 2) // gece vardiyası net saati
+  normalGun      Int       @default(0) // tam çalışılan gün (TAM/TAM_FORMLA)
+  mesaiGun       Int       @default(0) // onaylı mesai günü (MESAI)
+  haftaTatiliGun Int       @default(0)
+  resmiTatilGun  Int       @default(0)
+  izinGun        Decimal   @default(0) @db.Decimal(4, 1)
+  raporGun       Decimal   @default(0) @db.Decimal(4, 1)
+  eksikGun       Int       @default(0) // gelmedi
+  eksikKayitGun  Int       @default(0) // forma bağlı eksik (önizleme tam değil işareti)
+  detayJson      Json? // gün gün devam dökümü (tip + saat) — ücret yok
+  durum          String    @default("HAZIR") // HAZIR | GONDERILDI | HATA
+  ifsHata        String?
+  gonderilenAt   DateTime?
+  gonderenId     String?
+  hesaplananAt   DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@unique([donem, personnelId])
+  @@index([donem, durum])
+  @@map("pdks_ifs_puantaj_aktarim")
+}
+
 // Kişi–vardiya ataması (tarih aralıklı; bitis null = açık uçlu). Faz 4: PdksVardiya'ya bağlı
 // (Faz 1'de IproVardiya'ya bağlıydı — tablo boştu, FK taşındı). Atama yoksa kişinin yakasına
 // uyan varsayılan vardiya kullanılır.

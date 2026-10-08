@@ -49,11 +49,11 @@ export default async function TemplatesListPage() {
   const activeCount = templates.filter((t) => t.active).length
 
   return (
-    <div className="container mx-auto px-6 py-8 max-w-7xl space-y-6">
+    <div className="space-y-6">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-[#1B4F72] flex items-center gap-2">
-            <ClipboardList className="h-6 w-6" />
+          <h1 className="text-xl font-semibold flex items-center gap-2">
+            <ClipboardList className="h-5 w-5" />
             Ölçüm Şablonları
           </h1>
           <p className="text-sm text-slate-500 mt-1">

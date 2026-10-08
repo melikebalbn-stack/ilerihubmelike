@@ -66,6 +66,8 @@ export interface IsEmriOperasyonCikti {
   Contract: string
   PartNo: string
   OperationNo: number
+  /** IFS'te zorunlu (ORA-20124 NULLVALUE). Syteline jobroute'ta açıklama yok → "Op <no> <wc>" (≤35 karakter). */
+  OperationDescription: string
   WorkCenterNo: string
   PreferredResourceId: string
   MachRunFactor: number
@@ -146,6 +148,7 @@ export function isEmriMapla(
       Contract: ref.contract,
       PartNo: partNo,
       OperationNo: operNo,
+      OperationDescription: `Op ${operNo} ${(op.wc ?? '').trim() || wc}`.slice(0, 35),
       WorkCenterNo: wc,
       PreferredResourceId: resid,
       MachRunFactor: cevrim,

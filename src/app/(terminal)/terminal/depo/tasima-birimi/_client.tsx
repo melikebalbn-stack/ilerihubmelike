@@ -82,7 +82,7 @@ export function TasimaBirimiClient({ baslangicPalet = null }: { baslangicPalet?:
   }, [errorKey, errorMsg])
   useEffect(() => {
     if (!info) return
-    const t = setTimeout(() => setInfo(null), 3000)
+    const t = setTimeout(() => setInfo(null), 6000)
     return () => clearTimeout(t)
   }, [info])
 
@@ -148,7 +148,6 @@ export function TasimaBirimiClient({ baslangicPalet = null }: { baslangicPalet?:
     const d = await api(`/api/depo/tasima-birimi/stok?lokasyon=${encodeURIComponent(v)}`)
     if (!d) return
     if (!Number(d.toplam)) return showError(`Lokasyonda paletsiz stok yok: ${v}`)
-    if (palet?.lokasyonNo && palet.lokasyonNo !== v) return showError(`Palet ${palet.lokasyonNo} lokasyonunda — aynı lokasyondan ekleyin`)
     setLokasyon(v); setEkleAdim('MALZEME')
   }
   const malzemeOkut = async (v: string, kaynak: EtiketKaynak) => {
@@ -167,7 +166,8 @@ export function TasimaBirimiClient({ baslangicPalet = null }: { baslangicPalet?:
     if (m > secAday.kullanilabilir) return showError(rezerveMesaji(secAday.kullanilabilir, secAday.rezerve, secAday.birim, 'eklenebilir'))
     const d = await post(`/api/depo/tasima-birimi/${palet.id}/ekle`, { stok: kaynakKimlik(secAday), miktar: m })
     if (!d) return
-    setInfo(`${secAday.partNo} · ${fmt(m)} ${secAday.birim} palete eklendi`)
+    const t = d.tasindi as { kaynakLok: string; hedefLok: string } | null
+    setInfo(`${t ? `Palet ${palet.id}, ${t.kaynakLok} nolu lokasyondan ${t.hedefLok} nolu lokasyona taşındı. ` : ''}${secAday.partNo} · ${fmt(m)} ${secAday.birim} palete eklendi`)
     setSecAday(null); setAdaylar(null); setMiktar(''); setEkleAdim('MALZEME')
     const p = await paletYukle(palet.id); if (p) setPalet(p)
   }
@@ -242,7 +242,7 @@ export function TasimaBirimiClient({ baslangicPalet = null }: { baslangicPalet?:
   const serit: Record<Exclude<Alan, null>, { baslik: string; alt: string }> = {
     PALET: { baslik: 'Palet okut', alt: 'taşıma birimi numarası' },
     LOKASYON: { baslik: 'Lokasyon okut', alt: 'eklenecek malzemenin rafı' },
-    MALZEME: { baslik: 'Malzeme barkodu okut', alt: `lokasyon ${lokasyon}` },
+    MALZEME: { baslik: 'Malzeme barkodu okut', alt: palet?.lokasyonNo && lokasyon && palet.lokasyonNo !== lokasyon ? `lokasyon ${lokasyon} · palet ${palet.lokasyonNo}'ten buraya taşınacak` : `lokasyon ${lokasyon}` },
     HEDEF_LOK: { baslik: 'Hedef lokasyonu okut', alt: 'paletin gideceği raf' },
     HEDEF_PALET: { baslik: 'Hedef paleti okut', alt: 'aktarılacak palet' },
   }

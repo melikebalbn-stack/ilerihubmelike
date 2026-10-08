@@ -9,7 +9,8 @@ import { GUARD, hata, paletNo, StokSchema } from '../../_ortak'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-// POST /api/depo/tasima-birimi/{id}/ekle { stok, miktar } → stok satırından palete ekle. IFS'e YAZAR.
+// POST /api/depo/tasima-birimi/{id}/ekle { stok, miktar } → stok satırından palete ekle. Palet başka lokasyondaysa
+// önce malzemenin lokasyonuna taşınır (ayrı HU_TASI kaydı) → yanıtta tasindi { kaynakLok, hedefLok }. IFS'e YAZAR.
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { session, userId, error } = await requirePermission(GUARD)
   if (error) return error
@@ -19,7 +20,18 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (!parsed.success) return NextResponse.json({ ok: false, error: 'Geçersiz stok satırı / miktar' }, { status: 400 })
   const { stok, miktar } = parsed.data
   try {
-    await paleteEkle(id, stok, miktar)
+    const { tasindi } = await paleteEkle(id, stok, miktar)
+    if (tasindi) {
+      await logDepoHareket({
+        olay: 'HU_TASI',
+        userId,
+        kullaniciAd: session.user.name ?? 'Operatör',
+        partNo: '-',
+        kaynakLok: tasindi.kaynakLok,
+        hedefLok: tasindi.hedefLok,
+        detay: { handlingUnitId: id, otomatik: 'palete ekleme' },
+      })
+    }
     await logDepoHareket({
       olay: 'HU_EKLE',
       userId,
@@ -30,7 +42,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       kaynakLok: stok.locationNo,
       detay: { handlingUnitId: id, stok },
     })
-    return NextResponse.json({ ok: true })
+    return NextResponse.json({ ok: true, tasindi })
   } catch (e) {
     return hata(e)
   }

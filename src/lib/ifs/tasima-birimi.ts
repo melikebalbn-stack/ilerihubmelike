@@ -177,13 +177,16 @@ export async function paletGetir(id: number): Promise<Palet | null> {
   if (h.status !== 200 || !h.body?.HandlingUnitId) throw new Error(dostaneIfsHata(`Palet HTTP ${h.status}: ${h.text.slice(0, 600)}`, 'Palet okunamadı'))
   const { contract } = getIfsConfig()
   if (h.body.Contract && h.body.Contract !== contract) return null
+  // 0 miktarlı satırlar da okunur: boş palette IFS başlık lokasyonunu null tutar ama palet, çıkarma/taşıma
+  // sonrası kalan 0 miktarlı satırların lokasyonuna bağlı kalır (ekleme başka lokasyonda ORA-20110 verir).
   const d = await zorunlu<{ value?: RawStok[] }>(
     'Palet içeriği',
     'GET',
-    `${IP}InventoryPartInStockSet?$filter=${encodeURIComponent(`Contract eq '${esc(contract)}' and HandlingUnitId eq ${id} and QtyOnhand gt 0`)}` +
+    `${IP}InventoryPartInStockSet?$filter=${encodeURIComponent(`Contract eq '${esc(contract)}' and HandlingUnitId eq ${id}`)}` +
       `&$select=${STOK_SELECT}&$orderby=PartNo&$top=200`,
   )
-  const icerik = (d.value ?? []).map(icerikOf)
+  const tum = (d.value ?? []).map(icerikOf)
+  const icerik = tum.filter((s) => s.eldeki > 0)
   const tur = str(h.body.HandlingUnitTypeId)
   // HandlingUnits tür açıklamasını taşımaz → tür listesinden tamamla (hata olursa kodla yetin).
   const turAdi = str(h.body.HandlingUnitTypeDescription) || (await paletTurleri().catch(() => [])).find((t) => t.id === tur)?.ad || ''
@@ -193,7 +196,7 @@ export async function paletGetir(id: number): Promise<Palet | null> {
     turAdi,
     kategori: str(h.body.HandlingUnitCategoryId),
     // Boş palette IFS lokasyonu null tutar; içerik varsa satırın lokasyonu esastır.
-    lokasyonNo: str(h.body.LocationNo) || icerik[0]?.locationNo || '',
+    lokasyonNo: str(h.body.LocationNo) || icerik[0]?.locationNo || tum[0]?.locationNo || '',
     icerik,
   }
 }
@@ -244,17 +247,46 @@ const ayni = (k: HuStokSatiri, r: RawAday) =>
   nz(r.LotBatchNo) === nz(k.lotBatchNo) && nz(r.SerialNo) === nz(k.serialNo) && nz(r.EngChgLevel) === nz(k.engChgLevel) &&
   nz(r.WaivDevRejNo) === nz(k.waivDevRejNo) && num(r.ActivitySeq) === num(k.activitySeq)
 
-/** Stok satırından (genelde birimsiz) mevcut palete ekle. Palet başka lokasyondaysa reddedilir. */
-export async function paleteEkle(id: number, stok: HuStokSatiri, miktar: number): Promise<void> {
+/**
+ * Stok satırından (genelde birimsiz) mevcut palete ekle. Palet başka lokasyondaysa ÖNCE palet malzemenin
+ * lokasyonuna taşınır (HandlingUnitHandling MoveInventory), sonra eklenir; taşındıysa kaynak/hedef döner.
+ * Ekleme taşımadan sonra başarısız olursa palet yeni lokasyonda kalır — hata mesajı bunu söyler.
+ */
+export async function paleteEkle(id: number, stok: HuStokSatiri, miktar: number): Promise<{ tasindi: { kaynakLok: string; hedefLok: string } | null }> {
   if (!(miktar > 0)) throw new Error('Miktar sıfırdan büyük olmalı')
   if (num(stok.handlingUnitId) === id) throw new Error('Malzeme zaten bu palette')
   const palet = await paletGetir(id)
   if (!palet) throw new Error(`Palet bulunamadı: ${id}`)
-  if (palet.lokasyonNo && palet.lokasyonNo !== stok.locationNo) {
-    throw new Error(`Palet ${id} ${palet.lokasyonNo} lokasyonunda, malzeme ${stok.locationNo} lokasyonunda`)
-  }
   const kaynak = await stokSatiri(stok)
   if (num(kaynak.AvailableQty) < miktar) throw new Error(`Kullanılabilir miktar yetersiz: ${num(kaynak.AvailableQty)} < ${miktar}`)
+  let tasindi: { kaynakLok: string; hedefLok: string } | null = null
+  if (palet.lokasyonNo && palet.lokasyonNo !== stok.locationNo) {
+    const { contract } = getIfsConfig()
+    try {
+      await zorunlu('Palet taşıma', 'POST', `${HU}MoveInventory`, {
+        HandlingUnitIdList: String(id),
+        Contract: contract,
+        LocationNo: stok.locationNo,
+        Destination: 'MoveToInventory',
+        MoveComment: 'ILERIHub el terminali - palete ekleme',
+      })
+    } catch (e) {
+      const m = e instanceof Error ? e.message : String(e)
+      throw new Error(`Palet ${id} ${palet.lokasyonNo} lokasyonunda; ${stok.locationNo} lokasyonuna taşınamadı: ${m}`)
+    }
+    tasindi = { kaynakLok: palet.lokasyonNo, hedefLok: stok.locationNo }
+  }
+  try {
+    await ekleCekirdek(id, stok, kaynak, miktar)
+  } catch (e) {
+    if (!tasindi) throw e
+    const m = e instanceof Error ? e.message : String(e)
+    throw new Error(`Palet ${id} ${tasindi.kaynakLok} → ${tasindi.hedefLok} taşındı ama ekleme yapılamadı: ${m}`)
+  }
+  return { tasindi }
+}
+
+async function ekleCekirdek(id: number, stok: HuStokSatiri, kaynak: RawStok, miktar: number): Promise<void> {
   const v = await zorunlu<{ Objkey?: string }>('Palete ekle penceresi', 'POST', `${IP}AttachPartsToHandlingUnitSet`, {
     ObjidListArr: str(kaynak.ObjId),
     ConnectedSource: 'INVENT',

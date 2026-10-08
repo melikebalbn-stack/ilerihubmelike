@@ -41,8 +41,8 @@ export default function MaintenanceGuidePage() {
             </Button>
           </Link>
           <div>
-            <h1 className="text-xl lg:text-3xl font-bold flex items-center gap-2">
-              <BookOpen className="h-8 w-8 text-primary" />
+            <h1 className="text-xl font-semibold flex items-center gap-2">
+              <BookOpen className="h-5 w-5" />
               Tezgah Bakim Yonetimi Kilavuzu
             </h1>
             <p className="text-muted-foreground mt-1">
@@ -58,7 +58,7 @@ export default function MaintenanceGuidePage() {
 
       {/* Print Header - artık kullanılmıyor, guide-print-container içinde */}
       <div className="hidden">
-        <h1 className="text-xl lg:text-3xl font-bold">Tezgah Bakim Yonetimi</h1>
+        <h1 className="text-xl font-semibold">Tezgah Bakim Yonetimi</h1>
         <p className="text-xl">Kullanim Kilavuzu</p>
         <p className="text-sm text-gray-500 mt-2">ILERIHub | Versiyon 1.0</p>
       </div>

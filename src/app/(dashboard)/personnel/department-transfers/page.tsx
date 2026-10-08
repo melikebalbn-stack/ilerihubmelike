@@ -4,13 +4,12 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Button } from '@/components/ui/button'
 import { NativeSelect as Select } from '@/components/ui/select'
-import { ArrowRightLeft, Loader2, RefreshCcw } from 'lucide-react'
+import { ArrowRightLeft, Loader2 } from 'lucide-react'
+import { SplitBadge } from '@/components/akademi/SplitBadge'
 import { gerekceLabel, talepEdenLabel, onayLabel } from '@/components/personnel/department-transfer/constants'
 
 interface Transfer {
@@ -84,23 +83,31 @@ export default function DepartmentTransfersListPage() {
   }, [fetchData])
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
-      <div>
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <ArrowRightLeft className="h-6 w-6 text-[#1B4F72]" />
-          Bölüm Değişiklikleri
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Tüm aktif bölüm transferleri (son 500 kayıt).
-        </p>
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="flex items-center gap-2 text-xl font-semibold">
+            <ArrowRightLeft className="h-5 w-5" /> Bölüm Değişiklikleri
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Tüm aktif bölüm transferleri (son 500 kayıt).
+          </p>
+        </div>
+        <SplitBadge
+          color="gray"
+          left="Filtreler"
+          right="Sıfırla"
+          onClick={() => {
+            setFrom('')
+            setTo('')
+            setBolum('')
+            setIsHistorical('')
+          }}
+        />
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Filtreler</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
+      {/* Süzgeçler AYRI KART DEĞİL — bkz. components/ui/FORM-SAYFA-STANDARDI.md */}
+      <div className="flex flex-wrap items-end gap-3">
             <div>
               <Label htmlFor="from">Tarih (başlangıç)</Label>
               <Input id="from" type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
@@ -126,63 +133,52 @@ export default function DepartmentTransfersListPage() {
                 <option value="true">Historical</option>
               </Select>
             </div>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setFrom('')
-                setTo('')
-                setBolum('')
-                setIsHistorical('')
-              }}
-            >
-              <RefreshCcw className="h-4 w-4 mr-2" />
-              Sıfırla
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+      </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base flex items-center justify-between">
-            <span>Transfer Listesi</span>
-            <Badge variant="outline">{transfers.length} kayıt</Badge>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="flex items-center justify-center py-8 text-muted-foreground">
-              <Loader2 className="h-5 w-5 animate-spin mr-2" />
-              Yükleniyor...
-            </div>
-          ) : transfers.length === 0 ? (
-            <p className="text-sm text-slate-500 text-center py-6">Filtrelerle eşleşen kayıt yok.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead className="bg-slate-50 text-slate-600 uppercase text-xs tracking-wider">
-                  <tr>
-                    <th className="px-2 py-2 text-left">#</th>
-                    <th className="px-2 py-2 text-left">Sicil / Ad Soyad</th>
-                    <th className="px-2 py-2 text-left">Talep Tar.</th>
-                    <th className="px-2 py-2 text-left">Talep Eden</th>
-                    <th className="px-2 py-2 text-left">İSG</th>
-                    <th className="px-2 py-2 text-left">Doktor</th>
-                    <th className="px-2 py-2 text-left">Gerekçeler</th>
-                    <th className="px-2 py-2 text-left">Eski → Yeni Bölüm</th>
-                    <th className="px-2 py-2 text-left">Transfer Tar.</th>
-                    <th className="px-2 py-2 text-left">Kayıt Eden</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {transfers.map((t, idx) => (
-                    <tr
-                      key={t.id}
-                      onClick={() => router.push(`/personnel/${t.personnel.id}`)}
-                      className="border-t border-slate-100 hover:bg-slate-50 cursor-pointer"
-                    >
-                      <td className="px-2 py-2 text-slate-400 tabular-nums">{idx + 1}</td>
-                      <td className="px-2 py-2">
+      <div className="overflow-hidden rounded-2xl border bg-white shadow-sm">
+        <div className="border-b bg-slate-50 px-4 py-3 text-sm font-medium text-slate-600">
+          Transfer Listesi ({transfers.length})
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead className="bg-slate-50 text-left font-semibold uppercase tracking-wide text-slate-500">
+              <tr className="[&>th]:whitespace-nowrap [&>th]:px-3 [&>th]:py-2.5">
+                <th>#</th>
+                <th>Sicil / Ad Soyad</th>
+                <th>Talep Tar.</th>
+                <th>Talep Eden</th>
+                <th>İSG</th>
+                <th>Doktor</th>
+                <th>Gerekçeler</th>
+                <th>Eski → Yeni Bölüm</th>
+                <th>Transfer Tar.</th>
+                <th>Kayıt Eden</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {loading && (
+                <tr>
+                  <td colSpan={10} className="p-8 text-center text-muted-foreground">
+                    <Loader2 className="mx-auto h-5 w-5 animate-spin" />
+                  </td>
+                </tr>
+              )}
+              {!loading && transfers.length === 0 && (
+                <tr>
+                  <td colSpan={10} className="p-8 text-center text-muted-foreground">
+                    Filtrelerle eşleşen kayıt yok.
+                  </td>
+                </tr>
+              )}
+              {!loading &&
+                transfers.map((t, idx) => (
+                  <tr
+                    key={t.id}
+                    onClick={() => router.push(`/personnel/${t.personnel.id}`)}
+                    className="[&>td]:px-3 [&>td]:py-2.5 hover:bg-slate-50 cursor-pointer"
+                  >
+                      <td className="text-slate-400 tabular-nums">{idx + 1}</td>
+                      <td>
                         <div className="font-medium text-slate-900 flex items-center gap-1.5">
                           {t.personnel.adSoyad}
                           {t.isHistorical && (
@@ -196,9 +192,9 @@ export default function DepartmentTransfersListPage() {
                         </div>
                         <div className="text-xs text-slate-500 font-mono">{t.personnel.sicilNo}</div>
                       </td>
-                      <td className="px-2 py-2 tabular-nums">{t.talepTarihi ? formatTrDate(t.talepTarihi) : '-'}</td>
-                      <td className="px-2 py-2">{t.talepEden ? talepEdenLabel(t.talepEden) : '-'}</td>
-                      <td className="px-2 py-2">
+                      <td className="tabular-nums">{t.talepTarihi ? formatTrDate(t.talepTarihi) : '-'}</td>
+                      <td>{t.talepEden ? talepEdenLabel(t.talepEden) : '-'}</td>
+                      <td>
                         {t.isgOnayi ? (
                           <Badge
                             variant="outline"
@@ -210,7 +206,7 @@ export default function DepartmentTransfersListPage() {
                           <span className="text-slate-400">-</span>
                         )}
                       </td>
-                      <td className="px-2 py-2">
+                      <td>
                         {t.doktorOnayi ? (
                           <Badge
                             variant="outline"
@@ -222,7 +218,7 @@ export default function DepartmentTransfersListPage() {
                           <span className="text-slate-400">-</span>
                         )}
                       </td>
-                      <td className="px-2 py-2">
+                      <td>
                         <div className="flex flex-wrap gap-1 max-w-xs">
                           {t.gerekceler.map((g) => (
                             <Badge key={g} variant="secondary" className="text-xs font-normal">
@@ -241,23 +237,21 @@ export default function DepartmentTransfersListPage() {
                           )}
                         </div>
                       </td>
-                      <td className="px-2 py-2">
+                      <td>
                         <span className="text-slate-500">{t.transferEdenBolum}</span>
                         <ArrowRightLeft className="inline w-3 h-3 mx-1.5 text-slate-400" />
                         <span className="font-medium">{t.transferEdilenBolum}</span>
                       </td>
-                      <td className="px-2 py-2 tabular-nums font-medium">{t.transferTarihi ? formatTrDate(t.transferTarihi) : '-'}</td>
-                      <td className="px-2 py-2 text-xs text-slate-500">
+                      <td className="tabular-nums font-medium">{t.transferTarihi ? formatTrDate(t.transferTarihi) : '-'}</td>
+                      <td className="text-xs text-slate-500">
                         {t.kayitEden?.name ?? t.kayitEden?.email ?? '-'}
                       </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   )
 }

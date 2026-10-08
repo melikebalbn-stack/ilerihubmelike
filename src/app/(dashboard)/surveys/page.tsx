@@ -390,7 +390,7 @@ export default function SurveysPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">Anket Yonetimi</h1>
+          <h1 className="text-xl font-semibold">Anket Yonetimi</h1>
           <p className="text-muted-foreground">Public anketler olusturun ve sonuclari goruntuley</p>
         </div>
         <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>

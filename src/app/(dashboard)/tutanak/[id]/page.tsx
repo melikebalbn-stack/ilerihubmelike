@@ -2,11 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
-import Link from "next/link"
-import { ArrowLeft, Check, FileDown, FileWarning, ShieldAlert, X } from "lucide-react"
+import { FileWarning } from "lucide-react"
 import { toast } from "sonner"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
+import { SplitBadge } from "@/components/akademi/SplitBadge"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import {
@@ -130,50 +128,36 @@ export default function TutanakDetayPage() {
             : []
 
   return (
-    <div className="container mx-auto px-6 py-8 max-w-4xl space-y-6">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <Button variant="ghost" size="sm" asChild className="mb-2 -ml-2">
-            <Link href="/tutanak">
-              <ArrowLeft className="h-4 w-4 mr-1" />
-              Tutanaklar
-            </Link>
-          </Button>
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold text-[#1B4F72] flex items-center gap-2">
-              <FileWarning className="h-6 w-6" />
-              Tutanak — {t.tutanakNo}
-            </h1>
-            <span className="text-[11px] font-medium uppercase tracking-wide text-slate-400 border rounded px-2 py-0.5">
-              IV-FR-03
-            </span>
-          </div>
-          <div className="flex items-center gap-2 mt-1">
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="flex items-center gap-2 text-xl font-semibold">
+            <FileWarning className="h-5 w-5" /> Tutanak — {t.tutanakNo}
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            IV-FR-03 · {tarihTR(t.tutanakTarihi)} · Hakkında tutanak tutulan personel bu tutanağı
+            göremez.
+          </p>
+          <div className="mt-2">
             <Pill renk={DURUM_RENK[t.durum as keyof typeof DURUM_RENK]}>
               {DURUM_ETIKETLERI[t.durum as keyof typeof DURUM_ETIKETLERI]}
             </Pill>
-            <span className="text-sm text-slate-500">{tarihTR(t.tutanakTarihi)}</span>
           </div>
         </div>
-        <Button variant="outline" size="sm" asChild>
-          <a href={`/api/tutanak/${id}/pdf`} target="_blank" rel="noreferrer">
-            <FileDown className="h-4 w-4 mr-1" />
-            PDF İndir
-          </a>
-        </Button>
+        <div className="flex items-center gap-2">
+          <SplitBadge color="gray" left="Liste" right="Tutanaklar" href="/tutanak" />
+          <SplitBadge color="blue" left="Tutanak" right="PDF İndir" href={`/api/tutanak/${id}/pdf`} download />
+        </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm text-amber-900">
-        <ShieldAlert className="h-4 w-4 shrink-0" />
-        Gizli kayıt — hakkında tutanak tutulan personel bu tutanağı göremez.
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Tutanak İçeriği</CardTitle>
-          <CardDescription>Bölüm ve görev tutanak anındaki hâliyle saklanır.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
+      <div className="space-y-4 rounded-2xl border bg-white p-6 shadow-sm">
+        <div>
+          <p className="text-sm font-medium text-slate-600">Tutanak İçeriği</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Bölüm ve görev tutanak anındaki hâliyle saklanır.
+          </p>
+        </div>
+        <div className="space-y-4">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
             <div>
               <span className="text-slate-500">Personel</span>
@@ -223,15 +207,17 @@ export default function TutanakDetayPage() {
               <span className="text-rose-900">{t.redSebebi}</span>
             </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Tutanak Sahipleri</CardTitle>
-          <CardDescription>Şahitler ve onaylayanlar — IV-FR-03 imza tablosunun karşılığı.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-2">
+      <div className="space-y-4 rounded-2xl border bg-white p-6 shadow-sm">
+        <div>
+          <p className="text-sm font-medium text-slate-600">Tutanak Sahipleri</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Şahitler ve onaylayanlar — IV-FR-03 imza tablosunun karşılığı.
+          </p>
+        </div>
+        <div className="space-y-2">
           {(t.sahitler ?? []).map((s: Record<string, any>) => (
             <div key={s.id} className="flex items-center justify-between rounded-md border p-3 text-sm hover:bg-slate-50">
               <div>
@@ -279,44 +265,42 @@ export default function TutanakDetayPage() {
               <p className="text-xs text-slate-500 mt-1">{anTR(t.ivKapanisAt)}</p>
             </div>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       {aksiyonlar.length > 0 && d.onaylayabilir && (
-        <Card className="border-[#1B4F72]/30">
-          <CardHeader>
-            <CardTitle>Bu adım sizde</CardTitle>
-            <CardDescription>Ret için gerekçe zorunludur.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
+        <div className="space-y-4 rounded-2xl border border-emerald-300 bg-white p-6 shadow-sm">
+          <div>
+            <p className="text-sm font-medium text-slate-600">Bu adım sizde</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">Ret için gerekçe zorunludur.</p>
+          </div>
+          <div className="space-y-3">
             <div>
               <Label className="text-xs text-slate-600">Not {aksiyonlar.some((a) => a.tur === "ret") ? "(ret için zorunlu)" : "(isteğe bağlı)"}</Label>
               <Textarea rows={3} value={not} onChange={(e) => setNot(e.target.value)} />
             </div>
             <div className="flex flex-wrap items-center gap-2">
               {aksiyonlar.map((a) => (
-                <Button
+                <SplitBadge
                   key={a.kod}
-                  variant={a.tur === "ret" ? "outline" : "default"}
-                  className={a.tur === "ret" ? "border-rose-300 text-rose-700 hover:bg-rose-50" : "bg-[#1B4F72] hover:bg-[#1B4F72]/90"}
+                  color={a.tur === "ret" ? "red" : "green"}
+                  left="Tutanak"
+                  right={islemde ? "İşleniyor..." : a.etiket}
+                  onClick={() => void islem(a.kod)}
                   disabled={islemde || (a.retNotuZorunlu && !not.trim())}
-                  onClick={() => islem(a.kod)}
-                >
-                  {a.tur === "ret" ? <X className="h-4 w-4 mr-1" /> : <Check className="h-4 w-4 mr-1" />}
-                  {a.etiket}
-                </Button>
+                />
               ))}
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Onay Akışı</CardTitle>
-          <CardDescription>Kim, ne zaman, hangi notla.</CardDescription>
-        </CardHeader>
-        <CardContent>
+      <div className="space-y-4 rounded-2xl border bg-white p-6 shadow-sm">
+        <div>
+          <p className="text-sm font-medium text-slate-600">Onay Akışı</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">Kim, ne zaman, hangi notla.</p>
+        </div>
+        <div>
           <ol className="space-y-3">
             {(t.gecmis ?? []).map((g: Record<string, any>) => (
               <li key={g.id} className="flex gap-3">
@@ -334,8 +318,8 @@ export default function TutanakDetayPage() {
               </li>
             ))}
           </ol>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   )
 }

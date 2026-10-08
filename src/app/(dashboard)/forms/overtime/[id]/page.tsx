@@ -571,7 +571,7 @@ export default function OvertimeDetailPage() {
 
   if (loading) {
     return (
-      <div className="container mx-auto py-6">
+      <div className="space-y-6">
         <div className="flex items-center justify-center py-24">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
           <span className="ml-3 text-muted-foreground">Yükleniyor...</span>
@@ -582,7 +582,7 @@ export default function OvertimeDetailPage() {
 
   if (!form) {
     return (
-      <div className="container mx-auto py-6">
+      <div className="space-y-6">
         <div className="flex flex-col items-center justify-center py-24 gap-4">
           <Clock className="h-12 w-12 text-muted-foreground" />
           <p className="text-muted-foreground text-lg">Form bulunamadı</p>
@@ -634,7 +634,7 @@ export default function OvertimeDetailPage() {
   })
 
   return (
-    <div className="container mx-auto py-6 space-y-6">
+    <div className="space-y-6">
       {/* Top Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-4">
@@ -646,7 +646,7 @@ export default function OvertimeDetailPage() {
           </Link>
           <div className="flex items-center gap-3">
             <Clock className="h-6 w-6 text-primary" />
-            <h1 className="text-2xl font-bold">{form.formNo}</h1>
+            <h1 className="text-xl font-semibold">{form.formNo}</h1>
             <span
               className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${
                 OVERTIME_STATUS_COLORS[form.status] || "bg-gray-100 text-gray-700"

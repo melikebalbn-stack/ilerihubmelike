@@ -175,7 +175,7 @@ export default async function ProjeTakipListePage({
     <div className="max-w-7xl mx-auto py-8 px-4">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Proje Takip</h1>
+          <h1 className="text-xl font-semibold text-foreground">Proje Takip</h1>
         </div>
         <div className="flex items-center gap-2">
           <Link href="/proje-takip/rapor">

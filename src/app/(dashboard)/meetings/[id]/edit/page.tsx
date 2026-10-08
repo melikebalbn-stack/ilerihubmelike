@@ -426,7 +426,7 @@ export default function EditMeetingPage({ params }: { params: Promise<{ id: stri
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <div>
-          <h1 className="text-2xl font-bold">Toplanti Duzenle</h1>
+          <h1 className="text-xl font-semibold">Toplanti Duzenle</h1>
           <p className="text-muted-foreground">{meeting.meetingNumber}</p>
         </div>
       </div>

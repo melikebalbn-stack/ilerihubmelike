@@ -1305,8 +1305,8 @@ export default function CalibrationPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-xl lg:text-3xl font-bold tracking-tight">Kalibrasyon Yönetimi</h1>
-          <p className="text-muted-foreground">
+          <h1 className="text-xl font-semibold">Kalibrasyon Yönetimi</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
             Cihaz takibi, periyodik kontrol ve sertifika yönetimi
           </p>
         </div>

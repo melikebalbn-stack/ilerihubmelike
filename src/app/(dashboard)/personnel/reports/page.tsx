@@ -282,7 +282,7 @@ export default function PersonnelReportsPage() {
             <ArrowLeft className="w-4 h-4 text-slate-600" />
           </Link>
           <div>
-            <h1 className="text-xl font-bold text-slate-900">Personel Dashboard</h1>
+            <h1 className="text-xl font-semibold text-slate-900">Personel Dashboard</h1>
             <p className="text-sm text-slate-500 mt-0.5">İnsan Kaynakları - Personel İstatistikleri</p>
           </div>
         </div>

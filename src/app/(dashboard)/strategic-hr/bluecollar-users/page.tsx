@@ -477,17 +477,16 @@ export default function BlueCollarUsersPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <HardHat className="h-5 w-5 text-amber-600" />
-          <div>
-            <h1 className="text-lg font-bold">Mavi Yaka Kullanıcı Yönetimi</h1>
-            <p className="text-xs text-muted-foreground">
-              Sicil No + TC Son 4 Hane ile giriş yapan kullanıcılar
-            </p>
-          </div>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="flex items-center gap-2 text-xl font-semibold">
+            <HardHat className="h-5 w-5" /> Mavi Yaka Kullanıcı Yönetimi
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Sicil No + TC Son 4 Hane ile giriş yapan kullanıcılar
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" onClick={handleExcelDownload} disabled={users.length === 0}>

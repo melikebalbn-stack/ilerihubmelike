@@ -128,7 +128,7 @@ export default function DenemeListesiPage() {
     return (
       <div className="mx-auto max-w-lg py-16 text-center">
         <ShieldAlert className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
-        <h1 className="mb-2 text-lg font-semibold">Bu listeye erişim yetkiniz yok</h1>
+        <h1 className="mb-2 text-xl font-semibold">Bu listeye erişim yetkiniz yok</h1>
         <p className="text-sm text-muted-foreground">
           Deneme değerlendirme listesi İnsan Varlıkları'na özeldir. Size düşen bir
           değerlendirme varsa formun bağlantısı e-posta ile gönderilir.

@@ -494,8 +494,8 @@ export default function OrgChartPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <Building2 className="h-6 w-6 text-primary" />
+          <h1 className="text-xl font-semibold flex items-center gap-2">
+            <Building2 className="h-5 w-5" />
             Organizasyon Semasi
           </h1>
           <p className="text-muted-foreground">

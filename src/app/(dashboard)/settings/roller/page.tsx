@@ -34,7 +34,7 @@ export default async function RollerPage() {
   const unassignedCount = roles.filter((r) => r._count.userRoles === 0).length
 
   return (
-    <div className="container mx-auto p-6 space-y-6 max-w-6xl">
+    <div className="space-y-6">
       <nav className="text-sm text-muted-foreground flex items-center gap-2">
         <Link href="/settings" className="hover:text-foreground">Ayarlar</Link>
         <ChevronRight className="h-4 w-4" />
@@ -45,8 +45,8 @@ export default async function RollerPage() {
 
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <ShieldCheck className="h-6 w-6 text-teal-600" />
+          <h1 className="text-xl font-semibold flex items-center gap-2">
+            <ShieldCheck className="h-5 w-5" />
             Roller
           </h1>
           <p className="text-sm text-muted-foreground mt-1">

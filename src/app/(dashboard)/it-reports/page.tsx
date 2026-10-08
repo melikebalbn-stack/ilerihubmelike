@@ -459,8 +459,8 @@ export default function ITReportsPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-xl lg:text-3xl font-bold flex items-center gap-2">
-            <BarChart3 className="h-8 w-8" />
+          <h1 className="text-xl font-semibold flex items-center gap-2">
+            <BarChart3 className="h-5 w-5" />
             IT Raporlari
           </h1>
           <p className="text-muted-foreground">

@@ -255,7 +255,7 @@ export default function OvertimePerformancePage() {
       {/* Header */}
       <div className="flex items-center gap-3">
         <BarChart3 className="h-7 w-7" style={{ color: NAVY }} />
-        <h1 className="text-2xl font-bold" style={{ color: NAVY }}>Mesai Üretim Performansı</h1>
+        <h1 className="text-xl font-semibold" style={{ color: NAVY }}>Mesai Üretim Performansı</h1>
       </div>
 
       <Tabs value={sekme} onValueChange={(v) => setSekme(v as "performans" | "kpi")}>

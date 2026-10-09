@@ -308,6 +308,14 @@ export function TasimaBirimiClient({ baslangicPalet = null }: { baslangicPalet?:
       // Etiket "P1620" → doğrudan. Çıplak sayı, tür kodu, SSCC, lokasyon → ara; tek sonuç açılır.
       const etiketNo = /^[Pp]\d+$/.test(s) ? birimNoOf(s) : null
       if (etiketNo) return void birimSec(etiketNo, alan)
+      // Çıplak sayı → önce doğrudan o numaralı birim (yeni oluşturulan dahil); yoksa aramaya düş.
+      const no = /^\d+$/.test(s) ? birimNoOf(s) : null
+      if (no) {
+        try {
+          const r = await fetch(`/api/depo/tasima-birimi/${no}`)
+          if (r.ok) return void birimSec(no, alan)
+        } catch { /* aramaya düş */ }
+      }
       const d = await api(`/api/depo/tasima-birimi/ara?q=${encodeURIComponent(s)}`)
       if (!d) return
       const beklenen: Tur = alan === 'KOLI' ? 'KOLI' : tur
@@ -341,11 +349,11 @@ export function TasimaBirimiClient({ baslangicPalet = null }: { baslangicPalet?:
 
   const A = ad(tur)
   const serit: Record<Exclude<Alan, null>, { baslik: string; alt: string }> = {
-    BIRIM: { baslik: `${A} okut ya da ara`, alt: 'numara, tür kodu, SSCC ya da lokasyon' },
+    BIRIM: { baslik: `${A} okut ya da ara`, alt: 'numara, malzeme kodu, tür kodu, SSCC ya da lokasyon' },
     LOKASYON: { baslik: 'Lokasyon okut', alt: 'eklenecek malzemenin rafı' },
     MALZEME: { baslik: 'Malzeme barkodu okut', alt: palet?.lokasyonNo && lokasyon && palet.lokasyonNo !== lokasyon ? `lokasyon ${lokasyon} · ${A.toLowerCase()} ${palet.lokasyonNo}'ten buraya taşınacak` : `lokasyon ${lokasyon}` },
     HEDEF_LOK: { baslik: 'Hedef lokasyonu okut', alt: `${A.toLowerCase()}nin gideceği raf` },
-    HEDEF_BIRIM: { baslik: `Hedef ${A.toLowerCase()}yi okut ya da ara`, alt: 'numara, tür kodu, SSCC ya da lokasyon' },
+    HEDEF_BIRIM: { baslik: `Hedef ${A.toLowerCase()}yi okut ya da ara`, alt: 'numara, malzeme kodu, tür kodu, SSCC ya da lokasyon' },
     KOLI: { baslik: 'Koli okut ya da ara', alt: `palet ${palet?.id ?? ''} içine konacak koli` },
     TUR: { baslik: 'Tür kodu okut ya da ara', alt: tur === 'PALET' ? 'palet türleri' : 'koli türleri' },
   }
@@ -416,7 +424,7 @@ export function TasimaBirimiClient({ baslangicPalet = null }: { baslangicPalet?:
           {manualOpen ? (
             <div className="flex w-full gap-2">
               <input autoFocus value={manualVal} onChange={(e) => setManualVal(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && submitManual()}
-                placeholder={alan === 'TUR' ? 'Tür kodu ya da açıklama' : alan === 'BIRIM' || alan === 'HEDEF_BIRIM' || alan === 'KOLI' ? 'No, tür kodu, SSCC, lokasyon' : alan === 'MALZEME' ? 'Stok no' : 'Lokasyon'}
+                placeholder={alan === 'TUR' ? 'Tür kodu ya da açıklama' : alan === 'BIRIM' || alan === 'HEDEF_BIRIM' || alan === 'KOLI' ? 'No, malzeme kodu, tür kodu, lokasyon' : alan === 'MALZEME' ? 'Stok no' : 'Lokasyon'}
                 className="h-11 flex-1 rounded-xl border bg-background px-3 text-base outline-none focus:ring-1 focus:ring-ring" />
               <button type="button" onClick={submitManual} className="h-11 rounded-xl px-4 text-sm font-semibold text-white" style={{ background: TERMINAL_ACCENT }}>Getir</button>
             </div>

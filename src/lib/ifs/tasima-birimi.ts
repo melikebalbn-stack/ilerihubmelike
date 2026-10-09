@@ -237,28 +237,37 @@ export interface PaletAramaSonuc {
 }
 
 /**
- * Taşıma birimi (palet/kutu) arama — bu sitenin HandlingUnits kayıtlarında: numara, tür kodu (öneki),
- * SSCC, alternatif etiket no ya da lokasyon. Alan başına ayrı sorgu: bir alan bu ortamda filtrelenemiyorsa
- * (400) o sorgu sessizce atlanır, diğerleri sonucu verir. En fazla 50 sonuç, en yeni önce.
+ * Taşıma birimi (koli/palet) arama — HandlingUnits kayıtlarında: numara, tür kodu (öneki), SSCC, alternatif
+ * etiket no, lokasyon; ayrıca İÇİNDEKİ MALZEME kodu (stokta o parçanın bulunduğu birimler). Alan başına ayrı
+ * sorgu: bir alan bu ortamda filtrelenemiyorsa (400) o sorgu sessizce atlanır. Yeni/boş birimde IFS Contract'ı
+ * boş tutabildiği için numara sorgusu site filtresiz. En fazla 50 sonuç, en yeni önce.
  */
 export async function paletAra(q: string): Promise<PaletAramaSonuc[]> {
   const v = q.trim()
   if (!v) return []
   const { contract } = getIfsConfig()
   const e = esc(v)
+  const site = `Contract eq '${esc(contract)}'`
   const kosullar: string[] = [
-    `startswith(HandlingUnitTypeId,'${e}')`,
-    `Sscc eq '${e}'`,
-    `AltHandlingUnitLabelId eq '${e}'`,
-    `LocationNo eq '${e}'`,
+    `${site} and startswith(HandlingUnitTypeId,'${e}')`,
+    `${site} and Sscc eq '${e}'`,
+    `${site} and AltHandlingUnitLabelId eq '${e}'`,
+    `${site} and LocationNo eq '${e}'`,
   ]
   if (/^\d+$/.test(v) && Number.isSafeInteger(Number(v))) kosullar.unshift(`HandlingUnitId eq ${Number(v)}`)
-  type Raw = { HandlingUnitId?: number; HandlingUnitTypeId?: string; HandlingUnitTypeDescription?: string; HandlingUnitCategoryId?: string; LocationNo?: string; Sscc?: string }
+  // Malzeme kodu → o parçanın stokta bulunduğu birimler (HandlingUnitId > 0).
+  const parcaBirimleri = await istek<{ value?: { HandlingUnitId?: number }[] }>(
+    'GET',
+    `${IP}InventoryPartInStockSet?$filter=${encodeURIComponent(`${site} and PartNo eq '${e}' and HandlingUnitId gt 0 and QtyOnhand gt 0`)}&$select=HandlingUnitId&$top=200`,
+  ).catch(() => null)
+  const parcaIdleri = [...new Set((parcaBirimleri?.status === 200 ? parcaBirimleri.body?.value ?? [] : []).map((r) => num(r.HandlingUnitId)).filter((x) => x > 0))].slice(0, 30)
+  if (parcaIdleri.length) kosullar.push(`(${parcaIdleri.map((x) => `HandlingUnitId eq ${x}`).join(' or ')})`)
+  type Raw = { HandlingUnitId?: number; HandlingUnitTypeId?: string; HandlingUnitTypeDescription?: string; HandlingUnitCategoryId?: string; LocationNo?: string; Sscc?: string; Contract?: string }
   const sonuclar = await Promise.allSettled(
     kosullar.map((k) =>
       istek<{ value?: Raw[] }>(
         'GET',
-        `HandlingUnitsHandling.svc/HandlingUnits?$filter=${encodeURIComponent(`Contract eq '${esc(contract)}' and ${k}`)}&$orderby=HandlingUnitId desc&$top=50`,
+        `HandlingUnitsHandling.svc/HandlingUnits?$filter=${encodeURIComponent(k)}&$orderby=HandlingUnitId desc&$top=50`,
       ),
     ),
   )
@@ -267,6 +276,7 @@ export async function paletAra(q: string): Promise<PaletAramaSonuc[]> {
     if (r.status !== 'fulfilled' || r.value.status !== 200) continue
     for (const x of r.value.body?.value ?? []) {
       const id = num(x.HandlingUnitId)
+      if (x.Contract && x.Contract !== contract) continue // başka sitenin birimi
       if (id && !map.has(id)) map.set(id, x)
     }
   }

@@ -589,7 +589,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const [ifsRaporGorunur, setIfsRaporGorunur] = useState(false)
   const [denemeGorunur, setDenemeGorunur] = useState(false)
   // IV-FR-03 tutanak menüsü — SUNUCU bayrağı (menu-bayrak); client'ta yetki hesaplanmaz.
-  const [tutanakBayrak, setTutanakBayrak] = useState<{ gorunur: boolean; acabilir: boolean }>({ gorunur: false, acabilir: false })
+  const [tutanakBayrak, setTutanakBayrak] = useState<{ gorunur: boolean; acabilir: boolean; iv: boolean }>({ gorunur: false, acabilir: false, iv: false })
   // IV-FR-27 menü başlığı sunucudan gelir: İV → "Deneme Değerlendirme", zincir üyesi → "Deneme Formlarım".
   const [denemeBaslik, setDenemeBaslik] = useState("Deneme Değerlendirme")
   const [avansBayrak, setAvansBayrak] = useState<{ kendim: boolean; sorumlu: boolean }>({ kendim: false, sorumlu: false })
@@ -732,7 +732,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     if (!session?.user) return
     fetch('/api/tutanak/menu-bayrak')
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => d && setTutanakBayrak({ gorunur: d.gorunur === true, acabilir: d.acabilir === true }))
+      .then((d) => d && setTutanakBayrak({ gorunur: d.gorunur === true, acabilir: d.acabilir === true, iv: d.iv === true }))
       .catch(() => {})
     fetch('/api/bolum-degisiklik-talep/menu-bayrak')
       .then(async (r) => {
@@ -989,12 +989,21 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   // (yalnız kendi zincirindekiler, puansız). Client'ta yetki hesaplanmaz.
   const denemeItem = { name: denemeBaslik, icon: ClipboardList, href: "/deneme", roles: ["*"] }
   const iaIkItem = { name: "İş Analizi Onayları", icon: ClipboardCheck, href: "/strategic-hr/is-analizi/ik-onay", roles: ["*"] }
-  // IV-FR-03 — İV grubunda. Modül yayın kapısı ayrıca süzer (modul: "tutanak").
+  // IV-FR-03 — İKİ YERDE, kitleye göre AYRI (09.10.2026, Melih):
+  //   İV        → İV grubunun kendi gövdesinde (Stratejik İK alt menüsünde DEĞİL).
+  //   müdür vb. → Formlar > İnsan Varlıkları; formu doldurdukları yer orası.
+  // Aynı kullanıcıya iki kez çıkmaz: ayrım menu-bayrak'ın `iv` alanı.
+  // GÖRÜNÜRLÜK DEĞİŞMEDİ — kimin hangi tutanağı gördüğü tutanak-yetki.ts'in işi
+  // (müdür yalnız açtığı/şahit/yönetici olduğu kayıtları görür), menü onu etkilemez.
   const tutanakItem = { name: "Tutanak Formu", icon: FileWarning, href: "/tutanak", roles: ["*"], modul: "tutanak" }
+  const tutanakFormItem = { ...tutanakItem, subgroup: "iv" as FormAltGrup }
+  // Modül yayın kapısı: bu kalemler filterItems'tan geçmiyor, kapı elle uygulanır.
+  const tutanakKapiAcik = modulKapisiAcikMi(tutanakItem)
+  const tutanakIvMenusu = tutanakBayrak.gorunur && tutanakBayrak.iv && tutanakKapiAcik
+  const tutanakFormMenusu = tutanakBayrak.gorunur && !tutanakBayrak.iv && tutanakKapiAcik
 
   const filteredStrategicHrItems = [
     ...filterStrategicHrItems(strategicHrMenuItems),
-    ...(tutanakBayrak.gorunur ? [tutanakItem] : []),
     ...(iaFlags.ik ? [iaIkItem] : []),
     // "Onayımdaki İş Analizleri" — form değil onay kuyruğu; iaIkItem'in yanına
     // taşındı. Koşul iaFlags.amir AYNEN. Sayıya dahil olduğu için yalnız amir
@@ -1029,7 +1038,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     // İV yetkisi olup canSeeIk kapısından geçmeyen kullanıcı da grubu görebilsin,
     // yoksa menü öğesi hesaplanır ama grup hiç çizilmediği için görünmezdi.
     denemeGorunur ||
-    tutanakBayrak.gorunur ||
+    tutanakIvMenusu ||
     // İV kuyruk kalemi tek başına görünüyorsa grup da açılsın.
     bolumTalepBayrak.iv
   // Kadro talep — SUNUCU bayrağı (kadroTalepAcabilir) ile; client'ta yetki hesaplanmaz.
@@ -1061,6 +1070,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     ...(gecislerimGorunur ? [gecislerimItem] : []),
     ...(izinBayrak.talep ? [izinTalebimItem] : []),
     ...(izinBayrak.onay ? [izinOnaylarimItem] : []),
+    ...(tutanakFormMenusu ? [tutanakFormItem] : []),
   ]
   // Formlar alt grupları — YETKİ FİLTRESİNDEN GEÇMİŞ listeden bölünür, yani
   // görünürlük mantığı burada tekrarlanmaz. Alt grubu olmayan bir kalem
@@ -1638,6 +1648,8 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
             {filteredOffboardingItems.map(item => renderMenuItem(item))}
             {/* IV-FR-27 deneme değerlendirme listesi — SUNUCU bayrağı (İV ya da zincir üyesi). */}
             {denemeGorunur && renderMenuItem(denemeItem)}
+            {/* IV-FR-03 — İV'ye burada; müdürler Formlar > İnsan Varlıkları altından girer. */}
+            {tutanakIvMenusu && renderMenuItem(tutanakItem)}
 
             {/* PDKS */}
             {filteredPdksItems.length > 0 && (

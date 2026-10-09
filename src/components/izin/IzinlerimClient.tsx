@@ -1,11 +1,12 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, ChevronLeft, ChevronRight, Loader2, Search, UserRound } from 'lucide-react'
+import { AlertTriangle, CalendarClock, ChevronLeft, ChevronRight, Hourglass, Loader2, Search, Sigma, UserRound, Wallet } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { Card, CardContent } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 
@@ -100,7 +101,12 @@ export function IzinlerimClient({ adinaAcabilir, ilkBaslangic }: { adinaAcabilir
           {!veri.personel.kendi && (
             <p className="text-sm text-muted-foreground"><strong className="font-medium text-slate-700">{veri.personel.adSoyad}</strong> adına talep açıyorsunuz.</p>
           )}
-          <Ozet k={veri.kartlar} gecis={veri.gecisTarihi} kotalar={veri.kotalar} />
+          <Kartlar k={veri.kartlar} gecis={veri.gecisTarihi} />
+          {veri.kotalar.map((k) => (
+            <p key={k.turId} className="-mt-1 text-sm text-muted-foreground">
+              {k.ad}: bu dönem kalan <span className="font-medium tabular-nums text-slate-700">{saatFmt(k.kotaDk - k.kullanilanDk)} sa</span> / {saatFmt(k.kotaDk)} sa
+            </p>
+          ))}
           <div className="grid gap-4 lg:grid-cols-[minmax(0,620px)_minmax(0,1fr)]">
             <TalepFormu key={veri.personel.id} turler={veri.turler} personnelId={kisi?.id ?? null} bitti={yukle} ilkBaslangic={veri.personel.kendi ? ilkBaslangic : undefined} />
             {(veri.personel.kendi || veri.talepler.length > 0) && <Taleplerim talepler={veri.talepler} degisti={yukle} />}
@@ -156,25 +162,31 @@ function KimIcin({ kisi, sec }: { kisi: Aday | null; sec: (a: Aday | null) => vo
   )
 }
 
-// ── Özet (tek satır — standart: ayrı KPI kutusu yok) ─────────────────────────
+// ── Özet kartları (sakin: normal boy sayı, nötr renk) ────────────────────────
 
-function Ozet({ k, gecis, kotalar }: { k: Extract<Veri, { bagli: true }>['kartlar']; gecis: string | null; kotalar: Extract<Veri, { bagli: true }>['kotalar'] }) {
-  const deger = (n: string) => <span className="font-medium tabular-nums text-slate-700">{n}</span>
-  const parcalar: React.ReactNode[] = [
-    <span key="yil">Yıllık izin kalan: {gecis ? deger(`${gunFmt(k.kalan)} gün`) : <span className="text-slate-400">bakiye yüklenmedi</span>}</span>,
-    <span key="bek">Onay bekleyen: {deger(String(k.bekleyenTalep))} talep{k.bekleyenGun ? ` · ${gunFmt(k.bekleyenGun)} gün` : ''}</span>,
-    <span key="kul">Bu yıl kullanılan: {deger(`${gunFmt(k.kullanilanBuYil)} gün`)}</span>,
-    ...(k.sonraki ? [<span key="son">Sonraki hak ediş: {deger(`+${k.sonraki.gun} gün`)} · {tarihFmt(k.sonraki.tarih)}{k.sonraki.ilk ? ' · ilk hak' : ''}</span>] : []),
-    ...kotalar.map((q) => (
-      <span key={q.turId}>{q.ad}: {deger(`${saatFmt(q.kotaDk - q.kullanilanDk)} sa`)} / {saatFmt(q.kotaDk)} sa</span>
-    )),
-  ]
+function Kartlar({ k, gecis }: { k: Extract<Veri, { bagli: true }>['kartlar']; gecis: string | null }) {
   return (
-    <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
-      {parcalar.map((p, i) => (
-        <span key={i} className="flex items-center gap-x-2">{i > 0 && <span className="text-slate-300">·</span>}{p}</span>
-      ))}
-    </p>
+    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <Kart ikon={<Wallet className="h-4 w-4" />} baslik="Yıllık izin · kalan" deger={gecis ? gunFmt(k.kalan) : '—'} birim={gecis ? 'gün' : 'bakiye henüz yüklenmedi'} />
+      <Kart ikon={<Hourglass className="h-4 w-4" />} baslik="Onay bekleyen" deger={String(k.bekleyenTalep)} birim={`talep${k.bekleyenGun ? ` · ${gunFmt(k.bekleyenGun)} gün` : ''}`} />
+      <Kart ikon={<Sigma className="h-4 w-4" />} baslik="Bu yıl kullanılan" deger={gunFmt(k.kullanilanBuYil)} birim="gün" />
+      <Kart ikon={<CalendarClock className="h-4 w-4" />} baslik="Sonraki hak ediş"
+        deger={k.sonraki ? `+${k.sonraki.gun}` : '—'} birim={k.sonraki ? `gün · ${tarihFmt(k.sonraki.tarih)}${k.sonraki.ilk ? ' · ilk hak' : ''}` : ''} />
+    </div>
+  )
+}
+
+function Kart({ ikon, baslik, deger, birim }: { ikon: React.ReactNode; baslik: string; deger: string; birim: string }) {
+  return (
+    <Card className="shadow-none">
+      <CardContent className="p-4">
+        <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">{ikon}{baslik}</div>
+        <div className="mt-1 flex flex-wrap items-baseline gap-1.5">
+          <span className="text-lg font-semibold tabular-nums text-slate-800">{deger}</span>
+          <span className="text-xs text-muted-foreground">{birim}</span>
+        </div>
+      </CardContent>
+    </Card>
   )
 }
 

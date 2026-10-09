@@ -23,6 +23,8 @@ export type DepoOlay =
   | 'HU_CIKAR'
   | 'HU_TASI'
   | 'HU_DEGISTIR'
+  | 'HU_KOLI_EKLE'
+  | 'HU_KOLI_CIKAR'
   // Palet etiketi basımı (PDF; IFS'e yazmaz): orderNo = palet no, partNo '-', miktar = içerik kalem sayısı.
   | 'HU_ETIKET'
   // Geri alma (Son İşlemlerim): geriAlinanId = orijinal kayıt; detay.olay = orijinal olay, detay.durum/sonuc.

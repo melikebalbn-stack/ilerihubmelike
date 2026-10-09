@@ -33,6 +33,8 @@ const ALINAMAZ: Record<string, string> = {
   ETIKET_BASMA: 'Etiket basımı geri alınamaz (IFS barkodları kalıcı)',
   HU_ETIKET: 'Etiket basımı geri alınamaz',
   HU_OLUSTUR: 'Palet silinemez — boş palet IFS\'te kalır',
+  HU_KOLI_EKLE: 'Koliyi paletten çıkarın (Paletten Malzeme Çıkar)',
+  HU_KOLI_CIKAR: 'Koliyi yeniden ekleyin (Palete Koli Ekle)',
   MALZEME_TALEBI_OLUSTUR: 'Talep silinemez — ofis kapatır',
   MALZEME_TALEBI_CIKAR: 'Yeniden rezerve edin (Malzeme Talebi ekranı)',
   MALZEME_TALEBI_TUKET: 'Tüketim terminalden geri alınamaz — ofise bildirin',

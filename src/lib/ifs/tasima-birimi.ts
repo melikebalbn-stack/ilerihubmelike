@@ -43,6 +43,13 @@ export interface PaletIcerik extends HuStokSatiri {
   birim: string
 }
 
+export interface AltBirim {
+  id: number
+  tur: string
+  turAdi: string
+  lokasyonNo: string
+}
+
 export interface Palet {
   id: number
   tur: string
@@ -50,6 +57,10 @@ export interface Palet {
   kategori: string
   lokasyonNo: string
   icerik: PaletIcerik[]
+  /** Bu birimin içindeki birimler (palet → koliler). Okunamazsa boş. */
+  altBirimler: AltBirim[]
+  /** Bu birim başka bir birimin içindeyse (koli → palet) üst birim no, yoksa 0. */
+  ustBirim: number
 }
 
 export interface PaletTuru {
@@ -169,7 +180,7 @@ export async function paletTurleri(): Promise<PaletTuru[]> {
 /** Palet başlığı + içerik (0 miktarlı satırlar gizli). Yoksa ya da başka sitenin ise null. */
 export async function paletGetir(id: number): Promise<Palet | null> {
   if (!Number.isSafeInteger(id) || id <= 0) return null
-  const h = await istek<{ HandlingUnitId?: number; HandlingUnitTypeId?: string; HandlingUnitTypeDescription?: string; HandlingUnitCategoryId?: string; Contract?: string; LocationNo?: string }>(
+  const h = await istek<{ HandlingUnitId?: number; HandlingUnitTypeId?: string; HandlingUnitTypeDescription?: string; HandlingUnitCategoryId?: string; Contract?: string; LocationNo?: string; ParentHandlingUnitId?: number }>(
     'GET',
     `HandlingUnitsHandling.svc/HandlingUnits(HandlingUnitId=${id})`,
   )
@@ -188,13 +199,28 @@ export async function paletGetir(id: number): Promise<Palet | null> {
   const tum = (d.value ?? []).map(icerikOf)
   const icerik = tum.filter((s) => s.eldeki > 0)
   const tur = str(h.body.HandlingUnitTypeId)
-  // HandlingUnits tür açıklamasını taşımaz → tür listesinden tamamla (hata olursa kodla yetin).
-  const turAdi = str(h.body.HandlingUnitTypeDescription) || (await paletTurleri().catch(() => [])).find((t) => t.id === tur)?.ad || ''
+  // HandlingUnits tür açıklamasını/kategorisini her zaman taşımaz → tür listesinden tamamla (hata olursa kodla yetin).
+  const turler = await paletTurleri().catch(() => [] as PaletTuru[])
+  const t = turler.find((x) => x.id === tur)
+  const turAdi = str(h.body.HandlingUnitTypeDescription) || t?.ad || ''
+  // İç içe birimler (palet içindeki koliler). Alan bu ortamda filtrelenemiyorsa boş liste.
+  const alt = await istek<{ value?: { HandlingUnitId?: number; HandlingUnitTypeId?: string; LocationNo?: string }[] }>(
+    'GET',
+    `HandlingUnitsHandling.svc/HandlingUnits?$filter=${encodeURIComponent(`Contract eq '${esc(contract)}' and ParentHandlingUnitId eq ${id}`)}&$top=200`,
+  ).catch(() => null)
+  const altBirimler: AltBirim[] = alt?.status === 200
+    ? (alt.body?.value ?? []).map((r) => {
+        const at = str(r.HandlingUnitTypeId)
+        return { id: num(r.HandlingUnitId), tur: at, turAdi: turler.find((x) => x.id === at)?.ad ?? '', lokasyonNo: str(r.LocationNo) }
+      })
+    : []
   return {
     id,
     tur,
     turAdi,
-    kategori: str(h.body.HandlingUnitCategoryId),
+    kategori: str(h.body.HandlingUnitCategoryId) || t?.kategori || '',
+    altBirimler,
+    ustBirim: num(h.body.ParentHandlingUnitId),
     // Boş palette IFS lokasyonu null tutar; içerik varsa satırın lokasyonu esastır.
     lokasyonNo: str(h.body.LocationNo) || icerik[0]?.locationNo || tum[0]?.locationNo || '',
     icerik,
@@ -414,6 +440,57 @@ export async function paletTasi(id: number, hedefLok: string): Promise<{ kaynakL
     MoveComment: 'ILERIHub el terminali',
   })
   return { kaynakLok: palet.lokasyonNo }
+}
+
+/**
+ * Koliyi (ya da herhangi bir birimi) üst birime bağla / bağı kaldır (parent = null). HandlingUnitHandling
+ * HandlingUnitSet'te ParentHandlingUnitId alanı güncellenir (Aurena'daki "Üst Taşıma Birimi" alanı).
+ * NOT: IFS test ortamında henüz doğrulanmadı — IFS reddederse hata mesajı olduğu gibi döner.
+ */
+async function ustBirimAyarla(id: number, parent: number | null): Promise<void> {
+  const g = await istek<{ '@odata.etag'?: string; ParentHandlingUnitId?: number }>('GET', `${HU}HandlingUnitSet(HandlingUnitId=${id})`)
+  if (g.status !== 200) throw new Error(dostaneIfsHata(`Birim ${id} HTTP ${g.status}: ${g.text.slice(0, 600)}`, `Birim ${id} okunamadı`))
+  await zorunlu('Üst birim', 'PATCH', `${HU}HandlingUnitSet(HandlingUnitId=${id})`, { ParentHandlingUnitId: parent }, g.body?.['@odata.etag'] ?? '*')
+}
+
+/**
+ * Koliyi palete ekle. Koli başka lokasyondaysa önce paletin lokasyonuna taşınır (koli boş değilse).
+ * Taşındıysa kaynak/hedef döner.
+ */
+export async function paleteKoliEkle(paletId: number, koliId: number): Promise<{ tasindi: { kaynakLok: string; hedefLok: string } | null }> {
+  if (paletId === koliId) throw new Error('Palet ve koli aynı')
+  const [palet, koli] = await Promise.all([paletGetir(paletId), paletGetir(koliId)])
+  if (!palet) throw new Error(`Palet bulunamadı: ${paletId}`)
+  if (!koli) throw new Error(`Koli bulunamadı: ${koliId}`)
+  if (koli.ustBirim === paletId) throw new Error(`Koli ${koliId} zaten palet ${paletId} içinde`)
+  if (koli.ustBirim) throw new Error(`Koli ${koliId} başka bir palette (${koli.ustBirim}) — önce oradan çıkarın`)
+  let tasindi: { kaynakLok: string; hedefLok: string } | null = null
+  if (palet.lokasyonNo && koli.lokasyonNo && palet.lokasyonNo !== koli.lokasyonNo && koli.icerik.length) {
+    const { contract } = getIfsConfig()
+    await zorunlu('Koli taşıma', 'POST', `${HU}MoveInventory`, {
+      HandlingUnitIdList: String(koliId),
+      Contract: contract,
+      LocationNo: palet.lokasyonNo,
+      Destination: 'MoveToInventory',
+      MoveComment: 'ILERIHub el terminali - palete koli ekleme',
+    })
+    tasindi = { kaynakLok: koli.lokasyonNo, hedefLok: palet.lokasyonNo }
+  }
+  try {
+    await ustBirimAyarla(koliId, paletId)
+  } catch (e) {
+    const m = e instanceof Error ? e.message : String(e)
+    throw new Error(tasindi ? `Koli ${koliId} ${tasindi.kaynakLok} → ${tasindi.hedefLok} taşındı ama palete eklenemedi: ${m}` : m)
+  }
+  return { tasindi }
+}
+
+/** Koliyi paletten çıkar (koli aynı lokasyonda tek başına kalır). */
+export async function palettenKoliCikar(paletId: number, koliId: number): Promise<void> {
+  const koli = await paletGetir(koliId)
+  if (!koli) throw new Error(`Koli bulunamadı: ${koliId}`)
+  if (koli.ustBirim !== paletId) throw new Error(`Koli ${koliId} palet ${paletId} içinde değil`)
+  await ustBirimAyarla(koliId, null)
 }
 
 /** Kaynak paletteki stok satırından hedef palete aktar (aynı lokasyon). */

@@ -40,7 +40,7 @@ const KARTLAR: DepoKart[] = [
   { label: 'Stok Taşıma', alt: 'Raf okut, taşı, etiketle', Icon: ArrowDownUp, href: '/terminal/depo/stok-tasima' },
   { label: 'Malzeme Toplama', alt: 'İş emri okut, FIFO ile topla', Icon: ClipboardList, href: '/terminal/depo/toplama' },
   { label: 'Stok Bilgisi', alt: 'Barkod, stok no ya da lokasyon okut', Icon: PackageSearch, href: '/terminal/depo/stok-bilgisi' },
-  { label: 'Taşıma Birimi', alt: 'Palet oluştur, doldur, taşı, aktar', Icon: Boxes, href: '/terminal/depo/tasima-birimi' },
+  { label: 'Koli / Palet', alt: 'Koli ve palet oluştur, doldur, taşı, aktar', Icon: Boxes, href: '/terminal/depo/tasima-birimi' },
   { label: 'Toplu Taşıma', alt: 'Çok kalemi tek fişle lokasyona taşı', Icon: Forklift, href: '/terminal/depo/toplu-tasima' },
   { label: 'Transfer Talebi', alt: 'Onaylı talebe stok bağla, transfer et', Icon: Send, href: '/terminal/depo/transfer-talebi' },
   { label: 'Sevkiyat', alt: 'Sevkiyat toplama: okut, bitir', Icon: Truck, href: '/terminal/depo/sevkiyat' },

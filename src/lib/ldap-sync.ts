@@ -40,6 +40,7 @@ const ROLE_OVERRIDES: Record<string, Role> = {
   'hilmi.ileri@ilerigroup.com': Role.ADMIN,
   'eren.ileri@ilerigroup.com': Role.ADMIN,
   'kadir.kocakoglu@ilerigroup.com': Role.ADMIN,
+  'nurgul.tastan@ilerigroup.com': Role.ADMIN,
   // QUALITY_MANAGER
   'sami.tekoglu@ilerigroup.com': Role.QUALITY_MANAGER,
 }

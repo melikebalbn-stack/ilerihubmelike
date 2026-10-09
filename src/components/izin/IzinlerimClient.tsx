@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, CalendarClock, ChevronLeft, ChevronRight, Hourglass, Loader2, Search, Sigma, UserRound, Wallet } from 'lucide-react'
+import { AlertTriangle, CalendarClock, Hourglass, Loader2, Search, Sigma, UserRound, Wallet } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -36,20 +36,11 @@ type Onizleme = {
   kota: { kotaDk: number; kalanDk: number; sonrasiDk: number; yeterli: boolean } | null; belgeZorunlu: boolean
   cakisan: { baslangic: string; bitis: string } | null; ekipCakisma: number; onayMetni: string
 }
-type TakvimGunu = { tarih: string; takvim: string; tatil: string | null; ekipIzinli: number }
 type Aday = { id: string; adSoyad: string; sicil: string | null; departman: string | null; hesapVar: boolean }
 
 const gunFmt = (n: number) => n.toLocaleString('tr-TR', { maximumFractionDigits: 1 })
 const saatFmt = (dk: number) => (dk / 60).toLocaleString('tr-TR', { maximumFractionDigits: 2 })
 const tarihFmt = (s: string) => `${s.slice(8, 10)}.${s.slice(5, 7)}.${s.slice(0, 4)}`
-const AYLAR = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık']
-const bugun = () => new Date(Date.now() + 3 * 3600_000).toISOString().slice(0, 10)
-const ayEkle = (ay: string, n: number) => {
-  const [y, m] = ay.split('-').map(Number)
-  const d = new Date(Date.UTC(y, m - 1 + n, 1))
-  return d.toISOString().slice(0, 7)
-}
-
 // Renk dili: mavi = onaylı / talep, turuncu = bekleyen / uyarı, gri = red / iptal / tatil. Kırmızı-yeşil YOK.
 const DURUM_TON: Record<string, string> = {
   BEKLIYOR_YONETICI: 'border-amber-200 bg-amber-50 text-amber-800',
@@ -101,16 +92,9 @@ export function IzinlerimClient({ adinaAcabilir, ilkBaslangic }: { adinaAcabilir
           {!veri.personel.kendi && (
             <p className="text-sm text-muted-foreground"><strong className="font-medium text-slate-700">{veri.personel.adSoyad}</strong> adına talep açıyorsunuz.</p>
           )}
-          <Kartlar k={veri.kartlar} gecis={veri.gecisTarihi} />
-          {veri.kotalar.map((k) => (
-            <p key={k.turId} className="-mt-1 text-sm text-muted-foreground">
-              {k.ad}: bu dönem kalan <span className="font-medium tabular-nums text-slate-700">{saatFmt(k.kotaDk - k.kullanilanDk)} sa</span> / {saatFmt(k.kotaDk)} sa
-            </p>
-          ))}
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,620px)_minmax(0,1fr)]">
-            <TalepFormu key={veri.personel.id} turler={veri.turler} personnelId={kisi?.id ?? null} bitti={yukle} ilkBaslangic={veri.personel.kendi ? ilkBaslangic : undefined} />
-            {(veri.personel.kendi || veri.talepler.length > 0) && <Taleplerim talepler={veri.talepler} degisti={yukle} />}
-          </div>
+          <Kartlar k={veri.kartlar} gecis={veri.gecisTarihi} kotalar={veri.kotalar} />
+          <TalepFormu key={veri.personel.id} turler={veri.turler} personnelId={kisi?.id ?? null} bitti={yukle} ilkBaslangic={veri.personel.kendi ? ilkBaslangic : undefined} />
+          {(veri.personel.kendi || veri.talepler.length > 0) && <Taleplerim talepler={veri.talepler} degisti={yukle} />}
         </>
       )}
     </div>
@@ -164,11 +148,13 @@ function KimIcin({ kisi, sec }: { kisi: Aday | null; sec: (a: Aday | null) => vo
 
 // ── Özet kartları (sakin: normal boy sayı, nötr renk) ────────────────────────
 
-function Kartlar({ k, gecis }: { k: Extract<Veri, { bagli: true }>['kartlar']; gecis: string | null }) {
+function Kartlar({ k, gecis, kotalar }: { k: Extract<Veri, { bagli: true }>['kartlar']; gecis: string | null; kotalar: Extract<Veri, { bagli: true }>['kotalar'] }) {
   return (
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
       <Kart ikon={<Wallet className="h-4 w-4" />} baslik="Yıllık izin · kalan" deger={gecis ? gunFmt(k.kalan) : '—'} birim={gecis ? 'gün' : 'bakiye henüz yüklenmedi'} />
-      <Kart ikon={<Hourglass className="h-4 w-4" />} baslik="Onay bekleyen" deger={String(k.bekleyenTalep)} birim={`talep${k.bekleyenGun ? ` · ${gunFmt(k.bekleyenGun)} gün` : ''}`} />
+      {kotalar.map((q) => (
+        <Kart key={q.turId} accent ikon={<Hourglass className="h-4 w-4" />} baslik={q.ad} deger={`${saatFmt(q.kotaDk - q.kullanilanDk)} / ${saatFmt(q.kotaDk)}`} birim="sa" />
+      ))}
       <Kart ikon={<Sigma className="h-4 w-4" />} baslik="Bu yıl kullanılan" deger={gunFmt(k.kullanilanBuYil)} birim="gün" />
       <Kart ikon={<CalendarClock className="h-4 w-4" />} baslik="Sonraki hak ediş"
         deger={k.sonraki ? `+${k.sonraki.gun}` : '—'} birim={k.sonraki ? `gün · ${tarihFmt(k.sonraki.tarih)}${k.sonraki.ilk ? ' · ilk hak' : ''}` : ''} />
@@ -176,13 +162,13 @@ function Kartlar({ k, gecis }: { k: Extract<Veri, { bagli: true }>['kartlar']; g
   )
 }
 
-function Kart({ ikon, baslik, deger, birim }: { ikon: React.ReactNode; baslik: string; deger: string; birim: string }) {
+function Kart({ ikon, baslik, deger, birim, accent }: { ikon: React.ReactNode; baslik: string; deger: string; birim: string; accent?: boolean }) {
   return (
-    <Card className="shadow-none">
+    <Card className={cn('shadow-none', accent && 'border-blue-200 bg-blue-50/60')}>
       <CardContent className="p-4">
-        <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">{ikon}{baslik}</div>
+        <div className={cn('flex items-center gap-1.5 text-xs font-medium', accent ? 'text-blue-800' : 'text-muted-foreground')}>{ikon}{baslik}</div>
         <div className="mt-1 flex flex-wrap items-baseline gap-1.5">
-          <span className="text-lg font-semibold tabular-nums text-slate-800">{deger}</span>
+          <span className={cn('text-lg font-semibold tabular-nums', accent ? 'text-blue-900' : 'text-slate-800')}>{deger}</span>
           <span className="text-xs text-muted-foreground">{birim}</span>
         </div>
       </CardContent>
@@ -311,13 +297,6 @@ function TalepFormu({ turler, personnelId, bitti, ilkBaslangic }: { turler: Tur[
             <Parcali ad="Son gün" secenekler={[['TAM', 'Tam gün'], ['SABAH', 'Sabah']]} deger={son} sec={setSon} kapali={!tur?.yarimGunOlur} />
           </>
         )}
-        {tur?.belgeZorunlu && (
-          <div className="col-span-2">
-            <Label htmlFor="izin-belge" className="text-xs text-slate-500">Belge (zorunlu · PDF, JPG ya da PNG · en çok 10 MB)</Label>
-            <Input id="izin-belge" type="file" accept="application/pdf,image/jpeg,image/png" capture="environment" onChange={(e) => setBelge(e.target.files?.[0] ?? null)} className="mt-1 bg-white" />
-            <p className="mt-1 text-xs text-slate-500">Belgeyi yalnız siz ve İnsan Varlıkları görür; yöneticiniz göremez.</p>
-          </div>
-        )}
       </div>
 
       {on && on.ekipCakisma > 0 && (
@@ -326,37 +305,42 @@ function TalepFormu({ turler, personnelId, bitti, ilkBaslangic }: { turler: Tur[
         </div>
       )}
 
-      <div className="flex flex-col gap-4 sm:flex-row">
-        <AyTakvimi bas={bas} bit={bit} ilk={ilk} son={son} personnelId={personnelId} />
-        <div className="flex flex-col gap-2.5 rounded-lg border border-blue-100 bg-slate-50 p-3.5 sm:w-56 sm:shrink-0">
-          <span className="text-xs text-slate-500">Düşülecek</span>
-          <span className="font-mono text-3xl font-semibold text-blue-800">{on ? (on.dakika !== null ? `${saatFmt(on.dakika)} sa` : `${gunFmt(on.toplam)} gün`) : '—'}</span>
-          {on && on.notlar.length > 0 && (
-            <ul className="space-y-1 text-xs leading-snug text-slate-600">{on.notlar.map((n) => <li key={n}>{n}</li>)}</ul>
-          )}
-          {on?.bakiye && (
-            <div className="border-t border-blue-100 pt-2.5">
-              <div className="text-xs text-slate-500">Kalan bakiye</div>
-              <div className={cn('font-mono text-lg font-semibold', on.bakiye.yeterli ? 'text-slate-900' : 'text-amber-800')}>{gunFmt(on.bakiye.kalan)} → {gunFmt(on.bakiye.sonrasi)}</div>
-              {!on.bakiye.yeterli && <div className="text-xs text-amber-800">Bakiye yetersiz</div>}
-            </div>
-          )}
-          {on?.kota && (
-            <div className="border-t border-blue-100 pt-2.5">
-              <div className="text-xs text-slate-500">Kalan dönem kotası</div>
-              <div className={cn('font-mono text-lg font-semibold', on.kota.yeterli ? 'text-slate-900' : 'text-amber-800')}>{saatFmt(on.kota.kalanDk)} → {saatFmt(on.kota.sonrasiDk)} sa</div>
-              {!on.kota.yeterli && <div className="text-xs text-amber-800">Kota yetersiz</div>}
-            </div>
-          )}
-          {on?.cakisan && <div className="text-xs text-amber-800">Bu tarihlerle çakışan talebiniz var ({tarihFmt(on.cakisan.baslangic)} – {tarihFmt(on.cakisan.bitis)})</div>}
-          {onHata && <div className="text-xs text-amber-800">{onHata}</div>}
-        </div>
-      </div>
-
       <div>
         <Label htmlFor="izin-aciklama" className="text-xs text-slate-500">Açıklama (isteğe bağlı)</Label>
         <Textarea id="izin-aciklama" rows={2} value={aciklama} onChange={(e) => setAciklama(e.target.value)} className="mt-1 resize-none bg-white" maxLength={500} />
       </div>
+
+      <div>
+        <Label htmlFor="izin-belge" className="text-xs text-slate-500">
+          Belge {tur?.belgeZorunlu ? '(zorunlu' : '(rapor için isteğe bağlı; evlilik/ölüm/babalık için zorunlu'} · PDF, JPG ya da PNG · en çok 10 MB)
+        </Label>
+        <Input id="izin-belge" type="file" accept="application/pdf,image/jpeg,image/png" onChange={(e) => setBelge(e.target.files?.[0] ?? null)} className="mt-1 bg-white" />
+        <p className="mt-1 text-xs text-slate-500">Belgeyi yalnız siz ve İnsan Varlıkları görür; yöneticiniz göremez.</p>
+      </div>
+
+      {/* Düşülecek — sade satır (önceki takvim + büyük panel yerine) */}
+      <div className="rounded-lg border border-dashed bg-slate-50 px-4 py-3">
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-sm text-slate-500">Düşülecek</span>
+          <span className={cn('text-base font-semibold tabular-nums', on ? 'text-slate-900' : 'text-slate-400')}>
+            {on ? (on.dakika !== null ? `${saatFmt(on.dakika)} sa` : `${gunFmt(on.toplam)} gün`) : 'Tarih seçince hesaplanır'}
+          </span>
+        </div>
+        {on && on.notlar.length > 0 && <ul className="mt-2 space-y-0.5 text-xs leading-snug text-slate-600">{on.notlar.map((n) => <li key={n}>{n}</li>)}</ul>}
+        {on?.bakiye && (
+          <div className={cn('mt-2 text-xs', on.bakiye.yeterli ? 'text-slate-500' : 'text-amber-800')}>
+            Kalan bakiye: <span className="font-medium tabular-nums">{gunFmt(on.bakiye.kalan)} → {gunFmt(on.bakiye.sonrasi)} gün</span>{!on.bakiye.yeterli && ' · bakiye yetersiz'}
+          </div>
+        )}
+        {on?.kota && (
+          <div className={cn('mt-1 text-xs', on.kota.yeterli ? 'text-slate-500' : 'text-amber-800')}>
+            Kalan dönem kotası: <span className="font-medium tabular-nums">{saatFmt(on.kota.kalanDk)} → {saatFmt(on.kota.sonrasiDk)} sa</span>{!on.kota.yeterli && ' · kota yetersiz'}
+          </div>
+        )}
+        {on?.cakisan && <div className="mt-1 text-xs text-amber-800">Bu tarihlerle çakışan talebiniz var ({tarihFmt(on.cakisan.baslangic)} – {tarihFmt(on.cakisan.bitis)})</div>}
+        {onHata && <div className="mt-1 text-xs text-amber-800">{onHata}</div>}
+      </div>
+
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <span className="text-xs text-slate-500">{on?.onayMetni ?? 'Onay: Yöneticin → İnsan Varlıkları'}</span>
         <Button onClick={gonder} disabled={!gonderilebilir} className="h-11 px-6">
@@ -364,64 +348,6 @@ function TalepFormu({ turler, personnelId, bitti, ilkBaslangic }: { turler: Tur[
         </Button>
       </div>
     </section>
-  )
-}
-
-function AyTakvimi({ bas, bit, ilk, son, personnelId }: { bas: string; bit: string; ilk: string; son: string; personnelId: string | null }) {
-  const [ay, setAy] = useState((bas || bugun()).slice(0, 7))
-  const [gunler, setGunler] = useState<TakvimGunu[]>([])
-  useEffect(() => { if (bas) setAy(bas.slice(0, 7)) }, [bas])
-  useEffect(() => {
-    void (async () => {
-      const { ok, veri } = await istek<{ gunler: TakvimGunu[] }>(`/api/izin/talebim/takvim?ay=${ay}${personnelId ? `&personnelId=${personnelId}` : ''}`)
-      if (ok) setGunler(veri.gunler)
-    })()
-  }, [ay, personnelId])
-  const bosluk = gunler.length ? (new Date(`${gunler[0].tarih}T12:00:00Z`).getUTCDay() + 6) % 7 : 0
-  const ekipGun = gunler.filter((d) => d.ekipIzinli > 0 && bas && bit && d.tarih >= bas && d.tarih <= bit)
-  return (
-    <div className="min-w-0 flex-1 space-y-1.5">
-      <div className="flex items-center justify-between text-sm font-semibold">
-        <div className="flex items-center gap-1">
-          <button type="button" aria-label="Önceki ay" onClick={() => setAy(ayEkle(ay, -1))} className="rounded p-1 hover:bg-slate-100"><ChevronLeft className="h-4 w-4" /></button>
-          <span>{AYLAR[Number(ay.slice(5)) - 1]} {ay.slice(0, 4)}</span>
-          <button type="button" aria-label="Sonraki ay" onClick={() => setAy(ayEkle(ay, 1))} className="rounded p-1 hover:bg-slate-100"><ChevronRight className="h-4 w-4" /></button>
-        </div>
-        {ekipGun.length > 0 && <span className="text-xs font-normal text-slate-500">Ekibinden izinli: en çok {Math.max(...ekipGun.map((d) => d.ekipIzinli))} kişi</span>}
-      </div>
-      <div className="grid grid-cols-7 gap-[3px] text-center text-[11px] text-slate-500">{['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'].map((d) => <div key={d}>{d}</div>)}</div>
-      <div className="grid grid-cols-7 gap-[3px]">
-        {Array.from({ length: bosluk }).map((_, i) => <div key={`b${i}`} />)}
-        {gunler.map((d) => {
-          const talep = !!bas && !!bit && d.tarih >= bas && d.tarih <= bit && (d.takvim === 'CALISMA' || d.takvim === 'YARIM')
-          const yarim = talep && (d.takvim === 'YARIM' || (d.tarih === bas && ilk === 'OGLEDEN_SONRA') || (d.tarih === bit && son === 'SABAH'))
-          const kapali = d.takvim === 'HAFTA_SONU' || d.takvim === 'TATIL'
-          return (
-            <div
-              key={d.tarih}
-              title={[d.tatil, d.ekipIzinli ? `Ekipten ${d.ekipIzinli} kişi izinli` : null].filter(Boolean).join(' · ') || undefined}
-              className={cn(
-                'relative flex h-8 flex-col items-center justify-center rounded-md font-mono text-xs',
-                talep && !yarim && 'bg-slate-800 font-semibold text-white',
-                talep && yarim && 'bg-[linear-gradient(90deg,#1e293b_50%,#e2e8f0_50%)] font-semibold text-slate-900',
-                !talep && kapali && 'bg-slate-100 text-slate-500',
-                !talep && !kapali && d.takvim === 'YARIM' && 'bg-[linear-gradient(90deg,#fff_50%,#e2e8f0_50%)]',
-                !talep && !kapali && d.takvim !== 'YARIM' && 'bg-white text-slate-800',
-              )}
-            >
-              {Number(d.tarih.slice(8))}
-              <span className={cn('h-1 w-1 rounded-full', d.ekipIzinli ? (talep && !yarim ? 'bg-amber-300' : 'bg-amber-600') : 'bg-transparent')} />
-            </div>
-          )
-        })}
-      </div>
-      <div className="flex flex-wrap gap-3 text-[11px] text-slate-500">
-        <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm bg-slate-800" />Talep</span>
-        <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm border bg-slate-100" />Tatil / hafta sonu</span>
-        <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm border bg-[linear-gradient(90deg,#fff_50%,#e2e8f0_50%)]" />Arefe (yarım)</span>
-        <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-amber-600" />Ekipten izinli var</span>
-      </div>
-    </div>
   )
 }
 

@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, CalendarClock, Hourglass, Loader2, Search, Sigma, UserRound, Wallet } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -107,6 +107,8 @@ function KimIcin({ kisi, sec }: { kisi: Aday | null; sec: (a: Aday | null) => vo
   const [acik, setAcik] = useState(false)
   const [q, setQ] = useState('')
   const [adaylar, setAdaylar] = useState<Aday[]>([])
+  const kutuRef = useRef<HTMLDivElement>(null)
+
   useEffect(() => {
     if (!acik) return
     const t = setTimeout(async () => {
@@ -115,33 +117,50 @@ function KimIcin({ kisi, sec }: { kisi: Aday | null; sec: (a: Aday | null) => vo
     }, 250)
     return () => clearTimeout(t)
   }, [q, acik])
+
+  // Dışarı tıklanınca / Esc ile listeyi kapat
+  useEffect(() => {
+    if (!acik) return
+    const disari = (e: MouseEvent) => { if (kutuRef.current && !kutuRef.current.contains(e.target as Node)) setAcik(false) }
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setAcik(false) }
+    document.addEventListener('mousedown', disari)
+    document.addEventListener('keydown', esc)
+    return () => { document.removeEventListener('mousedown', disari); document.removeEventListener('keydown', esc) }
+  }, [acik])
+
+  const baskasiSecili = !!kisi || acik
   return (
     <div className="flex flex-wrap items-center gap-2 text-sm">
       <UserRound className="h-4 w-4 text-slate-500" />
       <span className="text-slate-600">Kimin için:</span>
-      <div className="inline-flex rounded-lg border bg-white p-0.5">
-        <button onClick={() => { sec(null); setAcik(false) }} className={cn('rounded-md px-3 py-1.5', !kisi ? 'bg-slate-800 text-white' : 'text-slate-600 hover:bg-slate-100')}>Kendim</button>
-        <button onClick={() => setAcik(!acik)} className={cn('rounded-md px-3 py-1.5', kisi ? 'bg-slate-800 text-white' : 'text-slate-600 hover:bg-slate-100')}>
-          {kisi ? `${kisi.adSoyad} adına` : 'Başkası adına…'}
-        </button>
-      </div>
-      {acik && (
-        <div className="w-full max-w-md rounded-lg border bg-white p-2">
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
-            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Sicil veya ad" className="pl-8" autoFocus />
-          </div>
-          <div className="mt-2 max-h-60 overflow-y-auto">
-            {adaylar.map((a) => (
-              <button key={a.id} onClick={() => { sec(a); setAcik(false) }} className="flex w-full items-center justify-between gap-2 rounded px-2 py-2 text-left hover:bg-slate-50">
-                <span><span className="font-medium">{a.adSoyad}</span> <span className="text-xs text-slate-500">{a.sicil} · {a.departman ?? '—'}</span></span>
-                {!a.hesapVar && <span className="rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-xs text-slate-600">hesabı yok</span>}
-              </button>
-            ))}
-            {adaylar.length === 0 && <div className="px-2 py-3 text-center text-slate-400">Kişi yok</div>}
-          </div>
+      <div ref={kutuRef} className="relative">
+        <div className="inline-flex rounded-lg border bg-white p-0.5">
+          <button type="button" onClick={() => { sec(null); setAcik(false) }}
+            className={cn('rounded-md px-3 py-1.5', !baskasiSecili ? 'bg-slate-800 text-white' : 'text-slate-600 hover:bg-slate-100')}>Kendim</button>
+          <button type="button" onClick={() => setAcik((v) => !v)}
+            className={cn('rounded-md px-3 py-1.5', baskasiSecili ? 'bg-slate-800 text-white' : 'text-slate-600 hover:bg-slate-100')}>
+            {kisi ? `${kisi.adSoyad} adına` : 'Başkası adına…'}
+          </button>
         </div>
-      )}
+        {acik && (
+          <div className="absolute left-0 top-full z-30 mt-1 w-[min(92vw,28rem)] rounded-lg border bg-white p-2 shadow-lg">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
+              <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Sicil veya ad ile ara" className="pl-8" autoFocus />
+            </div>
+            <div className="mt-2 max-h-72 overflow-y-auto">
+              {adaylar.map((a) => (
+                <button type="button" key={a.id} onClick={() => { sec(a); setAcik(false); setQ('') }} className="flex w-full items-center justify-between gap-2 rounded px-2 py-2 text-left hover:bg-slate-50">
+                  <span><span className="font-medium">{a.adSoyad}</span> <span className="text-xs text-slate-500">{a.sicil} · {a.departman ?? '—'}</span></span>
+                  {!a.hesapVar && <span className="whitespace-nowrap rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-xs text-slate-600">hesabı yok</span>}
+                </button>
+              ))}
+              {adaylar.length === 0 && <div className="px-2 py-3 text-center text-slate-400">Kişi bulunamadı</div>}
+              {adaylar.length >= 50 && <div className="px-2 py-2 text-center text-xs text-slate-400">Daha fazlası için ad ya da sicil yazın</div>}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

@@ -385,7 +385,7 @@ export async function adinaAdaylari(ctx: Baglam, q: string) {
   const ps = await prisma.personnel.findMany({
     where: { aktif: true, ...(idler ? { id: { in: idler } } : {}), ...filtre },
     orderBy: { adSoyad: 'asc' },
-    take: 30,
+    take: 50,
     select: { id: true, adSoyad: true, sicilNo: true, department: { select: { name: true } }, user: { select: { id: true } } },
   })
   return ps.map((p) => ({ id: p.id, adSoyad: p.adSoyad, sicil: p.sicilNo, departman: p.department?.name ?? null, hesapVar: !!p.user }))

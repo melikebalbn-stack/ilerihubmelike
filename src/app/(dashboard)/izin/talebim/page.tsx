@@ -25,11 +25,14 @@ export default async function IzinlerimPage({ searchParams }: { searchParams: Pr
     adinaAcabilir = fk > 0 || (await getManagedPersonnelIds(ctx.personnelId)).length > 0
   }
   return (
-    <div className="container mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
-      <div>
-        <p className="font-mono text-xs text-slate-500">İnsan Varlıkları / İzin</p>
-        <h1 className="mt-1 flex items-center gap-2 text-2xl font-bold text-[#1B4F72]"><CalendarDays className="h-6 w-6" />İzinlerim</h1>
-        {!acik && <p className="mt-1 text-sm text-amber-700">İzin talebi henüz herkese açık değil — İV deneme görünümü.</p>}
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="flex items-center gap-2 text-xl font-semibold"><CalendarDays className="h-5 w-5" />İzinlerim</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            İzin talebi oluştur ve taleplerini takip et.{!acik && ' · İzin talebi henüz herkese açık değil — İV deneme görünümü.'}
+          </p>
+        </div>
       </div>
       <IzinlerimClient adinaAcabilir={adinaAcabilir} ilkBaslangic={ilkBaslangic} />
     </div>

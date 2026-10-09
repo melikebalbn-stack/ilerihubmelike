@@ -1,12 +1,11 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, CalendarClock, ChevronLeft, ChevronRight, Hourglass, Loader2, Search, Sigma, UserRound, Wallet } from 'lucide-react'
+import { AlertTriangle, ChevronLeft, ChevronRight, Loader2, Search, UserRound } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { Card, CardContent } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 
@@ -87,7 +86,7 @@ export function IzinlerimClient({ adinaAcabilir, ilkBaslangic }: { adinaAcabilir
   }, [yukle])
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       {adinaAcabilir && <KimIcin kisi={kisi} sec={setKisi} />}
       {hata && <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">{hata}</div>}
       {!veri && !hata && <Loader2 className="mx-auto h-6 w-6 animate-spin text-slate-400" />}
@@ -99,16 +98,9 @@ export function IzinlerimClient({ adinaAcabilir, ilkBaslangic }: { adinaAcabilir
       {veri?.bagli && (
         <>
           {!veri.personel.kendi && (
-            <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm text-blue-900">
-              <strong>{veri.personel.adSoyad}</strong> adına talep açıyorsunuz.
-            </div>
+            <p className="text-sm text-muted-foreground"><strong className="font-medium text-slate-700">{veri.personel.adSoyad}</strong> adına talep açıyorsunuz.</p>
           )}
-          <Kartlar k={veri.kartlar} gecis={veri.gecisTarihi} />
-          {veri.kotalar.map((k) => (
-            <p key={k.turId} className="-mt-2 text-sm text-slate-600">
-              {k.ad}: bu dönem kalan <span className="font-mono font-semibold text-blue-800">{saatFmt(k.kotaDk - k.kullanilanDk)} sa</span> / {saatFmt(k.kotaDk)} sa
-            </p>
-          ))}
+          <Ozet k={veri.kartlar} gecis={veri.gecisTarihi} kotalar={veri.kotalar} />
           <div className="grid gap-4 lg:grid-cols-[minmax(0,620px)_minmax(0,1fr)]">
             <TalepFormu key={veri.personel.id} turler={veri.turler} personnelId={kisi?.id ?? null} bitti={yukle} ilkBaslangic={veri.personel.kendi ? ilkBaslangic : undefined} />
             {(veri.personel.kendi || veri.talepler.length > 0) && <Taleplerim talepler={veri.talepler} degisti={yukle} />}
@@ -138,8 +130,8 @@ function KimIcin({ kisi, sec }: { kisi: Aday | null; sec: (a: Aday | null) => vo
       <UserRound className="h-4 w-4 text-slate-500" />
       <span className="text-slate-600">Kimin için:</span>
       <div className="inline-flex rounded-lg border bg-white p-0.5">
-        <button onClick={() => { sec(null); setAcik(false) }} className={cn('rounded-md px-3 py-1.5', !kisi ? 'bg-[#1B4F72] text-white' : 'text-slate-600 hover:bg-slate-100')}>Kendim</button>
-        <button onClick={() => setAcik(!acik)} className={cn('rounded-md px-3 py-1.5', kisi ? 'bg-[#1B4F72] text-white' : 'text-slate-600 hover:bg-slate-100')}>
+        <button onClick={() => { sec(null); setAcik(false) }} className={cn('rounded-md px-3 py-1.5', !kisi ? 'bg-slate-800 text-white' : 'text-slate-600 hover:bg-slate-100')}>Kendim</button>
+        <button onClick={() => setAcik(!acik)} className={cn('rounded-md px-3 py-1.5', kisi ? 'bg-slate-800 text-white' : 'text-slate-600 hover:bg-slate-100')}>
           {kisi ? `${kisi.adSoyad} adına` : 'Başkası adına…'}
         </button>
       </div>
@@ -164,33 +156,25 @@ function KimIcin({ kisi, sec }: { kisi: Aday | null; sec: (a: Aday | null) => vo
   )
 }
 
-// ── 4 kart ──────────────────────────────────────────────────────────────────
+// ── Özet (tek satır — standart: ayrı KPI kutusu yok) ─────────────────────────
 
-function Kartlar({ k, gecis }: { k: Extract<Veri, { bagli: true }>['kartlar']; gecis: string | null }) {
+function Ozet({ k, gecis, kotalar }: { k: Extract<Veri, { bagli: true }>['kartlar']; gecis: string | null; kotalar: Extract<Veri, { bagli: true }>['kotalar'] }) {
+  const deger = (n: string) => <span className="font-medium tabular-nums text-slate-700">{n}</span>
+  const parcalar: React.ReactNode[] = [
+    <span key="yil">Yıllık izin kalan: {gecis ? deger(`${gunFmt(k.kalan)} gün`) : <span className="text-slate-400">bakiye yüklenmedi</span>}</span>,
+    <span key="bek">Onay bekleyen: {deger(String(k.bekleyenTalep))} talep{k.bekleyenGun ? ` · ${gunFmt(k.bekleyenGun)} gün` : ''}</span>,
+    <span key="kul">Bu yıl kullanılan: {deger(`${gunFmt(k.kullanilanBuYil)} gün`)}</span>,
+    ...(k.sonraki ? [<span key="son">Sonraki hak ediş: {deger(`+${k.sonraki.gun} gün`)} · {tarihFmt(k.sonraki.tarih)}{k.sonraki.ilk ? ' · ilk hak' : ''}</span>] : []),
+    ...kotalar.map((q) => (
+      <span key={q.turId}>{q.ad}: {deger(`${saatFmt(q.kotaDk - q.kullanilanDk)} sa`)} / {saatFmt(q.kotaDk)} sa</span>
+    )),
+  ]
   return (
-    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-      <Kart ikon={<Wallet className="h-4 w-4" />} baslik="Yıllık izin · kalan" ton="mavi" deger={gecis ? gunFmt(k.kalan) : '—'} birim={gecis ? 'gün' : 'bakiye henüz yüklenmedi'} />
-      <Kart ikon={<Hourglass className="h-4 w-4" />} baslik="Onay bekleyen" ton="turuncu" deger={String(k.bekleyenTalep)} birim={`talep${k.bekleyenGun ? ` · ${gunFmt(k.bekleyenGun)} gün` : ''}`} />
-      <Kart ikon={<Sigma className="h-4 w-4" />} baslik="Bu yıl kullanılan" ton="gri" deger={gunFmt(k.kullanilanBuYil)} birim="gün" />
-      <Kart
-        ikon={<CalendarClock className="h-4 w-4" />} baslik="Sonraki hak ediş" ton="gri"
-        deger={k.sonraki ? `+${k.sonraki.gun}` : '—'} birim={k.sonraki ? `gün · ${tarihFmt(k.sonraki.tarih)}${k.sonraki.ilk ? ' · ilk hak' : ''}` : ''}
-      />
-    </div>
-  )
-}
-
-function Kart({ ikon, baslik, deger, birim, ton }: { ikon: React.ReactNode; baslik: string; deger: string; birim: string; ton: 'mavi' | 'turuncu' | 'gri' }) {
-  return (
-    <Card className="shadow-none">
-      <CardContent className="p-4">
-        <div className={cn('flex items-center gap-1.5 text-xs font-medium', ton === 'mavi' && 'text-blue-700', ton === 'turuncu' && 'text-amber-700', ton === 'gri' && 'text-slate-500')}>{ikon}{baslik}</div>
-        <div className="mt-1 flex flex-wrap items-baseline gap-1.5">
-          <span className={cn('font-mono text-2xl font-semibold tabular-nums', ton === 'mavi' ? 'text-blue-800' : ton === 'turuncu' ? 'text-amber-700' : 'text-slate-900')}>{deger}</span>
-          <span className="text-xs text-slate-500">{birim}</span>
-        </div>
-      </CardContent>
-    </Card>
+    <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
+      {parcalar.map((p, i) => (
+        <span key={i} className="flex items-center gap-x-2">{i > 0 && <span className="text-slate-300">·</span>}{p}</span>
+      ))}
+    </p>
   )
 }
 
@@ -202,7 +186,7 @@ function Parcali({ ad, secenekler, deger, sec, kapali }: { ad: string; secenekle
       <legend className="pb-1 text-xs text-slate-500">{ad}</legend>
       <div className={cn('flex h-10 overflow-hidden rounded-lg border text-sm', kapali && 'opacity-50')}>
         {secenekler.map(([v, etiket], i) => (
-          <label key={v} className={cn('flex flex-1 cursor-pointer items-center justify-center', i > 0 && 'border-l', deger === v ? 'bg-[#1B4F72] font-medium text-white' : 'bg-white text-slate-700')}>
+          <label key={v} className={cn('flex flex-1 cursor-pointer items-center justify-center', i > 0 && 'border-l', deger === v ? 'bg-slate-800 font-medium text-white' : 'bg-white text-slate-700')}>
             <input type="radio" className="sr-only" checked={deger === v} onChange={() => sec(v)} />
             {etiket}
           </label>
@@ -406,8 +390,8 @@ function AyTakvimi({ bas, bit, ilk, son, personnelId }: { bas: string; bit: stri
               title={[d.tatil, d.ekipIzinli ? `Ekipten ${d.ekipIzinli} kişi izinli` : null].filter(Boolean).join(' · ') || undefined}
               className={cn(
                 'relative flex h-8 flex-col items-center justify-center rounded-md font-mono text-xs',
-                talep && !yarim && 'bg-[#1B4F72] font-semibold text-white',
-                talep && yarim && 'bg-[linear-gradient(90deg,#1B4F72_50%,#e2e8f0_50%)] font-semibold text-slate-900',
+                talep && !yarim && 'bg-slate-800 font-semibold text-white',
+                talep && yarim && 'bg-[linear-gradient(90deg,#1e293b_50%,#e2e8f0_50%)] font-semibold text-slate-900',
                 !talep && kapali && 'bg-slate-100 text-slate-500',
                 !talep && !kapali && d.takvim === 'YARIM' && 'bg-[linear-gradient(90deg,#fff_50%,#e2e8f0_50%)]',
                 !talep && !kapali && d.takvim !== 'YARIM' && 'bg-white text-slate-800',
@@ -420,7 +404,7 @@ function AyTakvimi({ bas, bit, ilk, son, personnelId }: { bas: string; bit: stri
         })}
       </div>
       <div className="flex flex-wrap gap-3 text-[11px] text-slate-500">
-        <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm bg-[#1B4F72]" />Talep</span>
+        <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm bg-slate-800" />Talep</span>
         <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm border bg-slate-100" />Tatil / hafta sonu</span>
         <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm border bg-[linear-gradient(90deg,#fff_50%,#e2e8f0_50%)]" />Arefe (yarım)</span>
         <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-amber-600" />Ekipten izinli var</span>
@@ -467,7 +451,7 @@ function Taleplerim({ talepler, degisti }: { talepler: Talep[]; degisti: () => v
             <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs">
               <span className="text-slate-500">Belgeler:</span>
               {t.belgeler.map((b) => (
-                <a key={b.id} href={`/api/izin/belge/${b.id}`} target="_blank" rel="noopener noreferrer" className="font-medium text-[#1B4F72] hover:underline">{b.ad}</a>
+                <a key={b.id} href={`/api/izin/belge/${b.id}`} target="_blank" rel="noopener noreferrer" className="font-medium text-slate-800 hover:underline">{b.ad}</a>
               ))}
             </div>
           )}

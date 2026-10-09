@@ -14,6 +14,7 @@ import {
 import { getIsEmrileri, getIsEmrileriByJobs, getIsEmriOperasyonlari, type SytelineIsEmriBaslik } from '@/lib/syteline/is-emri'
 import {
   isEmriMapla,
+  operasyonVarsayilanlari,
   type IsEmriReferans,
   type IsEmriEslemeHaritalari,
   type IsEmriBaslikCikti,
@@ -239,9 +240,7 @@ export async function runIsEmriSync(opts: { dryRun?: boolean; batch?: number } =
       // OperationDescription alanı yok (ORA-20124) → eksikse mapper'daki biçimle tamamla.
       const p = kayit.payload as Payload | null
       baslik = p?.baslik
-      operasyonlar = p?.operasyonlar?.map((o) =>
-        o.OperationDescription ? o : { ...o, OperationDescription: `Op ${o.OperationNo} ${o.WorkCenterNo}`.slice(0, 35) },
-      )
+      operasyonlar = p?.operasyonlar?.map((o) => operasyonVarsayilanlari(o))
     }
     if (!baslik || !operasyonlar) continue
 

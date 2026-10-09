@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   isEmriMapla,
+  operasyonVarsayilanlari,
   type IsEmriBaslikGirdi,
   type IsEmriOperasyonGirdi,
   type IsEmriReferans,
@@ -49,6 +50,12 @@ describe('isEmriMapla — Syteline iş emri → IFS ShopOrd + operasyonlar', () 
     expect(r.operasyonlar).toHaveLength(1)
     expect(r.operasyonlar[0].OperationNo).toBe(10)
     expect(r.operasyonlar[0].OperationDescription).toBe('Op 10 501') // IFS zorunlu alan (ORA-20124)
+    expect(r.operasyonlar[0]).toMatchObject({ QueueTime: 0, MoveTime: 0, MachSetupTime: 0, LaborSetupTime: 0, LaborRunFactor: 0, CrewSize: 1, SetupCrewSize: 1 })
+  })
+
+  it('hazırlık süresi Syteline setup_hrs → MachSetupTime', () => {
+    const r = ok(isEmriMapla(baslik, [op({ setup_hrs: 0.5 })], REF))
+    expect(r.operasyonlar[0].MachSetupTime).toBe(0.5)
     expect(r.operasyonlar[0].WorkCenterNo).toBe('501')
     expect(r.operasyonlar[0].PreferredResourceId).toBe('PE01')
     expect(r.operasyonlar[0].MachRunFactor).toBe(19.04)
@@ -115,5 +122,10 @@ describe('isEmriMapla — Syteline iş emri → IFS ShopOrd + operasyonlar', () 
   it('job / PartNo boş → hata', () => {
     expect(hata(isEmriMapla({ ...baslik, job: '  ' }, [op()], REF))).toMatch(/OrderNo\) boş/)
     expect(hata(isEmriMapla({ ...baslik, item: null }, [op()], REF))).toMatch(/PartNo\) boş/)
+  })
+
+  it('eski saklı payload zorunlu alanlarla tamamlanır', () => {
+    const o = operasyonVarsayilanlari({ OperationNo: 10, WorkCenterNo: '263', MachRunFactor: 300 })
+    expect(o).toMatchObject({ OperationDescription: 'Op 10 263', QueueTime: 0, CrewSize: 1, MachRunFactor: 300 })
   })
 })

@@ -22,6 +22,7 @@ export interface IsEmriOperasyonGirdi {
   wc: string | null
   RESID: string | null
   pcs_per_mch_hr: number | null
+  setup_hrs?: number | null
   qty_received?: number | null
 }
 
@@ -73,6 +74,32 @@ export interface IsEmriOperasyonCikti {
   MachRunFactor: number
   RunTimeCode: 'UnitsHour'
   OperationQty: number
+  // IFS ShopOrderOperation zorunlu süre alanları (ORA-20124 NULLVALUE, saat). Syteline'da karşılığı olan
+  // yalnız hazırlık (setup_hrs); diğerleri 0. İşçilik = 0 (IPRO makine bazlı), ekip 1.
+  QueueTime: number
+  MoveTime: number
+  MachSetupTime: number
+  LaborSetupTime: number
+  LaborRunFactor: number
+  CrewSize: number
+  SetupCrewSize: number
+}
+
+/** IFS'in zorunlu tuttuğu operasyon alanlarını tamamlar (eski saklı payload'lar dahil). */
+export function operasyonVarsayilanlari<T extends Partial<IsEmriOperasyonCikti> & { OperationNo: number; WorkCenterNo: string }>(
+  o: T,
+): T & Pick<IsEmriOperasyonCikti, 'OperationDescription' | 'QueueTime' | 'MoveTime' | 'MachSetupTime' | 'LaborSetupTime' | 'LaborRunFactor' | 'CrewSize' | 'SetupCrewSize'> {
+  return {
+    ...o,
+    OperationDescription: o.OperationDescription || `Op ${o.OperationNo} ${o.WorkCenterNo}`.slice(0, 35),
+    QueueTime: o.QueueTime ?? 0,
+    MoveTime: o.MoveTime ?? 0,
+    MachSetupTime: o.MachSetupTime ?? 0,
+    LaborSetupTime: o.LaborSetupTime ?? 0,
+    LaborRunFactor: o.LaborRunFactor ?? 0,
+    CrewSize: o.CrewSize ?? 1,
+    SetupCrewSize: o.SetupCrewSize ?? 1,
+  }
 }
 
 export type IsEmriMapSonuc =
@@ -154,6 +181,13 @@ export function isEmriMapla(
       MachRunFactor: cevrim,
       RunTimeCode: 'UnitsHour',
       OperationQty: qty,
+      QueueTime: 0,
+      MoveTime: 0,
+      MachSetupTime: Number.isFinite(Number(op.setup_hrs)) && Number(op.setup_hrs) > 0 ? Number(op.setup_hrs) : 0,
+      LaborSetupTime: 0,
+      LaborRunFactor: 0,
+      CrewSize: 1,
+      SetupCrewSize: 1,
     })
   }
 

@@ -30,7 +30,7 @@ const BodySchema = z.object({
 // Her etiket için AYRI uretBarkod() → benzersiz IFS BarcodeId → ayrı sayfa. Barkodlar IFS'te
 // KALICI (silinemez) → "hepsi ya da hiçbiri": tek barkod bile üretilemezse PDF BASILMAZ,
 // anlamlı hata döner (kaç barkod üretildiği + kalıcı oldukları bildirilir, ID'ler log'a yazılır).
-// originPackSize v1'de sabit 1 (mevcut stok 1'lik).
+// originPackSize = etiketteki miktar (etiketin temsil ettiği malzeme miktarı; IFS barkodu okutulunca bu miktar görünür).
 export async function POST(request: Request) {
   const { session, userId, error } = await requirePermission(['depo.terminal.use', 'admin.system.manage'])
   if (error) return error
@@ -67,7 +67,7 @@ export async function POST(request: Request) {
       // 1) IFS'te benzersiz barkod (KALICI). Hata → hepsi-ya-da-hiçbiri: bas-ma, bilgilendir.
       let barkodId: number
       try {
-        barkodId = await uretBarkod({ partNo: d.stokKodu, lotBatchNo: d.lot, originPackSize: 1 })
+        barkodId = await uretBarkod({ partNo: d.stokKodu, lotBatchNo: d.lot, originPackSize: d.miktar > 0 ? d.miktar : 1 })
       } catch (e) {
         const sebep = e instanceof Error ? e.message : 'Barkod üretilemedi'
         console.error('[etiket] barkod üretim hatası', { stokKodu: d.stokKodu, istenen: adet, uretilenAdet: uretilen.length, hataSirasi: i + 1, uretilenIdler: uretilen })

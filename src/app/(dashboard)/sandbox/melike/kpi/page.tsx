@@ -939,17 +939,27 @@ const PARA_SEMBOLLERI: Record<string, string> = {
   TL: '₺', TRY: '₺', LİRA: '₺', LIRA: '₺', '₺': '₺',
 }
 
+// Büyük sayılarda bin/milyon ayrımı tablo/grafikte noktalı gruplamayla (358.000 gibi) tek
+// bakışta belli olmuyordu — K/M kısaltması ekliyoruz. Yüzde (%) değerlerine UYGULANMAZ, sadece
+// düz sayı/para birimi gösterimine (sayiFormatBirimli'nin para/birim dallarına).
+function buyukSayiFormat(n: number): string {
+  const mutlak = Math.abs(n)
+  if (mutlak >= 1_000_000) return `${(n / 1_000_000).toLocaleString('tr-TR', { maximumFractionDigits: 2 })}M`
+  if (mutlak >= 1_000) return `${(n / 1_000).toLocaleString('tr-TR', { maximumFractionDigits: 2 })}K`
+  return sayiFormat(n)
+}
+
 // yuzdeDogrudanMi: KPI'nın yuzdeOlcek ayarı "dogrudan" ise true — bazı KPI'larda yüzde değeri
 // 0-1 arası bir ORAN olarak değil, zaten 0-100 arası DOĞRUDAN giriliyor (ör. 99,18 = %99,18).
 // Eskiden her zaman "0-1 oran" varsayılıp ×100 yapılıyordu — bu, doğrudan girilen KPI'larda
 // %9918 gibi saçma rakamlar üretiyordu. Artık KPI başına seçilebiliyor (varsayılan: eski davranış).
 function sayiFormatBirimli(n: number | null, unit?: string | null, yuzdeDogrudanMi = false): string {
   if (n == null) return ''
-  if (!unit) return sayiFormat(n)
+  if (!unit) return buyukSayiFormat(n)
   if (unit.trim() === '%') return yuzdeDogrudanMi ? `${sayiFormat(n)}%` : `${sayiFormat(n * 100)}%`
   const normalize = unit.trim().toLocaleUpperCase('tr')
   const sembol = PARA_SEMBOLLERI[normalize]
-  const s = sayiFormat(n)
+  const s = buyukSayiFormat(n)
   if (sembol) return `${sembol}${s}`
   return `${s} ${unit}`
 }

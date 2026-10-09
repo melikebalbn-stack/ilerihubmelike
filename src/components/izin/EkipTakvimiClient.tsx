@@ -139,12 +139,12 @@ function Lejant({ renk, ad }: { renk: string; ad: string }) {
   return <span className="flex items-center gap-1.5"><span className={cn('h-3.5 w-3.5 rounded', renk)} />{ad}</span>
 }
 
-function Kart({ ikon, baslik, deger, turuncu }: { ikon: React.ReactNode; baslik: string; deger: string; turuncu?: boolean }) {
+function Kart({ ikon, baslik, deger }: { ikon: React.ReactNode; baslik: string; deger: string; turuncu?: boolean }) {
   return (
     <Card className="shadow-none">
       <CardContent className="p-4">
-        <div className={cn('flex items-center gap-1.5 text-xs font-medium', turuncu ? 'text-amber-700' : 'text-slate-500')}>{ikon}{baslik}</div>
-        <div className={cn('mt-1 font-mono text-2xl font-semibold tabular-nums', turuncu ? 'text-amber-700' : 'text-slate-900')}>{deger}</div>
+        <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">{ikon}{baslik}</div>
+        <div className="mt-1 text-lg font-semibold tabular-nums text-slate-800">{deger}</div>
       </CardContent>
     </Card>
   )

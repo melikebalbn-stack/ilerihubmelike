@@ -224,9 +224,9 @@ function Kutu({ baslik, deger, ton, alt }: { baslik: string; deger: string; ton:
   return (
     <Card className="shadow-none">
       <CardContent className="p-4">
-        <div className={cn('text-xs font-medium', ton === 'mavi' && 'text-blue-700', ton === 'turuncu' && 'text-amber-700', ton === 'gri' && 'text-slate-500')}>{baslik}</div>
-        <div className="mt-1 text-2xl font-semibold tabular-nums text-slate-900">{deger}</div>
-        {alt && <div className="mt-0.5 text-xs text-slate-500">{alt}</div>}
+        <div className={cn('text-xs font-medium', ton === 'turuncu' ? 'text-amber-700' : 'text-muted-foreground')}>{baslik}</div>
+        <div className={cn('mt-1 text-lg font-semibold tabular-nums', ton === 'turuncu' ? 'text-amber-700' : 'text-slate-800')}>{deger}</div>
+        {alt && <div className="mt-0.5 text-xs text-muted-foreground">{alt}</div>}
       </CardContent>
     </Card>
   )

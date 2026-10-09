@@ -23,11 +23,11 @@ export default async function IzinOnayPage({ searchParams }: { searchParams: Pro
   }
   const { sekme } = await searchParams
   return (
-    <div className="container mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
+    <div className="space-y-6">
       <div>
-        <p className="font-mono text-xs text-slate-500">İnsan Varlıkları / İzin</p>
-        <h1 className="mt-1 flex items-center gap-2 text-2xl font-bold text-[#1B4F72]"><ClipboardCheck className="h-6 w-6" />Onay Bekleyenler</h1>
-        {!acik && <p className="mt-1 text-sm text-amber-700">İzin talebi henüz herkese açık değil — İV deneme görünümü.</p>}
+        <p className="font-mono text-xs text-muted-foreground">İnsan Varlıkları / İzin</p>
+        <h1 className="mt-1 flex items-center gap-2 text-xl font-semibold"><ClipboardCheck className="h-5 w-5" />Onay Bekleyenler</h1>
+        <p className="mt-1 text-sm text-muted-foreground">Onayına düşen izin taleplerini incele ve karara bağla.{!acik && ' · İzin talebi henüz herkese açık değil — İV deneme görünümü.'}</p>
       </div>
       <OnayClient ivMi={ctx.ivMi} ilkSekme={sekme === 'karar' ? 'karar' : sekme === 'erken' ? 'erken' : 'bekleyen'} />
     </div>

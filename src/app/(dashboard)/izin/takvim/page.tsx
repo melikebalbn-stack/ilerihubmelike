@@ -22,10 +22,10 @@ export default async function EkipTakvimiPage() {
     )
   }
   return (
-    <div className="container mx-auto max-w-[1440px] space-y-6 px-4 py-6 sm:px-6 sm:py-8">
+    <div className="space-y-6">
       <div>
-        <p className="font-mono text-xs text-slate-500">İnsan Varlıkları / İzin</p>
-        <h1 className="mt-1 flex items-center gap-2 text-2xl font-bold text-[#1B4F72]"><CalendarRange className="h-6 w-6" />Ekip Takvimi</h1>
+        <p className="font-mono text-xs text-muted-foreground">İnsan Varlıkları / İzin</p>
+        <h1 className="mt-1 flex items-center gap-2 text-xl font-semibold"><CalendarRange className="h-5 w-5" />Ekip Takvimi</h1>
       </div>
       <EkipTakvimiClient />
     </div>

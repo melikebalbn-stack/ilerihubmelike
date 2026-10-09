@@ -92,7 +92,7 @@ export function BakiyelerClient({ canBakiyeAdmin, canKidem }: { canBakiyeAdmin: 
               role="tab"
               aria-selected={durum === d}
               onClick={() => setDurum(d)}
-              className={cn('rounded-md px-3 py-1.5 text-sm transition-colors', durum === d ? 'bg-[#1B4F72] text-white' : 'text-slate-600 hover:bg-slate-100')}
+              className={cn('rounded-md px-3 py-1.5 text-sm transition-colors', durum === d ? 'bg-slate-800 text-white' : 'text-slate-600 hover:bg-slate-100')}
             >
               {d === 'AKTIF' ? 'Aktif' : 'Ayrılanlar'}
             </button>
@@ -144,7 +144,7 @@ export function BakiyelerClient({ canBakiyeAdmin, canKidem }: { canBakiyeAdmin: 
       <div className="flex flex-wrap items-center gap-3 text-sm">
         {durum === 'AKTIF' && (
           <label className="inline-flex cursor-pointer items-center gap-2 text-slate-600">
-            <input type="checkbox" checked={yakinda} onChange={(e) => setYakinda(e.target.checked)} className="h-4 w-4 accent-[#1B4F72]" />
+            <input type="checkbox" checked={yakinda} onChange={(e) => setYakinda(e.target.checked)} className="h-4 w-4 accent-slate-800" />
             Önümüzdeki 30 günde hak edecekler
           </label>
         )}
@@ -209,7 +209,7 @@ export function BakiyelerClient({ canBakiyeAdmin, canKidem }: { canBakiyeAdmin: 
                     ) : '—'}
                   </td>
                   <td className="whitespace-nowrap px-3 py-2.5 text-right">
-                    <button onClick={() => setHareketId(s.personnelId)} className="inline-flex items-center gap-0.5 text-sm font-medium text-[#1B4F72] hover:underline">
+                    <button onClick={() => setHareketId(s.personnelId)} className="inline-flex items-center gap-0.5 text-sm font-medium text-slate-800 hover:underline">
                       Hareketler <ArrowUpRight className="h-4 w-4" />
                     </button>
                   </td>

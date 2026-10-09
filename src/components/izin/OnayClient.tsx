@@ -40,8 +40,8 @@ function once(iso: string) {
 }
 // Hücre renkleri (canvas): izinli koyu mavi, yarım açık mavi, bekliyor turuncu, tatil gri. Tür YOK.
 const HUCRE: Record<string, { c: string; t: string }> = {
-  TALEP: { c: 'bg-[#1B4F72] text-white', t: 'Talep' },
-  TALEP_YARIM: { c: 'bg-[linear-gradient(90deg,#1B4F72_50%,#dbeafe_50%)] text-slate-900', t: 'Yarım' },
+  TALEP: { c: 'bg-slate-800 text-white', t: 'Talep' },
+  TALEP_YARIM: { c: 'bg-[linear-gradient(90deg,#1e293b_50%,#dbeafe_50%)] text-slate-900', t: 'Yarım' },
   IZINLI: { c: 'bg-blue-100 text-blue-900', t: 'İzinli' },
   YARIM: { c: 'bg-blue-50 text-blue-800', t: 'Yarım' },
   BEKLIYOR: { c: 'bg-amber-100 text-amber-900', t: 'Bekliyor' },
@@ -87,7 +87,7 @@ export function OnayClient({ ivMi, ilkSekme }: { ivMi: boolean; ilkSekme: 'bekle
       <div className="inline-flex h-10 overflow-hidden rounded-lg border bg-white text-sm" role="tablist">
         {(ivMi ? (['bekleyen', 'karar', 'erken'] as const) : (['bekleyen', 'karar'] as const)).map((s, i) => (
           <button key={s} role="tab" aria-selected={sekme === s} onClick={() => setSekme(s)}
-            className={cn('px-4', i > 0 && 'border-l', sekme === s ? 'bg-[#1B4F72] font-medium text-white' : 'text-slate-700 hover:bg-slate-50')}>
+            className={cn('px-4', i > 0 && 'border-l', sekme === s ? 'bg-slate-800 font-medium text-white' : 'text-slate-700 hover:bg-slate-50')}>
             {s === 'bekleyen' ? `Bekleyen${bekleyenSayi !== null ? ` (${bekleyenSayi})` : ''}` : s === 'karar' ? 'Karar verdiklerim' : 'Erken dönüş'}
           </button>
         ))}
@@ -103,7 +103,7 @@ export function OnayClient({ ivMi, ilkSekme }: { ivMi: boolean; ilkSekme: 'bekle
           <div className="space-y-2.5">
             {kalemler.map((k) => (
               <button key={`${k.id}-${k.kademe}`} onClick={() => setSecili(k.id)}
-                className={cn('flex w-full flex-col gap-1.5 rounded-lg border bg-white p-3.5 text-left', secili === k.id ? 'border-2 border-[#1B4F72]' : 'hover:border-slate-300')}>
+                className={cn('flex w-full flex-col gap-1.5 rounded-lg border bg-white p-3.5 text-left', secili === k.id ? 'border-2 border-slate-800' : 'hover:border-slate-300')}>
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-semibold">{k.personelAd}</span>
                   <span className="text-xs text-slate-500">{once(k.kararim?.zaman ?? k.olusturma)}</span>
@@ -186,7 +186,7 @@ function DetayPanel({ id, bitti }: { id: string; bitti: () => void }) {
           <ul className="space-y-1 text-sm">
             {k.iv.belgeler.map((b) => (
               <li key={b.id}>
-                <a href={`/api/izin/belge/${b.id}`} target="_blank" rel="noopener noreferrer" className="font-medium text-[#1B4F72] hover:underline">{b.ad}</a>
+                <a href={`/api/izin/belge/${b.id}`} target="_blank" rel="noopener noreferrer" className="font-medium text-slate-800 hover:underline">{b.ad}</a>
                 <span className="ml-2 text-xs text-slate-500">{Math.ceil(b.boyut / 1024)} KB</span>
               </li>
             ))}

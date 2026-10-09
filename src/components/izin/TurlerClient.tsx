@@ -152,7 +152,7 @@ function TurDialog({ tur, kapat, bitti }: { tur: Tur | 'YENI' | null; kapat: () 
 
   const Onay = ({ ad, alan }: { ad: string; alan: 'ucretli' | 'yarimGunOlur' | 'aktif' }) => (
     <label className="flex items-center gap-2 text-sm">
-      <input type="checkbox" checked={f[alan]} onChange={(e) => setF({ ...f, [alan]: e.target.checked })} className="h-4 w-4 accent-[#1B4F72]" />
+      <input type="checkbox" checked={f[alan]} onChange={(e) => setF({ ...f, [alan]: e.target.checked })} className="h-4 w-4 accent-slate-800" />
       {ad}
     </label>
   )

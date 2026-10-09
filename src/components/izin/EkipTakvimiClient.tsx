@@ -90,7 +90,7 @@ export function EkipTakvimiClient() {
                 <tr>
                   <th className="sticky left-0 z-10 min-w-[150px] bg-white sm:min-w-[170px]" />
                   {v.gunler.map((d) => (
-                    <th key={d.tarih} className={cn('min-w-[26px] text-[11px] font-normal', d.tarih === bg ? 'font-bold text-[#1B4F72]' : d.kapali ? 'text-slate-400' : 'text-slate-500')} title={d.tatil ?? undefined}>
+                    <th key={d.tarih} className={cn('min-w-[26px] text-[11px] font-normal', d.tarih === bg ? 'font-bold text-slate-800' : d.kapali ? 'text-slate-400' : 'text-slate-500')} title={d.tatil ?? undefined}>
                       <div>{d.gun}</div>
                       <div className="font-mono text-xs">{Number(d.tarih.slice(8))}</div>
                     </th>

@@ -197,7 +197,9 @@ export async function runIsEmriSync(opts: { dryRun?: boolean; batch?: number } =
     ? []
     : await prisma.syteSyncKayit.findMany({
         where: { entity: ENTITY, OR: [{ durum: 'BEKLIYOR' }, { durum: 'HATA', denemeSayisi: { lt: MAX_DENEME } }] },
-        orderBy: { kaynakRecordDate: 'asc' },
+        // BEKLIYOR önce ('BEKLIYOR' < 'HATA'): mapper hatalı ~950 kayıt (deneme artmıyor) her turda batch'i
+        // doldurup yeni/bekleyen iş emirlerini hiç işletmiyordu.
+        orderBy: [{ durum: 'asc' }, { kaynakRecordDate: 'asc' }],
         take: batch,
       })
 

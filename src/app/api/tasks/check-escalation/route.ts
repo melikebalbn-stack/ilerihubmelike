@@ -1,8 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { TaskStatus, TaskEmailType } from '@/generated/prisma'
-import { sendEscalationNotification, EscalationEmailData, EmailRecipient } from '@/lib/email'
+import {
+  sendEscalationNotification,
+  EscalationEmailData,
+  EmailRecipient,
+  EskalasyonBasamagi,
+} from '@/lib/email'
 import { getAllLDAPUsers } from '@/lib/ldap'
+import { yoneticiZinciri, ustYonetimdeMi } from '@/lib/tasks/eskalasyon-zinciri'
 import { requireUser } from '@/lib/auth/require-user'
 
 // Eskalasyon kontrolü - Cron job tarafından çağrılır (ADMIN+ veya x-cron-secret)
@@ -24,7 +30,9 @@ export async function GET(request: NextRequest) {
 
     const now = new Date()
     let managerEscalations = 0
+    let ustYoneticiEskalasyonlari = 0
     let executiveEscalations = 0
+    const yoneticisizGorevler: string[] = []
 
     // Eskalasyon ayarlarını al (yoksa varsayılan değerler kullan)
     const settings = await prisma.taskEscalationSettings.findFirst({
@@ -80,23 +88,15 @@ export async function GET(request: NextRequest) {
         (now.getTime() - task.dueDate.getTime()) / (24 * 60 * 60 * 1000)
       )
 
-      // Sorumlu kişinin yöneticisini bul
-      const responsibleUser = ldapUsers.find(
-        (u) => u.email?.toLowerCase() === task.responsiblePersonEmail?.toLowerCase()
-      )
+      // Sorumlu kişinin yönetici zinciri (AD `manager` alanı, aşağıdan yukarı)
+      const zincir = yoneticiZinciri(ldapUsers, task.responsiblePersonEmail)
+      const manager = zincir[0]
 
-      if (!responsibleUser?.managerDN) {
-        console.log(`⚠️ Görev ${task.id}: Sorumlu kişinin yöneticisi bulunamadı`)
-        continue
-      }
-
-      // Yöneticiyi bul
-      const manager = ldapUsers.find(
-        (u) => u.distinguishedName.toLowerCase() === responsibleUser.managerDN?.toLowerCase()
-      )
-
-      if (!manager?.email) {
-        console.log(`⚠️ Görev ${task.id}: Yöneticinin e-postası bulunamadı`)
+      if (!manager) {
+        // AD'de yönetici yok → bu görev hiç eskale edilemiyor. Sessiz kalmasın:
+        // sayıyı ve görev id'sini yanıtta döndürüyoruz ki cron çıktısında görünsün.
+        console.log(`⚠️ Görev ${task.id}: Sorumlu kişinin AD'de yöneticisi bulunamadı`)
+        yoneticisizGorevler.push(task.id)
         continue
       }
 
@@ -111,6 +111,7 @@ export async function GET(request: NextRequest) {
         category: task.category?.name,
         priority: task.priority,
         daysOverdue,
+        ustBasamakGun: executiveDays,
       }
 
       const recipients: EmailRecipient[] = [
@@ -150,26 +151,28 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // 2. Üst yönetime eskalasyon
+    // 2. basamak: yöneticinin yöneticisi (genelde müdür).
+    // Üst yönetim YALNIZ zincir tükenince devreye girer — bkz. eskalasyon-zinciri.ts.
     for (const task of tasksForExecutiveEscalation) {
       const daysOverdue = Math.floor(
         (now.getTime() - task.dueDate.getTime()) / (24 * 60 * 60 * 1000)
       )
 
-      if (executiveEmails.length === 0) {
-        console.log('⚠️ Üst yönetim e-posta listesi boş')
-        break
-      }
+      const zincir = yoneticiZinciri(ldapUsers, task.responsiblePersonEmail)
+      const manager = zincir[0] ?? null // 1. basamakta bilgilendirilen yönetici
+      const ustYonetici = zincir[1] ?? null // bir üst basamak
 
-      // Sorumlu kişinin yöneticisini bul (e-postaya eklemek için)
-      const responsibleUser = ldapUsers.find(
-        (u) => u.email?.toLowerCase() === task.responsiblePersonEmail?.toLowerCase()
-      )
-      const manager = responsibleUser?.managerDN
-        ? ldapUsers.find(
-            (u) => u.distinguishedName.toLowerCase() === responsibleUser.managerDN?.toLowerCase()
-          )
-        : null
+      const ustYonetimListesi = executiveEmails.map((e) => e.email)
+      // Bir üst basamak zaten üst yönetimdeyse ayrı bir mail atmanın anlamı yok.
+      const basamak: EskalasyonBasamagi =
+        ustYonetici && !ustYonetimdeMi(ustYonetici, ustYonetimListesi)
+          ? 'UST_YONETICI'
+          : 'EXECUTIVE'
+
+      if (basamak === 'EXECUTIVE' && executiveEmails.length === 0) {
+        console.log(`⚠️ Görev ${task.id}: zincir tükendi ama üst yönetim e-posta listesi boş`)
+        continue
+      }
 
       const emailData: EscalationEmailData = {
         taskId: task.id,
@@ -183,15 +186,22 @@ export async function GET(request: NextRequest) {
         priority: task.priority,
         daysOverdue,
         managerName: manager?.displayName,
+        altYoneticiAdi: manager?.displayName,
       }
 
-      const recipients: EmailRecipient[] = executiveEmails.map((e) => ({
-        email: e.email,
-        name: e.name || e.email,
-      }))
+      const recipients: EmailRecipient[] =
+        basamak === 'UST_YONETICI' && ustYonetici
+          ? [{ email: ustYonetici.email, name: ustYonetici.displayName }]
+          : executiveEmails.map((e) => ({ email: e.email, name: e.name || e.email }))
+
+      // 2. basamakta bir alt basamaktaki yönetici bilgi (CC) alıcısı olur.
+      const cc: EmailRecipient[] =
+        basamak === 'UST_YONETICI' && manager
+          ? [{ email: manager.email, name: manager.displayName }]
+          : []
 
       // E-posta gönder
-      const result = await sendEscalationNotification('EXECUTIVE', emailData, recipients)
+      const result = await sendEscalationNotification(basamak, emailData, recipients, cc)
 
       if (result.success) {
         // Görev kaydını güncelle
@@ -204,31 +214,47 @@ export async function GET(request: NextRequest) {
           },
         })
 
-        // E-posta log kaydı
+        // E-posta log kaydı. TaskEmailType bir DB enum'u; 2. basamak için yeni
+        // değer eklemek migration gerektirdiğinden ESCALATION_EXECUTIVE kullanılır,
+        // basamak ayrımı konu satırından ve recipientEmails'ten okunur.
         await prisma.taskEmailLog.create({
           data: {
             taskId: task.id,
-            recipientEmails: executiveEmails.map((e) => e.email).join(', '),
+            recipientEmails: [...recipients, ...cc].map((r) => r.email).join(', '),
             emailType: TaskEmailType.ESCALATION_EXECUTIVE,
-            subject: `🚨 KRİTİK ESKALASYON: 5 Günü Aşan Gecikmiş Görev - ${task.title}`,
-            body: `Üst yönetim eskalasyonu: ${task.title}`,
+            subject:
+              basamak === 'UST_YONETICI'
+                ? `⚠️ ESKALASYON (2. basamak): ${daysOverdue} Gündür Gecikmiş Görev - ${task.title}`
+                : `🚨 KRİTİK ESKALASYON: ${daysOverdue} Günü Aşan Gecikmiş Görev - ${task.title}`,
+            body:
+              basamak === 'UST_YONETICI'
+                ? `Üst yönetici eskalasyonu: ${task.title}`
+                : `Üst yönetim eskalasyonu (zincir tükendi): ${task.title}`,
             status: 'SENT',
           },
         })
 
-        executiveEscalations++
-        console.log(`✅ Üst yönetim eskalasyonu gönderildi: ${task.title}`)
+        if (basamak === 'UST_YONETICI') ustYoneticiEskalasyonlari++
+        else executiveEscalations++
+        console.log(
+          `✅ ${basamak === 'UST_YONETICI' ? 'Üst yönetici' : 'Üst yönetim'} eskalasyonu gönderildi: ${task.title} -> ${recipients.map((r) => r.email).join(', ')}`
+        )
       } else {
-        console.error(`❌ Üst yönetim eskalasyonu başarısız: ${task.title}`, result.error)
+        console.error(`❌ 2. basamak eskalasyonu başarısız: ${task.title}`, result.error)
       }
     }
 
-    console.log(`🔄 Eskalasyon kontrolü tamamlandı: ${managerEscalations} yönetici, ${executiveEscalations} üst yönetim`)
+    console.log(
+      `🔄 Eskalasyon kontrolü tamamlandı: ${managerEscalations} yönetici, ${ustYoneticiEskalasyonlari} üst yönetici, ${executiveEscalations} üst yönetim` +
+        (yoneticisizGorevler.length ? ` · ${yoneticisizGorevler.length} görev AD'de yöneticisiz` : '')
+    )
 
     return NextResponse.json({
       success: true,
       managerEscalations,
+      ustYoneticiEskalasyonlari,
       executiveEscalations,
+      yoneticisizGorevler,
       checkedAt: now.toISOString(),
     })
   } catch (error) {

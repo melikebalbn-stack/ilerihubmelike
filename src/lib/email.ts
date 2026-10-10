@@ -470,13 +470,25 @@ export interface EscalationEmailData {
   priority: string
   daysOverdue: number
   managerName?: string | null
+  /** 'UST_YONETICI' basamağında bir alt basamak — yani bilgilendirilmiş ilk yönetici. */
+  altYoneticiAdi?: string | null
+  /** MANAGER şablonundaki "kaç gün sonra bir üst basamağa çıkar" eşiği. */
+  ustBasamakGun?: number
 }
+
+/**
+ * Eskalasyon basamakları:
+ *   MANAGER       → sorumlu kişinin doğrudan yöneticisi (1. gün)
+ *   UST_YONETICI  → yöneticinin yöneticisi, genelde müdür (5. gün)
+ *   EXECUTIVE     → üst yönetim; yalnız AD'de zincir tükendiğinde
+ */
+export type EskalasyonBasamagi = 'MANAGER' | 'UST_YONETICI' | 'EXECUTIVE'
 
 /**
  * Eskalasyon e-posta şablonları
  */
 export function generateEscalationEmailContent(
-  type: 'MANAGER' | 'EXECUTIVE',
+  type: EskalasyonBasamagi,
   data: EscalationEmailData
 ): { subject: string; body: string } {
   const priorityLabels: Record<string, string> = {
@@ -511,7 +523,7 @@ ${data.responsibleDepartment ? `🏢 Departman: ${data.responsibleDepartment}` :
 
 🔗 Görevi Görüntüle: ${taskUrl}
 
-⚠️ Bu görev 5 gün içinde tamamlanmazsa üst yönetime bilgi verilecektir.
+⚠️ Bu görev ${data.ustBasamakGun ?? 5} gün içinde tamamlanmazsa bir üst yöneticiye bilgi verilecektir.
 
 Lütfen ilgili personel ile iletişime geçerek görevin tamamlanmasını sağlayınız.
 
@@ -521,13 +533,45 @@ Bu e-posta otomatik olarak ILERIHub Eskalasyon Sistemi tarafından gönderilmiş
         `.trim(),
       }
 
+    case 'UST_YONETICI':
+      return {
+        subject: `⚠️ ESKALASYON (2. basamak): ${data.daysOverdue} Gündür Gecikmiş Görev - ${data.taskTitle}`,
+        body: `
+Sayın Yönetici,
+
+Bölümünüzdeki aşağıdaki görev, yöneticisine bildirilmesine rağmen hâlâ tamamlanmamıştır
+ve eskalasyon bir üst basamağa (sizin bilginize) taşınmıştır.
+
+📋 Görev: ${data.taskTitle}
+${data.taskDescription ? `📝 Açıklama: ${data.taskDescription}` : ''}
+📅 Bitiş Tarihi: ${data.dueDate.toLocaleDateString('tr-TR')}
+⏱️ Gecikme: ${data.daysOverdue} gün
+⚡ Öncelik: ${priorityText}
+${data.category ? `🏷️ Kategori: ${data.category}` : ''}
+
+👤 Sorumlu Kişi: ${data.responsiblePerson || 'Belirtilmemiş'}
+${data.responsiblePersonEmail ? `📧 E-posta: ${data.responsiblePersonEmail}` : ''}
+${data.responsibleDepartment ? `🏢 Departman: ${data.responsibleDepartment}` : ''}
+${data.altYoneticiAdi ? `👔 Bilgilendirilen Yönetici: ${data.altYoneticiAdi}` : ''}
+
+🔗 Görevi Görüntüle: ${taskUrl}
+
+Lütfen görevin tamamlanması için gerekli yönlendirmeyi yapınız.
+
+--
+Bu e-posta otomatik olarak ILERIHub Eskalasyon Sistemi tarafından gönderilmiştir.
+© 2026 İleri Group - System Development Team
+        `.trim(),
+      }
+
     case 'EXECUTIVE':
       return {
-        subject: `🚨 KRİTİK ESKALASYON: 5 Günü Aşan Gecikmiş Görev - ${data.taskTitle}`,
+        subject: `🚨 KRİTİK ESKALASYON: ${data.daysOverdue} Günü Aşan Gecikmiş Görev - ${data.taskTitle}`,
         body: `
 Sayın Üst Yönetim,
 
-Aşağıdaki görev 5 günü aşan kritik bir gecikme durumundadır ve dikkatinize sunulmaktadır.
+Aşağıdaki görev ${data.daysOverdue} günü aşan kritik bir gecikme durumundadır ve
+yönetici zinciri tükendiği için dikkatinize sunulmaktadır.
 
 📋 Görev: ${data.taskTitle}
 ${data.taskDescription ? `📝 Açıklama: ${data.taskDescription}` : ''}
@@ -563,12 +607,14 @@ Bu e-posta otomatik olarak ILERIHub Eskalasyon Sistemi tarafından gönderilmiş
  * Send escalation notification emails
  */
 export async function sendEscalationNotification(
-  type: 'MANAGER' | 'EXECUTIVE',
+  type: EskalasyonBasamagi,
   data: EscalationEmailData,
-  recipients: EmailRecipient[]
+  recipients: EmailRecipient[],
+  /** Bilgi alıcıları — 2. basamakta bir alt basamaktaki yönetici CC'ye alınır. */
+  cc?: EmailRecipient[]
 ): Promise<{ success: boolean; error?: string }> {
   const { subject, body } = generateEscalationEmailContent(type, data)
-  return sendEmail(recipients, subject, body)
+  return sendEmail(recipients, subject, body, undefined, undefined, cc?.length ? { cc } : undefined)
 }
 
 // ==========================================

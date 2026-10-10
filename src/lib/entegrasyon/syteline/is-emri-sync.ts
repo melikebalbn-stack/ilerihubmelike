@@ -240,7 +240,7 @@ export async function runIsEmriSync(opts: { dryRun?: boolean; batch?: number } =
       // OperationDescription alanı yok (ORA-20124) → eksikse mapper'daki biçimle tamamla.
       const p = kayit.payload as Payload | null
       baslik = p?.baslik
-      operasyonlar = p?.operasyonlar?.map((o) => operasyonVarsayilanlari(o))
+      operasyonlar = p?.operasyonlar?.map((o) => operasyonVarsayilanlari(o, p?.baslik?.RevisedStartDate))
     }
     if (!baslik || !operasyonlar) continue
 

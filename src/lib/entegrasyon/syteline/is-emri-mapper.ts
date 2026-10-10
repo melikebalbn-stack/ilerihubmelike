@@ -83,13 +83,19 @@ export interface IsEmriOperasyonCikti {
   LaborRunFactor: number
   CrewSize: number
   SetupCrewSize: number
+  // Operasyon tarihleri (IFS zorunlu, ORA-20124 OpStartDate) — başlık tarihleriyle aynı (job_date).
+  OpStartDate: string
+  OpFinishDate: string
 }
 
 /** IFS'in zorunlu tuttuğu operasyon alanlarını tamamlar (eski saklı payload'lar dahil). */
 export function operasyonVarsayilanlari<T extends Partial<IsEmriOperasyonCikti> & { OperationNo: number; WorkCenterNo: string }>(
   o: T,
-): T & Pick<IsEmriOperasyonCikti, 'OperationDescription' | 'QueueTime' | 'MoveTime' | 'MachSetupTime' | 'LaborSetupTime' | 'LaborRunFactor' | 'CrewSize' | 'SetupCrewSize'> {
+  tarih?: string,
+): T & Pick<IsEmriOperasyonCikti, 'OperationDescription' | 'QueueTime' | 'MoveTime' | 'MachSetupTime' | 'LaborSetupTime' | 'LaborRunFactor' | 'CrewSize' | 'SetupCrewSize'> & Partial<Pick<IsEmriOperasyonCikti, 'OpStartDate' | 'OpFinishDate'>> {
+  const t = o.OpStartDate ?? tarih
   return {
+    ...(t ? { OpStartDate: t, OpFinishDate: o.OpFinishDate ?? t } : {}),
     ...o,
     OperationDescription: o.OperationDescription || `Op ${o.OperationNo} ${o.WorkCenterNo}`.slice(0, 35),
     QueueTime: o.QueueTime ?? 0,
@@ -188,6 +194,8 @@ export function isEmriMapla(
       LaborRunFactor: 0,
       CrewSize: 1,
       SetupCrewSize: 1,
+      OpStartDate: tarih,
+      OpFinishDate: tarih,
     })
   }
 

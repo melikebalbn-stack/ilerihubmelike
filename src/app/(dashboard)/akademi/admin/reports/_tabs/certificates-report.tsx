@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { Eye, Search } from "lucide-react";
 
 type CertRow = {
   id: string;
@@ -11,6 +12,7 @@ type CertRow = {
     name: string;
     email: string;
     bolum: string | null;
+    yaka: "YONETICI" | "BEYAZ" | "GRI" | "MAVI" | null;
   };
   course: { id: string; title: string } | null;
   issuedAt: string;
@@ -20,40 +22,114 @@ type CertRow = {
   verificationCount: number;
 };
 
+const YAKA_ETIKET: Record<
+  NonNullable<CertRow["user"]["yaka"]>,
+  string
+> = {
+  YONETICI: "Yönetici",
+  BEYAZ: "Beyaz yaka",
+  GRI: "Gri yaka",
+  MAVI: "Mavi yaka",
+};
+
 export function CertificatesReportTab() {
   const [certs, setCerts] = useState<CertRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [expiredOnly, setExpiredOnly] = useState(false);
+  const [search, setSearch] = useState("");
+  const [bolumFilter, setBolumFilter] = useState("");
+  const [yakaFilter, setYakaFilter] = useState("");
+  const [bolums, setBolums] = useState<string[]>([]);
+
+  useEffect(() => {
+    fetch("/api/akademi/admin/reports/departments")
+      .then((r) => r.json())
+      .then((d) =>
+        setBolums((d.departments ?? []).map((b: { bolum: string }) => b.bolum))
+      )
+      .catch(() => setBolums([]));
+  }, []);
 
   const load = useCallback(() => {
     setLoading(true);
     const params = new URLSearchParams();
     if (expiredOnly) params.set("expiredOnly", "true");
+    if (search) params.set("search", search);
+    if (bolumFilter) params.set("bolum", bolumFilter);
+    if (yakaFilter) params.set("yaka", yakaFilter);
     fetch(`/api/akademi/admin/reports/certificates?${params}`)
       .then((r) => r.json())
       .then((d) => setCerts(d.certificates ?? []))
       .catch(() => setCerts([]))
       .finally(() => setLoading(false));
-  }, [expiredOnly]);
+  }, [expiredOnly, search, bolumFilter, yakaFilter]);
 
   useEffect(() => {
-    load();
+    const t = setTimeout(load, 200);
+    return () => clearTimeout(t);
   }, [load]);
 
   return (
     <div className="space-y-3">
-      <label
-        className="inline-flex items-center gap-2 text-sm cursor-pointer"
-        style={{ color: "var(--ak-text-secondary)" }}
-      >
-        <input
-          type="checkbox"
-          checked={expiredOnly}
-          onChange={(e) => setExpiredOnly(e.target.checked)}
-          className="w-4 h-4"
-        />
-        Sadece süresi dolmuş sertifikalar
-      </label>
+      <div className="flex gap-2 flex-wrap items-center">
+        <div className="relative flex-1 max-w-md">
+          <Search
+            size={15}
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+          />
+          <input
+            type="text"
+            placeholder="Kişi, e-posta veya sertifika no ara..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full pl-9 pr-3 py-2 text-sm border rounded-md"
+            style={{ borderColor: "var(--ak-border-default)" }}
+          />
+        </div>
+        <select
+          value={bolumFilter}
+          onChange={(e) => setBolumFilter(e.target.value)}
+          className="px-3 py-2 text-sm border rounded-md bg-white"
+          style={{ borderColor: "var(--ak-border-default)" }}
+        >
+          <option value="">Tüm bölümler</option>
+          {bolums.map((b) => (
+            <option key={b} value={b}>
+              {b}
+            </option>
+          ))}
+        </select>
+        <select
+          value={yakaFilter}
+          onChange={(e) => setYakaFilter(e.target.value)}
+          className="px-3 py-2 text-sm border rounded-md bg-white"
+          style={{ borderColor: "var(--ak-border-default)" }}
+        >
+          <option value="">Tüm yakalar</option>
+          <option value="YONETICI">Yönetici</option>
+          <option value="BEYAZ">Beyaz yaka</option>
+          <option value="GRI">Gri yaka</option>
+          <option value="MAVI">Mavi yaka</option>
+        </select>
+        <label
+          className="inline-flex items-center gap-2 px-3 py-2 text-sm border rounded-md bg-white cursor-pointer select-none"
+          style={{ borderColor: "var(--ak-border-default)" }}
+        >
+          <input
+            type="checkbox"
+            checked={expiredOnly}
+            onChange={(e) => setExpiredOnly(e.target.checked)}
+            className="w-4 h-4"
+          />
+          Süresi dolmuş
+        </label>
+        <span
+          className="text-xs ml-auto"
+          style={{ color: "var(--ak-text-tertiary)" }}
+        >
+          {certs.length} sertifika
+        </span>
+      </div>
 
       {loading && (
         <div className="text-sm" style={{ color: "var(--ak-text-tertiary)" }}>
@@ -104,6 +180,7 @@ export function CertificatesReportTab() {
                 <th className="text-center px-4 py-2 text-xs font-semibold uppercase">
                   Doğrulama
                 </th>
+                <th className="px-4 py-2" />
               </tr>
             </thead>
             <tbody>
@@ -123,6 +200,7 @@ export function CertificatesReportTab() {
                       style={{ color: "var(--ak-text-tertiary)" }}
                     >
                       {c.user.bolum ?? "—"}
+                      {c.user.yaka ? ` · ${YAKA_ETIKET[c.user.yaka]}` : ""}
                     </div>
                   </td>
                   <td
@@ -153,6 +231,18 @@ export function CertificatesReportTab() {
                   <td className="px-4 py-2 text-center">{c.downloadCount}</td>
                   <td className="px-4 py-2 text-center">
                     {c.verificationCount}
+                  </td>
+                  <td className="px-4 py-2 text-right">
+                    <a
+                      href={`/api/akademi/certificates/${c.id}/download`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-blue-600 hover:underline inline-flex items-center gap-1"
+                      title={`${c.user.name} — sertifikayı aç`}
+                    >
+                      <Eye size={13} />
+                      Görüntüle
+                    </a>
                   </td>
                 </tr>
               ))}

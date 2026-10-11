@@ -7,6 +7,7 @@ import {
   viaOptionalCourseWhere,
 } from "@/lib/akademi/admin-type-filter";
 import { AKTIF_PERSONEL, getLinkedBolums } from "@/lib/user-personnel";
+import { bosYakaSayaci, yakaGrubu } from "@/lib/akademi/yaka-gruplari";
 
 export async function GET(req: NextRequest) {
   const { error } = await requirePermission('akademi.report.view');
@@ -26,13 +27,31 @@ export async function GET(req: NextRequest) {
     bolums.map(async (bolum) => {
       const users = await prisma.user.findMany({
         where: { personnel: { bolum, ...AKTIF_PERSONEL } },
-        select: { id: true },
+        select: {
+          id: true,
+          personnel: { select: { yakaRengi: true, yakaDetayi: true } },
+        },
       });
       const userIds = users.map((u) => u.id);
+
+      // Yaka kırılımı (Melih, 11.10.2026): yönetici / beyaz / gri / mavi.
+      // Dördünün toplamı userCount'a eşittir.
+      const yakalar = bosYakaSayaci();
+      for (const u of users) {
+        if (!u.personnel) continue;
+        yakalar[
+          yakaGrubu({
+            yakaRengi: u.personnel.yakaRengi,
+            yakaDetayi: u.personnel.yakaDetayi,
+          })
+        ]++;
+      }
+
       if (userIds.length === 0) {
         return {
           bolum,
           userCount: 0,
+          yakalar,
           completedCourses: 0,
           totalAttempts: 0,
           passedAttempts: 0,
@@ -65,6 +84,7 @@ export async function GET(req: NextRequest) {
       return {
         bolum,
         userCount: userIds.length,
+        yakalar,
         completedCourses,
         totalAttempts: attempts,
         passedAttempts,

@@ -4,6 +4,7 @@ import { requirePermission } from "@/lib/auth/require-permission";
 import { parseAkademiType, viaOptionalCourseWhere } from "@/lib/akademi/admin-type-filter";
 import { isAutoScored } from "@/lib/akademi/question-types";
 import { scoreQuestion } from "@/lib/akademi/scoring";
+import { puanDagilimi, sinavKpiHesapla } from "@/lib/akademi/sinav-kpi";
 
 export async function GET(req: NextRequest) {
   const { error } = await requirePermission('akademi.report.view');
@@ -33,6 +34,7 @@ export async function GET(req: NextRequest) {
       _count: { select: { questions: true } },
       attempts: {
         select: {
+          userId: true,
           status: true,
           score: true,
           passed: true,
@@ -43,6 +45,26 @@ export async function GET(req: NextRequest) {
     },
     orderBy: { createdAt: "desc" },
   });
+
+  // Kişi bazlı "atanan" sayısı: sınavın kursuna atanmış kullanıcılar.
+  // Kurssuz sınavda atama kavramı yok → yalnız denemeye girenler sayılır.
+  // Tek sorgu (N+1 yok): tüm kurslar için atamalar birlikte çekilir.
+  const kursIdleri = Array.from(
+    new Set(exams.map((e) => e.course?.id).filter((x): x is string => !!x))
+  );
+  const atamaSatirlari = kursIdleri.length
+    ? await prisma.userCourseAssignment.findMany({
+        where: { assignment: { courseId: { in: kursIdleri } } },
+        select: { userId: true, assignment: { select: { courseId: true } } },
+      })
+    : [];
+  const kursAtananlari = new Map<string, Set<string>>();
+  for (const satir of atamaSatirlari) {
+    const kursId = satir.assignment.courseId;
+    const kume = kursAtananlari.get(kursId);
+    if (kume) kume.add(satir.userId);
+    else kursAtananlari.set(kursId, new Set([satir.userId]));
+  }
 
   const result = exams.map((e) => {
     const completed = e.attempts.filter((a) => a.status === "COMPLETED");
@@ -72,6 +94,11 @@ export async function GET(req: NextRequest) {
         ? Math.round(durations.reduce((s, d) => s + d, 0) / durations.length)
         : 0;
 
+    const atananlar = e.course
+      ? Array.from(kursAtananlari.get(e.course.id) ?? [])
+      : [];
+    const kpi = sinavKpiHesapla(atananlar, e.attempts);
+
     return {
       id: e.id,
       title: e.title,
@@ -88,6 +115,15 @@ export async function GET(req: NextRequest) {
       passRate,
       avgScore,
       avgDurationMinutes: avgDuration,
+      // Kişi bazlı durum (Melih, 11.10.2026): deneme sayısı değil, kaç kişiye
+      // atandı / kaçı geçti / kaldı / hiç girmedi.
+      atanan: kpi.atanan,
+      gectiKisi: kpi.gecti,
+      kaldiKisi: kpi.kaldi,
+      devamKisi: kpi.devam,
+      baslamadiKisi: kpi.baslamadi,
+      kapsamKisi: kpi.kapsam,
+      basariOrani: kpi.basariOrani,
     };
   });
 
@@ -98,6 +134,10 @@ async function getSingleExamReport(examId: string) {
   const exam = await prisma.exam.findUnique({
     where: { id: examId },
     include: {
+      course: { select: { id: true, title: true } },
+      attempts: {
+        select: { userId: true, status: true, score: true, passed: true },
+      },
       questions: {
         orderBy: { order: "asc" },
         include: {
@@ -170,8 +210,27 @@ async function getSingleExamReport(examId: string) {
     };
   });
 
+  // Grafik verisi: kişi durum dağılımı + puan histogramı.
+  const atananlar = exam.course
+    ? (
+        await prisma.userCourseAssignment.findMany({
+          where: { assignment: { courseId: exam.course.id } },
+          select: { userId: true },
+        })
+      ).map((a) => a.userId)
+    : [];
+  const kpi = sinavKpiHesapla(atananlar, exam.attempts);
+
   return NextResponse.json({
-    exam: { id: exam.id, title: exam.title },
+    exam: { id: exam.id, title: exam.title, course: exam.course },
+    kpi,
+    durumDagilimi: [
+      { durum: "Geçti", adet: kpi.gecti },
+      { durum: "Kaldı", adet: kpi.kaldi },
+      { durum: "Devam", adet: kpi.devam },
+      { durum: "Başlamadı", adet: kpi.baslamadi },
+    ],
+    puanDagilimi: puanDagilimi(exam.attempts),
     questions: questionStats,
   });
 }

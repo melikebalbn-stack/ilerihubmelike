@@ -1,7 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { ChevronRight, X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { BarChart3, ChevronRight, X } from "lucide-react";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 
 type ExamRow = {
   id: string;
@@ -17,6 +27,34 @@ type ExamRow = {
   passRate: number;
   avgScore: number;
   avgDurationMinutes: number;
+  // Kişi bazlı (her kişi tek durumda sayılır)
+  atanan: number;
+  gectiKisi: number;
+  kaldiKisi: number;
+  devamKisi: number;
+  baslamadiKisi: number;
+  kapsamKisi: number;
+  basariOrani: number | null;
+};
+
+type SinavKpi = {
+  atanan: number;
+  gecti: number;
+  kaldi: number;
+  devam: number;
+  baslamadi: number;
+  kapsam: number;
+  basariOrani: number | null;
+  ortPuan: number | null;
+  toplamDeneme: number;
+};
+
+/** Durum renkleri — tabloda ve grafikte aynı. */
+const DURUM_RENK: Record<string, string> = {
+  "Geçti": "#15803d",
+  "Kaldı": "#b91c1c",
+  "Devam": "#b45309",
+  "Başlamadı": "#94a3b8",
 };
 
 type QuestionStat = {
@@ -69,6 +107,8 @@ export function ExamsReportTab() {
 
   return (
     <div className="space-y-4">
+      <ExamKpiRow exams={exams} />
+
       <div
         className="rounded-lg overflow-hidden border bg-white"
         style={{ borderColor: "var(--ak-border-default)" }}
@@ -86,19 +126,25 @@ export function ExamsReportTab() {
                 Soru
               </th>
               <th className="text-center px-4 py-2 text-xs font-semibold uppercase">
-                Deneme
+                Atanan
               </th>
               <th className="text-center px-4 py-2 text-xs font-semibold uppercase">
-                Bekleyen
+                Geçti
               </th>
               <th className="text-center px-4 py-2 text-xs font-semibold uppercase">
-                Geçme %
+                Kaldı
+              </th>
+              <th className="text-center px-4 py-2 text-xs font-semibold uppercase">
+                Devam
+              </th>
+              <th className="text-center px-4 py-2 text-xs font-semibold uppercase">
+                Başlamadı
+              </th>
+              <th className="text-center px-4 py-2 text-xs font-semibold uppercase">
+                Başarı %
               </th>
               <th className="text-center px-4 py-2 text-xs font-semibold uppercase">
                 Ort. Puan
-              </th>
-              <th className="text-center px-4 py-2 text-xs font-semibold uppercase">
-                Ort. Süre
               </th>
               <th className="px-4 py-2" />
             </tr>
@@ -127,35 +173,33 @@ export function ExamsReportTab() {
                   {e.course?.title ?? "—"}
                 </td>
                 <td className="px-4 py-2 text-center">{e.questionCount}</td>
-                <td className="px-4 py-2 text-center">
-                  {e.completedAttempts}/{e.totalAttempts}
+                <td className="px-4 py-2 text-center font-medium">
+                  {e.atanan}
+                </td>
+                <td className="px-4 py-2 text-center text-green-700 font-medium">
+                  {e.gectiKisi || "—"}
+                </td>
+                <td className="px-4 py-2 text-center text-red-700 font-medium">
+                  {e.kaldiKisi || "—"}
+                </td>
+                <td className="px-4 py-2 text-center text-amber-700">
+                  {e.devamKisi || "—"}
+                </td>
+                <td className="px-4 py-2 text-center text-slate-500">
+                  {e.baslamadiKisi || "—"}
                 </td>
                 <td className="px-4 py-2 text-center">
-                  {e.pendingReview > 0 ? (
-                    <span className="text-xs px-2 py-0.5 bg-purple-100 text-purple-800 rounded font-medium">
-                      {e.pendingReview}
-                    </span>
-                  ) : (
-                    "—"
-                  )}
-                </td>
-                <td className="px-4 py-2 text-center">
-                  {e.completedAttempts > 0 ? `%${e.passRate}` : "—"}
+                  {e.basariOrani !== null ? `%${e.basariOrani}` : "—"}
                 </td>
                 <td className="px-4 py-2 text-center">
                   {e.completedAttempts > 0 ? `%${e.avgScore}` : "—"}
-                </td>
-                <td className="px-4 py-2 text-center">
-                  {e.avgDurationMinutes > 0
-                    ? `${e.avgDurationMinutes} dk`
-                    : "—"}
                 </td>
                 <td className="px-4 py-2 text-right">
                   <button
                     onClick={() => setSelectedExamId(e.id)}
                     className="text-xs text-blue-600 hover:underline inline-flex items-center gap-1"
                   >
-                    Sorular
+                    Detay
                     <ChevronRight size={12} />
                   </button>
                 </td>
@@ -171,6 +215,65 @@ export function ExamsReportTab() {
           onClose={() => setSelectedExamId(null)}
         />
       )}
+    </div>
+  );
+}
+
+/** Tüm sınavların kişi bazlı toplamı. Bir kişi iki sınavda da sayılabilir —
+ *  kart "sınav × kişi" adedini gösterir, tekil insan sayısını değil. */
+function ExamKpiRow({ exams }: { exams: ExamRow[] }) {
+  const t = useMemo(
+    () =>
+      exams.reduce(
+        (acc, e) => ({
+          atanan: acc.atanan + e.atanan,
+          gecti: acc.gecti + e.gectiKisi,
+          kaldi: acc.kaldi + e.kaldiKisi,
+          devam: acc.devam + e.devamKisi,
+          baslamadi: acc.baslamadi + e.baslamadiKisi,
+        }),
+        { atanan: 0, gecti: 0, kaldi: 0, devam: 0, baslamadi: 0 }
+      ),
+    [exams]
+  );
+  const tamamlayan = t.gecti + t.kaldi;
+  const oran = tamamlayan > 0 ? Math.round((t.gecti / tamamlayan) * 100) : null;
+
+  const kartlar: { etiket: string; deger: string; renk?: string }[] = [
+    { etiket: "Atanan", deger: String(t.atanan) },
+    { etiket: "Geçti", deger: String(t.gecti), renk: DURUM_RENK["Geçti"] },
+    { etiket: "Kaldı", deger: String(t.kaldi), renk: DURUM_RENK["Kaldı"] },
+    { etiket: "Devam eden", deger: String(t.devam), renk: DURUM_RENK["Devam"] },
+    {
+      etiket: "Hiç girmedi",
+      deger: String(t.baslamadi),
+      renk: DURUM_RENK["Başlamadı"],
+    },
+    { etiket: "Başarı", deger: oran !== null ? `%${oran}` : "—" },
+  ];
+
+  return (
+    <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
+      {kartlar.map((k) => (
+        <div
+          key={k.etiket}
+          className="rounded-lg border bg-white px-4 py-3"
+          style={{ borderColor: "var(--ak-border-default)" }}
+        >
+          <div
+            className="text-2xl font-semibold tabular-nums"
+            style={k.renk ? { color: k.renk } : undefined}
+          >
+            {k.deger}
+          </div>
+          <div
+            className="text-xs mt-0.5"
+            style={{ color: "var(--ak-text-tertiary)" }}
+          >
+            {k.etiket}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -197,6 +300,9 @@ function QuestionDifficultyPanel({
 }) {
   const [data, setData] = useState<{
     exam: { id: string; title: string };
+    kpi?: SinavKpi;
+    durumDagilimi?: { durum: string; adet: number }[];
+    puanDagilimi?: { aralik: string; adet: number }[];
     questions: QuestionStat[];
   } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -215,8 +321,8 @@ function QuestionDifficultyPanel({
       style={{ borderColor: "var(--ak-border-default)" }}
     >
       <div className="flex items-center justify-between mb-3">
-        <h3 className="font-semibold">
-          Soru Zorluk Analizi:{" "}
+        <h3 className="font-semibold inline-flex items-center gap-2">
+          <BarChart3 size={16} className="text-slate-400" />
           {data?.exam.title ?? <span className="text-slate-400">—</span>}
         </h3>
         <button
@@ -232,7 +338,76 @@ function QuestionDifficultyPanel({
           Yükleniyor...
         </div>
       )}
+      {!loading && data?.durumDagilimi && data.puanDagilimi && (
+        <div className="grid gap-4 lg:grid-cols-2 mb-4">
+          <div>
+            <div
+              className="text-xs font-semibold uppercase mb-1"
+              style={{ color: "var(--ak-text-tertiary)" }}
+            >
+              Kişi durumu
+            </div>
+            <div
+              className="rounded-md border p-2"
+              style={{ borderColor: "var(--ak-border-default)" }}
+            >
+              <ResponsiveContainer width="100%" height={180}>
+                <BarChart
+                  data={data.durumDagilimi}
+                  margin={{ left: 0, right: 8, top: 4, bottom: 4 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="durum" tick={{ fontSize: 11 }} />
+                  <YAxis allowDecimals={false} tick={{ fontSize: 11 }} width={28} />
+                  <Tooltip formatter={(v: number) => [`${v} kişi`, "Adet"]} />
+                  <Bar dataKey="adet" radius={[2, 2, 0, 0]}>
+                    {data.durumDagilimi.map((x) => (
+                      <Cell
+                        key={x.durum}
+                        fill={DURUM_RENK[x.durum] ?? "#64748b"}
+                      />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+          <div>
+            <div
+              className="text-xs font-semibold uppercase mb-1"
+              style={{ color: "var(--ak-text-tertiary)" }}
+            >
+              Puan dağılımı (tamamlanan denemeler)
+            </div>
+            <div
+              className="rounded-md border p-2"
+              style={{ borderColor: "var(--ak-border-default)" }}
+            >
+              <ResponsiveContainer width="100%" height={180}>
+                <BarChart
+                  data={data.puanDagilimi}
+                  margin={{ left: 0, right: 8, top: 4, bottom: 4 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="aralik" tick={{ fontSize: 10 }} interval={0} />
+                  <YAxis allowDecimals={false} tick={{ fontSize: 11 }} width={28} />
+                  <Tooltip formatter={(v: number) => [`${v} deneme`, "Adet"]} />
+                  <Bar dataKey="adet" fill="#0d9488" radius={[2, 2, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        </div>
+      )}
+
       {!loading && data && (
+        <>
+        <div
+          className="text-xs font-semibold uppercase mb-1"
+          style={{ color: "var(--ak-text-tertiary)" }}
+        >
+          Soru zorluk analizi
+        </div>
         <table className="w-full text-xs">
           <thead style={{ background: "var(--ak-surface-secondary)" }}>
             <tr>
@@ -285,6 +460,7 @@ function QuestionDifficultyPanel({
             ))}
           </tbody>
         </table>
+        </>
       )}
     </div>
   );

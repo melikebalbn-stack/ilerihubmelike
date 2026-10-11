@@ -21,9 +21,14 @@ export async function GET(req: NextRequest) {
         select: {
           contents: true,
           exams: true,
-          directAssignments: true,
           certificates: true,
         },
+      },
+      // ATAMA = atanan KİŞİ sayısı. Eskiden _count.directAssignments idi, o
+      // CourseAssignment (atama İŞLEMİ) sayar: "beyaz yakaya toplu ata" tek
+      // kayıt üretir ve kolon 38 kişi için 1 gösterirdi.
+      directAssignments: {
+        select: { _count: { select: { userAssignments: true } } },
       },
       progress: {
         select: { percentage: true, completedAt: true },
@@ -68,7 +73,10 @@ export async function GET(req: NextRequest) {
       isActive: c.isActive,
       contentCount: c._count.contents,
       examCount: c._count.exams,
-      assignmentCount: c._count.directAssignments,
+      assignmentCount: c.directAssignments.reduce(
+        (t, a) => t + a._count.userAssignments,
+        0
+      ),
       certificateCount: c._count.certificates,
       enrolled,
       completed,

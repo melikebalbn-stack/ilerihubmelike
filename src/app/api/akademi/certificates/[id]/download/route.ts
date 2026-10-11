@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { resolveAkademiUserId } from "@/lib/akademi-user";
+import { getUserPermissions } from "@/lib/auth/get-user-permissions";
 import { generateCertificatePdf } from "@/lib/akademi/certificate-pdf";
 import fs from "fs/promises";
 import path from "path";
@@ -30,8 +31,15 @@ export async function GET(
   if (!cert) {
     return NextResponse.json({ error: "Bulunamadı" }, { status: 404 });
   }
-  if (cert.userId !== userId) {
-    return NextResponse.json({ error: "Yetkisiz" }, { status: 403 });
+  // Sahibi her zaman indirir. Rapor yetkisi olan (İV / akademi yöneticisi)
+  // başkasının sertifikasını da görüntüleyebilir — Melih, 11.10.2026: "sertifikalar
+  // kısmından ilgili kullanıcının sertifikasını görüntüleyebilmeliyim".
+  const sahibi = cert.userId === userId;
+  if (!sahibi) {
+    const perms = await getUserPermissions(userId);
+    if (!perms.has("akademi.report.view")) {
+      return NextResponse.json({ error: "Yetkisiz" }, { status: 403 });
+    }
   }
 
   let needsGeneration = !cert.filePath;
@@ -70,17 +78,21 @@ export async function GET(
     req.headers.get("x-real-ip") ||
     null;
 
-  await prisma.akademiCertificateDownload
-    .create({
-      data: {
-        certificateId: cert.id,
-        downloadedAt: new Date(),
-        ipAddress: ip,
-      },
-    })
-    .catch((e) => {
-      console.error("[cert-download] log fail:", e);
-    });
+  // İndirme sayacı sertifika sahibinin indirmelerini ölçer; yönetici
+  // görüntülemesi istatistiği şişirmesin diye loglanmaz.
+  if (sahibi) {
+    await prisma.akademiCertificateDownload
+      .create({
+        data: {
+          certificateId: cert.id,
+          downloadedAt: new Date(),
+          ipAddress: ip,
+        },
+      })
+      .catch((e) => {
+        console.error("[cert-download] log fail:", e);
+      });
+  }
 
   // Buffer'ı Uint8Array olarak dön (NextResponse Body uyumu için)
   return new NextResponse(new Uint8Array(fileBuffer), {

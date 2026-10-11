@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 type DeptRow = {
   bolum: string;
   userCount: number;
+  yakalar: { YONETICI: number; BEYAZ: number; GRI: number; MAVI: number };
   completedCourses: number;
   totalAttempts: number;
   passedAttempts: number;
@@ -61,6 +62,18 @@ export function DepartmentsReportTab() {
               Kullanıcı
             </th>
             <th className="text-center px-4 py-2 text-xs font-semibold uppercase">
+              Yönetici
+            </th>
+            <th className="text-center px-4 py-2 text-xs font-semibold uppercase">
+              Beyaz
+            </th>
+            <th className="text-center px-4 py-2 text-xs font-semibold uppercase">
+              Gri
+            </th>
+            <th className="text-center px-4 py-2 text-xs font-semibold uppercase">
+              Mavi
+            </th>
+            <th className="text-center px-4 py-2 text-xs font-semibold uppercase">
               Tamamlanan Kurs
             </th>
             <th className="text-center px-4 py-2 text-xs font-semibold uppercase">
@@ -85,7 +98,21 @@ export function DepartmentsReportTab() {
               style={{ borderColor: "var(--ak-border-divider)" }}
             >
               <td className="px-4 py-2 font-medium">{d.bolum}</td>
-              <td className="px-4 py-2 text-center">{d.userCount}</td>
+              <td className="px-4 py-2 text-center font-medium">
+                {d.userCount}
+              </td>
+              <td className="px-4 py-2 text-center text-slate-600">
+                {d.yakalar?.YONETICI || "—"}
+              </td>
+              <td className="px-4 py-2 text-center text-slate-600">
+                {d.yakalar?.BEYAZ || "—"}
+              </td>
+              <td className="px-4 py-2 text-center text-slate-600">
+                {d.yakalar?.GRI || "—"}
+              </td>
+              <td className="px-4 py-2 text-center text-slate-600">
+                {d.yakalar?.MAVI || "—"}
+              </td>
               <td className="px-4 py-2 text-center">{d.completedCourses}</td>
               <td className="px-4 py-2 text-center">{d.totalAttempts}</td>
               <td className="px-4 py-2 text-center">{d.passedAttempts}</td>

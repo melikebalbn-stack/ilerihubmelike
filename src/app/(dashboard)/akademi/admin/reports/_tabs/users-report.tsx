@@ -8,12 +8,25 @@ type UserRow = {
   name: string;
   email: string;
   bolum: string | null;
+  yaka: "YONETICI" | "BEYAZ" | "GRI" | "MAVI" | null;
+  atananKurs: number;
   completedCourses: number;
   totalCourseProgress: number;
+  atananSinav: number;
+  gectigiSinav: number;
+  kaldigiSinav: number;
+  girmedigiSinav: number;
   passedExams: number;
   totalAttempts: number;
   avgScore: number;
   certificateCount: number;
+};
+
+const YAKA_ETIKET: Record<NonNullable<UserRow["yaka"]>, string> = {
+  YONETICI: "Yönetici",
+  BEYAZ: "Beyaz yaka",
+  GRI: "Gri yaka",
+  MAVI: "Mavi yaka",
 };
 
 export function UsersReportTab() {
@@ -22,6 +35,7 @@ export function UsersReportTab() {
   const [search, setSearch] = useState("");
   const [bolums, setBolums] = useState<string[]>([]);
   const [bolumFilter, setBolumFilter] = useState("");
+  const [yakaFilter, setYakaFilter] = useState("");
   // Varsayılan KAPALI: tüm aktif kullanıcılar (bluecollar dahil) listelenir.
   const [onlyAssigned, setOnlyAssigned] = useState(false);
 
@@ -43,13 +57,14 @@ export function UsersReportTab() {
     const params = new URLSearchParams();
     if (search) params.set("search", search);
     if (bolumFilter) params.set("bolum", bolumFilter);
+    if (yakaFilter) params.set("yaka", yakaFilter);
     if (onlyAssigned) params.set("onlyAssigned", "1");
     fetch(`/api/akademi/admin/reports/users?${params}`)
       .then((r) => r.json())
       .then((d) => setUsers(d.users ?? []))
       .catch(() => setUsers([]))
       .finally(() => setLoading(false));
-  }, [search, bolumFilter, onlyAssigned]);
+  }, [search, bolumFilter, yakaFilter, onlyAssigned]);
 
   useEffect(() => {
     const t = setTimeout(load, 200);
@@ -85,6 +100,18 @@ export function UsersReportTab() {
               {b}
             </option>
           ))}
+        </select>
+        <select
+          value={yakaFilter}
+          onChange={(e) => setYakaFilter(e.target.value)}
+          className="px-3 py-2 text-sm border rounded-md bg-white"
+          style={{ borderColor: "var(--ak-border-default)" }}
+        >
+          <option value="">Tüm yakalar</option>
+          <option value="YONETICI">Yönetici</option>
+          <option value="BEYAZ">Beyaz yaka</option>
+          <option value="GRI">Gri yaka</option>
+          <option value="MAVI">Mavi yaka</option>
         </select>
         <label
           className="flex items-center gap-2 px-3 py-2 text-sm border rounded-md bg-white cursor-pointer select-none"
@@ -131,11 +158,23 @@ export function UsersReportTab() {
                 <th className="text-left px-4 py-2 text-xs font-semibold uppercase">
                   Bölüm
                 </th>
-                <th className="text-center px-4 py-2 text-xs font-semibold uppercase">
-                  Kurs
+                <th className="text-left px-4 py-2 text-xs font-semibold uppercase">
+                  Yaka
                 </th>
                 <th className="text-center px-4 py-2 text-xs font-semibold uppercase">
-                  Sınav
+                  Kurs (biten/atanan)
+                </th>
+                <th className="text-center px-4 py-2 text-xs font-semibold uppercase">
+                  Atanan sınav
+                </th>
+                <th className="text-center px-4 py-2 text-xs font-semibold uppercase">
+                  Geçti
+                </th>
+                <th className="text-center px-4 py-2 text-xs font-semibold uppercase">
+                  Kaldı
+                </th>
+                <th className="text-center px-4 py-2 text-xs font-semibold uppercase">
+                  Girmedi
                 </th>
                 <th className="text-center px-4 py-2 text-xs font-semibold uppercase">
                   Ort. Puan
@@ -167,11 +206,28 @@ export function UsersReportTab() {
                   >
                     {u.bolum ?? "—"}
                   </td>
-                  <td className="px-4 py-2 text-center">
-                    {u.completedCourses}/{u.totalCourseProgress}
+                  <td
+                    className="px-4 py-2"
+                    style={{ color: "var(--ak-text-secondary)" }}
+                  >
+                    {u.yaka ? YAKA_ETIKET[u.yaka] : "—"}
                   </td>
                   <td className="px-4 py-2 text-center">
-                    {u.passedExams}/{u.totalAttempts}
+                    {u.atananKurs > 0
+                      ? `${u.completedCourses}/${u.atananKurs}`
+                      : "—"}
+                  </td>
+                  <td className="px-4 py-2 text-center font-medium">
+                    {u.atananSinav || "—"}
+                  </td>
+                  <td className="px-4 py-2 text-center text-green-700 font-medium">
+                    {u.gectigiSinav || "—"}
+                  </td>
+                  <td className="px-4 py-2 text-center text-red-700 font-medium">
+                    {u.kaldigiSinav || "—"}
+                  </td>
+                  <td className="px-4 py-2 text-center text-slate-500">
+                    {u.girmedigiSinav || "—"}
                   </td>
                   <td className="px-4 py-2 text-center">
                     {u.avgScore > 0 ? `%${u.avgScore}` : "—"}

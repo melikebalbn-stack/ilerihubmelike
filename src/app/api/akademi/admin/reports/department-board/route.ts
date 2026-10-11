@@ -55,8 +55,15 @@ export async function GET(req: NextRequest) {
       : ownBolum
         ? [ownBolum]
         : [];
+    // Kampanya/paket süzgeci: içinde AKTİF kurs kalmamış paket listelenmez.
+    // Kursu silinmiş/pasifleşmiş eski paketler dropdown'da duruyor ve
+    // seçildiğinde boş liste veriyordu (Melih, 11.10.2026).
     const packages = await prisma.coursePackage.findMany({
-      where: { isActive: true, ...isIfsW },
+      where: {
+        isActive: true,
+        ...isIfsW,
+        packageCourses: { some: { course: { isActive: true } } },
+      },
       select: { id: true, name: true },
       orderBy: { name: "asc" },
     });

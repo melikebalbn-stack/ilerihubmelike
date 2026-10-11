@@ -70,7 +70,7 @@ export function CoursesReportTab() {
               Sınav
             </th>
             <th className="text-center px-4 py-2 text-xs font-semibold uppercase">
-              Atama
+              Atanan kişi
             </th>
             <th className="text-center px-4 py-2 text-xs font-semibold uppercase">
               Tamamlama

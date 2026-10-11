@@ -9,6 +9,7 @@ import {
 } from '@/lib/email'
 import { getAllLDAPUsers } from '@/lib/ldap'
 import { yoneticiZinciri, ustYonetimdeMi } from '@/lib/tasks/eskalasyon-zinciri'
+import { bolumMuduruBasamagi } from '@/lib/tasks/bolum-muduru'
 import { requireUser } from '@/lib/auth/require-user'
 
 // Eskalasyon kontrolü - Cron job tarafından çağrılır (ADMIN+ veya x-cron-secret)
@@ -33,6 +34,7 @@ export async function GET(request: NextRequest) {
     let ustYoneticiEskalasyonlari = 0
     let executiveEscalations = 0
     const yoneticisizGorevler: string[] = []
+    const ustBasamaksizGorevler: string[] = []
 
     // Eskalasyon ayarlarını al (yoksa varsayılan değerler kullan)
     const settings = await prisma.taskEscalationSettings.findFirst({
@@ -160,18 +162,33 @@ export async function GET(request: NextRequest) {
 
       const zincir = yoneticiZinciri(ldapUsers, task.responsiblePersonEmail)
       const manager = zincir[0] ?? null // 1. basamakta bilgilendirilen yönetici
-      const ustYonetici = zincir[1] ?? null // bir üst basamak
 
       const ustYonetimListesi = executiveEmails.map((e) => e.email)
-      // Bir üst basamak zaten üst yönetimdeyse ayrı bir mail atmanın anlamı yok.
-      const basamak: EskalasyonBasamagi =
-        ustYonetici && !ustYonetimdeMi(ustYonetici, ustYonetimListesi)
-          ? 'UST_YONETICI'
-          : 'EXECUTIVE'
+      const adBasamagi = zincir[1] ?? null
 
-      if (basamak === 'EXECUTIVE' && executiveEmails.length === 0) {
-        console.log(`⚠️ Görev ${task.id}: zincir tükendi ama üst yönetim e-posta listesi boş`)
-        continue
+      // AD zinciri genelde tek basamak (müdürlerin `manager` alanı boş) → Hub'ın
+      // kendi bölüm müdürü verisine düş. Üst yönetimdeki biri çıkarsa basamak
+      // sayılmaz; üst yönetim ayrı ve varsayılan olarak KAPALI bir yoldur.
+      const ustYonetici =
+        adBasamagi && !ustYonetimdeMi(adBasamagi, ustYonetimListesi)
+          ? adBasamagi
+          : await bolumMuduruBasamagi(task.responsiblePersonEmail, [
+              manager?.email,
+              ...ustYonetimListesi,
+            ])
+
+      const basamak: EskalasyonBasamagi = ustYonetici ? 'UST_YONETICI' : 'EXECUTIVE'
+
+      // ÜST YÖNETİM KAPISI: zincir tükendi diye kimse otomatik olarak üst yönetime
+      // mail atmaz (11.10.2026 kararı). Açmak için TASK_ESCALATION_TO_EXECUTIVES=1.
+      if (basamak === 'EXECUTIVE') {
+        if (process.env.TASK_ESCALATION_TO_EXECUTIVES !== '1' || executiveEmails.length === 0) {
+          console.log(
+            `⏭️ Görev ${task.id}: 2. basamak yöneticisi bulunamadı (AD zinciri ve bölüm müdürü boş) — üst yönetim kapalı, mail GÖNDERİLMEDİ`
+          )
+          ustBasamaksizGorevler.push(task.id)
+          continue
+        }
       }
 
       const emailData: EscalationEmailData = {
@@ -246,7 +263,8 @@ export async function GET(request: NextRequest) {
 
     console.log(
       `🔄 Eskalasyon kontrolü tamamlandı: ${managerEscalations} yönetici, ${ustYoneticiEskalasyonlari} üst yönetici, ${executiveEscalations} üst yönetim` +
-        (yoneticisizGorevler.length ? ` · ${yoneticisizGorevler.length} görev AD'de yöneticisiz` : '')
+        (yoneticisizGorevler.length ? ` · ${yoneticisizGorevler.length} görev AD'de yöneticisiz` : '') +
+        (ustBasamaksizGorevler.length ? ` · ${ustBasamaksizGorevler.length} görev 2. basamaksız (mail yok)` : '')
     )
 
     return NextResponse.json({
@@ -255,6 +273,7 @@ export async function GET(request: NextRequest) {
       ustYoneticiEskalasyonlari,
       executiveEscalations,
       yoneticisizGorevler,
+      ustBasamaksizGorevler,
       checkedAt: now.toISOString(),
     })
   } catch (error) {

@@ -99,7 +99,7 @@ export interface MesaiGirdi {
 export interface PuantajGirdi {
   gun: string // "YYYY-MM-DD" (vardiya günü)
   vardiya: VardiyaTanim
-  vardiyaKaynak: 'ATAMA' | 'VARSAYILAN'
+  vardiyaKaynak: 'ATAMA' | 'VARSAYILAN' | 'OTOMATIK'
   departmentId: string | null
   takvim: TakvimTipi
   /** İşe giriş (yerel gün) — bu günden önceki günler BEKLENMIYOR. */
@@ -124,7 +124,7 @@ export interface PuantajGirdi {
 export interface PuantajSonucu {
   durum: PuantajDurum
   vardiyaId: string
-  vardiyaKaynak: 'ATAMA' | 'VARSAYILAN'
+  vardiyaKaynak: 'ATAMA' | 'VARSAYILAN' | 'OTOMATIK'
   beklenenBaslangic: Date | null
   beklenenBitis: Date | null
   ilkGiris: Date | null

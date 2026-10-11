@@ -196,11 +196,41 @@ export async function gunuHesapla(
   const takvim = pdksTakvimTipi(gun, tatil?.tip ?? null)
   const saatGecerli = (s: string | null) => (s && /^\d{2}:\d{2}$/.test(s) ? s : null)
 
+  // Otomatik vardiya seçimi: atama yoksa, kişinin O GÜN ilk GİRİŞ saatine en yakın (yakasına uyan) vardiya.
+  // Gece/gündüz rotasyonu elle atama gerektirmesin diye — İV 180 kişiyi tek tek atamaz.
+  const SDK = (s: string) => { const [h, m] = s.split(':').map(Number); return h * 60 + m }
+  const dairesel = (a: number, b: number) => { const d = Math.abs(a - b) % 1440; return Math.min(d, 1440 - d) }
+  const adayVardiyalar = (y: 'BEYAZ' | 'MAVI') => vardiyalar.filter((v) => v.yakaTipi === y || v.yakaTipi === 'HEPSI')
+  const ilkGirisDk = (pid: string): number | null => {
+    let en: Date | null = null
+    for (const x of gecisler) {
+      if (x.personnelId !== pid || x.yon !== 'GIRIS') continue
+      const loc = new Date(x.olayZamani.getTime() + 3 * 3600_000)
+      if (loc.toISOString().slice(0, 10) === gun && (!en || x.olayZamani < en)) en = x.olayZamani
+    }
+    if (!en) return null
+    const loc = new Date(en.getTime() + 3 * 3600_000)
+    return loc.getUTCHours() * 60 + loc.getUTCMinutes()
+  }
+
   const sonuclar: { personnelId: string; sonuc: PuantajSonucu }[] = []
   const vardiyasiz: string[] = []
   for (const p of personeller) {
     const atanan = atamaBy.get(p.id)
-    const v = (atanan && vById.get(atanan)) || varsayilan(yakaTipi(p.yakaRengi as YakaRengi))
+    const yk = yakaTipi(p.yakaRengi as YakaRengi)
+    let v = atanan ? vById.get(atanan) : undefined
+    let vKaynak: 'ATAMA' | 'OTOMATIK' | 'VARSAYILAN' = 'ATAMA'
+    if (!v) {
+      const adaylar = adayVardiyalar(yk)
+      const gdk = ilkGirisDk(p.id)
+      if (gdk != null && adaylar.length > 1) {
+        v = adaylar.reduce((b, c) => (dairesel(gdk, SDK(c.girisSaat)) < dairesel(gdk, SDK(b.girisSaat)) ? c : b))
+        vKaynak = 'OTOMATIK'
+      } else {
+        v = adaylar.length === 1 ? adaylar[0] : varsayilan(yk)
+        vKaynak = 'VARSAYILAN'
+      }
+    }
     if (!v) {
       vardiyasiz.push(p.sicilNo ?? p.id)
       continue
@@ -208,7 +238,7 @@ export async function gunuHesapla(
     const sonuc = puantajHesapla({
       gun,
       vardiya: tanim(v),
-      vardiyaKaynak: atanan && vById.get(atanan) ? 'ATAMA' : 'VARSAYILAN',
+      vardiyaKaynak: vKaynak,
       departmentId: p.departmentId,
       takvim,
       iseGiris: gunStr(p.iseGirisTarihi),

@@ -45,12 +45,23 @@ function yaz(baslik: string, satir: Record<string, unknown> | null) {
  * statüyü IFS tarihe göre yazıyor demektir; bizim PATCH'imiz suçlu değildir.
  */
 async function ayrilanlar() {
+  // DİKKAT: çıkışı OLMAYAN kişide DateOfLeaving boş değil, 2099-12-31 / 9999-12-31
+  // yazıyor (IFS'in "sonsuz" damgası). `ne null` bu yüzden işe yaramaz; tüm satırlar
+  // çekilip gerçek çıkışlar istemcide süzülür.
   const yol =
     `EmploymentPeriodsHandling.svc/EmpEmployedTimes?$filter=` +
-    enc(`CompanyId eq '${IFS_COMPANY}' and DateOfLeaving ne null`) +
-    `&$select=EmpNo,SeqNo,DateOfLeaving,EmployeeStatus&$orderby=DateOfLeaving desc&$top=60`
-  const satirlar = (await istek<Sayfa<Record<string, unknown>>>(yol)).body.value ?? []
+    enc(`CompanyId eq '${IFS_COMPANY}'`) +
+    `&$select=EmpNo,SeqNo,DateOfLeaving,EmployeeStatus&$orderby=DateOfLeaving desc&$top=2000`
+  const tumSatirlar = (await istek<Sayfa<Record<string, unknown>>>(yol)).body.value ?? []
+  const SONSUZ = '2090-01-01'
+  const satirlar = tumSatirlar.filter((s) => {
+    const c = String(s.DateOfLeaving ?? '').slice(0, 10)
+    return c && c < SONSUZ
+  })
   const bugun = new Date().toISOString().slice(0, 10)
+  console.log(
+    `\n(toplam ${tumSatirlar.length} dönem; ${tumSatirlar.length - satirlar.length} tanesi "sonsuz" çıkış damgalı = hâlâ çalışıyor)`
+  )
   console.log(`\n── Çıkışı olan dönemler (${satirlar.length}, yeniden eskiye) · bugün=${bugun} ──`)
   for (const s of satirlar) {
     const cikis = String(s.DateOfLeaving ?? '-').slice(0, 10)

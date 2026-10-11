@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/lib/auth/require-permission";
-import { getLinkedBolums } from "@/lib/user-personnel";
+import { AKTIF_PERSONEL, getLinkedBolums } from "@/lib/user-personnel";
 import {
   courseTypeWhere,
   parseAkademiType,
@@ -212,7 +212,7 @@ export async function GET(req: NextRequest) {
     const rows = await Promise.all(
       bolums.map(async (bolum) => {
         const users = await prisma.user.findMany({
-          where: { personnel: { bolum } },
+          where: { personnel: { bolum, ...AKTIF_PERSONEL } },
           select: { id: true },
         });
         const userIds = users.map((u) => u.id);

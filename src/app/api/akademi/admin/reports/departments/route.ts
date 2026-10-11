@@ -6,7 +6,7 @@ import {
   viaCourseWhere,
   viaOptionalCourseWhere,
 } from "@/lib/akademi/admin-type-filter";
-import { getLinkedBolums } from "@/lib/user-personnel";
+import { AKTIF_PERSONEL, getLinkedBolums } from "@/lib/user-personnel";
 
 export async function GET(req: NextRequest) {
   const { error } = await requirePermission('akademi.report.view');
@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
   const result = await Promise.all(
     bolums.map(async (bolum) => {
       const users = await prisma.user.findMany({
-        where: { personnel: { bolum } },
+        where: { personnel: { bolum, ...AKTIF_PERSONEL } },
         select: { id: true },
       });
       const userIds = users.map((u) => u.id);

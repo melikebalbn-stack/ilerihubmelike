@@ -5,7 +5,11 @@ import { requireSession } from "@/lib/auth/require-session";
 import { canIfsRaporView } from "@/lib/ifs/rapor-erisim";
 import { getUserPermissions } from "@/lib/auth/get-user-permissions";
 import { resolveAkademiUserId } from "@/lib/akademi-user";
-import { getLinkedBolums, resolveUserBolum } from "@/lib/user-personnel";
+import {
+  AKTIF_PERSONEL,
+  getLinkedBolums,
+  resolveUserBolum,
+} from "@/lib/user-personnel";
 
 // IFS GÖREV BAZLI rapor — READ (read-only).
 //
@@ -136,7 +140,7 @@ export async function GET(req: NextRequest) {
   // bölüm için tek sorgu). Atama/değerlendirme şartı YOK.
   const users = bolums.length
     ? await prisma.user.findMany({
-        where: { personnel: { bolum: { in: bolums } } },
+        where: { personnel: { bolum: { in: bolums }, ...AKTIF_PERSONEL } },
         select: {
           id: true,
           name: true,

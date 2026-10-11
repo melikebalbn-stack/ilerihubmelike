@@ -86,8 +86,15 @@ export function userHasAkademiTraceWhere(type: AkademiType): Prisma.UserWhereInp
 /**
  * Raporlarda "kullanıcı" tabanı: aktif hesaplar, kiosk terminal hesabı hariç.
  * Bluecollar (sicil@bluecollar) hesapları KALIR — zorunlu eğitim atanabiliyor.
+ *
+ * İşten ayrılan personel (Personnel.aktif = false) raporlarda görünmez.
+ * User.isActive Hub hesabının açık olmasıdır; işten ayrılışı göstermez —
+ * ayrılan kişinin hesabı kapatılmamış olabilir. Personel kaydı OLMAYAN
+ * hesaplar (sistem/servis kullanıcıları) bu kuraldan etkilenmez.
+ * Aynı kapı: src/lib/user-personnel.ts → AKTIF_PERSONEL.
  */
 export const reportUserBaseWhere: Prisma.UserWhereInput = {
   isActive: true,
   role: { not: "KIOSK" },
+  OR: [{ personnelId: null }, { personnel: { aktif: true } }],
 };

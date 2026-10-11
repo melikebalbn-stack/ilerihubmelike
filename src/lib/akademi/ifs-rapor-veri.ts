@@ -143,7 +143,7 @@ export async function ifsEgitimYapisi(kapsam: IfsKapsam) {
     ? new Set(
         (
           await prisma.user.findMany({
-            where: { personnel: { bolum: { in: kapsam.bolumler } } },
+            where: { personnel: { bolum: { in: kapsam.bolumler }, aktif: true } },
             select: { id: true },
           })
         ).map((u) => u.id)
@@ -294,7 +294,10 @@ export async function ifsPaketKisileri(
   const bolumler = paket.departmentPackages.map((d) => d.bolum);
   const bolumKisileri = bolumler.length
     ? await prisma.user.findMany({
-        where: { isActive: true, personnel: { bolum: { in: bolumler } } },
+        where: {
+          isActive: true,
+          personnel: { bolum: { in: bolumler }, aktif: true },
+        },
         select: { id: true },
       })
     : [];
@@ -336,7 +339,7 @@ export async function ifsPaketKisileri(
       // Kapsam daraltma: key user yalnız kendi bölümlerini görür. Yönetici için
       // bolumler=null → koşul eklenmez, sonuç DEĞİŞMEZ.
       ...(kapsam.bolumler
-        ? { personnel: { bolum: { in: kapsam.bolumler } } }
+        ? { personnel: { bolum: { in: kapsam.bolumler }, aktif: true } }
         : {}),
     },
     select: {

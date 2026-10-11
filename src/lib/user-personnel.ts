@@ -1,5 +1,21 @@
 import { prisma } from "@/lib/prisma";
 
+/**
+ * Akademi/rapor listelerinde kullanılan ortak "aktif personel" kapısı.
+ *
+ * Personnel.aktif = false olan kişi işten ayrılmıştır; bugünkü bölüm
+ * listelerinde, panolarda ve raporlarda görünmemelidir. Geçmiş kayıtları
+ * (atama, ilerleme, sertifika) SİLİNMEZ — yalnız listeden düşer.
+ *
+ * Kullanım: `where: { personnel: { bolum, ...AKTIF_PERSONEL } }`
+ */
+export const AKTIF_PERSONEL = { aktif: true } as const;
+
+/** Personnel üzerinden filtreleyen User sorguları için hazır parça. */
+export const AKTIF_PERSONEL_USER_WHERE = {
+  personnel: { is: AKTIF_PERSONEL },
+} as const;
+
 export async function resolveUserPersonnel(userId: string) {
   const user = await prisma.user.findUnique({
     where: { id: userId },
@@ -19,7 +35,7 @@ export async function resolveUserBolum(userId: string): Promise<string | null> {
 export async function getUsersByBolum(bolum: string) {
   return prisma.user.findMany({
     where: {
-      personnel: { bolum },
+      personnel: { bolum, ...AKTIF_PERSONEL },
     },
     select: {
       id: true,
@@ -35,6 +51,7 @@ export async function getLinkedBolums(): Promise<string[]> {
     where: {
       bolum: { not: "" },
       user: { isNot: null },
+      ...AKTIF_PERSONEL,
     },
     select: { bolum: true },
     distinct: ["bolum"],

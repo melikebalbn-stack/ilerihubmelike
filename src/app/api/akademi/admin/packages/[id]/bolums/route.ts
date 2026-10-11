@@ -69,7 +69,10 @@ export async function PUT(
   const newBolums = cleanBolums.filter((b) => !oldBolums.has(b));
   if (newBolums.length > 0) {
     const bolumUsers = await prisma.user.findMany({
-      where: { isActive: true, personnel: { bolum: { in: newBolums } } },
+      where: {
+        isActive: true,
+        personnel: { bolum: { in: newBolums }, aktif: true },
+      },
       select: { id: true },
     });
     const directRows = await prisma.userPackageAssignment.findMany({

@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
       ],
     });
   }
-  if (bolum) and.push({ personnel: { bolum } });
+  if (bolum) and.push({ personnel: { bolum, aktif: true } });
   if (onlyAssigned) and.push(userHasAkademiTraceWhere(type));
   const where: Prisma.UserWhereInput = { AND: and };
 

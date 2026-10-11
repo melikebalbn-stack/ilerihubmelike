@@ -4,7 +4,7 @@ import { requireSession } from "@/lib/auth/require-session";
 import { canIfsRaporView } from "@/lib/ifs/rapor-erisim";
 import { getUserPermissions } from "@/lib/auth/get-user-permissions";
 import { resolveAkademiUserId } from "@/lib/akademi-user";
-import { resolveUserBolum } from "@/lib/user-personnel";
+import { AKTIF_PERSONEL, resolveUserBolum } from "@/lib/user-personnel";
 import { ifsYuzde } from "@/lib/akademi/ifs-progress";
 
 // IFS RAPOR — SEVİYE 2: bir bölümün kişi × eğitim satırları.
@@ -59,7 +59,7 @@ export async function GET(req: NextRequest) {
   }
 
   const users = await prisma.user.findMany({
-    where: { personnel: { bolum } },
+    where: { personnel: { bolum, ...AKTIF_PERSONEL } },
     select: { id: true, name: true, email: true },
     orderBy: { name: "asc" },
   });

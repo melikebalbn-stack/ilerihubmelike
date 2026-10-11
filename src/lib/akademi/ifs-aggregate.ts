@@ -126,7 +126,9 @@ export async function computeIfsAggregate(
     ? await prisma.user.findMany({
         where: {
           OR: [
-            ...(realBolums.length ? [{ personnel: { bolum: { in: realBolums } } }] : []),
+            ...(realBolums.length
+              ? [{ personnel: { bolum: { in: realBolums }, aktif: true } }]
+              : []),
             ...(includeBelirsiz
               ? [
                   {
@@ -134,7 +136,10 @@ export async function computeIfsAggregate(
                       {
                         // Personnel.bolum non-null String → "bölümsüz" = personnelId null
                         // VEYA bolum boş string. (null temsil edilemez.)
-                        OR: [{ personnelId: null }, { personnel: { bolum: "" } }],
+                        OR: [
+                          { personnelId: null },
+                          { personnel: { bolum: "", aktif: true } },
+                        ],
                       },
                       // Yalnız bu IFS kursuna atanmış bağsız kullanıcılar (materialize edilmiş).
                       { courseAssignments: { some: { assignment: { courseId } } } },
@@ -576,7 +581,12 @@ export async function hasBelirsizIfsUsers(): Promise<boolean> {
   const row = await prisma.userCourseAssignment.findFirst({
     where: {
       assignment: { course: { isIfs: true } },
-      user: { OR: [{ personnelId: null }, { personnel: { bolum: "" } }] },
+      user: {
+        OR: [
+          { personnelId: null },
+          { personnel: { bolum: "", aktif: true } },
+        ],
+      },
     },
     select: { id: true },
   });
@@ -638,8 +648,13 @@ export async function computeIfsBolumReport(args: {
       // Belirsiz: personnelId null VEYA personnel.bolum null/boş (personnelId dolu ama
       // bölümü olmayan kullanıcı da dahil). Normal bölüm: aynen o bölümün bağlı kullanıcıları.
       user: belirsiz
-        ? { OR: [{ personnelId: null }, { personnel: { bolum: "" } }] }
-        : { personnel: { bolum } },
+        ? {
+            OR: [
+              { personnelId: null },
+              { personnel: { bolum: "", aktif: true } },
+            ],
+          }
+        : { personnel: { bolum, aktif: true } },
     },
     select: {
       userId: true,

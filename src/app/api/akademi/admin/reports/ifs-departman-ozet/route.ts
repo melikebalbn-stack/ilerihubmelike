@@ -4,7 +4,11 @@ import { requireSession } from "@/lib/auth/require-session";
 import { canIfsRaporView } from "@/lib/ifs/rapor-erisim";
 import { getUserPermissions } from "@/lib/auth/get-user-permissions";
 import { resolveAkademiUserId } from "@/lib/akademi-user";
-import { getLinkedBolums, resolveUserBolum } from "@/lib/user-personnel";
+import {
+  AKTIF_PERSONEL,
+  getLinkedBolums,
+  resolveUserBolum,
+} from "@/lib/user-personnel";
 import { ifsYuzde } from "@/lib/akademi/ifs-progress";
 
 // IFS RAPOR — SEVİYE 1: departman özeti (parametresiz).
@@ -69,7 +73,7 @@ export async function GET() {
   const gorevIds = gorevler.map((g) => g.id);
 
   const users = await prisma.user.findMany({
-    where: { personnel: { bolum: { in: bolums } } },
+    where: { personnel: { bolum: { in: bolums }, ...AKTIF_PERSONEL } },
     select: { id: true, personnel: { select: { bolum: true } } },
   });
   const bolumOf = new Map(

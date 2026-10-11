@@ -93,7 +93,7 @@ export async function materializePackage(
     const bolums = pkg.departmentPackages.map((dp) => dp.bolum);
     const bolumUsers = await prisma.user.findMany({
       where: {
-        personnel: { bolum: { in: bolums } },
+        personnel: { bolum: { in: bolums }, aktif: true },
         isActive: true,
       },
       select: { id: true, personnel: { select: { bolum: true } } },

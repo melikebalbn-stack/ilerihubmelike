@@ -106,7 +106,7 @@ export function IcerideClient() {
                   <span className="font-semibold text-[#1B4F72]">{b.bolum}</span>
                   <span className="text-sm text-slate-500">{b.kisiler.length}</span>
                 </div>
-                <ul className="space-y-1 text-sm">
+                <ul className="space-y-1 text-xs">
                   {b.kisiler.map((k) => (
                     <li key={k.personnelId} className="flex items-center justify-between gap-2">
                       <span className="text-slate-800">{k.adSoyad}{k.sicil && <span className="ml-1 text-slate-400">({k.sicil})</span>}</span>

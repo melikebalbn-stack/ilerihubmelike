@@ -217,7 +217,7 @@ export function GecislerClient({ canManage }: { canManage: boolean }) {
       <div className="grid gap-5 lg:grid-cols-[1fr_300px]">
         {/* Tablo */}
         <div className="overflow-x-auto rounded-lg border bg-white">
-          <table className="w-full text-sm">
+          <table className="w-full text-xs">
             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
               <tr>
                 <th className="px-3 py-2">Saat</th>

@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { logAuditEvent } from '@/lib/audit-log'
 import type { Prisma } from '@/generated/prisma'
 import { PdksGirdiHatasi } from './cihaz-yonetim'
-import { KartNoHatasi, kartHamCoz, kartNoBicimiOku, kartNoDonustur, kartNoGoster } from './kart-no'
+import { KartNoHatasi, KART_NO_BICIMI_VARSAYILAN, kartHamCoz, kartHamPanelden, kartNoBicimiOku, kartNoDonustur, kartNoGoster } from './kart-no'
 import { kartiPasifYap, sonMutabakatOku } from './senkron'
 
 /**
@@ -285,4 +285,26 @@ export async function kartGecmisi(id: string) {
     })),
     olaylar: olaylar.map((o) => ({ id: o.id, action: o.action, aktor: ad(o.actorId), zaman: o.createdAt.toISOString(), details: o.details })),
   }
+}
+
+/**
+ * Son N saniyede turnikede okutulmuş TANIMSIZ kartlar (en yeni önce). Kart tanımla ekranında
+ * "turnikeye okut → yakala" akışı için. Görünür kart no'ya çevrilir; çözülemeyen atlanır.
+ */
+export async function sonTanimsizKartlar(sn = 120): Promise<{ id: string; kartNo: string; zaman: string }[]> {
+  const sinir = Math.min(600, Math.max(5, Math.floor(sn) || 120))
+  const bicim = await kartNoBicimiOku(prisma).catch(() => KART_NO_BICIMI_VARSAYILAN)
+  const esik = new Date(Date.now() - sinir * 1000)
+  const okutmalar = await prisma.pdksGecis.findMany({
+    where: { olayTipi: 'TANIMSIZ_KART', kartNo: { not: null }, olayZamani: { gte: esik } },
+    orderBy: { olayZamani: 'desc' },
+    take: 10,
+    select: { id: true, kartNo: true, olayZamani: true },
+  })
+  return okutmalar
+    .map((o) => {
+      const ham = o.kartNo ? kartHamPanelden(o.kartNo, bicim) : null
+      return { id: o.id, kartNo: ham ? kartNoGoster(ham) : (o.kartNo ?? ''), zaman: o.olayZamani.toISOString() }
+    })
+    .filter((x) => x.kartNo)
 }

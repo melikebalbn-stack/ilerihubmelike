@@ -120,7 +120,7 @@ export function IfsAktarimClient() {
       ) : (
         <Card>
           <CardContent className="overflow-x-auto p-0">
-            <table className="w-full text-sm">
+            <table className="w-full text-xs">
               <thead>
                 <tr className="border-b text-left text-slate-500">
                   <th className="px-3 py-2 font-medium">Personel</th>

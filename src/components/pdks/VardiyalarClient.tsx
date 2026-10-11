@@ -268,7 +268,7 @@ function AtamaBolumu({ veri, yenile }: { veri: Veri; yenile: () => void }) {
         <p className="text-xs text-slate-500">Önceki açık atama yeni başlangıçtan bir gün önce kapanır. Aynı ya da sonraki tarihte başlayan ataması olan kişi atlanır.</p>
 
         <div className="overflow-x-auto rounded-lg border">
-          <table className="w-full text-sm">
+          <table className="w-full text-xs">
             <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
               <tr><th className="px-3 py-2">Sicil</th><th className="px-3 py-2">Ad Soyad</th><th className="px-3 py-2">Departman</th><th className="px-3 py-2">Vardiya</th><th className="px-3 py-2">Başlangıç</th><th className="px-3 py-2">Bitiş</th><th /></tr>
             </thead>

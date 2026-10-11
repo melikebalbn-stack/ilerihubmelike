@@ -194,7 +194,7 @@ export function PuantajClient({ canManage }: { canManage: boolean }) {
       {hata && <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">{hata}</div>}
 
       <div className="overflow-x-auto rounded-lg border bg-white">
-        <table className="w-full text-sm">
+        <table className="w-full text-xs">
           <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
             <tr>
               <th className="px-3 py-2">Sicil</th>

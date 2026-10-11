@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
@@ -179,6 +179,27 @@ export default function NewPersonnelPage() {
   // Ölçü Tarihi yeni personelde bugünle dolu gelir (kullanıcı değiştirebilir/silebilir).
   const [form, setForm] = useState<FormData>(() => ({ ...initialForm, olcuTarihi: bugunTR() }))
   const [saving, setSaving] = useState(false)
+  // PDKS kart tanımla (yeni personele kart bağlama) — kayıttan sonra /api/pdks/kartlar'a gönderilir.
+  const [kartNo, setKartNo] = useState("")
+  const [kartYakala, setKartYakala] = useState(false)
+  const [kartBilgi, setKartBilgi] = useState<string | null>(null)
+  const kartYakalaRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const kartYakalaDurdur = () => { if (kartYakalaRef.current) { clearInterval(kartYakalaRef.current); kartYakalaRef.current = null } setKartYakala(false) }
+  useEffect(() => () => { if (kartYakalaRef.current) clearInterval(kartYakalaRef.current) }, [])
+  const kartYakalaBasla = () => {
+    setKartBilgi("Turnikeye kartı okutun…"); setKartYakala(true)
+    const bas = Date.now()
+    if (kartYakalaRef.current) clearInterval(kartYakalaRef.current)
+    kartYakalaRef.current = setInterval(async () => {
+      if (Date.now() - bas > 90_000) { kartYakalaDurdur(); setKartBilgi("Süre doldu, tekrar deneyin."); return }
+      try {
+        const r = await fetch(`/api/pdks/kartlar/son-tanimsiz?sn=90`, { cache: "no-store" })
+        const j = await r.json().catch(() => ({}))
+        const en = j?.okutmalar?.[0]
+        if (en && Date.parse(en.zaman) >= bas - 1000) { setKartNo(en.kartNo); setKartBilgi(`Yakalandı: ${en.kartNo}`); kartYakalaDurdur() }
+      } catch { /* yoksay */ }
+    }, 2000)
+  }
   // Alt beden "Diğer..." (serbest metin) modu — liste dışı değer girildiğinde açılır.
   const [altBedenDiger, setAltBedenDiger] = useState(false)
   const [departments, setDepartments] = useState<string[]>([])
@@ -366,6 +387,23 @@ export default function NewPersonnelPage() {
           description: olusan.koltuk.sebep,
           duration: 8000,
         })
+      }
+      // PDKS kartı: yeni personele bağla (kayıt oluştu; kart hatası kaydı düşürmez).
+      if (!yenidenIseAlinan && kartNo.trim() && olusan?.id) {
+        try {
+          const kr = await fetch("/api/pdks/kartlar", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ personnelId: olusan.id, kartNo: kartNo.trim() }),
+          })
+          if (kr.ok) toast.success("PDKS kartı bağlandı")
+          else {
+            const ke = await kr.json().catch(() => ({}))
+            toast.warning(`Personel oluştu ama kart bağlanamadı: ${ke.error ?? "hata"} — Kartlar ekranından tanımlayın`)
+          }
+        } catch {
+          toast.warning("Personel oluştu ama kart bağlanamadı — Kartlar ekranından tanımlayın")
+        }
       }
       router.push("/personnel")
     } catch (err: any) {
@@ -934,6 +972,29 @@ export default function NewPersonnelPage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* PDKS Kartı */}
+        {!yenidenIseAlinan && (
+          <Card>
+            <CardHeader><CardTitle>PDKS Kartı (isteğe bağlı)</CardTitle></CardHeader>
+            <CardContent>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                <div className="flex-1 space-y-2">
+                  <Label htmlFor="pdksKartNo">Kart no</Label>
+                  <Input id="pdksKartNo" value={kartNo} onChange={(e) => setKartNo(e.target.value)} placeholder="118-63577 veya 11863577" className="font-mono" />
+                </div>
+                <Button type="button" variant="outline" onClick={kartYakala ? kartYakalaDurdur : kartYakalaBasla}>
+                  {kartYakala ? "Bekleniyor… (iptal)" : "Turnikeye okut → yakala"}
+                </Button>
+              </div>
+              <p className="mt-2 text-xs text-muted-foreground">
+                {kartBilgi
+                  ? <span className={kartBilgi.startsWith("Yakalandı") ? "text-emerald-700" : ""}>{kartBilgi}</span>
+                  : "Elle gir ya da kartı turnikeye okutup yakala. Personel kaydedilince kart otomatik bağlanır."}
+              </p>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Submit */}
         <div className="flex justify-end gap-3">

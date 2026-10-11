@@ -413,6 +413,11 @@ function PersonnelTab({ isAdmin }: { isAdmin: boolean }) {
                               <Link href={`/personnel/${p.id}?edit=true`}>Düzenle</Link>
                             </Button>
                           )}
+                          {isAdmin && (
+                            <Button variant="ghost" size="sm" asChild>
+                              <Link href={`/pdks/kartlar?sicil=${encodeURIComponent(p.sicilNo)}`}>Kart tanımla</Link>
+                            </Button>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>

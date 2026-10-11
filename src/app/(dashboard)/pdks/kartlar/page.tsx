@@ -8,15 +8,17 @@ import { KartlarClient } from '@/components/pdks/KartlarClient'
 export const dynamic = 'force-dynamic'
 
 // PDKS Faz 2 — kart yönetimi. Okuma pdks.view (veya manage), yazma pdks.manage. Guard sidebar ile birebir.
-export default async function PdksKartlarPage({ searchParams }: { searchParams: Promise<{ kartNo?: string }> }) {
+export default async function PdksKartlarPage({ searchParams }: { searchParams: Promise<{ kartNo?: string; sicil?: string }> }) {
   const { error } = await requireUser()
   if (error) redirect('/login')
 
   if (!(await hasPermission(['pdks.view', 'pdks.manage']))) return <YetkisizErisim permission="pdks.view" />
   const canManage = await hasPermission('pdks.manage')
-  const { kartNo } = await searchParams
+  const { kartNo, sicil } = await searchParams
   // Yalnız kart no biçimindeki değer ön-doldurulur (Geçiş Kayıtları › Personele bağla).
   const baslangicKartNo = kartNo && /^[\d\s-]{3,12}$/.test(kartNo) ? kartNo : undefined
+  // Personel listesi › "Kart tanımla" → ?sicil=... ile gelir, pencere o personelle açılır.
+  const baslangicSicil = sicil && /^[\w-]{1,20}$/.test(sicil) ? sicil : undefined
 
   return (
     <div className="container mx-auto max-w-7xl space-y-6 px-6 py-8">
@@ -30,7 +32,7 @@ export default async function PdksKartlarPage({ searchParams }: { searchParams: 
           alınınca kartı otomatik kapatılır ve panelden silinir.
         </p>
       </div>
-      <KartlarClient canManage={canManage} baslangicKartNo={baslangicKartNo} />
+      <KartlarClient canManage={canManage} baslangicKartNo={baslangicKartNo} baslangicSicil={baslangicSicil} />
     </div>
   )
 }

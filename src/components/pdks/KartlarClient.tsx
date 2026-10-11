@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, ArrowUpRight, CreditCard, History, Loader2, Plus, Search, UserX, Upload, Clock } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -96,7 +96,7 @@ function Rozet({ ton, children, title }: { ton: 'mavi' | 'turuncu' | 'gri'; chil
   )
 }
 
-export function KartlarClient({ canManage, baslangicKartNo }: { canManage: boolean; baslangicKartNo?: string }) {
+export function KartlarClient({ canManage, baslangicKartNo, baslangicSicil }: { canManage: boolean; baslangicKartNo?: string; baslangicSicil?: string }) {
   const [durum, setDurum] = useState<'AKTIF' | 'PASIF' | 'TUMU'>('AKTIF')
   const [arama, setArama] = useState('')
   const [q, setQ] = useState('')
@@ -104,7 +104,7 @@ export function KartlarClient({ canManage, baslangicKartNo }: { canManage: boole
   const [hata, setHata] = useState<string | null>(null)
   const [yukleniyor, setYukleniyor] = useState(true)
   // Geçiş Kayıtları › "Personele bağla" → ?kartNo=118-63577 ile gelinirse pencere kart no dolu açılır.
-  const [tanimlaAcik, setTanimlaAcik] = useState(canManage && !!baslangicKartNo)
+  const [tanimlaAcik, setTanimlaAcik] = useState(canManage && (!!baslangicKartNo || !!baslangicSicil))
   const [pasifle, setPasifle] = useState<Satir | null>(null)
   const [gecmisId, setGecmisId] = useState<string | null>(null)
   const [farkAcik, setFarkAcik] = useState(false)
@@ -209,7 +209,7 @@ export function KartlarClient({ canManage, baslangicKartNo }: { canManage: boole
 
       {/* Tablo */}
       <div className="overflow-x-auto rounded-lg border bg-white">
-        <table className="w-full text-sm">
+        <table className="w-full text-xs">
           <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
             <tr>
               <th className="px-3 py-2">Kart no</th>
@@ -280,7 +280,7 @@ export function KartlarClient({ canManage, baslangicKartNo }: { canManage: boole
         </table>
       </div>
 
-      {canManage && <TanimlaDialog acik={tanimlaAcik} kapat={() => setTanimlaAcik(false)} bitti={yukle} ilkKartNo={baslangicKartNo} />}
+      {canManage && <TanimlaDialog acik={tanimlaAcik} kapat={() => setTanimlaAcik(false)} bitti={yukle} ilkKartNo={baslangicKartNo} ilkArama={baslangicSicil} />}
       {canManage && <PasifleDialog kart={pasifle} kapat={() => setPasifle(null)} bitti={yukle} />}
       <GecmisDialog id={gecmisId} kapat={() => setGecmisId(null)} />
       <FarkDialog acik={farkAcik} kapat={() => setFarkAcik(false)} cihazlar={m?.cihazlar ?? []} zaman={m?.zaman ?? null} />
@@ -305,25 +305,55 @@ function OzetKart({ ikon, baslik, deger, ton, alt }: { ikon: React.ReactNode; ba
 
 // ── Kart tanımla ─────────────────────────────────────────────────────────────
 
-function TanimlaDialog({ acik, kapat, bitti, ilkKartNo }: { acik: boolean; kapat: () => void; bitti: () => void; ilkKartNo?: string }) {
-  const [arama, setArama] = useState('')
+function TanimlaDialog({ acik, kapat, bitti, ilkKartNo, ilkArama }: { acik: boolean; kapat: () => void; bitti: () => void; ilkKartNo?: string; ilkArama?: string }) {
+  const [arama, setArama] = useState(ilkArama ?? '')
   const [adaylar, setAdaylar] = useState<Aday[]>([])
   const [secili, setSecili] = useState<Aday | null>(null)
   const [kartNo, setKartNo] = useState(ilkKartNo ?? '')
   const [hata, setHata] = useState<string | null>(null)
   const [kaydediliyor, setKaydediliyor] = useState(false)
+  const [yakala, setYakala] = useState(false)
+  const [yakalaBilgi, setYakalaBilgi] = useState<string | null>(null)
+  const yakalaRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
     if (!acik) return
     const t = setTimeout(async () => {
       const { ok, veri } = await istek<{ personeller: Aday[] }>(`/api/pdks/kartlar/personel-aday?q=${encodeURIComponent(arama.trim())}`)
-      if (ok) setAdaylar(veri.personeller)
+      if (ok) {
+        setAdaylar(veri.personeller)
+        // Sicil ile gelindiyse ve tek kartsız eşleşme varsa otomatik seç
+        if (!secili && ilkArama && arama === ilkArama) {
+          const uygun = veri.personeller.filter((a) => !a.aktifKart)
+          if (uygun.length === 1) setSecili(uygun[0])
+        }
+      }
     }, 250)
     return () => clearTimeout(t)
-  }, [arama, acik])
+  }, [arama, acik, secili, ilkArama])
+
+  // "Turnikeye okut → yakala": son tanımsız okutmayı kısa aralıkla sorgular, yeni okutma gelince kart no'yu doldurur.
+  const durdurYakala = () => { if (yakalaRef.current) { clearInterval(yakalaRef.current); yakalaRef.current = null } setYakala(false) }
+  useEffect(() => () => { if (yakalaRef.current) clearInterval(yakalaRef.current) }, [])
+  const yakalaBasla = () => {
+    setHata(null); setYakalaBilgi('Turnikeye kartı okutun…'); setYakala(true)
+    const bas = Date.now()
+    if (yakalaRef.current) clearInterval(yakalaRef.current)
+    yakalaRef.current = setInterval(async () => {
+      if (Date.now() - bas > 90_000) { durdurYakala(); setYakalaBilgi('Süre doldu, tekrar deneyin.'); return }
+      const { ok, veri } = await istek<{ okutmalar: { kartNo: string; zaman: string }[] }>(`/api/pdks/kartlar/son-tanimsiz?sn=90`)
+      if (!ok || !veri.okutmalar?.length) return
+      const en = veri.okutmalar[0]
+      if (Date.parse(en.zaman) >= bas - 1000) {
+        setKartNo(en.kartNo)
+        setYakalaBilgi(`Yakalandı: ${en.kartNo}`)
+        durdurYakala()
+      }
+    }, 2000)
+  }
 
   const sifirla = () => {
-    setArama(''); setSecili(null); setKartNo(''); setHata(null)
+    durdurYakala(); setArama(''); setSecili(null); setKartNo(''); setHata(null); setYakalaBilgi(null)
   }
   const onizleme = useMemo(() => {
     const s = kartNo.trim()
@@ -380,10 +410,19 @@ function TanimlaDialog({ acik, kapat, bitti, ilkKartNo }: { acik: boolean; kapat
             </div>
           </div>
           <div>
-            <Label>Kart no</Label>
+            <div className="flex items-center justify-between">
+              <Label>Kart no</Label>
+              <Button type="button" variant="outline" size="sm" onClick={yakala ? durdurYakala : yakalaBasla}>
+                {yakala ? 'Bekleniyor… (iptal)' : 'Turnikeye okut → yakala'}
+              </Button>
+            </div>
             <Input value={kartNo} onChange={(e) => setKartNo(e.target.value)} placeholder="118-63577 veya 11863577" className="mt-1 font-mono" />
             <p className="mt-1 text-xs text-slate-500">
-              {onizleme ? <>Kaydedilecek: <span className="font-mono">{onizleme}</span> (tesis-kart)</> : '3 hane tesis kodu + 5 hane kart no'}
+              {yakalaBilgi
+                ? <span className={yakalaBilgi.startsWith('Yakalandı') ? 'text-emerald-700' : 'text-slate-600'}>{yakalaBilgi}</span>
+                : onizleme
+                  ? <>Kaydedilecek: <span className="font-mono">{onizleme}</span> (tesis-kart)</>
+                  : 'Elle gir ya da "Turnikeye okut → yakala" ile kartı okut.'}
             </p>
           </div>
           {hata && <p className="text-sm text-amber-800">{hata}</p>}

@@ -485,7 +485,7 @@ function CihazKarti({
             <Button variant="ghost" size="sm" onClick={onKapiEkle}><Plus className="mr-1 h-4 w-4" /> Turnike Ekle</Button>
           </div>
           <div className="overflow-x-auto rounded-lg border">
-            <table className="w-full text-sm">
+            <table className="w-full text-xs">
               <thead className="bg-slate-50 text-left text-slate-500">
                 <tr>
                   <th className="px-3 py-2">No</th>

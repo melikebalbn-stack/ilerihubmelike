@@ -61,7 +61,7 @@ export function AnomaliClient() {
       ) : (
         <Card>
           <CardContent className="p-0">
-            <table className="w-full text-sm">
+            <table className="w-full text-xs">
               <thead>
                 <tr className="border-b text-left text-slate-500">
                   <th className="px-4 py-2 font-medium">Zaman</th>

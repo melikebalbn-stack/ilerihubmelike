@@ -18,11 +18,13 @@ import 'dotenv/config'
 import { istek, listEmployeeStatuses, IfsSyncHatasi } from '../../src/lib/ifs/personel-sync/ifs-api'
 import { IFS_COMPANY } from '../../src/lib/ifs/personel-sync/kodlar'
 
-const empNo = process.argv[2]
-if (!empNo) {
+const arg = process.argv[2]
+if (!arg) {
   console.error('Kullanım: npx tsx scripts/ifs/personel-durum.ts <SICIL>   (ör. ILR-01155)')
+  console.error('          npx tsx scripts/ifs/personel-durum.ts --ayrilanlar   (çıkışı olan tüm dönemler)')
   process.exit(1)
 }
+const empNo = arg
 
 const q = (s: string) => s.replace(/'/g, "''")
 const enc = encodeURIComponent
@@ -37,7 +39,46 @@ function yaz(baslik: string, satir: Record<string, unknown> | null) {
   }
 }
 
+/**
+ * Çıkışı olan TÜM dönemler — statünün çıkış tarihine göre mi türediğini ölçer.
+ * Çıkışı geçmişte olanlar ISTEN AYRILMIS, bugün/gelecekte olanlar `*`/`**` ise
+ * statüyü IFS tarihe göre yazıyor demektir; bizim PATCH'imiz suçlu değildir.
+ */
+async function ayrilanlar() {
+  const yol =
+    `EmploymentPeriodsHandling.svc/EmpEmployedTimes?$filter=` +
+    enc(`CompanyId eq '${IFS_COMPANY}' and DateOfLeaving ne null`) +
+    `&$select=EmpNo,SeqNo,DateOfLeaving,EmployeeStatus&$orderby=DateOfLeaving desc&$top=60`
+  const satirlar = (await istek<Sayfa<Record<string, unknown>>>(yol)).body.value ?? []
+  const bugun = new Date().toISOString().slice(0, 10)
+  console.log(`\n── Çıkışı olan dönemler (${satirlar.length}, yeniden eskiye) · bugün=${bugun} ──`)
+  for (const s of satirlar) {
+    const cikis = String(s.DateOfLeaving ?? '-').slice(0, 10)
+    const nerede = cikis < bugun ? 'geçmiş' : cikis === bugun ? 'BUGÜN' : 'gelecek'
+    console.log(
+      `  ${String(s.EmpNo).padEnd(12)} çıkış=${cikis} (${nerede.padEnd(7)}) statü=${String(s.EmployeeStatus ?? '(boş)')}`
+    )
+  }
+
+  const sayac = new Map<string, Map<string, number>>()
+  for (const s of satirlar) {
+    const cikis = String(s.DateOfLeaving ?? '').slice(0, 10)
+    const nerede = cikis < bugun ? 'geçmiş' : cikis === bugun ? 'bugün' : 'gelecek'
+    const st = String(s.EmployeeStatus ?? '(boş)')
+    if (!sayac.has(nerede)) sayac.set(nerede, new Map())
+    const i = sayac.get(nerede)!
+    i.set(st, (i.get(st) ?? 0) + 1)
+  }
+  console.log('\n── Çıkış tarihi × statü ──')
+  for (const [nerede, i] of sayac) {
+    for (const [st, n] of [...i].sort((a, b) => b[1] - a[1])) {
+      console.log(`  ${nerede.padEnd(8)} ${st.padEnd(18)} ${n}`)
+    }
+  }
+}
+
 async function main() {
+  if (empNo === '--ayrilanlar') return ayrilanlar()
   console.log(`Şirket=${IFS_COMPANY}  sicil=${empNo}`)
 
   // 1) Çalışan kartı

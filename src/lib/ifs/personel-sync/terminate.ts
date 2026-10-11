@@ -122,7 +122,17 @@ export async function istihdamSonlandir(g: SonlandirmaGirdi): Promise<Sonlandirm
     const uyusmayan: string[] = []
     if (donem?.DateOfLeaving !== g.bitis) uyusmayan.push(`DateOfLeaving ${donem?.DateOfLeaving ?? 'yok'}≠${g.bitis}`)
     if (sayi(donem?.LeavingCauseId) !== g.leavingCauseId) uyusmayan.push(`LeavingCauseId ${donem?.LeavingCauseId ?? 'yok'}≠${g.leavingCauseId}`)
-    if (donem?.EmployeeStatus !== STATUS_AYRILDI) uyusmayan.push(`EmployeeStatus ${donem?.EmployeeStatus ?? 'yok'}≠${STATUS_AYRILDI}`)
+    // STATÜ: IFS, EmployeeStatus'u ÇIKIŞ TARİHİNE göre kendi belirliyor — çıkış günü
+    // gelmeden kişi "işten ayrılmış" sayılmıyor, bizim PATCH'imiz `*` (aktif) ya da
+    // `**` (ön kayıt) ile değiştiriliyor. 11.10.2026'da ILR-01155'te ölçüldü:
+    // çıkışı geçmişte olan 9 dönemin hepsi ISTEN AYRILMIS, çıkışı bugün olan tek
+    // dönem `**`. Bu yüzden statü YALNIZ çıkış tarihi geçmişse zorunlu tutulur;
+    // ileri tarihli çıkışta uyarı yazılır, tarih geldiğinde senkron kendi düzeltir.
+    const bugun = new Date().toISOString().slice(0, 10)
+    if (donem?.EmployeeStatus !== STATUS_AYRILDI) {
+      if (g.bitis < bugun) uyusmayan.push(`EmployeeStatus ${donem?.EmployeeStatus ?? 'yok'}≠${STATUS_AYRILDI}`)
+      else console.warn(`[ifs-terminate] ${g.empNo}: çıkış ${g.bitis} henüz geçmedi — statü ${donem?.EmployeeStatus ?? 'yok'}, IFS tarih gelince ${STATUS_AYRILDI} yapacak`)
+    }
     if (uyusmayan.length) throw new IfsSyncHatasi(fin.status, `round-trip: Finish ${fin.status} ama ${uyusmayan.join('; ')}`, pyol)
     return { status: fin.status, objkey, uyarilar: satirlar, termProcessId }
   } catch (e) {

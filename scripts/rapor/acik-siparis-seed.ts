@@ -75,12 +75,24 @@ function tanimKur(c: Record<string, Coz>): VeriSetiTanim {
         select: [
           'OrderNo', 'LineNo', 'RelNo', 'LineItemNo', 'Contract',
           'CatalogNo', 'PartNo', 'CatalogDesc', 'CustomerPartNo', 'CustomersPONo',
-          'RevisedQtyDue', 'QtyShipped', 'QtyToShip', 'QtyAssigned',
+          'RevisedQtyDue', 'QtyShipped', 'DeliveredQty', 'QtyToShip', 'QtyAssigned',
           'PlannedDueDate', 'PromisedDeliveryDate', 'Objstate', 'ShipAddrNo', 'CustomerNo',
         ],
-        // qty_ordered − qty_shipped > 0  →  QtyToShip gt 0 (IFS bu farkı kendi tutuyor).
-        // due_date between @Basl,@Bitis  →  PlannedDueDate aralığı.
-        filtre: 'Contract eq {p.contract} and QtyToShip gt 0 and PlannedDueDate ge {p.baslangic} and PlannedDueDate le {p.bitis}',
+        // Açıklık ölçütü SATIR DURUMU — QtyToShip DEĞİL. QtyToShip yalnız rezerve edilmiş,
+        // sevke hazır miktarı tutuyor; açık satırların çoğunda 0 olduğu için rapor 86 satır
+        // yerine 2 satır getiriyordu (Melih'in IFS karşılaştırması, 12.10.2026).
+        // Faturalanmış / iptal / sevk edilmiş durumlar dışarıda, kalanı açık sayılır.
+        // Objstate bir enum: 'Released' gibi düz metin kabul edilmiyor, tam nitelikli
+        // IfsApp.<Projeksiyon>.<Enum>'Değer' biçimi gerekiyor.
+        // due_date between @Basl,@Bitis  →  PlannedDueDate aralığı; tarih parametreleri
+        // tırnaksız ISO basılır (parametre.ts · odataLiteral), aksi halde IFS
+        // "Edm.DateTimeOffset ve Edm.String uyumsuz" diyor.
+        filtre:
+          'Contract eq {p.contract}' +
+          " and Objstate ne IfsApp.CustomerOrderHandling.CustomerOrderLineState'Invoiced'" +
+          " and Objstate ne IfsApp.CustomerOrderHandling.CustomerOrderLineState'Cancelled'" +
+          " and Objstate ne IfsApp.CustomerOrderHandling.CustomerOrderLineState'Delivered'" +
+          ' and PlannedDueDate ge {p.baslangic} and PlannedDueDate le {p.bitis}',
         orderby: 'PlannedDueDate',
         top: 5000,
       },
@@ -126,8 +138,10 @@ function tanimKur(c: Record<string, Coz>): VeriSetiTanim {
       sevkTarihi: 'satir.PlannedDueDate',
       sozVerilenTarih: 'satir.PromisedDeliveryDate',
       siparisMiktari: 'satir.RevisedQtyDue',
-      sevkMiktari: 'satir.QtyShipped',
-      netSiparis: 'satir.QtyToShip',
+      // IFS ekranındaki "Teslim Mik." DeliveredQty'dir; QtyShipped boş geliyordu.
+      sevkMiktari: 'satir.DeliveredQty',
+      // netSiparis buradan KALDIRILDI — QtyToShip'e bağlıyken hep 0 çıkıyordu.
+      // Artık hesaplanan alan: sipariş − teslim (aşağıda gorunum.hesaplananAlanlar).
       rezerveMiktar: 'satir.QtyAssigned',
       durum: 'satir.Objstate',
       stokMiktari: 'stok.OnHandQty',
@@ -152,7 +166,8 @@ const icerik: EtkilesimliIcerik = {
   altBaslik: 'Sevk tarihi aralığındaki açık müşteri sipariş satırları',
   teknikAciklama:
     'Syteline TR_Acik_Siparis1_SL9 karşılığı. IFS: CustomerOrderLine ⟕ CustomerOrder ⟕ InventoryPart. ' +
-    'Açıklık ölçütü QtyToShip > 0 (Syteline qty_ordered − qty_shipped > 0).',
+    'Açıklık ölçütü satır durumu: Faturalandı / İptal / Sevk Edildi dışındaki satırlar. ' +
+    'Net Sipariş = Sipariş Mik. − Teslim Mik. (RevisedQtyDue − DeliveredQty).',
   parametreler: [
     { ad: 'contract', tip: 'metin', etiket: 'IFS Site', zorunlu: true },
     { ad: 'baslangic', tip: 'tarih', etiket: 'Sevk tarihi (başlangıç)', zorunlu: true },
@@ -163,6 +178,9 @@ const icerik: EtkilesimliIcerik = {
       { alan: 'firmaAdi', baslik: 'Firma', gorunur: true },
       { alan: 'siparisNo', baslik: 'Sipariş No', gorunur: true },
       { alan: 'satirNo', baslik: 'Satır', gorunur: true },
+      // LineNo bu veride hep 1; satırları ayıran alan sevk numarası (RelNo) — görünür olmalı,
+      // yoksa aynı siparişin sevk satırları ekranda birbirinin kopyası gibi duruyor.
+      { alan: 'sevkNo', baslik: 'Sevk No', gorunur: true },
       { alan: 'stokKodu', baslik: 'Stok Kodu', gorunur: true },
       { alan: 'stokAdi', baslik: 'Stok Adı', gorunur: true },
       { alan: 'durum', baslik: 'Durum', gorunur: true },
@@ -184,7 +202,6 @@ const icerik: EtkilesimliIcerik = {
       { alan: 'sozVerilenTarih', baslik: 'Söz Verilen Tarih', gorunur: false, bicim: 'gg.aa.yyyy' },
       { alan: 'sevkAdresi', baslik: 'Sevk Adresi', gorunur: false },
       { alan: 'musteriNo', baslik: 'Müşteri No', gorunur: false },
-      { alan: 'sevkNo', baslik: 'Sevk No', gorunur: false },
       { alan: 'kalemNo', baslik: 'Kalem No', gorunur: false },
       { alan: 'site', baslik: 'Site', gorunur: false },
     ],
@@ -195,7 +212,13 @@ const icerik: EtkilesimliIcerik = {
     // Syteline raporundaki "KalanStokMiktar" malzeme bazında yürüyen bakiyeydi (imleçle
     // satır satır düşülüyordu). Görünüm motoru satır-satır birikim yapamadığı için burada
     // satır bazlı fark veriliyor: stok − bu satırın net siparişi.
-    hesaplananAlanlar: [{ ad: 'stokFarki', ifade: '{stokMiktari} - {netSiparis}', bicim: '#.##0,00' }],
+    // SIRA ÖNEMLİ: hesaplananlar sırayla değerlendirilir, stokFarki netSiparis'i kullanıyor.
+    // bosMu/iif ile null korumalı — teslim miktarı boşken çıkarma null döndürürdü
+    // (ifade.ts null yayılımı), o da Net Sipariş kolonunu boşaltırdı.
+    hesaplananAlanlar: [
+      { ad: 'netSiparis', ifade: '{siparisMiktari} - iif(bosMu({sevkMiktari}), 0, {sevkMiktari})', bicim: '#.##0,00' },
+      { ad: 'stokFarki', ifade: '{stokMiktari} - {netSiparis}', bicim: '#.##0,00' },
+    ],
   },
 }
 

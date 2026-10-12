@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  kisiDurumListesi,
   kisiDurumu,
   puanDagilimi,
   sinavKpiHesapla,
@@ -147,5 +148,44 @@ describe("puanDagilimi", () => {
       d("u2", "COMPLETED", true, null),
     ]);
     expect(dag.reduce((t, x) => t + x.adet, 0)).toBe(0);
+  });
+});
+
+describe("kisiDurumListesi", () => {
+  it("kart sayılarıyla liste aynı kaynaktan — adetler tutar", () => {
+    const atananlar = ["u1", "u2", "u3", "u4"];
+    const denemeler = [
+      d("u1", "COMPLETED", true, 90),
+      d("u2", "COMPLETED", false, 20),
+      d("u3", "IN_PROGRESS"),
+    ];
+    const kpi = sinavKpiHesapla(atananlar, denemeler);
+    const liste = kisiDurumListesi(atananlar, denemeler);
+    expect(liste).toHaveLength(kpi.kapsam);
+    expect(liste.filter((x) => x.durum === "GECTI")).toHaveLength(kpi.gecti);
+    expect(liste.filter((x) => x.durum === "BASLAMADI")).toHaveLength(
+      kpi.baslamadi
+    );
+  });
+
+  it("çok denemeli kişide en yüksek puan gösterilir", () => {
+    const liste = kisiDurumListesi(
+      ["u1"],
+      [d("u1", "COMPLETED", false, 40), d("u1", "COMPLETED", true, 88)]
+    );
+    expect(liste[0].sonPuan).toBe(88);
+  });
+
+  it("hiç girmeyenin puanı null", () => {
+    const liste = kisiDurumListesi(["u1"], []);
+    expect(liste[0]).toMatchObject({ durum: "BASLAMADI", sonPuan: null });
+  });
+
+  it("her kişi listede bir kez görünür", () => {
+    const liste = kisiDurumListesi(
+      ["u1", "u1"],
+      [d("u1", "COMPLETED", true, 70)]
+    );
+    expect(liste).toHaveLength(1);
   });
 });

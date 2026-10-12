@@ -53,6 +53,7 @@ export async function GET(req: NextRequest) {
           userCount: 0,
           yakalar,
           completedCourses: 0,
+          sinavaGirmeyen: 0,
           totalAttempts: 0,
           passedAttempts: 0,
           passRate: 0,
@@ -60,7 +61,7 @@ export async function GET(req: NextRequest) {
         };
       }
 
-      const [completedCourses, attempts, passedAttempts, certs] =
+      const [completedCourses, attempts, passedAttempts, certs, atamalar, denemeler] =
         await Promise.all([
           prisma.courseProgress.count({
             where: { ...progressW, userId: { in: userIds }, completedAt: { not: null } },
@@ -79,13 +80,48 @@ export async function GET(req: NextRequest) {
           prisma.akademiCertificate.count({
             where: { ...certW, userId: { in: userIds } },
           }),
+          // Sınava hiç girmeyen (Melih, 12.10.2026): atanan kurslardaki aktif
+          // sınavlar ile kişinin denemeleri karşılaştırılır. Kişi × sınav
+          // çifti sayılır; bir kişi iki sınava girmemişse 2 sayılır.
+          prisma.userCourseAssignment.findMany({
+            where: { userId: { in: userIds }, assignment: progressW },
+            select: {
+              userId: true,
+              assignment: {
+                select: {
+                  course: {
+                    select: {
+                      exams: { where: { isActive: true }, select: { id: true } },
+                    },
+                  },
+                },
+              },
+            },
+          }),
+          prisma.userExamAttempt.findMany({
+            where: { exam: examW, userId: { in: userIds }, status: "COMPLETED" },
+            select: { userId: true, examId: true },
+          }),
         ]);
+
+      const girilen = new Set(denemeler.map((d) => `${d.userId}|${d.examId}`));
+      const atananCiftler = new Set<string>();
+      for (const a of atamalar) {
+        for (const e of a.assignment.course?.exams ?? []) {
+          atananCiftler.add(`${a.userId}|${e.id}`);
+        }
+      }
+      let sinavaGirmeyen = 0;
+      for (const cift of atananCiftler) {
+        if (!girilen.has(cift)) sinavaGirmeyen++;
+      }
 
       return {
         bolum,
         userCount: userIds.length,
         yakalar,
         completedCourses,
+        sinavaGirmeyen,
         totalAttempts: attempts,
         passedAttempts,
         passRate:

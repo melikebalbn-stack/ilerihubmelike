@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { BarChart3, ChevronRight, X } from "lucide-react";
+import { BarChart3, Bell, ChevronRight, X } from "lucide-react";
 import {
   Bar,
   BarChart,
@@ -74,6 +74,12 @@ export function ExamsReportTab() {
   const [exams, setExams] = useState<ExamRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedExamId, setSelectedExamId] = useState<string | null>(null);
+  // Kişi listesi penceresi: hangi sınav + hangi durum.
+  const [kisiPenceresi, setKisiPenceresi] = useState<{
+    examId: string;
+    examTitle: string;
+    durum: "GECTI" | "KALDI" | "DEVAM" | "BASLAMADI";
+  } | null>(null);
 
   useEffect(() => {
     fetch("/api/akademi/admin/reports/exams")
@@ -107,7 +113,21 @@ export function ExamsReportTab() {
 
   return (
     <div className="space-y-4">
-      <ExamKpiRow exams={exams} />
+      <ExamKpiRow
+        exams={exams}
+        onDurumTikla={(durum) => {
+          // Tek sınav varsa doğrudan onun listesi; birden çoksa tablodaki
+          // hücreden seçilmesi gerekir (hangi sınav olduğu belirsiz kalmasın).
+          if (exams.length === 1) {
+            setKisiPenceresi({
+              examId: exams[0].id,
+              examTitle: exams[0].title,
+              durum,
+            });
+          }
+        }}
+        tiklanabilir={exams.length === 1}
+      />
 
       <div
         className="rounded-lg overflow-hidden border bg-white"
@@ -177,16 +197,84 @@ export function ExamsReportTab() {
                   {e.atanan}
                 </td>
                 <td className="px-4 py-2 text-center text-green-700 font-medium">
-                  {e.gectiKisi || "—"}
+                  {e.gectiKisi > 0 ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setKisiPenceresi({
+                          examId: e.id,
+                          examTitle: e.title,
+                          durum: "GECTI",
+                        })
+                      }
+                      className="underline decoration-dotted underline-offset-2 hover:decoration-solid"
+                      title="Kişileri gör"
+                    >
+                      {e.gectiKisi}
+                    </button>
+                  ) : (
+                    "—"
+                  )}
                 </td>
                 <td className="px-4 py-2 text-center text-red-700 font-medium">
-                  {e.kaldiKisi || "—"}
+                  {e.kaldiKisi > 0 ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setKisiPenceresi({
+                          examId: e.id,
+                          examTitle: e.title,
+                          durum: "KALDI",
+                        })
+                      }
+                      className="underline decoration-dotted underline-offset-2 hover:decoration-solid"
+                      title="Kişileri gör"
+                    >
+                      {e.kaldiKisi}
+                    </button>
+                  ) : (
+                    "—"
+                  )}
                 </td>
                 <td className="px-4 py-2 text-center text-amber-700">
-                  {e.devamKisi || "—"}
+                  {e.devamKisi > 0 ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setKisiPenceresi({
+                          examId: e.id,
+                          examTitle: e.title,
+                          durum: "DEVAM",
+                        })
+                      }
+                      className="underline decoration-dotted underline-offset-2 hover:decoration-solid"
+                      title="Kişileri gör"
+                    >
+                      {e.devamKisi}
+                    </button>
+                  ) : (
+                    "—"
+                  )}
                 </td>
                 <td className="px-4 py-2 text-center text-slate-500">
-                  {e.baslamadiKisi || "—"}
+                  {e.baslamadiKisi > 0 ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setKisiPenceresi({
+                          examId: e.id,
+                          examTitle: e.title,
+                          durum: "BASLAMADI",
+                        })
+                      }
+                      className="underline decoration-dotted underline-offset-2 hover:decoration-solid"
+                      title="Kişileri gör"
+                    >
+                      {e.baslamadiKisi}
+                    </button>
+                  ) : (
+                    "—"
+                  )}
                 </td>
                 <td className="px-4 py-2 text-center">
                   {e.basariOrani !== null ? `%${e.basariOrani}` : "—"}
@@ -209,6 +297,15 @@ export function ExamsReportTab() {
         </table>
       </div>
 
+      {kisiPenceresi && (
+        <KisiListesiDialog
+          examId={kisiPenceresi.examId}
+          examTitle={kisiPenceresi.examTitle}
+          durum={kisiPenceresi.durum}
+          onClose={() => setKisiPenceresi(null)}
+        />
+      )}
+
       {selectedExamId && (
         <QuestionDifficultyPanel
           examId={selectedExamId}
@@ -221,7 +318,15 @@ export function ExamsReportTab() {
 
 /** Tüm sınavların kişi bazlı toplamı. Bir kişi iki sınavda da sayılabilir —
  *  kart "sınav × kişi" adedini gösterir, tekil insan sayısını değil. */
-function ExamKpiRow({ exams }: { exams: ExamRow[] }) {
+function ExamKpiRow({
+  exams,
+  onDurumTikla,
+  tiklanabilir,
+}: {
+  exams: ExamRow[];
+  onDurumTikla: (durum: "GECTI" | "KALDI" | "DEVAM" | "BASLAMADI") => void;
+  tiklanabilir: boolean;
+}) {
   const t = useMemo(
     () =>
       exams.reduce(
@@ -239,25 +344,61 @@ function ExamKpiRow({ exams }: { exams: ExamRow[] }) {
   const tamamlayan = t.gecti + t.kaldi;
   const oran = tamamlayan > 0 ? Math.round((t.gecti / tamamlayan) * 100) : null;
 
-  const kartlar: { etiket: string; deger: string; renk?: string }[] = [
+  const kartlar: {
+    etiket: string;
+    deger: string;
+    renk?: string;
+    durum?: "GECTI" | "KALDI" | "DEVAM" | "BASLAMADI";
+  }[] = [
     { etiket: "Atanan", deger: String(t.atanan) },
-    { etiket: "Geçti", deger: String(t.gecti), renk: DURUM_RENK["Geçti"] },
-    { etiket: "Kaldı", deger: String(t.kaldi), renk: DURUM_RENK["Kaldı"] },
-    { etiket: "Devam eden", deger: String(t.devam), renk: DURUM_RENK["Devam"] },
+    {
+      etiket: "Geçti",
+      deger: String(t.gecti),
+      renk: DURUM_RENK["Geçti"],
+      durum: "GECTI",
+    },
+    {
+      etiket: "Kaldı",
+      deger: String(t.kaldi),
+      renk: DURUM_RENK["Kaldı"],
+      durum: "KALDI",
+    },
+    {
+      etiket: "Devam eden",
+      deger: String(t.devam),
+      renk: DURUM_RENK["Devam"],
+      durum: "DEVAM",
+    },
     {
       etiket: "Hiç girmedi",
       deger: String(t.baslamadi),
       renk: DURUM_RENK["Başlamadı"],
+      durum: "BASLAMADI",
     },
     { etiket: "Başarı", deger: oran !== null ? `%${oran}` : "—" },
   ];
 
   return (
     <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
-      {kartlar.map((k) => (
+      {kartlar.map((k) => {
+        const acilabilir =
+          tiklanabilir && !!k.durum && k.deger !== "0" && k.deger !== "—";
+        return (
         <div
           key={k.etiket}
-          className="rounded-lg border bg-white px-4 py-3"
+          onClick={() => acilabilir && k.durum && onDurumTikla(k.durum)}
+          role={acilabilir ? "button" : undefined}
+          tabIndex={acilabilir ? 0 : undefined}
+          onKeyDown={(e) => {
+            if (acilabilir && k.durum && (e.key === "Enter" || e.key === " ")) {
+              e.preventDefault();
+              onDurumTikla(k.durum);
+            }
+          }}
+          title={acilabilir ? "Kişileri gör" : undefined}
+          className={`rounded-lg border bg-white px-4 py-3 ${
+            acilabilir ? "cursor-pointer hover:bg-slate-50" : ""
+          }`}
           style={{ borderColor: "var(--ak-border-default)" }}
         >
           <div
@@ -273,7 +414,8 @@ function ExamKpiRow({ exams }: { exams: ExamRow[] }) {
             {k.etiket}
           </div>
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -462,6 +604,159 @@ function QuestionDifficultyPanel({
         </table>
         </>
       )}
+    </div>
+  );
+}
+
+type KisiSatir = {
+  userId: string;
+  ad: string;
+  email: string | null;
+  sicilNo: string | null;
+  bolum: string | null;
+  durum: "GECTI" | "KALDI" | "DEVAM" | "BASLAMADI";
+  puan: number | null;
+};
+
+const DURUM_BASLIK: Record<KisiSatir["durum"], string> = {
+  GECTI: "Geçenler",
+  KALDI: "Kalanlar",
+  DEVAM: "Devam edenler",
+  BASLAMADI: "Hiç girmeyenler",
+};
+
+/** KPI kartına / hücreye tıklayınca açılan kişi listesi penceresi. */
+function KisiListesiDialog({
+  examId,
+  examTitle,
+  durum,
+  onClose,
+}: {
+  examId: string;
+  examTitle: string;
+  durum: KisiSatir["durum"];
+  onClose: () => void;
+}) {
+  const [kisiler, setKisiler] = useState<KisiSatir[] | null>(null);
+  const [hatirlatiliyor, setHatirlatiliyor] = useState(false);
+  const [sonuc, setSonuc] = useState<string | null>(null);
+
+  useEffect(() => {
+    setKisiler(null);
+    fetch(
+      `/api/akademi/admin/reports/exams/${examId}/kisiler?durum=${durum}`
+    )
+      .then((r) => r.json())
+      .then((d) => setKisiler(d.kisiler ?? []))
+      .catch(() => setKisiler([]));
+  }, [examId, durum]);
+
+  const hatirlat = async () => {
+    setHatirlatiliyor(true);
+    setSonuc(null);
+    try {
+      const r = await fetch(
+        `/api/akademi/admin/reports/exams/${examId}/hatirlat`,
+        { method: "POST" }
+      );
+      const d = await r.json();
+      setSonuc(r.ok ? (d.mesaj ?? "Gönderildi.") : (d.error ?? "Gönderilemedi."));
+    } catch {
+      setSonuc("Gönderilemedi.");
+    } finally {
+      setHatirlatiliyor(false);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-3 px-5 py-4 border-b">
+          <div>
+            <h3 className="font-semibold">{DURUM_BASLIK[durum]}</h3>
+            <p className="text-xs mt-0.5 text-slate-500">{examTitle}</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1 rounded hover:bg-slate-100"
+            title="Kapat"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-5 py-3">
+          {kisiler === null && (
+            <div className="text-sm text-slate-500">Yükleniyor...</div>
+          )}
+          {kisiler?.length === 0 && (
+            <div className="text-sm text-slate-500 py-6 text-center">
+              Bu durumda kimse yok.
+            </div>
+          )}
+          {kisiler && kisiler.length > 0 && (
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-left text-slate-500">
+                  <th className="py-1.5 font-semibold uppercase">Ad Soyad</th>
+                  <th className="py-1.5 font-semibold uppercase">Sicil</th>
+                  <th className="py-1.5 font-semibold uppercase">Bölüm</th>
+                  {durum !== "BASLAMADI" && (
+                    <th className="py-1.5 font-semibold uppercase text-center">
+                      Puan
+                    </th>
+                  )}
+                </tr>
+              </thead>
+              <tbody>
+                {kisiler.map((k) => (
+                  <tr key={k.userId} className="border-t border-slate-100">
+                    <td className="py-1.5">{k.ad}</td>
+                    <td className="py-1.5 text-slate-500">
+                      {k.sicilNo ?? "—"}
+                    </td>
+                    <td className="py-1.5 text-slate-500">{k.bolum ?? "—"}</td>
+                    {durum !== "BASLAMADI" && (
+                      <td className="py-1.5 text-center">
+                        {k.puan !== null ? `%${Math.round(k.puan)}` : "—"}
+                      </td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        <div className="px-5 py-3 border-t flex items-center gap-3 flex-wrap">
+          <span className="text-xs text-slate-500">
+            {kisiler?.length ?? 0} kişi
+          </span>
+          {sonuc && (
+            <span className="text-xs text-slate-700">{sonuc}</span>
+          )}
+          <span className="flex-1" />
+          {durum === "BASLAMADI" && (kisiler?.length ?? 0) > 0 && (
+            <button
+              type="button"
+              onClick={hatirlat}
+              disabled={hatirlatiliyor}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md text-xs font-semibold text-white disabled:opacity-60"
+              style={{ background: "#0d9488" }}
+              title="Hub bildirimi ve telefon bildirimi gönderir — mail gönderilmez"
+            >
+              <Bell size={13} />
+              {hatirlatiliyor ? "Gönderiliyor..." : "Hatırlatma gönder"}
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

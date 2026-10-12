@@ -113,6 +113,40 @@ export function sinavKpiHesapla(
   };
 }
 
+/**
+ * Kişi × durum listesi — KPI kartına tıklayınca açılan isim listesi ve
+ * "girmeyenlere hatırlat" için aynı kaynaktan üretilir, sayı ile liste
+ * birbirini tutar.
+ */
+export function kisiDurumListesi(
+  atananUserIds: readonly string[],
+  denemeler: readonly SinavDenemeGirdi[]
+): { userId: string; durum: SinavKisiDurum; sonPuan: number | null }[] {
+  const kisiDenemeleri = new Map<string, SinavDenemeGirdi[]>();
+  for (const d of denemeler) {
+    const list = kisiDenemeleri.get(d.userId);
+    if (list) list.push(d);
+    else kisiDenemeleri.set(d.userId, [d]);
+  }
+  const kapsamIds = new Set<string>(atananUserIds);
+  for (const uid of kisiDenemeleri.keys()) kapsamIds.add(uid);
+
+  return Array.from(kapsamIds).map((userId) => {
+    const kendi = kisiDenemeleri.get(userId) ?? [];
+    const tamamlanan = kendi.filter(
+      (d) => d.status === TAMAMLANMIS && d.score != null
+    );
+    return {
+      userId,
+      durum: kisiDurumu(kendi),
+      // En yüksek puan: birden çok deneme varsa kişinin en iyi sonucu.
+      sonPuan: tamamlanan.length
+        ? Math.max(...tamamlanan.map((d) => d.score ?? 0))
+        : null,
+    };
+  });
+}
+
 /** Tekil sınav grafiği için puan dağılımı (10'luk kovalar). */
 export function puanDagilimi(
   denemeler: readonly SinavDenemeGirdi[]

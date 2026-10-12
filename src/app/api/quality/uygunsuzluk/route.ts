@@ -7,7 +7,7 @@ import { referanslariDogrula } from '@/lib/quality/uygunsuzluk-refs'
 import { buildUygunsuzlukWhere } from '@/lib/quality/uygunsuzluk-query'
 import { generateNextUygunsuzlukNo } from '@/lib/quality/uygunsuzluk-no'
 import { hesaplaDurum } from '@/lib/quality/uygunsuzluk-labels'
-import { bildirSorumluAtandi } from '@/lib/quality/uygunsuzluk-notifications'
+import { bildirSorumluAtandi, bildirKatilimciEklendi } from '@/lib/quality/uygunsuzluk-notifications'
 
 export const dynamic = 'force-dynamic'
 
@@ -141,6 +141,10 @@ export async function POST(request: NextRequest) {
   // bu yüzden await edilse de kayıt akışını bozmaz.
   if (created.sorumluId) {
     await bildirSorumluAtandi(created.id, created.sorumluId)
+  }
+  // Toplantıya eklenen her katılımcıya da bilgilendirme maili.
+  for (const katilimci of created.katilimcilar) {
+    await bildirKatilimciEklendi(created.id, katilimci.personnelId)
   }
 
   return NextResponse.json(

@@ -5,7 +5,7 @@ import { canManageUygunsuzluk } from '@/lib/quality/uygunsuzluk-access'
 import { uygunsuzlukInput } from '@/lib/quality/uygunsuzluk-validators'
 import { referanslariDogrula } from '@/lib/quality/uygunsuzluk-refs'
 import { hesaplaDurum } from '@/lib/quality/uygunsuzluk-labels'
-import { bildirSorumluAtandi } from '@/lib/quality/uygunsuzluk-notifications'
+import { bildirSorumluAtandi, bildirKatilimciEklendi } from '@/lib/quality/uygunsuzluk-notifications'
 
 export const dynamic = 'force-dynamic'
 
@@ -56,7 +56,13 @@ export async function PATCH(request: NextRequest, { params }: Ctx) {
 
   const mevcut = await prisma.kaliteUygunsuzluk.findUnique({
     where: { id },
-    select: { id: true, termin: true, kapanisTarihi: true, sorumluId: true },
+    select: {
+      id: true,
+      termin: true,
+      kapanisTarihi: true,
+      sorumluId: true,
+      katilimcilar: { select: { personnelId: true } },
+    },
   })
   if (!mevcut) return NextResponse.json({ error: 'Uygunsuzluk kaydı bulunamadı' }, { status: 404 })
 
@@ -154,6 +160,13 @@ export async function PATCH(request: NextRequest, { params }: Ctx) {
   // Sorumlu yeni atandıysa ya da değiştiyse bilgilendirme maili (aynı kişi kalıyorsa gönderilmez).
   if (updated.sorumluId && updated.sorumluId !== mevcut.sorumluId) {
     await bildirSorumluAtandi(updated.id, updated.sorumluId)
+  }
+  // Yalnız YENİ eklenen katılımcılara mail — zaten katılımcı olan kişi her
+  // kaydetmede yeniden maillenmesin (sorumlu ile aynı "yalnız değişimde" kuralı).
+  const oncekiKatilimciIdleri = new Set(mevcut.katilimcilar.map((k) => k.personnelId))
+  const yeniKatilimcilar = updated.katilimcilar.filter((k) => !oncekiKatilimciIdleri.has(k.personnelId))
+  for (const katilimci of yeniKatilimcilar) {
+    await bildirKatilimciEklendi(updated.id, katilimci.personnelId)
   }
 
   return NextResponse.json({ ...updated, durum: hesaplaDurum(updated) })

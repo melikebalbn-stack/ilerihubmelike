@@ -64,3 +64,58 @@ export async function bildirSorumluAtandi(uygunsuzlukId: string, sorumluId: stri
     console.error('[uygunsuzluk-notifications] sorumlu bildirimi gönderilemedi:', e)
   }
 }
+
+/**
+ * Toplantıya katılımcı olarak YENİ eklenen her kişiye bilgilendirme maili.
+ * bildirSorumluAtandi ile AYNI desen (renderEmail, isActive kontrolü, sessiz
+ * atlama) — yalnız alıcı kitlesi farklı. Zaten katılımcı olan kişi tekrar
+ * kaydedilince yeniden maillenmesin diye çağıran yalnız YENİ eklenenleri
+ * (önceki listede olmayanları) vermeli.
+ */
+export async function bildirKatilimciEklendi(uygunsuzlukId: string, personnelId: string): Promise<void> {
+  try {
+    const [personel, kayit] = await Promise.all([
+      prisma.personnel.findUnique({
+        where: { id: personnelId },
+        select: { adSoyad: true, user: { select: { email: true, name: true, isActive: true } } },
+      }),
+      prisma.kaliteUygunsuzluk.findUnique({
+        where: { id: uygunsuzlukId },
+        select: { no: true, mamulUrunKodu: true, isEmriNo: true, termin: true },
+      }),
+    ])
+
+    if (!personel?.user?.email || !personel.user.isActive || !kayit) {
+      console.warn(`[uygunsuzluk-notifications] katılımcı e-postası yok/pasif (personnelId=${personnelId}), bildirim atlandı`)
+      return
+    }
+
+    const baslik = `Uygunsuzluk No ${kayit.no} — toplantı katılımcısı olarak eklendiniz`
+    const { html, text } = renderEmail({
+      module: 'Kalite',
+      title: baslik,
+      bodyHtml: p(
+        `Sayın ${esc(personel.adSoyad)}, aşağıdaki uygunsuzluk kaydına toplantı katılımcısı olarak eklendiniz.`,
+      ),
+      infoRows: [
+        { label: 'Uygunsuzluk No', value: `<strong>${esc(String(kayit.no))}</strong>` },
+        { label: 'Mamul ürün kodu', value: esc(kayit.mamulUrunKodu) },
+        { label: 'İş emri no', value: esc(kayit.isEmriNo) },
+        ...(kayit.termin
+          ? [{ label: 'Termin', value: esc(kayit.termin.toLocaleDateString('tr-TR')) }]
+          : []),
+      ],
+      cta: { label: 'Kaydı aç', url: `${APP_URL}/kalite/uygunsuzluk/${uygunsuzlukId}` },
+    })
+
+    await sendEmail(
+      [{ email: personel.user.email, name: personel.user.name ?? personel.adSoyad }],
+      baslik,
+      text,
+      html,
+      logoAttachments(),
+    )
+  } catch (e) {
+    console.error('[uygunsuzluk-notifications] katılımcı bildirimi gönderilemedi:', e)
+  }
+}

@@ -10,39 +10,67 @@ interface OlcumBenzeri {
   actual: number | null
   hedefNA: boolean
   gerceklesenNA: boolean
-  manuelOran: number | null
 }
 
 interface KpiBenzeri {
-  oranYonu: string
-  oranPayKaynagi: string
+  direction: string
+  frequency: string
+  ortalamaKaynagi: string
   oranBirimi: string
+  measurements: OlcumBenzeri[]
   ozelAlanlar: { key: string; degerler: { year: number; month: number; value: number | null; naMi: boolean }[] }[]
 }
 
-// Oran, KPI Takip sayfasındaki "G/H Oran"/"H/G Oran" satırıyla AYNI mantık — hangi tarafın G/H'nin
-// "G"si (payı) olacağını (Gerçekleşen mi yoksa özel bir alan mı) ve yönünü (G/H ya da H/G) KULLANICI
-// kendi belirler (oranPayKaynagi, oranYonu) — direction'a göre otomatik bir kural UYGULANMAZ, çünkü
-// bu alanları KPI bazında elle düzenleyebiliyor artık (Yeni/Düzenle KPI dialogları).
-// Elle girilmiş oran (manuelOran) varsa her şeyi by-pass eder. N/A (hedefNA ya da payın NA'sı)
-// işaretliyse %0 döner. KASITLI OLARAK üst sınır/kırpma YOK — veri kaynağından düzeltilir.
-function olcumOranHesapla(kpi: KpiBenzeri, m: OlcumBenzeri): number | null {
-  if (m.manuelOran != null) return m.manuelOran
+function donemSayisi(frequency: string): number {
+  return frequency === 'quarterly' ? 4 : 12
+}
 
-  const pay = kpi.oranPayKaynagi === 'actual'
-    ? { value: m.actual, na: m.gerceklesenNA }
-    : (() => {
-        const alan = kpi.ozelAlanlar.find(a => a.key === kpi.oranPayKaynagi)
-        const d = alan?.degerler.find(x => x.year === m.year && x.month === m.month)
-        return { value: d?.value ?? null, na: d?.naMi ?? false }
-      })()
+// "Ort." (yıllık ortalama) ile aynı kaynaktan (Gerçekleşen ya da seçili özel alan) bir ay/yıl
+// değeri okur — N/A işaretli aylar hiç sayılmaz (hesaba girmez, boş gibi davranılır).
+function kaynakDegeriAl(kpi: KpiBenzeri, kaynak: string, year: number, month: number): number | null {
+  if (kaynak === 'actual') {
+    const m = kpi.measurements.find(x => x.year === year && x.month === month)
+    if (!m || m.gerceklesenNA) return null
+    return m.actual
+  }
+  const alan = kpi.ozelAlanlar.find(a => a.key === kaynak)
+  const d = alan?.degerler.find(x => x.year === year && x.month === month)
+  if (!d || d.naMi) return null
+  return d.value
+}
 
-  if (m.hedefNA || pay.na) return 0
-  if (m.target == null || m.target === 0 || pay.value == null) return null
+function yillikKaynakOrtalamasi(kpi: KpiBenzeri, kaynak: string, year: number): number | null {
+  const degerler: number[] = []
+  for (let ay = 1; ay <= donemSayisi(kpi.frequency); ay++) {
+    const d = kaynakDegeriAl(kpi, kaynak, year, ay)
+    if (d != null) degerler.push(d)
+  }
+  return degerler.length > 0 ? degerler.reduce((t, o) => t + o, 0) / degerler.length : null
+}
 
-  const payda = kpi.oranYonu === 'H_G' ? pay.value : m.target
-  if (payda === 0) return 0
-  return (kpi.oranYonu === 'H_G' ? m.target / payda : pay.value / payda) * 100
+function yillikHedefOrtalamasi(kpi: KpiBenzeri, year: number): number | null {
+  const degerler = kpi.measurements
+    .filter(m => m.year === year && m.target != null && !m.hedefNA)
+    .map(m => m.target as number)
+  return degerler.length > 0 ? degerler.reduce((t, o) => t + o, 0) / degerler.length : null
+}
+
+// KPI Özet'teki oran artık KPI Takip'in "G/H Oran" satırındaki oranYonu/oranPayKaynagi'ndan
+// BAĞIMSIZ — direction'a (düşük mü yüksek mi iyi) ve yıllık ORTALAMALARA (grafikteki "Ort." ile
+// aynı kaynak: ortalamaKaynagi) göre hesaplanıyor. Sebep: oranYonu KPI başına elle ayarlanan,
+// kolayca yanlış kalabilen bir alan (ör. "Fazla Mesai" düşük iyi ama oranYonu yanlışlıkla G/H
+// kalınca hedefin katbekat üzerine çıkılmış olsa bile "başarılı" görünüyordu). direction ise
+// her KPI'da zaten doğru giriliyor — bu yüzden "hedefi tutturamamışsa kötüdür" kuralı burada
+// HER ZAMAN geçerli, oranYonu ne olursa olsun. Tek ay değil YILLIK ortalama kullanılıyor ki tek
+// bir aşırı ay (veri hatası) tüm yılın görünümünü bozmasın.
+function kpiYillikOran(kpi: KpiBenzeri, year: number): number | null {
+  const gercekOrt = yillikKaynakOrtalamasi(kpi, kpi.ortalamaKaynagi, year)
+  const hedefOrt = yillikHedefOrtalamasi(kpi, year)
+  if (gercekOrt == null || hedefOrt == null) return null
+  const payda = kpi.direction === 'lower_is_better' ? gercekOrt : hedefOrt
+  if (payda === 0) return null
+  const oran = kpi.direction === 'lower_is_better' ? hedefOrt / gercekOrt : gercekOrt / hedefOrt
+  return oran * 100
 }
 
 export async function GET(request: Request) {
@@ -71,13 +99,10 @@ export async function GET(request: Request) {
 
     const kpiOranlari = deptKpiler
       .map(k => {
-        const yillikOlcumler = k.measurements.filter(m => aktifYil == null || m.year === aktifYil)
-        const oranlar = yillikOlcumler
-          .map(m => olcumOranHesapla(k, m))
-          .filter((o): o is number => o != null)
-        if (oranlar.length === 0) return null
-        const ort = oranlar.reduce((t, o) => t + o, 0) / oranlar.length
-        return { id: k.id, name: k.name, oran: Math.round(ort), oranBirimi: k.oranBirimi }
+        if (aktifYil == null) return null
+        const oran = kpiYillikOran(k, aktifYil)
+        if (oran == null) return null
+        return { id: k.id, name: k.name, oran: Math.round(oran), oranBirimi: k.oranBirimi }
       })
       .filter((x): x is { id: string; name: string; oran: number; oranBirimi: string } => x !== null)
 

@@ -110,6 +110,10 @@ export default function KpiOzetPage() {
   // özetine düşsün — direkt ana sekmeden/menüden açıldıysa (departman parametresi yoksa) Şirket
   // Geneli ile başlasın.
   const [secilenDepartmanId, setSecilenDepartmanId] = useState<string>(() => searchParams.get('departman') || GENEL_ID)
+  // Takip'ten belirli bir KPI açıkken gelindiyse, "← KPI Takip" ile dönünce kaldığı yere
+  // (o departman + o KPI) geri dönsün diye saklanıyor — departman değişse de bu sabit kalır,
+  // Takip tarafı zaten kendi departmanına ait değilse bu KPI'yı yok sayıyor.
+  const [gelinenKpiId] = useState<string | null>(() => searchParams.get('kpi'))
   const [ozet, setOzet] = useState<DepartmanOzeti[] | null>(null)
   const [mevcutYillar, setMevcutYillar] = useState<number[]>([])
   const [secilenYil, setSecilenYil] = useState<number | null>(null)
@@ -187,7 +191,13 @@ export default function KpiOzetPage() {
           </h1>
           <p className="text-sm text-muted-foreground mt-1">Departmanın genel başarı durumu, tüm KPI'lar sıralı</p>
         </div>
-        <Link href="/sandbox/melike/kpi">
+        <Link
+          href={
+            secilenDepartmanId === GENEL_ID
+              ? '/sandbox/melike/kpi'
+              : `/sandbox/melike/kpi?departman=${secilenDepartmanId}${gelinenKpiId ? `&kpi=${gelinenKpiId}` : ''}`
+          }
+        >
           <Button size="sm" variant="outline">← KPI Takip</Button>
         </Link>
       </div>

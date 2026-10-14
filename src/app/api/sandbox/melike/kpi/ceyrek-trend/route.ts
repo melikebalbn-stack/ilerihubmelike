@@ -10,44 +10,55 @@ interface OlcumBenzeri {
   actual: number | null
   hedefNA: boolean
   gerceklesenNA: boolean
-  manuelOran: number | null
 }
 
 interface KpiBenzeri {
-  oranYonu: string
-  oranPayKaynagi: string
+  direction: string
+  frequency: string
+  ortalamaKaynagi: string
+  measurements: OlcumBenzeri[]
   ozelAlanlar: { key: string; degerler: { year: number; month: number; value: number | null; naMi: boolean }[] }[]
-}
-
-// Oran, KPI Takip sayfasındaki "G/H Oran"/"H/G Oran" satırıyla AYNI mantık — hangi tarafın G/H'nin
-// "G"si (payı) olacağını (Gerçekleşen mi yoksa özel bir alan mı) ve yönünü (G/H ya da H/G) KULLANICI
-// kendi belirler (oranPayKaynagi, oranYonu) — direction'a göre otomatik bir kural UYGULANMAZ, çünkü
-// bu alanları KPI bazında elle düzenleyebiliyor artık (Yeni/Düzenle KPI dialogları).
-// Elle girilmiş oran (manuelOran) varsa her şeyi by-pass eder. N/A (hedefNA ya da payın NA'sı)
-// işaretliyse %0 döner. KASITLI OLARAK üst sınır/kırpma YOK — veri kaynağından düzeltilir.
-function olcumOranHesapla(kpi: KpiBenzeri, m: OlcumBenzeri): number | null {
-  if (m.manuelOran != null) return m.manuelOran
-
-  const pay = kpi.oranPayKaynagi === 'actual'
-    ? { value: m.actual, na: m.gerceklesenNA }
-    : (() => {
-        const alan = kpi.ozelAlanlar.find(a => a.key === kpi.oranPayKaynagi)
-        const d = alan?.degerler.find(x => x.year === m.year && x.month === m.month)
-        return { value: d?.value ?? null, na: d?.naMi ?? false }
-      })()
-
-  if (m.hedefNA || pay.na) return 0
-  if (m.target == null || m.target === 0 || pay.value == null) return null
-
-  const payda = kpi.oranYonu === 'H_G' ? pay.value : m.target
-  if (payda === 0) return 0
-  return (kpi.oranYonu === 'H_G' ? m.target / payda : pay.value / payda) * 100
 }
 
 // Aylık bir KPI için hangi ay hangi çeyreğe düşer (Ç1=Oca-Mar, Ç2=Nis-Haz, Ç3=Tem-Eyl, Ç4=Eki-Ara).
 // Çeyreklik bir KPI'da zaten "month" alanı 1-4 = doğrudan çeyrek numarasıdır.
 function ceyrekNo(frequency: string, month: number): number {
   return frequency === 'quarterly' ? month : Math.ceil(month / 3)
+}
+
+function kaynakDegeriAl(kpi: KpiBenzeri, kaynak: string, year: number, month: number): number | null {
+  if (kaynak === 'actual') {
+    const m = kpi.measurements.find(x => x.year === year && x.month === month)
+    if (!m || m.gerceklesenNA) return null
+    return m.actual
+  }
+  const alan = kpi.ozelAlanlar.find(a => a.key === kaynak)
+  const d = alan?.degerler.find(x => x.year === year && x.month === month)
+  if (!d || d.naMi) return null
+  return d.value
+}
+
+// KPI Özet'teki ozet/route.ts ile AYNI mantık (bkz. oradaki açıklama) — direction'a ve
+// ortalamaKaynagi'na göre, ama burada yıllık değil ÇEYREKLİK ortalama.
+function kpiCeyrekOrani(kpi: KpiBenzeri, year: number, ceyrek: number): number | null {
+  const aylar = kpi.frequency === 'quarterly' ? [ceyrek] : [1, 2, 3].map(i => (ceyrek - 1) * 3 + i)
+
+  const gercekDegerler: number[] = []
+  const hedefDegerler: number[] = []
+  for (const ay of aylar) {
+    const g = kaynakDegeriAl(kpi, kpi.ortalamaKaynagi, year, ay)
+    if (g != null) gercekDegerler.push(g)
+    const m = kpi.measurements.find(x => x.year === year && x.month === ay)
+    if (m && m.target != null && !m.hedefNA) hedefDegerler.push(m.target)
+  }
+  if (gercekDegerler.length === 0 || hedefDegerler.length === 0) return null
+
+  const gercekOrt = gercekDegerler.reduce((t, o) => t + o, 0) / gercekDegerler.length
+  const hedefOrt = hedefDegerler.reduce((t, o) => t + o, 0) / hedefDegerler.length
+  const payda = kpi.direction === 'lower_is_better' ? gercekOrt : hedefOrt
+  if (payda === 0) return null
+  const oran = kpi.direction === 'lower_is_better' ? hedefOrt / gercekOrt : gercekOrt / hedefOrt
+  return oran * 100
 }
 
 export async function GET(request: Request) {
@@ -72,17 +83,10 @@ export async function GET(request: Request) {
     const deptKpiler = kpiler.filter(k => k.orgUnitId === dept.id)
 
     const ceyrekler = [1, 2, 3, 4].map(ceyrek => {
-      const kpiOranlari: number[] = []
-      for (const k of deptKpiler) {
-        const gecerliOlcumler = k.measurements.filter(
-          m => m.year === aktifYil && ceyrekNo(k.frequency, m.month) === ceyrek,
-        )
-        const oranlar = gecerliOlcumler
-          .map(m => olcumOranHesapla(k, m))
-          .filter((o): o is number => o != null)
-        if (oranlar.length === 0) continue
-        kpiOranlari.push(oranlar.reduce((t, o) => t + o, 0) / oranlar.length)
-      }
+      if (aktifYil == null) return { ceyrek, oran: null }
+      const kpiOranlari = deptKpiler
+        .map(k => kpiCeyrekOrani(k, aktifYil, ceyrek))
+        .filter((o): o is number => o != null)
       const oran = kpiOranlari.length > 0
         ? Math.round(kpiOranlari.reduce((t, o) => t + o, 0) / kpiOranlari.length)
         : null

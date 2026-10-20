@@ -115,15 +115,11 @@ function formatTL(n: number) {
 }
 function formatPercent(n: number) {
   if (n === 0) return '%0'
-  const abs = Math.abs(n)
-  // Fatura toplamı ciroya kıyasla çok küçük olabiliyor (binde/on binde bir) —
-  // sabit 1-2 ondalık her şeyi "%0,0"a yuvarlayıp bilgisiz hale getiriyordu.
-  // tr-TR locale: ondalık AYRACI VİRGÜL — € / ₺ sütunlarındaki "." (binlik) ile
-  // karışmasın diye toFixed() (hep nokta kullanır) yerine Intl.NumberFormat.
-  const digits = abs >= 1 ? 1 : abs >= 0.01 ? 2 : 4
+  // Sabit 3 ondalık — tr-TR locale: ondalık AYRACI VİRGÜL, € / ₺ sütunlarındaki "."
+  // (binlik) ile karışmasın diye toFixed() (hep nokta kullanır) yerine Intl.NumberFormat.
   const formatted = new Intl.NumberFormat('tr-TR', {
-    minimumFractionDigits: digits,
-    maximumFractionDigits: digits,
+    minimumFractionDigits: 3,
+    maximumFractionDigits: 3,
   }).format(n)
   return `%${formatted}`
 }

@@ -113,7 +113,19 @@ export default function KpiOzetPage() {
   // Takip'ten belirli bir KPI açıkken gelindiyse, "← KPI Takip" ile dönünce kaldığı yere
   // (o departman + o KPI) geri dönsün diye saklanıyor — departman değişse de bu sabit kalır,
   // Takip tarafı zaten kendi departmanına ait değilse bu KPI'yı yok sayıyor.
-  const [gelinenKpiId] = useState<string | null>(() => searchParams.get('kpi'))
+  const [gelinenKpiId, setGelinenKpiId] = useState<string | null>(() => searchParams.get('kpi'))
+
+  // KPI Takip'ten "KPI Özet →" ile tekrar tekrar (farklı departmanlarla) gelindiğinde, sayfa
+  // zaten mountlanmış kalıyorsa (Next.js aynı route için remount etmiyor) yukarıdaki lazy
+  // useState bir daha ÇALIŞMIYOR — searchParams değişse bile secilenDepartmanId eskide
+  // kalıyordu (hep ilk geldiği departmanı gösteriyordu). Bunu URL her değiştiğinde yeniden
+  // okuyarak düzeltiyoruz.
+  useEffect(() => {
+    const departman = searchParams.get('departman')
+    if (departman) setSecilenDepartmanId(departman)
+    setGelinenKpiId(searchParams.get('kpi'))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
   const [ozet, setOzet] = useState<DepartmanOzeti[] | null>(null)
   const [mevcutYillar, setMevcutYillar] = useState<number[]>([])
   const [secilenYil, setSecilenYil] = useState<number | null>(null)

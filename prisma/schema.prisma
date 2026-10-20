@@ -15328,6 +15328,9 @@ model KPIDefinition {
   // kaynak: "actual" | "target" | bir KPIOzelAlan.key. null ise elle giriş (eski davranış).
   gerceklesenFormul  Json?
   hedefFormul        Json?
+  // KPI-ONDALIK: tüm sayı gösterimlerinde (Gerçekleşen/Hedef/Ort./Oran/grafik) virgülden sonra
+  // kaç basamak gösterileceği — "Adet" gibi KPI'larda 0, hassas oranlarda 3-4 gerekebiliyor.
+  ondalikBasamak     Int                 @default(4)
   active             Boolean             @default(true)
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
@@ -15384,6 +15387,9 @@ model KPIMeasurement {
   // KPI-ELLE-ORAN: dolu ise otomatik oran hesabını (ve N/A kuralını) by-pass edip doğrudan bu
   // değer "oran %" olarak kullanılır — saçma/bozuk veri durumlarını anında düzeltebilmek için.
   manuelOran    Float?
+  // KPI-NOT: o aya ait serbest metin not — Aksiyon'dan farklı, aksiyon gerektirmeyen ama
+  // kayıt altına alınması istenen açıklamalar için (ör. "Eylül ayı için notlar").
+  not           String? @db.Text
   enteredById String?
   enteredBy   User?         @relation(fields: [enteredById], references: [id], onDelete: SetNull)
   createdAt   DateTime      @default(now())

@@ -17,6 +17,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const hedefNA = body.hedefNA === true
   const gerceklesenNA = body.gerceklesenNA === true
   const manuelOran = body.manuelOran === '' || body.manuelOran == null ? null : Number(body.manuelOran)
+  const not = body.not === '' || body.not == null ? null : String(body.not)
 
   // KPI-FORMUL: Gerçekleşen ya da Hedef formülden hesaplanıyorsa elle girilen değer (varsa)
   // yok sayılır — arayüz o alanı zaten salt-okunur gösteriyor (bkz. kpi/page.tsx), bu sadece
@@ -57,8 +58,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   const olcum = await prisma.kPIMeasurement.upsert({
     where: { kpiId_year_month: { kpiId: id, year, month } },
-    update: { target: kaydedilecekTarget, actual: kaydedilecekActual, hedefNA, gerceklesenNA, manuelOran },
-    create: { kpiId: id, year, month, target: kaydedilecekTarget, actual: kaydedilecekActual, hedefNA, gerceklesenNA, manuelOran },
+    update: { target: kaydedilecekTarget, actual: kaydedilecekActual, hedefNA, gerceklesenNA, manuelOran, not },
+    create: { kpiId: id, year, month, target: kaydedilecekTarget, actual: kaydedilecekActual, hedefNA, gerceklesenNA, manuelOran, not },
   })
 
   return NextResponse.json({ olcum })

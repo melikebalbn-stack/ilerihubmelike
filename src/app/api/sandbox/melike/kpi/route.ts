@@ -83,7 +83,7 @@ export async function GET(request: Request) {
         const anahtar = `${year}-${month}`
         const mevcut = harita.get(anahtar) ?? {
           id: `formul-${k.id}-${anahtar}`, kpiId: k.id, year, month,
-          target: null, actual: null, hedefNA: false, gerceklesenNA: false, manuelOran: null,
+          target: null, actual: null, hedefNA: false, gerceklesenNA: false, manuelOran: null, not: null,
           enteredById: null, createdAt: new Date(), updatedAt: new Date(),
         }
         if (gFormul) mevcut.actual = formulAyDegeriHesapla(gFormul, kpiHaritasi, year, month)
@@ -145,6 +145,9 @@ export async function POST(request: Request) {
   const oranYonu = body.oranYonu === 'H_G' ? 'H_G' : 'G_H'
   const oranBirimi = body.oranBirimi === 'kat' ? 'kat' : 'yuzde'
   const yuzdeOlcek = body.yuzdeOlcek === 'dogrudan' ? 'dogrudan' : 'oran'
+  const ondalikBasamak = Number.isInteger(body.ondalikBasamak) && body.ondalikBasamak >= 0 && body.ondalikBasamak <= 10
+    ? body.ondalikBasamak
+    : 4
   const ozelAlanlar = ozelAlanlariNormalize(body.ozelAlanlar)
   const oranPayKaynagi = typeof body.oranPayKaynagi === 'string' && body.oranPayKaynagi.trim()
     ? body.oranPayKaynagi.trim()
@@ -167,6 +170,7 @@ export async function POST(request: Request) {
       oranYonu,
       oranBirimi,
       yuzdeOlcek,
+      ondalikBasamak,
       oranPayKaynagi,
       ortalamaKaynagi,
       gerceklesenFormul: (gerceklesenFormul as unknown as Prisma.InputJsonValue) ?? undefined,

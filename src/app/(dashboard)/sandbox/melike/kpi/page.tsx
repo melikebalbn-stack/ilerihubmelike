@@ -40,6 +40,7 @@ interface Olcum {
   hedefNA: boolean
   gerceklesenNA: boolean
   manuelOran: number | null
+  not: string | null
 }
 
 interface OzelAlanDeger {
@@ -94,6 +95,7 @@ interface Kpi {
   oranBirimi: string
   ortalamaKaynagi: string
   yuzdeOlcek: string
+  ondalikBasamak: number
   gerceklesenFormul: FormulTanimi | null
   hedefFormul: FormulTanimi | null
   gerceklesenFormulMu: boolean
@@ -363,6 +365,7 @@ function YeniKpiDialog({ orgUnitId, onCreated }: { orgUnitId: string; onCreated:
   const [oranYonu, setOranYonu] = useState('G_H')
   const [oranBirimi, setOranBirimi] = useState('yuzde')
   const [yuzdeOlcek, setYuzdeOlcek] = useState('oran')
+  const [ondalikBasamak, setOndalikBasamak] = useState('4')
   const [ozelAlanlar, setOzelAlanlar] = useState<OzelAlanTaslak[]>([])
   const [oranPayKaynagi, setOranPayKaynagi] = useState('actual')
   const [ortalamaKaynagi, setOrtalamaKaynagi] = useState('actual')
@@ -391,6 +394,7 @@ function YeniKpiDialog({ orgUnitId, onCreated }: { orgUnitId: string; onCreated:
           oranYonu,
           oranBirimi,
           yuzdeOlcek,
+          ondalikBasamak: Number(ondalikBasamak),
           ozelAlanlar,
           oranPayKaynagi,
           ortalamaKaynagi,
@@ -416,7 +420,7 @@ function YeniKpiDialog({ orgUnitId, onCreated }: { orgUnitId: string; onCreated:
         }
         setName(''); setUnit(''); setDirection('higher_is_better'); setFrequency('monthly')
         setGerceklesenEtiketi('Gerçekleşen'); setHedefEtiketi('Hedef'); setOranYonu('G_H'); setHedef('')
-        setOranBirimi('yuzde'); setYuzdeOlcek('oran')
+        setOranBirimi('yuzde'); setYuzdeOlcek('oran'); setOndalikBasamak('4')
         setOzelAlanlar([]); setOranPayKaynagi('actual'); setOrtalamaKaynagi('actual')
         setGerceklesenFormul(null); setHedefFormul(null)
         setAcik(false)
@@ -514,6 +518,19 @@ function YeniKpiDialog({ orgUnitId, onCreated }: { orgUnitId: string; onCreated:
               </Select>
             </div>
           )}
+          <div>
+            <Label>Ondalık basamak sayısı</Label>
+            <Select value={ondalikBasamak} onValueChange={setOndalikBasamak}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="0">0 (ör. Adet gibi tam sayı KPI'lar)</SelectItem>
+                <SelectItem value="1">1</SelectItem>
+                <SelectItem value="2">2</SelectItem>
+                <SelectItem value="3">3</SelectItem>
+                <SelectItem value="4">4 (varsayılan)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
           {!hedefFormul && (
             <div>
               <Label>Hedef (opsiyonel)</Label>
@@ -609,6 +626,7 @@ function KpiDuzenleDialog({ kpi, onSaved }: { kpi: Kpi; onSaved: () => void }) {
   const [oranYonu, setOranYonu] = useState(kpi.oranYonu)
   const [oranBirimi, setOranBirimi] = useState(kpi.oranBirimi)
   const [yuzdeOlcek, setYuzdeOlcek] = useState(kpi.yuzdeOlcek)
+  const [ondalikBasamak, setOndalikBasamak] = useState(String(kpi.ondalikBasamak))
   const [ozelAlanlar, setOzelAlanlar] = useState<OzelAlanTaslak[]>(
     kpi.ozelAlanlar.map(a => ({ key: a.key, label: a.label, formul: a.formul })),
   )
@@ -623,7 +641,7 @@ function KpiDuzenleDialog({ kpi, onSaved }: { kpi: Kpi; onSaved: () => void }) {
     if (!acik) return
     setName(kpi.name); setUnit(kpi.unit ?? ''); setDirection(kpi.direction); setFrequency(kpi.frequency)
     setGerceklesenEtiketi(kpi.gerceklesenEtiketi); setHedefEtiketi(kpi.hedefEtiketi); setOranYonu(kpi.oranYonu)
-    setOranBirimi(kpi.oranBirimi); setYuzdeOlcek(kpi.yuzdeOlcek)
+    setOranBirimi(kpi.oranBirimi); setYuzdeOlcek(kpi.yuzdeOlcek); setOndalikBasamak(String(kpi.ondalikBasamak))
     setOzelAlanlar(kpi.ozelAlanlar.map(a => ({ key: a.key, label: a.label, formul: a.formul })))
     setOranPayKaynagi(kpi.oranPayKaynagi); setOrtalamaKaynagi(kpi.ortalamaKaynagi)
     setGerceklesenFormul(kpi.gerceklesenFormul); setHedefFormul(kpi.hedefFormul)
@@ -644,6 +662,7 @@ function KpiDuzenleDialog({ kpi, onSaved }: { kpi: Kpi; onSaved: () => void }) {
           oranYonu,
           oranBirimi,
           yuzdeOlcek,
+          ondalikBasamak: Number(ondalikBasamak),
           ozelAlanlar,
           oranPayKaynagi,
           ortalamaKaynagi,
@@ -746,6 +765,19 @@ function KpiDuzenleDialog({ kpi, onSaved }: { kpi: Kpi; onSaved: () => void }) {
               </Select>
             </div>
           )}
+          <div>
+            <Label>Ondalık basamak sayısı</Label>
+            <Select value={ondalikBasamak} onValueChange={setOndalikBasamak}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="0">0 (ör. Adet gibi tam sayı KPI'lar)</SelectItem>
+                <SelectItem value="1">1</SelectItem>
+                <SelectItem value="2">2</SelectItem>
+                <SelectItem value="3">3</SelectItem>
+                <SelectItem value="4">4 (varsayılan)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
           <OzelAlanlarDuzenleyici
             alanlar={ozelAlanlar}
             onChange={setOzelAlanlar}
@@ -924,12 +956,12 @@ const SEVIYE_RENKLERI = {
   kotu: { bg: '#fecaca', fg: '#7f1d1d' },
 } as const
 
-function sayiFormat(n: number | null): string {
+// basamak: KPI başına ayarlanabilir virgülden sonraki basamak sayısı (KPIDefinition.ondalikBasamak,
+// varsayılan 4) — "Adet" gibi tam sayı KPI'larında 0 seçilip "39,3333 Adet" gibi anlamsız
+// ondalıkların önüne geçilir, hassas oranlarda (ör. "...Ciroya Oranı") 3-4 seçilebilir.
+function sayiFormat(n: number | null, basamak = 4): string {
   if (n == null) return ''
-  // maximumFractionDigits: 2 iken 0,003 gibi küçük ama sıfır OLMAYAN bir hedef "0" olarak
-  // görünüyordu — altındaki G/H Oran satırı ise ham (yuvarlanmamış) değeri kullandığı için
-  // "hedef 0 görünüyor ama oran %1500" gibi kafa karıştırıcı bir tabloya yol açıyordu.
-  return n.toLocaleString('tr-TR', { maximumFractionDigits: 4 })
+  return n.toLocaleString('tr-TR', { maximumFractionDigits: basamak })
 }
 
 // Bazı birimler kelime yerine sembol olarak gösterilir (€186.655 gibi, sonuna değil önüne).
@@ -942,36 +974,38 @@ const PARA_SEMBOLLERI: Record<string, string> = {
 // Büyük sayılarda bin/milyon ayrımı tablo/grafikte noktalı gruplamayla (358.000 gibi) tek
 // bakışta belli olmuyordu — K/M kısaltması ekliyoruz. Yüzde (%) değerlerine UYGULANMAZ, sadece
 // düz sayı/para birimi gösterimine (sayiFormatBirimli'nin para/birim dallarına).
-function buyukSayiFormat(n: number): string {
+function buyukSayiFormat(n: number, basamak = 4): string {
   const mutlak = Math.abs(n)
-  if (mutlak >= 1_000_000) return `${(n / 1_000_000).toLocaleString('tr-TR', { maximumFractionDigits: 2 })}M`
-  if (mutlak >= 1_000) return `${(n / 1_000).toLocaleString('tr-TR', { maximumFractionDigits: 2 })}K`
-  return sayiFormat(n)
+  const kisaltmaBasamak = Math.min(basamak, 2)
+  if (mutlak >= 1_000_000) return `${(n / 1_000_000).toLocaleString('tr-TR', { maximumFractionDigits: kisaltmaBasamak })}M`
+  if (mutlak >= 1_000) return `${(n / 1_000).toLocaleString('tr-TR', { maximumFractionDigits: kisaltmaBasamak })}K`
+  return sayiFormat(n, basamak)
 }
 
 // yuzdeDogrudanMi: KPI'nın yuzdeOlcek ayarı "dogrudan" ise true — bazı KPI'larda yüzde değeri
 // 0-1 arası bir ORAN olarak değil, zaten 0-100 arası DOĞRUDAN giriliyor (ör. 99,18 = %99,18).
 // Eskiden her zaman "0-1 oran" varsayılıp ×100 yapılıyordu — bu, doğrudan girilen KPI'larda
 // %9918 gibi saçma rakamlar üretiyordu. Artık KPI başına seçilebiliyor (varsayılan: eski davranış).
-function sayiFormatBirimli(n: number | null, unit?: string | null, yuzdeDogrudanMi = false): string {
+function sayiFormatBirimli(n: number | null, unit?: string | null, yuzdeDogrudanMi = false, basamak = 4): string {
   if (n == null) return ''
-  if (!unit) return buyukSayiFormat(n)
-  if (unit.trim() === '%') return yuzdeDogrudanMi ? `${sayiFormat(n)}%` : `${sayiFormat(n * 100)}%`
+  if (!unit) return buyukSayiFormat(n, basamak)
+  if (unit.trim() === '%') return yuzdeDogrudanMi ? `${sayiFormat(n, basamak)}%` : `${sayiFormat(n * 100, basamak)}%`
   const normalize = unit.trim().toLocaleUpperCase('tr')
   const sembol = PARA_SEMBOLLERI[normalize]
-  const s = buyukSayiFormat(n)
+  const s = buyukSayiFormat(n, basamak)
   if (sembol) return `${sembol}${s}`
   return `${s} ${unit}`
 }
 
 // Sütun ve üstündeki çizgi aynı yılın aynı değerini taşıyor — tooltip'te iki kere
 // yazmasın diye aynı dataKey'e sahip girdilerden sadece ilkini gösteriyoruz.
-function GrafikTooltip({ active, payload, label, unit, yuzdeDogrudanMi }: {
+function GrafikTooltip({ active, payload, label, unit, yuzdeDogrudanMi, basamak }: {
   active?: boolean
   payload?: { dataKey?: string | number; name?: string; value?: number; color?: string }[]
   label?: string
   unit?: string | null
   yuzdeDogrudanMi?: boolean
+  basamak?: number
 }) {
   if (!active || !payload || payload.length === 0) return null
   const gorulen = new Set<string | number | undefined>()
@@ -985,7 +1019,7 @@ function GrafikTooltip({ active, payload, label, unit, yuzdeDogrudanMi }: {
       <p className="font-semibold mb-1">{label}</p>
       {satirlar.map(p => (
         <div key={String(p.dataKey)} style={{ color: p.color }}>
-          {p.name}: {sayiFormatBirimli(p.value ?? null, unit, yuzdeDogrudanMi)}
+          {p.name}: {sayiFormatBirimli(p.value ?? null, unit, yuzdeDogrudanMi, basamak)}
         </div>
       ))}
     </div>
@@ -997,7 +1031,7 @@ function GrafikTooltip({ active, payload, label, unit, yuzdeDogrudanMi }: {
 const NA_REGEX = /^n\/?a$/i
 
 function DuzenlenebilirHucre({
-  deger, naAktif = false, onKaydet, className, style, unit, oranGosterim, yuzdeDogrudanMi = false, saltOkuma = false,
+  deger, naAktif = false, onKaydet, className, style, unit, oranGosterim, yuzdeDogrudanMi = false, saltOkuma = false, basamak = 4,
 }: {
   deger: number | null
   naAktif?: boolean
@@ -1014,6 +1048,8 @@ function DuzenlenebilirHucre({
   // true ise hücre tıklanamaz/düzenlenemez — KPI-FORMUL: bu alan başka KPI'lardan otomatik
   // hesaplanıyorsa elle değiştirilemesin diye salt-okunur gösterilir (küçük "ƒ" işaretiyle).
   saltOkuma?: boolean
+  // KPI'nın ondalikBasamak ayarı — bu hücrenin gösteriminde virgülden sonra kaç basamak.
+  basamak?: number
 }) {
   const [duzenleniyor, setDuzenleniyor] = useState(false)
   // "kat" gösteriminde elle düzenlerken de 100'e bölünmüş (ör. "3") hâli gösterilir/yazılır —
@@ -1058,10 +1094,10 @@ function DuzenlenebilirHucre({
   const icerik = naAktif
     ? 'N/A'
     : (oranGosterim === 'kat'
-        ? (deger == null ? '' : `${sayiFormat(deger / 100)} kat`)
+        ? (deger == null ? '' : `${sayiFormat(deger / 100, basamak)} kat`)
         : oranGosterim === 'yuzde'
-          ? (deger == null ? '' : `%${sayiFormat(deger)}`)
-          : sayiFormatBirimli(deger, unit, yuzdeDogrudanMi))
+          ? (deger == null ? '' : `%${sayiFormat(deger, basamak)}`)
+          : sayiFormatBirimli(deger, unit, yuzdeDogrudanMi, basamak))
       || <span className="text-muted-foreground">·</span>
 
   if (saltOkuma) {
@@ -1080,6 +1116,49 @@ function DuzenlenebilirHucre({
       title={naAktif ? 'Uygulanamaz (N/A) — düzenlemek için tıkla' : undefined}
     >
       {icerik}
+    </td>
+  )
+}
+
+// KPI-NOT: Aksiyon'dan farklı — ay için aksiyon gerektirmeyen ama kayıt altına alınması
+// istenen serbest metin açıklamalar için (ör. "Eylül ayı için notlar"). Sayı/N-A mantığı yok,
+// düz metin — tıklayınca textarea açılır, blur'da kaydedilir.
+function NotHucre({ deger, onKaydet, className }: { deger: string | null; onKaydet: (v: string | null) => void; className?: string }) {
+  const [duzenleniyor, setDuzenleniyor] = useState(false)
+  const [taslak, setTaslak] = useState(deger ?? '')
+
+  useEffect(() => {
+    setTaslak(deger ?? '')
+  }, [deger])
+
+  function bitir() {
+    setDuzenleniyor(false)
+    const metin = taslak.trim()
+    const yeni = metin === '' ? null : metin
+    if (yeni !== (deger ?? null)) onKaydet(yeni)
+  }
+
+  if (duzenleniyor) {
+    return (
+      <td className={className}>
+        <textarea
+          autoFocus
+          rows={2}
+          className="w-28 text-xs bg-white border border-blue-400 rounded outline-none p-1 resize-none"
+          value={taslak}
+          onChange={e => setTaslak(e.target.value)}
+          onBlur={bitir}
+        />
+      </td>
+    )
+  }
+  return (
+    <td
+      className={`${className} cursor-pointer hover:ring-1 hover:ring-blue-300 text-slate-600`}
+      onClick={() => setDuzenleniyor(true)}
+      title={deger ?? 'Not eklemek için tıkla'}
+    >
+      {deger ? <span className="line-clamp-2">{deger}</span> : <span className="text-muted-foreground">·</span>}
     </td>
   )
 }
@@ -1146,6 +1225,8 @@ function KpiVeriTablosu({
         actual: alan === 'actual' ? deger : mevcut?.actual ?? null,
         hedefNA: alan === 'target' ? na : mevcut?.hedefNA ?? false,
         gerceklesenNA: alan === 'actual' ? na : mevcut?.gerceklesenNA ?? false,
+        manuelOran: mevcut?.manuelOran ?? null,
+        not: mevcut?.not ?? null,
       }),
     })
     if (!res.ok) {
@@ -1169,6 +1250,31 @@ function KpiVeriTablosu({
         hedefNA: mevcut?.hedefNA ?? false,
         gerceklesenNA: mevcut?.gerceklesenNA ?? false,
         manuelOran,
+        not: mevcut?.not ?? null,
+      }),
+    })
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}))
+      alert(d.error ?? 'Kaydedilemedi')
+      return
+    }
+    onChanged()
+  }
+
+  async function notKaydet(yil: number, ay: number, not: string | null) {
+    const mevcut = kpi.measurements.find(m => m.year === yil && m.month === ay)
+    const res = await fetch(`/api/sandbox/melike/kpi/${kpi.id}/olcum`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        year: yil,
+        month: ay,
+        target: mevcut?.target ?? null,
+        actual: mevcut?.actual ?? null,
+        hedefNA: mevcut?.hedefNA ?? false,
+        gerceklesenNA: mevcut?.gerceklesenNA ?? false,
+        manuelOran: mevcut?.manuelOran ?? null,
+        not,
       }),
     })
     if (!res.ok) {
@@ -1265,6 +1371,7 @@ function KpiVeriTablosu({
                   hedefNA: m?.hedefNA ?? false,
                   gerceklesenNA: m?.gerceklesenNA ?? false,
                   manuelOran: m?.manuelOran ?? null,
+                  not: m?.not ?? null,
                   ozelDegerler,
                 }
               })
@@ -1275,7 +1382,7 @@ function KpiVeriTablosu({
                     {ilkYil
                       ? ortYillar.map(([y, ort]) =>
                           yillarIleOlcum.has(y) ? (
-                            <td key={y} className="p-2 text-center font-medium border-l border-slate-200" style={{ backgroundColor: ortRenk(y, ort).bg, color: ortRenk(y, ort).fg }}>{sayiFormatBirimli(ort, kpi.unit, kpi.yuzdeOlcek === 'dogrudan')}</td>
+                            <td key={y} className="p-2 text-center font-medium border-l border-slate-200" style={{ backgroundColor: ortRenk(y, ort).bg, color: ortRenk(y, ort).fg }}>{sayiFormatBirimli(ort, kpi.unit, kpi.yuzdeOlcek === 'dogrudan', kpi.ondalikBasamak)}</td>
                           ) : (
                             <DuzenlenebilirHucre
                               key={y}
@@ -1285,6 +1392,7 @@ function KpiVeriTablosu({
                               style={{ backgroundColor: ortRenk(y, ort).bg, color: ortRenk(y, ort).fg }}
                               unit={kpi.unit}
                               yuzdeDogrudanMi={kpi.yuzdeOlcek === 'dogrudan'}
+                              basamak={kpi.ondalikBasamak}
                             />
                           ),
                         )
@@ -1303,6 +1411,7 @@ function KpiVeriTablosu({
                           unit={kpi.unit}
                           yuzdeDogrudanMi={kpi.yuzdeOlcek === 'dogrudan'}
                           saltOkuma={kpi.gerceklesenFormulMu}
+                          basamak={kpi.ondalikBasamak}
                         />
                       )
                     })}
@@ -1321,6 +1430,7 @@ function KpiVeriTablosu({
                           unit={kpi.unit}
                           yuzdeDogrudanMi={kpi.yuzdeOlcek === 'dogrudan'}
                           saltOkuma={alan.formulMu}
+                          basamak={kpi.ondalikBasamak}
                         />
                       ))}
                     </tr>
@@ -1338,6 +1448,7 @@ function KpiVeriTablosu({
                         unit={kpi.unit}
                         yuzdeDogrudanMi={kpi.yuzdeOlcek === 'dogrudan'}
                         saltOkuma={kpi.hedefFormulMu}
+                        basamak={kpi.ondalikBasamak}
                       />
                     ))}
                   </tr>
@@ -1377,6 +1488,18 @@ function KpiVeriTablosu({
                         />
                       )
                     })}
+                  </tr>
+                  <tr className="border-b-2 border-slate-400">
+                    <td className="p-2 text-slate-500 font-medium whitespace-nowrap bg-slate-50 sticky left-0 border-r border-slate-300">Notlar</td>
+                    {ortYillar.map(([y]) => <td key={y} className="p-2 bg-slate-50 border-l border-slate-200" />)}
+                    {aylikVeri.map((v, i) => (
+                      <NotHucre
+                        key={i}
+                        deger={v.not}
+                        onKaydet={(d) => notKaydet(yil, i + 1, d)}
+                        className="p-1 text-center text-xs border-l border-slate-200"
+                      />
+                    ))}
                   </tr>
               </Fragment>
             )
@@ -1600,7 +1723,7 @@ export default function MelikeKpiPage() {
                       {guncelYilOrtalamasi != null && birlesikGrafikVerisi.yilA != null && (
                         <div className="absolute top-0 right-0 text-right z-10">
                           <div className="text-[11px] text-muted-foreground">{birlesikGrafikVerisi.yilA} Ortalaması</div>
-                          <div className="text-lg font-bold" style={{ color: NAVY }}>{sayiFormatBirimli(guncelYilOrtalamasi, secili.unit, secili.yuzdeOlcek === 'dogrudan')}</div>
+                          <div className="text-lg font-bold" style={{ color: NAVY }}>{sayiFormatBirimli(guncelYilOrtalamasi, secili.unit, secili.yuzdeOlcek === 'dogrudan', secili.ondalikBasamak)}</div>
                         </div>
                       )}
                       <ResponsiveContainer width="100%" height={320}>
@@ -1608,19 +1731,19 @@ export default function MelikeKpiPage() {
                           <CartesianGrid strokeDasharray="3 3" />
                           <XAxis dataKey="ad" tick={{ fontSize: 11, fill: '#9CA3AF' }} interval={0} angle={-20} textAnchor="end" height={50} />
                           <YAxis tick={{ fontSize: 11, fill: '#9CA3AF' }} />
-                          <Tooltip content={<GrafikTooltip unit={secili.unit} yuzdeDogrudanMi={secili.yuzdeOlcek === 'dogrudan'} />} />
+                          <Tooltip content={<GrafikTooltip unit={secili.unit} yuzdeDogrudanMi={secili.yuzdeOlcek === 'dogrudan'} basamak={secili.ondalikBasamak} />} />
                           <Legend wrapperStyle={{ fontSize: 11, color: '#9CA3AF' }} />
                           <Bar dataKey="Ortalama" fill="#f0a875" radius={[3, 3, 0, 0]}>
-                            <LabelList dataKey="Ortalama" position="top" style={{ fontSize: 10, fill: '#78350f' }} formatter={(v: number) => sayiFormatBirimli(v, secili.unit, secili.yuzdeOlcek === 'dogrudan')} />
+                            <LabelList dataKey="Ortalama" position="top" style={{ fontSize: 10, fill: '#78350f' }} formatter={(v: number) => sayiFormatBirimli(v, secili.unit, secili.yuzdeOlcek === 'dogrudan', secili.ondalikBasamak)} />
                           </Bar>
                           {birlesikGrafikVerisi.yilB != null && (
                             <Bar dataKey={String(birlesikGrafikVerisi.yilB)} fill="#94a3b8" radius={[3, 3, 0, 0]}>
-                              <LabelList dataKey={String(birlesikGrafikVerisi.yilB)} position="top" style={{ fontSize: 10, fill: '#475569' }} formatter={(v: number) => sayiFormatBirimli(v, secili.unit, secili.yuzdeOlcek === 'dogrudan')} />
+                              <LabelList dataKey={String(birlesikGrafikVerisi.yilB)} position="top" style={{ fontSize: 10, fill: '#475569' }} formatter={(v: number) => sayiFormatBirimli(v, secili.unit, secili.yuzdeOlcek === 'dogrudan', secili.ondalikBasamak)} />
                             </Bar>
                           )}
                           {birlesikGrafikVerisi.yilA != null && (
                             <Bar dataKey={String(birlesikGrafikVerisi.yilA)} fill={NAVY} radius={[3, 3, 0, 0]}>
-                              <LabelList dataKey={String(birlesikGrafikVerisi.yilA)} position="top" style={{ fontSize: 10, fill: NAVY }} formatter={(v: number) => sayiFormatBirimli(v, secili.unit, secili.yuzdeOlcek === 'dogrudan')} />
+                              <LabelList dataKey={String(birlesikGrafikVerisi.yilA)} position="top" style={{ fontSize: 10, fill: NAVY }} formatter={(v: number) => sayiFormatBirimli(v, secili.unit, secili.yuzdeOlcek === 'dogrudan', secili.ondalikBasamak)} />
                             </Bar>
                           )}
                           <Line type="monotone" dataKey="Hedef" stroke={KIRMIZI} strokeDasharray="4 4" dot={false} connectNulls />

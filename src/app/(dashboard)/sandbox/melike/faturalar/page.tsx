@@ -168,6 +168,14 @@ export default function FaturaTakipPage() {
     checkedNotFound: number
     remaining: number
   } | null>(null)
+  const [discoverStatus, setDiscoverStatus] = useState<{
+    running: boolean
+    daysDone: number
+    totalDays: number
+    created: number
+    companies: string[]
+    error: string | null
+  } | null>(null)
   const [filter, setFilter] = useState('ALL') // 'ALL' | 'GENEL' | <orgUnitId>
   const [search, setSearch] = useState('')
   const [departments, setDepartments] = useState<Department[]>([])
@@ -232,7 +240,14 @@ export default function FaturaTakipPage() {
   useEffect(() => {
     if (!authorized) return
     setLoading(true)
-    Promise.all([loadInvoices(), loadSummary(), loadRevenues(), loadDepartments(), loadBackfillStatus()]).finally(() =>
+    Promise.all([
+      loadInvoices(),
+      loadSummary(),
+      loadRevenues(),
+      loadDepartments(),
+      loadBackfillStatus(),
+      loadDiscoverStatus(),
+    ]).finally(() =>
       setLoading(false)
     )
   }, [authorized, loadInvoices, loadSummary, loadRevenues, loadDepartments])
@@ -292,6 +307,39 @@ export default function FaturaTakipPage() {
     const timer = setTimeout(loadBackfillStatus, 5000)
     return () => clearTimeout(timer)
   }, [backfillStatus])
+
+  async function loadDiscoverStatus() {
+    const res = await fetch('/api/sandbox/melike/faturalar/discover-invoices')
+    if (res.ok) setDiscoverStatus(await res.json())
+  }
+
+  async function handleDiscoverInvoices() {
+    if (
+      !confirm(
+        'Düzenli gelen firmaların (3+ farklı ayda faturası olanlar) en son fatura tarihinden bugüne kadar eLogo\'da tarama yapılıp eksik faturalar otomatik eklensin mi? Gün sayısına göre uzun (saatler) sürebilir.'
+      )
+    )
+      return
+    const res = await fetch('/api/sandbox/melike/faturalar/discover-invoices', { method: 'POST' })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      alert(data.error || 'Tarama başlatılamadı')
+      return
+    }
+    if (!data.started) {
+      alert(data.message || 'Taranacak bir şey yok')
+      return
+    }
+    alert(`${data.companies.length} firma, ${data.fromDay} → ${data.toDay} arası taranacak. İlerlemeyi üstteki satırdan takip edebilirsin.`)
+    loadDiscoverStatus()
+  }
+
+  // Tarama sürerken 10 saniyede bir durumu yenile; bitince (running=false) durdur.
+  useEffect(() => {
+    if (!discoverStatus?.running) return
+    const timer = setTimeout(loadDiscoverStatus, 10000)
+    return () => clearTimeout(timer)
+  }, [discoverStatus])
 
   async function handleDelete(id: string) {
     if (!confirm('Bu fatura kaydını silmek istediğine emin misin?')) return
@@ -480,6 +528,20 @@ export default function FaturaTakipPage() {
           )}
           <Button variant="outline" onClick={handleBackfillPdfs} title="PDF'i olmayan eski faturalar için eLogo'da toplu arama başlat">
             <FileDown className="mr-1.5 h-4 w-4" /> Eski Faturaların PDF'lerini Çek
+          </Button>
+          {discoverStatus?.running && (
+            <span className="text-xs text-muted-foreground">
+              Düzenli firma taraması: {discoverStatus.daysDone}/{discoverStatus.totalDays || '?'} gün (
+              {discoverStatus.created} fatura eklendi)
+            </span>
+          )}
+          <Button
+            variant="outline"
+            onClick={handleDiscoverInvoices}
+            disabled={discoverStatus?.running}
+            title="Düzenli gelen firmaların son fatura tarihinden bugüne eLogo'da tarama yapıp eksikleri otomatik ekler"
+          >
+            <FileDown className="mr-1.5 h-4 w-4" /> Eksik Faturaları Otomatik Bul
           </Button>
           <Button variant="outline" onClick={() => setShowImport(true)}>
             <FileSpreadsheet className="mr-1.5 h-4 w-4" /> Excel İçe/Dışa Aktar

@@ -161,7 +161,7 @@ function unzipFirstEntry(zip: Buffer): Buffer {
   throw new Error(`Desteklenmeyen ZIP sıkıştırma yöntemi: ${method}`)
 }
 
-async function pdfPathFor(invoiceId: string): Promise<string> {
+export async function pdfPathFor(invoiceId: string): Promise<string> {
   const path = await import('path')
   const fs = await import('fs/promises')
   const dir = path.join(process.cwd(), 'storage', 'sandbox-melike', 'fatura-pdf')
@@ -183,6 +183,86 @@ export async function resolveAndStorePdf(opts: {
   const pdfPath = await pdfPathFor(opts.invoiceId)
   await fs.writeFile(pdfPath, pdf)
   return { uuid, pdfPath }
+}
+
+export interface DiscoveredDocument {
+  uuid: string
+  invoiceNumber: string
+  supplierName: string
+  issueDate: string // YYYY-MM-DD
+  currency: string
+  amount: number
+}
+
+function extractDiscoveredDocument(ubl: Buffer, uuid: string): DiscoveredDocument | null {
+  const x = ubl.toString('utf-8')
+  const id = x.match(/<cbc:ID>([^<]+)<\/cbc:ID>/)
+  const issueDate = x.match(/<cbc:IssueDate>([^<]+)<\/cbc:IssueDate>/)
+  const currency = x.match(/<cbc:DocumentCurrencyCode>([^<]+)<\/cbc:DocumentCurrencyCode>/)
+  const amount = x.match(/<cbc:PayableAmount[^>]*>([^<]+)<\/cbc:PayableAmount>/)
+  const supplier = x.match(/<cac:AccountingSupplierParty>[\s\S]*?<cbc:Name>([^<]+)<\/cbc:Name>/)
+  if (!id || !issueDate || !currency || !amount || !supplier) return null
+  return {
+    uuid,
+    invoiceNumber: id[1],
+    supplierName: supplier[1],
+    issueDate: issueDate[1],
+    currency: currency[1],
+    amount: Number(amount[1]),
+  }
+}
+
+/** Bir günün TÜM belgelerini (hangi tedarikçiden olursa olsun) tam bilgiyle döner. */
+async function scanDayFull(sessionID: string, day: string): Promise<DiscoveredDocument[]> {
+  const docs = await getDocumentList(sessionID, day)
+  const results: DiscoveredDocument[] = []
+  for (const doc of docs) {
+    const uuid = extractTag(doc, 'documentUuid')
+    if (!uuid) continue
+    try {
+      const ubl = await getDocumentDataRaw(sessionID, uuid, 'UBL')
+      const info = extractDiscoveredDocument(ubl, uuid)
+      if (info) results.push(info)
+    } catch {
+      // Bu adayın UBL'i okunamadı — diğerlerine devam.
+    }
+  }
+  return results
+}
+
+/**
+ * [fromDay, toDay] (dahil) aralığındaki TÜM eLogo belgelerini tarar — tedarikçi filtresi
+ * yok, çağıran taraf (discover-invoices route) kendi bildiği düzenli firmalara göre
+ * sonradan filtreler. Tek bir oturum üzerinden gün gün ilerler, oturum düşerse yeniden
+ * giriş yapıp devam eder. Uzun sürebilir (gün sayısı × o günkü belge sayısı kadar UBL
+ * çağrısı) — onProgress her gün bittiğinde çağrılır.
+ */
+export async function scanDocumentsInRange(
+  fromDay: string,
+  toDay: string,
+  onProgress?: (daysDone: number, totalDays: number, found: DiscoveredDocument[]) => void
+): Promise<DiscoveredDocument[]> {
+  const days: string[] = []
+  for (let d = new Date(fromDay); d <= new Date(toDay); d.setDate(d.getDate() + 1)) {
+    days.push(d.toISOString().slice(0, 10))
+  }
+
+  const all: DiscoveredDocument[] = []
+  let sessionID = await login()
+  try {
+    for (let i = 0; i < days.length; i++) {
+      try {
+        all.push(...(await scanDayFull(sessionID, days[i])))
+      } catch {
+        sessionID = await login() // oturum düşmüş olabilir — yeniden giriş yapıp tekrar dene
+        all.push(...(await scanDayFull(sessionID, days[i])))
+      }
+      onProgress?.(i + 1, days.length, all)
+    }
+  } finally {
+    await logout(sessionID)
+  }
+  return all
 }
 
 export interface BackfillTarget {

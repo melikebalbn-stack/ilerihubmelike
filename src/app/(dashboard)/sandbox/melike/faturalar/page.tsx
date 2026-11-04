@@ -337,7 +337,13 @@ export default function FaturaTakipPage() {
   // Tarama sürerken 10 saniyede bir durumu yenile; bitince (running=false) durdur.
   useEffect(() => {
     if (!discoverStatus?.running) return
-    const timer = setTimeout(loadDiscoverStatus, 10000)
+    const timer = setTimeout(() => {
+      loadDiscoverStatus()
+      // Tarama arka planda fatura ekliyor — liste/ay seçimi/özet sayfa yenilenmeden
+      // güncel kalsın diye bunları da birlikte tazeliyoruz.
+      loadInvoices()
+      loadSummary()
+    }, 10000)
     return () => clearTimeout(timer)
   }, [discoverStatus])
 

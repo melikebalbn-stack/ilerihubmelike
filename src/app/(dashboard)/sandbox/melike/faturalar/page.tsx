@@ -900,7 +900,7 @@ export default function FaturaTakipPage() {
                       >
                         <SelectTrigger className="h-7 w-44 text-xs" style={{ color: inv.departmentOrgUnitId ? NAVY : '#5F5E5A' }}>
                           <SelectValue>
-                            <span className="block truncate text-left">{inv.departmentOrgUnitId || 'Genel'}</span>
+                            <span className="block truncate text-left">{inv.departmentName || 'Genel'}</span>
                           </SelectValue>
                         </SelectTrigger>
                         <SelectContent>

@@ -61,6 +61,33 @@ interface DepartmanOzeti {
   kpiler: OzetKpiSirasi[]
 }
 
+// KPI-ETIKET-OKUNURLUK: grafik etiketleri artık düz metin değil, okunur bir rozet (arka planlı
+// rounded-rect) içinde — bkz. kpi/page.tsx'teki aynı adlı bileşen.
+function RozetliEtiket(props: {
+  x?: number
+  y?: number
+  width?: number
+  value?: number | string
+  bgRengi: string
+  yaziRengi: string
+  formatter?: (v: number) => string
+}) {
+  const { x, y, width, value, bgRengi, yaziRengi, formatter } = props
+  if (value == null || x == null || y == null) return null
+  const metin = formatter ? formatter(Number(value)) : String(value)
+  if (!metin) return null
+  const merkezX = x + (width ?? 0) / 2
+  const rozetGenislik = Math.max(28, metin.length * 6.6 + 10)
+  return (
+    <g>
+      <rect x={merkezX - rozetGenislik / 2} y={y - 20} width={rozetGenislik} height={17} rx={5} fill={bgRengi} />
+      <text x={merkezX} y={y - 7} textAnchor="middle" fontSize={12} fontWeight={600} fill={yaziRengi}>
+        {metin}
+      </text>
+    </g>
+  )
+}
+
 function oranRengi(oran: number): string {
   if (oran >= 80) return '#16a34a'
   if (oran >= 50) return '#d97706'
@@ -264,21 +291,25 @@ export default function KpiOzetPage() {
               <ResponsiveContainer width="100%" height={280}>
                 <ComposedChart data={departmanCeyrekKarsilastirma} margin={{ left: 4, right: 8, top: 4, bottom: 4 }}>
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="departman" tick={{ fontSize: 12, fill: '#9CA3AF' }} interval={0} />
-                  <YAxis tick={{ fontSize: 12, fill: '#9CA3AF' }} />
+                  <XAxis dataKey="departman" tick={{ fontSize: 13, fill: '#64748b' }} interval={0} />
+                  <YAxis tick={{ fontSize: 13, fill: '#64748b' }} />
                   <Tooltip
                     formatter={(v: number) => (v == null ? '—' : `%${v}`)}
                     labelFormatter={(_, payload) => payload?.[0]?.payload?.tamAd ?? ''}
                   />
-                  <Legend wrapperStyle={{ fontSize: 11, color: '#9CA3AF' }} />
+                  <Legend wrapperStyle={{ fontSize: 13, color: '#475569' }} />
                   {[1, 2, 3, 4].map((ceyrek, i) => (
                     <Bar key={ceyrek} dataKey={`Ç${ceyrek}`} fill={CEYREK_RENKLERI[i]} radius={[3, 3, 0, 0]}>
                       <LabelList
                         dataKey={`Ç${ceyrek}`}
-                        position="top"
-                        fontSize={9}
-                        fill="#9CA3AF"
-                        formatter={(v: number | null) => (v == null ? '' : `%${v}`)}
+                        content={(p: object) => (
+                          <RozetliEtiket
+                            {...p}
+                            bgRengi="#dbeafe"
+                            yaziRengi="#1e3a5f"
+                            formatter={(v: number | null) => (v == null ? '' : `%${v}`)}
+                          />
+                        )}
                       />
                     </Bar>
                   ))}
@@ -306,8 +337,8 @@ export default function KpiOzetPage() {
             <ResponsiveContainer width="100%" height={200}>
               <ComposedChart data={egilimEkle(sirketGeneliCeyrekOrtalama, 'Oran')} margin={{ left: 4, right: 8, top: 4, bottom: 4 }}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="ad" tick={{ fontSize: 12, fill: '#9CA3AF' }} />
-                <YAxis tick={{ fontSize: 12, fill: '#9CA3AF' }} />
+                <XAxis dataKey="ad" tick={{ fontSize: 13, fill: '#64748b' }} />
+                <YAxis tick={{ fontSize: 13, fill: '#64748b' }} />
                 <Tooltip formatter={(v: number) => (v == null ? '—' : `%${v}`)} />
                 <Bar dataKey="Oran" radius={[4, 4, 0, 0]}>
                   {[1, 2, 3, 4].map(ceyrek => (
@@ -315,10 +346,14 @@ export default function KpiOzetPage() {
                   ))}
                   <LabelList
                     dataKey="Oran"
-                    position="top"
-                    fontSize={11}
-                    fill="#9CA3AF"
-                    formatter={(v: number | null) => (v == null ? '' : `%${v}`)}
+                    content={(p: object) => (
+                      <RozetliEtiket
+                        {...p}
+                        bgRengi="#dbeafe"
+                        yaziRengi="#1e3a5f"
+                        formatter={(v: number | null) => (v == null ? '' : `%${v}`)}
+                      />
+                    )}
                   />
                 </Bar>
                 <Line
@@ -394,8 +429,8 @@ export default function KpiOzetPage() {
                     margin={{ left: 4, right: 8, top: 4, bottom: 4 }}
                   >
                     <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="ad" tick={{ fontSize: 12, fill: '#9CA3AF' }} />
-                    <YAxis tick={{ fontSize: 12, fill: '#9CA3AF' }} />
+                    <XAxis dataKey="ad" tick={{ fontSize: 13, fill: '#64748b' }} />
+                    <YAxis tick={{ fontSize: 13, fill: '#64748b' }} />
                     <Tooltip formatter={(v: number) => (v == null ? '—' : `%${v}`)} />
                     <Bar dataKey="Oran" radius={[4, 4, 0, 0]}>
                       {[1, 2, 3, 4].map(ceyrek => (
@@ -403,10 +438,14 @@ export default function KpiOzetPage() {
                       ))}
                       <LabelList
                         dataKey="Oran"
-                        position="top"
-                        fontSize={11}
-                        fill="#9CA3AF"
-                        formatter={(v: number | null) => (v == null ? '' : `%${v}`)}
+                        content={(p: object) => (
+                          <RozetliEtiket
+                            {...p}
+                            bgRengi="#dbeafe"
+                            yaziRengi="#1e3a5f"
+                            formatter={(v: number | null) => (v == null ? '' : `%${v}`)}
+                          />
+                        )}
                       />
                     </Bar>
                     <Line

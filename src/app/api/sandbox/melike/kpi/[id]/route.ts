@@ -52,7 +52,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const yuzdeOlcek = body.yuzdeOlcek === 'dogrudan' ? 'dogrudan' : 'oran'
   const ondalikBasamak = Number.isInteger(body.ondalikBasamak) && body.ondalikBasamak >= 0 && body.ondalikBasamak <= 10
     ? body.ondalikBasamak
-    : 4
+    : 2
   const gerceklesenFormul = formulAlaninaGetir(body.gerceklesenFormul)
   const hedefFormul = formulAlaninaGetir(body.hedefFormul)
   const gelenAlanlar = ozelAlanlariNormalize(body.ozelAlanlar)

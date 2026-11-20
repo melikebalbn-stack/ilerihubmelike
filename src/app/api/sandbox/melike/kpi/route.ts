@@ -147,7 +147,7 @@ export async function POST(request: Request) {
   const yuzdeOlcek = body.yuzdeOlcek === 'dogrudan' ? 'dogrudan' : 'oran'
   const ondalikBasamak = Number.isInteger(body.ondalikBasamak) && body.ondalikBasamak >= 0 && body.ondalikBasamak <= 10
     ? body.ondalikBasamak
-    : 4
+    : 2
   const ozelAlanlar = ozelAlanlariNormalize(body.ozelAlanlar)
   const oranPayKaynagi = typeof body.oranPayKaynagi === 'string' && body.oranPayKaynagi.trim()
     ? body.oranPayKaynagi.trim()

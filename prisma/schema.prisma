@@ -15330,7 +15330,7 @@ model KPIDefinition {
   hedefFormul        Json?
   // KPI-ONDALIK: tüm sayı gösterimlerinde (Gerçekleşen/Hedef/Ort./Oran/grafik) virgülden sonra
   // kaç basamak gösterileceği — "Adet" gibi KPI'larda 0, hassas oranlarda 3-4 gerekebiliyor.
-  ondalikBasamak     Int                 @default(4)
+  ondalikBasamak     Int                 @default(2)
   active             Boolean             @default(true)
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt

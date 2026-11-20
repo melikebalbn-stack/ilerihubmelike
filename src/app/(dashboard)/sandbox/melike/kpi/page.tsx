@@ -125,12 +125,20 @@ function donemSayisi(kpi: Kpi): number {
 // fonksiyonu kullanır ki ikisi hep tutarlı olsun.
 // "Ort." (yıllık ortalama) ve oranın payı gibi yerlerde, seçili kaynağın (Gerçekleşen ya da bir
 // özel alan) belirli bir ay/yıldaki değerini okur.
+// KPI-ORT-TUTARLILIK: N/A işaretli bir ay burada da (Özet'teki api/sandbox/melike/kpi/ozet/route.ts
+// ile AYNI şekilde) hesaba hiç katılmıyor — eskiden burada N/A kontrolü YOKTU, "Ort." sütunu ile
+// KPI Özet'in başarı oranı farklı aylar üzerinden hesaplanmış oluyordu (ör. Özet'te N/A yüzünden
+// hariç tutulan bir ay, buradaki ortalamaya ham değeriyle giriyordu) — ikisi artık tutarlı.
 function kaynakDegeriAl(kpi: Kpi, kaynak: string, yil: number, ay: number): number | null {
   if (kaynak === 'actual') {
-    return kpi.measurements.find(m => m.year === yil && m.month === ay)?.actual ?? null
+    const m = kpi.measurements.find(x => x.year === yil && x.month === ay)
+    if (!m || m.gerceklesenNA) return null
+    return m.actual
   }
   const alan = kpi.ozelAlanlar.find(a => a.key === kaynak)
-  return alan?.degerler.find(d => d.year === yil && d.month === ay)?.value ?? null
+  const d = alan?.degerler.find(x => x.year === yil && x.month === ay)
+  if (!d || d.naMi) return null
+  return d.value
 }
 
 function hesaplaOrtYillar(kpi: Kpi): [number, number][] {
@@ -365,7 +373,7 @@ function YeniKpiDialog({ orgUnitId, onCreated }: { orgUnitId: string; onCreated:
   const [oranYonu, setOranYonu] = useState('G_H')
   const [oranBirimi, setOranBirimi] = useState('yuzde')
   const [yuzdeOlcek, setYuzdeOlcek] = useState('oran')
-  const [ondalikBasamak, setOndalikBasamak] = useState('4')
+  const [ondalikBasamak, setOndalikBasamak] = useState('2')
   const [ozelAlanlar, setOzelAlanlar] = useState<OzelAlanTaslak[]>([])
   const [oranPayKaynagi, setOranPayKaynagi] = useState('actual')
   const [ortalamaKaynagi, setOrtalamaKaynagi] = useState('actual')
@@ -420,7 +428,7 @@ function YeniKpiDialog({ orgUnitId, onCreated }: { orgUnitId: string; onCreated:
         }
         setName(''); setUnit(''); setDirection('higher_is_better'); setFrequency('monthly')
         setGerceklesenEtiketi('Gerçekleşen'); setHedefEtiketi('Hedef'); setOranYonu('G_H'); setHedef('')
-        setOranBirimi('yuzde'); setYuzdeOlcek('oran'); setOndalikBasamak('4')
+        setOranBirimi('yuzde'); setYuzdeOlcek('oran'); setOndalikBasamak('2')
         setOzelAlanlar([]); setOranPayKaynagi('actual'); setOrtalamaKaynagi('actual')
         setGerceklesenFormul(null); setHedefFormul(null)
         setAcik(false)
@@ -525,9 +533,9 @@ function YeniKpiDialog({ orgUnitId, onCreated }: { orgUnitId: string; onCreated:
               <SelectContent>
                 <SelectItem value="0">0 (ör. Adet gibi tam sayı KPI'lar)</SelectItem>
                 <SelectItem value="1">1</SelectItem>
-                <SelectItem value="2">2</SelectItem>
+                <SelectItem value="2">2 (varsayılan)</SelectItem>
                 <SelectItem value="3">3</SelectItem>
-                <SelectItem value="4">4 (varsayılan)</SelectItem>
+                <SelectItem value="4">4</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -772,9 +780,9 @@ function KpiDuzenleDialog({ kpi, onSaved }: { kpi: Kpi; onSaved: () => void }) {
               <SelectContent>
                 <SelectItem value="0">0 (ör. Adet gibi tam sayı KPI'lar)</SelectItem>
                 <SelectItem value="1">1</SelectItem>
-                <SelectItem value="2">2</SelectItem>
+                <SelectItem value="2">2 (varsayılan)</SelectItem>
                 <SelectItem value="3">3</SelectItem>
-                <SelectItem value="4">4 (varsayılan)</SelectItem>
+                <SelectItem value="4">4</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -1023,6 +1031,41 @@ function GrafikTooltip({ active, payload, label, unit, yuzdeDogrudanMi, basamak 
         </div>
       ))}
     </div>
+  )
+}
+
+// KPI-ETIKET-OKUNURLUK: grafik üzerindeki sayı etiketleri (ör. aylık ortalamalar) eskiden sade
+// metin olarak çiziliyordu — çizgiler/sütunlarla üst üste bindiğinde okunmuyordu. Artık her
+// etiketin arkasında yarı saydam bir "rozet" (rounded rect) var, yazı da büyütüldü.
+function RozetliEtiket(props: {
+  x?: number
+  y?: number
+  width?: number
+  value?: number | string
+  bgRengi: string
+  yaziRengi: string
+  formatter?: (v: number) => string
+}) {
+  const { x, y, width, value, bgRengi, yaziRengi, formatter } = props
+  if (value == null || x == null || y == null) return null
+  const metin = formatter ? formatter(Number(value)) : String(value)
+  if (!metin) return null
+  const merkezX = x + (width ?? 0) / 2
+  const rozetGenislik = Math.max(30, metin.length * 6.6 + 10)
+  return (
+    <g>
+      <rect
+        x={merkezX - rozetGenislik / 2}
+        y={y - 20}
+        width={rozetGenislik}
+        height={17}
+        rx={5}
+        fill={bgRengi}
+      />
+      <text x={merkezX} y={y - 7} textAnchor="middle" fontSize={12} fontWeight={600} fill={yaziRengi}>
+        {metin}
+      </text>
+    </g>
   )
 }
 
@@ -1332,7 +1375,13 @@ function KpiVeriTablosu({
             onClick={() => {
               const yil = Number(donemYilGirdi)
               if (Number.isNaN(yil)) return
-              if (!tumYillar.includes(yil)) setEkstraYillar(prev => [...prev, yil])
+              // Tablo bu yılı hep bir ÖNCEKİ yılla çift gösterdiği için (ör. 2023 seçilince
+              // 2023 vs 2022), ikisini de tek tıkla ekliyoruz — yoksa 2022'nin "Ort." sütunu
+              // elle ortalama girmek için hâlâ görünmüyordu, ayrıca onu da eklemek gerekiyordu.
+              setEkstraYillar(prev => {
+                const eklenecekler = [yil, yil - 1].filter(y => !tumYillar.includes(y) && !prev.includes(y))
+                return eklenecekler.length > 0 ? [...prev, ...eklenecekler] : prev
+              })
               onAktifYilChange(yil)
               setDonemYilGirdi('')
             }}
@@ -1520,12 +1569,18 @@ interface Departman {
 
 
 export default function MelikeKpiPage() {
+  const searchParams = useSearchParams()
   const [departmanlar, setDepartmanlar] = useState<Departman[]>([])
-  const [secilenDepartmanId, setSecilenDepartmanId] = useState<string>(IK_ORG_UNIT_ID)
+  // KPI Özet'ten "şu departmana git" linkiyle gelindiyse DAHA İLK RENDER'DA o departman seçili
+  // olsun — eskiden hep IK_ORG_UNIT_ID (İnsan Varlıkları) ile başlayıp aşağıdaki useEffect'te
+  // asıl departmana geçiliyordu; bu da IV için gereksiz bir ilk fetch tetikliyordu. Ağ gecikmesi
+  // yüzünden o İV isteği, doğru departmanın isteğinden SONRA dönerse (iki istek de kendi
+  // sonucunu koşulsuz setKpiler ile yazıyor) ekran yanlışlıkla İV'ye "dönüyordu" — klasik
+  // race condition. Artık yanlış departman için hiç istek atılmıyor.
+  const [secilenDepartmanId, setSecilenDepartmanId] = useState<string>(() => searchParams.get('departman') || IK_ORG_UNIT_ID)
   const [kpiler, setKpiler] = useState<Kpi[] | null>(null)
   const [hata, setHata] = useState<string | null>(null)
   const [seciliId, setSeciliId] = useState<string | null>(null)
-  const searchParams = useSearchParams()
 
   useEffect(() => {
     fetch('/api/sandbox/melike/kpi/departmanlar')
@@ -1540,10 +1595,19 @@ export default function MelikeKpiPage() {
     if (departman) setSecilenDepartmanId(departman)
   }, [searchParams])
 
+  // Departman hızla değişirse (ör. Özet'ten gelen link, dropdown'dan hemen sonra tekrar
+  // tıklama) eski bir fetch yeni departman seçiliyken geç dönüp yanlış departmanın verisini
+  // yazabiliyordu — ref ile "hâlâ bu departman mı seçili" kontrolü ekleniyor, eski (stale)
+  // yanıt sessizce yok sayılıyor.
+  const secilenDepartmanIdRef = useRef(secilenDepartmanId)
+  useEffect(() => { secilenDepartmanIdRef.current = secilenDepartmanId }, [secilenDepartmanId])
+
   function yukle() {
-    fetch(`/api/sandbox/melike/kpi?orgUnitId=${secilenDepartmanId}`)
+    const istenenOrgUnitId = secilenDepartmanId
+    fetch(`/api/sandbox/melike/kpi?orgUnitId=${istenenOrgUnitId}`)
       .then(res => res.json())
       .then(d => {
+        if (secilenDepartmanIdRef.current !== istenenOrgUnitId) return
         setKpiler(d.kpiler)
         const istenenKpi = searchParams.get('kpi')
         setSeciliId(prev => {
@@ -1563,9 +1627,20 @@ export default function MelikeKpiPage() {
 
   const secili = useMemo(() => kpiler?.find(k => k.id === seciliId) ?? null, [kpiler, seciliId])
 
+  // KPI-İLK-YIL: eskiden sadece measurements'ta kaydı olan yıllar sayılıyordu — hiç ölçümü
+  // girilmemiş YENİ bir KPI'da (ya da sadece eski yıllara ait KPIYearlyBaseline'ı olup cari yıla
+  // ait tek bir ölçüm satırı bile olmayan bir KPI'da) bu liste BOŞTU, dolayısıyla aşağıdaki
+  // "aktif yılı otomatik seç" efekti hiç tetiklenmiyor, tablo yıl tıklanmadan boş görünüyordu.
+  // Artık KPIYearlyBaseline yılları da sayılıyor, üstüne İÇİNDE BULUNULAN yıl da hiçbir verisi
+  // olmasa bile listede olsun diye ekleniyor — böylece tablo her zaman açılışta dolu geliyor.
   const yillar = useMemo(() => {
     if (!secili) return []
-    return Array.from(new Set(secili.measurements.map(m => m.year))).sort((a, b) => b - a)
+    const kume = new Set<number>([
+      ...secili.measurements.map(m => m.year),
+      ...secili.baselines.map(b => b.year),
+      new Date().getFullYear(),
+    ])
+    return Array.from(kume).sort((a, b) => b - a)
   }, [secili])
 
   // Aksiyonlar listesinin de tablo ile aynı aktif döneme göre filtrelenebilmesi
@@ -1721,29 +1796,62 @@ export default function MelikeKpiPage() {
                   ) : (
                     <div className="relative">
                       {guncelYilOrtalamasi != null && birlesikGrafikVerisi.yilA != null && (
-                        <div className="absolute top-0 right-0 text-right z-10">
-                          <div className="text-[11px] text-muted-foreground">{birlesikGrafikVerisi.yilA} Ortalaması</div>
-                          <div className="text-lg font-bold" style={{ color: NAVY }}>{sayiFormatBirimli(guncelYilOrtalamasi, secili.unit, secili.yuzdeOlcek === 'dogrudan', secili.ondalikBasamak)}</div>
+                        <div
+                          className="absolute top-0 right-0 text-right z-10 rounded-md px-3 py-1.5"
+                          style={{ backgroundColor: '#EAF1F8' }}
+                        >
+                          <div className="text-xs font-medium" style={{ color: NAVY, opacity: 0.75 }}>{birlesikGrafikVerisi.yilA} Ortalaması</div>
+                          <div className="text-2xl font-bold" style={{ color: NAVY }}>{sayiFormatBirimli(guncelYilOrtalamasi, secili.unit, secili.yuzdeOlcek === 'dogrudan', secili.ondalikBasamak)}</div>
                         </div>
                       )}
                       <ResponsiveContainer width="100%" height={320}>
                         <ComposedChart data={birlesikGrafikVerisi.veri} margin={{ left: 4, right: 8, top: 20, bottom: 4 }}>
                           <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="ad" tick={{ fontSize: 11, fill: '#9CA3AF' }} interval={0} angle={-20} textAnchor="end" height={50} />
-                          <YAxis tick={{ fontSize: 11, fill: '#9CA3AF' }} />
+                          <XAxis dataKey="ad" tick={{ fontSize: 13, fill: '#64748b' }} interval={0} angle={-20} textAnchor="end" height={50} />
+                          <YAxis tick={{ fontSize: 13, fill: '#64748b' }} />
                           <Tooltip content={<GrafikTooltip unit={secili.unit} yuzdeDogrudanMi={secili.yuzdeOlcek === 'dogrudan'} basamak={secili.ondalikBasamak} />} />
-                          <Legend wrapperStyle={{ fontSize: 11, color: '#9CA3AF' }} />
+                          <Legend wrapperStyle={{ fontSize: 13, color: '#475569' }} />
                           <Bar dataKey="Ortalama" fill="#f0a875" radius={[3, 3, 0, 0]}>
-                            <LabelList dataKey="Ortalama" position="top" style={{ fontSize: 10, fill: '#78350f' }} formatter={(v: number) => sayiFormatBirimli(v, secili.unit, secili.yuzdeOlcek === 'dogrudan', secili.ondalikBasamak)} />
+                            <LabelList
+                              dataKey="Ortalama"
+                              content={(p: object) => (
+                                <RozetliEtiket
+                                  {...p}
+                                  bgRengi="#fde9d1"
+                                  yaziRengi="#78350f"
+                                  formatter={(v: number) => sayiFormatBirimli(v, secili.unit, secili.yuzdeOlcek === 'dogrudan', secili.ondalikBasamak)}
+                                />
+                              )}
+                            />
                           </Bar>
                           {birlesikGrafikVerisi.yilB != null && (
                             <Bar dataKey={String(birlesikGrafikVerisi.yilB)} fill="#94a3b8" radius={[3, 3, 0, 0]}>
-                              <LabelList dataKey={String(birlesikGrafikVerisi.yilB)} position="top" style={{ fontSize: 10, fill: '#475569' }} formatter={(v: number) => sayiFormatBirimli(v, secili.unit, secili.yuzdeOlcek === 'dogrudan', secili.ondalikBasamak)} />
+                              <LabelList
+                                dataKey={String(birlesikGrafikVerisi.yilB)}
+                                content={(p: object) => (
+                                  <RozetliEtiket
+                                    {...p}
+                                    bgRengi="#e2e8f0"
+                                    yaziRengi="#334155"
+                                    formatter={(v: number) => sayiFormatBirimli(v, secili.unit, secili.yuzdeOlcek === 'dogrudan', secili.ondalikBasamak)}
+                                  />
+                                )}
+                              />
                             </Bar>
                           )}
                           {birlesikGrafikVerisi.yilA != null && (
                             <Bar dataKey={String(birlesikGrafikVerisi.yilA)} fill={NAVY} radius={[3, 3, 0, 0]}>
-                              <LabelList dataKey={String(birlesikGrafikVerisi.yilA)} position="top" style={{ fontSize: 10, fill: NAVY }} formatter={(v: number) => sayiFormatBirimli(v, secili.unit, secili.yuzdeOlcek === 'dogrudan', secili.ondalikBasamak)} />
+                              <LabelList
+                                dataKey={String(birlesikGrafikVerisi.yilA)}
+                                content={(p: object) => (
+                                  <RozetliEtiket
+                                    {...p}
+                                    bgRengi="#d7e3ef"
+                                    yaziRengi={NAVY}
+                                    formatter={(v: number) => sayiFormatBirimli(v, secili.unit, secili.yuzdeOlcek === 'dogrudan', secili.ondalikBasamak)}
+                                  />
+                                )}
+                              />
                             </Bar>
                           )}
                           <Line type="monotone" dataKey="Hedef" stroke={KIRMIZI} strokeDasharray="4 4" dot={false} connectNulls />

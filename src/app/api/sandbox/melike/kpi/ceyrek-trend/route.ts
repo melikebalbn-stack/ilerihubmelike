@@ -10,55 +10,45 @@ interface OlcumBenzeri {
   actual: number | null
   hedefNA: boolean
   gerceklesenNA: boolean
+  manuelOran: number | null
 }
 
 interface KpiBenzeri {
   direction: string
   frequency: string
-  ortalamaKaynagi: string
+  oranYonu: string
+  oranPayKaynagi: string
   measurements: OlcumBenzeri[]
   ozelAlanlar: { key: string; degerler: { year: number; month: number; value: number | null; naMi: boolean }[] }[]
 }
 
-// Aylık bir KPI için hangi ay hangi çeyreğe düşer (Ç1=Oca-Mar, Ç2=Nis-Haz, Ç3=Tem-Eyl, Ç4=Eki-Ara).
-// Çeyreklik bir KPI'da zaten "month" alanı 1-4 = doğrudan çeyrek numarasıdır.
-function ceyrekNo(frequency: string, month: number): number {
-  return frequency === 'quarterly' ? month : Math.ceil(month / 3)
+// KPI Özet'teki ozet/route.ts ile AYNI mantık (bkz. oradaki açıklama) — Takip'in kendi "G/H Oran"
+// satırı, ama burada yıllık değil ÇEYREKLİK ortalama.
+function kpiAylikOran(kpi: KpiBenzeri, year: number, month: number): number | null {
+  const m = kpi.measurements.find(x => x.year === year && x.month === month)
+  const ozelAlan = kpi.oranPayKaynagi === 'actual' ? null : kpi.ozelAlanlar.find(a => a.key === kpi.oranPayKaynagi)
+  const ozelDeger = ozelAlan?.degerler.find(x => x.year === year && x.month === month)
+  const gEsdeger = kpi.oranPayKaynagi === 'actual' ? m?.actual ?? null : ozelDeger?.value ?? null
+  const gEsdegerNA = kpi.oranPayKaynagi === 'actual' ? m?.gerceklesenNA ?? false : ozelDeger?.naMi ?? false
+  const target = m?.target ?? null
+  const hedefNA = m?.hedefNA ?? false
+  const payda = kpi.oranYonu === 'H_G' ? gEsdeger : target
+
+  if (m?.manuelOran != null) return Math.round(m.manuelOran)
+  if (hedefNA || gEsdegerNA) return 0
+  if (target == null || gEsdeger == null || payda == null) return null
+  if (payda === 0) return 0
+  return Math.round((kpi.oranYonu === 'H_G' ? (target as number) / payda : (gEsdeger as number) / payda) * 100)
 }
 
-function kaynakDegeriAl(kpi: KpiBenzeri, kaynak: string, year: number, month: number): number | null {
-  if (kaynak === 'actual') {
-    const m = kpi.measurements.find(x => x.year === year && x.month === month)
-    if (!m || m.gerceklesenNA) return null
-    return m.actual
-  }
-  const alan = kpi.ozelAlanlar.find(a => a.key === kaynak)
-  const d = alan?.degerler.find(x => x.year === year && x.month === month)
-  if (!d || d.naMi) return null
-  return d.value
-}
-
-// KPI Özet'teki ozet/route.ts ile AYNI mantık (bkz. oradaki açıklama) — direction'a ve
-// ortalamaKaynagi'na göre, ama burada yıllık değil ÇEYREKLİK ortalama.
 function kpiCeyrekOrani(kpi: KpiBenzeri, year: number, ceyrek: number): number | null {
   const aylar = kpi.frequency === 'quarterly' ? [ceyrek] : [1, 2, 3].map(i => (ceyrek - 1) * 3 + i)
-
-  const gercekDegerler: number[] = []
-  const hedefDegerler: number[] = []
+  const degerler: number[] = []
   for (const ay of aylar) {
-    const g = kaynakDegeriAl(kpi, kpi.ortalamaKaynagi, year, ay)
-    if (g != null) gercekDegerler.push(g)
-    const m = kpi.measurements.find(x => x.year === year && x.month === ay)
-    if (m && m.target != null && !m.hedefNA) hedefDegerler.push(m.target)
+    const o = kpiAylikOran(kpi, year, ay)
+    if (o != null) degerler.push(o)
   }
-  if (gercekDegerler.length === 0 || hedefDegerler.length === 0) return null
-
-  const gercekOrt = gercekDegerler.reduce((t, o) => t + o, 0) / gercekDegerler.length
-  const hedefOrt = hedefDegerler.reduce((t, o) => t + o, 0) / hedefDegerler.length
-  const payda = kpi.direction === 'lower_is_better' ? gercekOrt : hedefOrt
-  if (payda === 0) return null
-  const oran = kpi.direction === 'lower_is_better' ? hedefOrt / gercekOrt : gercekOrt / hedefOrt
-  return oran * 100
+  return degerler.length > 0 ? degerler.reduce((t, o) => t + o, 0) / degerler.length : null
 }
 
 export async function GET(request: Request) {

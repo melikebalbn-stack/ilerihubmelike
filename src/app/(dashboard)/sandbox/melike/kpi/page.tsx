@@ -362,6 +362,14 @@ function OzelAlanlarDuzenleyici({
   )
 }
 
+// KPI-ONDALIK-ONERI: "Adet" birimli KPI'larda ondalık basamak ayarını hiç kimse elle açıp
+// değiştirmiyor, varsayılan (2) ile kalıp "39,33 Adet" gibi anlamsız görünmeye devam ediyordu.
+// Birim alanına "Adet" yazılınca, kullanıcı basamak seçiciye kendi dokunmadıysa, öneriyi
+// otomatik 0'a çekiyoruz — elle değiştirirse bir daha otomatik ezilmez.
+function varsayilanBasamakOneri(unit: string): string {
+  return unit.trim().toLocaleLowerCase('tr') === 'adet' ? '0' : '2'
+}
+
 function YeniKpiDialog({ orgUnitId, onCreated }: { orgUnitId: string; onCreated: () => void }) {
   const [acik, setAcik] = useState(false)
   const [name, setName] = useState('')
@@ -374,6 +382,7 @@ function YeniKpiDialog({ orgUnitId, onCreated }: { orgUnitId: string; onCreated:
   const [oranBirimi, setOranBirimi] = useState('yuzde')
   const [yuzdeOlcek, setYuzdeOlcek] = useState('oran')
   const [ondalikBasamak, setOndalikBasamak] = useState('2')
+  const [basamakElleDegistirildi, setBasamakElleDegistirildi] = useState(false)
   const [ozelAlanlar, setOzelAlanlar] = useState<OzelAlanTaslak[]>([])
   const [oranPayKaynagi, setOranPayKaynagi] = useState('actual')
   const [ortalamaKaynagi, setOrtalamaKaynagi] = useState('actual')
@@ -428,7 +437,7 @@ function YeniKpiDialog({ orgUnitId, onCreated }: { orgUnitId: string; onCreated:
         }
         setName(''); setUnit(''); setDirection('higher_is_better'); setFrequency('monthly')
         setGerceklesenEtiketi('Gerçekleşen'); setHedefEtiketi('Hedef'); setOranYonu('G_H'); setHedef('')
-        setOranBirimi('yuzde'); setYuzdeOlcek('oran'); setOndalikBasamak('2')
+        setOranBirimi('yuzde'); setYuzdeOlcek('oran'); setOndalikBasamak('2'); setBasamakElleDegistirildi(false)
         setOzelAlanlar([]); setOranPayKaynagi('actual'); setOrtalamaKaynagi('actual')
         setGerceklesenFormul(null); setHedefFormul(null)
         setAcik(false)
@@ -458,7 +467,14 @@ function YeniKpiDialog({ orgUnitId, onCreated }: { orgUnitId: string; onCreated:
           </div>
           <div>
             <Label>Birim (opsiyonel)</Label>
-            <Input value={unit} onChange={e => setUnit(e.target.value)} placeholder="%, Adet, Saat..." />
+            <Input
+              value={unit}
+              onChange={e => {
+                setUnit(e.target.value)
+                if (!basamakElleDegistirildi) setOndalikBasamak(varsayilanBasamakOneri(e.target.value))
+              }}
+              placeholder="%, Adet, Saat..."
+            />
           </div>
           <div>
             <Label>Yön</Label>
@@ -528,7 +544,7 @@ function YeniKpiDialog({ orgUnitId, onCreated }: { orgUnitId: string; onCreated:
           )}
           <div>
             <Label>Ondalık basamak sayısı</Label>
-            <Select value={ondalikBasamak} onValueChange={setOndalikBasamak}>
+            <Select value={ondalikBasamak} onValueChange={v => { setOndalikBasamak(v); setBasamakElleDegistirildi(true) }}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="0">0 (ör. Adet gibi tam sayı KPI'lar)</SelectItem>

@@ -370,6 +370,31 @@ function varsayilanBasamakOneri(unit: string): string {
   return unit.trim().toLocaleLowerCase('tr') === 'adet' ? '0' : '2'
 }
 
+// KPI-OZET-UYARI: "Oran yönü" (G/H ya da H/G), KPI'nın "Yön"üyle (Yüksek iyi/Düşük iyi) TUTARLI
+// olmalı — çelişirse (ör. "Düşük iyi" bir KPI'da G/H seçiliyse) hedefin üstüne çıkmak aslında
+// kötüyken yüzde yapay olarak yükselip yeşil görünür (bkz. "Faturaların Ciroya Oranı" vakası).
+// Melike bunu KPI'yı tek tek açmadan fark edemediğini söyledi — bu yüzden hem burada (KPI
+// oluşturma/düzenleme anında, canlı), hem KPI Özet listesinde (bkz. kpi-ozet/page.tsx) uyarı var.
+function yonOranUyumsuzMu(direction: string, oranYonu: string): boolean {
+  return (direction === 'higher_is_better' && oranYonu === 'H_G') || (direction === 'lower_is_better' && oranYonu === 'G_H')
+}
+
+function YonOranUyarisi({ direction, oranYonu }: { direction: string; oranYonu: string }) {
+  if (!yonOranUyumsuzMu(direction, oranYonu)) return null
+  const oneri = direction === 'lower_is_better' ? 'H/G' : 'G/H'
+  return (
+    <p className="text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2 py-1.5 flex items-start gap-1.5">
+      <span className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-amber-400 text-amber-950 text-[10px] font-bold shrink-0 mt-0.5">!</span>
+      <span>
+        &quot;{direction === 'lower_is_better' ? 'Düşük değer iyi' : 'Yüksek değer iyi'}&quot; seçiliyken Oran
+        yönü &quot;{oranYonu === 'G_H' ? 'G/H' : 'H/G'}&quot; olursa, hedefin
+        {direction === 'lower_is_better' ? ' üstüne çıkmak (kötü)' : ' altında kalmak (kötü)'} yapay olarak
+        yüksek % gösterir. {oneri} seçmeyi düşün.
+      </span>
+    </p>
+  )
+}
+
 function YeniKpiDialog({ orgUnitId, onCreated }: { orgUnitId: string; onCreated: () => void }) {
   const [acik, setAcik] = useState(false)
   const [name, setName] = useState('')
@@ -530,6 +555,7 @@ function YeniKpiDialog({ orgUnitId, onCreated }: { orgUnitId: string; onCreated:
               </Select>
             </div>
           </div>
+          <YonOranUyarisi direction={direction} oranYonu={oranYonu} />
           {unit.trim() === '%' && (
             <div>
               <Label>Yüzde değerleri nasıl giriliyor</Label>
@@ -777,6 +803,7 @@ function KpiDuzenleDialog({ kpi, onSaved }: { kpi: Kpi; onSaved: () => void }) {
               </Select>
             </div>
           </div>
+          <YonOranUyarisi direction={direction} oranYonu={oranYonu} />
           {unit.trim() === '%' && (
             <div>
               <Label>Yüzde değerleri nasıl giriliyor</Label>

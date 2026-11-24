@@ -52,6 +52,16 @@ function kpiAylikOran(kpi: KpiBenzeri, year: number, month: number): number | nu
   return Math.round((kpi.oranYonu === 'H_G' ? (target as number) / payda : (gEsdeger as number) / payda) * 100)
 }
 
+// KPI-OZET-UYARI: "Oran yönü" (G/H ya da H/G), KPI'nın "Yön"üyle (Yüksek iyi/Düşük iyi) TUTARLI
+// olmalı — biri diğeriyle çelişirse (ör. "Düşük iyi" bir KPI'da G/H seçiliyse) hedefin üstüne
+// çıkmak aslında kötüyken yüzde yapay olarak yükselip yeşil görünür (bkz. "Faturaların Ciroya
+// Oranı" vakası). Melike bunu tek tek, KPI'yı düzenleyip bakmadan FARK EDEMEDİĞİNİ söyledi —
+// bu yüzden her KPI için bu tutarsızlık burada hesaplanıp Özet listesinde işaretleniyor.
+function oranYonuUyumsuzMu(kpi: { direction: string; oranYonu: string }): boolean {
+  return (kpi.direction === 'higher_is_better' && kpi.oranYonu === 'H_G')
+    || (kpi.direction === 'lower_is_better' && kpi.oranYonu === 'G_H')
+}
+
 function kpiYillikOran(kpi: KpiBenzeri, year: number): number | null {
   const degerler: number[] = []
   for (let ay = 1; ay <= donemSayisi(kpi.frequency); ay++) {
@@ -90,9 +100,15 @@ export async function GET(request: Request) {
         if (aktifYil == null) return null
         const oran = kpiYillikOran(k, aktifYil)
         if (oran == null) return null
-        return { id: k.id, name: k.name, oran: Math.round(oran), oranBirimi: k.oranBirimi }
+        return {
+          id: k.id,
+          name: k.name,
+          oran: Math.round(oran),
+          oranBirimi: k.oranBirimi,
+          yonUyumsuzMu: oranYonuUyumsuzMu(k),
+        }
       })
-      .filter((x): x is { id: string; name: string; oran: number; oranBirimi: string } => x !== null)
+      .filter((x): x is { id: string; name: string; oran: number; oranBirimi: string; yonUyumsuzMu: boolean } => x !== null)
 
     const genelOran = kpiOranlari.length > 0
       ? Math.round(kpiOranlari.reduce((t, k) => t + k.oran, 0) / kpiOranlari.length)

@@ -51,6 +51,9 @@ interface OzetKpiSirasi {
   name: string
   oran: number
   oranBirimi: string
+  // KPI-OZET-UYARI: "Oran yönü" KPI'nın "Yön"üyle çelişiyorsa true — görünen % yanıltıcı
+  // olabilir (bkz. "Faturaların Ciroya Oranı" vakası), KPI'yı Düzenle'den kontrol etmeli.
+  yonUyumsuzMu: boolean
 }
 
 interface DepartmanOzeti {
@@ -467,6 +470,13 @@ export default function KpiOzetPage() {
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-base">KPI'lar — en başarılıdan en başarısıza</CardTitle>
+              {secilenOzet.kpiler.some(k => k.yonUyumsuzMu) && (
+                <p className="text-xs font-medium text-amber-700 flex items-center gap-1.5 mt-1">
+                  <span className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-amber-400 text-amber-950 text-[10px] font-bold shrink-0">!</span>
+                  Bu departmanda {secilenOzet.kpiler.filter(k => k.yonUyumsuzMu).length} KPI&apos;nın
+                  &quot;Oran yönü&quot; ayarı &quot;Yön&quot;üyle çelişiyor — görünen yüzde yanıltıcı olabilir.
+                </p>
+              )}
             </CardHeader>
             <CardContent>
               {secilenOzet.kpiler.length === 0 ? (
@@ -483,7 +493,17 @@ export default function KpiOzetPage() {
                       {/* Arka plan her zaman açık pastel (tema fark etmez) — koyu temada yazı
                           rengi sayfanın varsayılanına (beyaza yakın) düşüp okunmaz oluyordu,
                           burada sabit koyu renk veriyoruz. */}
-                      <span className="text-sm font-medium" style={{ color: '#1f2937' }}>{k.name}</span>
+                      <span className="text-sm font-medium flex items-center gap-1.5" style={{ color: '#1f2937' }}>
+                        {k.yonUyumsuzMu && (
+                          <span
+                            title="Oran yönü, KPI'nın yönüyle çelişiyor — görünen % yanıltıcı olabilir. KPI'yı Düzenle'den 'Yön' ve 'Oran yönü' ayarlarını kontrol et."
+                            className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-amber-400 text-amber-950 text-[10px] font-bold shrink-0"
+                          >
+                            !
+                          </span>
+                        )}
+                        {k.name}
+                      </span>
                       <span className="text-sm font-bold" style={{ color: oranRengi(k.oran) }}>{oranMetni(k.oran, k.oranBirimi)}</span>
                     </Link>
                   ))}

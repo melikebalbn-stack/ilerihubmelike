@@ -62,6 +62,21 @@ function oranYonuUyumsuzMu(kpi: { direction: string; oranYonu: string }): boolea
     || (kpi.direction === 'lower_is_better' && kpi.oranYonu === 'G_H')
 }
 
+// KPI-OZET-UYARI-YUZDE: birim "%" ve yuzdeOlcek "oran" (0-1 arası fraksiyon bekleniyor) ise,
+// gerçekleşen değerler ×100 yapılıp gösteriliyor. Ama bazı KPI'larda değerler aslında DOĞRUDAN
+// yüzde olarak girilmiş (ör. "67,25" = %67,25 niyetiyle) — bu durumda ×100 ile %6725 gibi saçma
+// bir sayı çıkıyor (bkz. "Teklifin İşe Dönüş Oranı" vakası: 6.725%, 7.000%, 8.900% gibi aslında
+// 1000'in üzerine çıkan "yüzdeler"). Kesin teşhis değil ama güçlü bir işaret: 0-1 oran bekleniyorsa
+// gerçekleşen değerlerin 1'i (bazen biraz üstünü, aşırı başarı durumunda) geçmemesi beklenir —
+// pek çok ayda belirgin şekilde 1'in üstündeyse muhtemelen aslında doğrudan yüzde girilmiş demektir.
+function yuzdeOlcekSupheliMi(kpi: { unit: string | null; yuzdeOlcek: string; measurements: { actual: number | null }[] }): boolean {
+  if ((kpi.unit ?? '').trim() !== '%' || kpi.yuzdeOlcek !== 'oran') return false
+  const degerler = kpi.measurements.map(m => m.actual).filter((v): v is number => v != null)
+  if (degerler.length === 0) return false
+  const supheliSayisi = degerler.filter(v => Math.abs(v) > 1.5).length
+  return supheliSayisi / degerler.length >= 0.5
+}
+
 function kpiYillikOran(kpi: KpiBenzeri, year: number): number | null {
   const degerler: number[] = []
   for (let ay = 1; ay <= donemSayisi(kpi.frequency); ay++) {
@@ -100,15 +115,22 @@ export async function GET(request: Request) {
         if (aktifYil == null) return null
         const oran = kpiYillikOran(k, aktifYil)
         if (oran == null) return null
+        const uyarilar: string[] = []
+        if (oranYonuUyumsuzMu(k)) {
+          uyarilar.push('"Oran yönü", KPI\'nın "Yön"üyle çelişiyor — görünen % yanıltıcı olabilir.')
+        }
+        if (yuzdeOlcekSupheliMi(k)) {
+          uyarilar.push('"Yüzde değerleri nasıl giriliyor" muhtemelen yanlış — değerler çok büyük görünüyor, muhtemelen doğrudan yüzde girilmiş ama "0-1 arası oran" seçili.')
+        }
         return {
           id: k.id,
           name: k.name,
           oran: Math.round(oran),
           oranBirimi: k.oranBirimi,
-          yonUyumsuzMu: oranYonuUyumsuzMu(k),
+          uyarilar,
         }
       })
-      .filter((x): x is { id: string; name: string; oran: number; oranBirimi: string; yonUyumsuzMu: boolean } => x !== null)
+      .filter((x): x is { id: string; name: string; oran: number; oranBirimi: string; uyarilar: string[] } => x !== null)
 
     const genelOran = kpiOranlari.length > 0
       ? Math.round(kpiOranlari.reduce((t, k) => t + k.oran, 0) / kpiOranlari.length)

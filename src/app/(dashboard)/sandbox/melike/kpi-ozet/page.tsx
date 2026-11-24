@@ -51,9 +51,10 @@ interface OzetKpiSirasi {
   name: string
   oran: number
   oranBirimi: string
-  // KPI-OZET-UYARI: "Oran yönü" KPI'nın "Yön"üyle çelişiyorsa true — görünen % yanıltıcı
-  // olabilir (bkz. "Faturaların Ciroya Oranı" vakası), KPI'yı Düzenle'den kontrol etmeli.
-  yonUyumsuzMu: boolean
+  // KPI-OZET-UYARI: KPI ayarında (Oran yönü/Yön çelişkisi, Yüzde ölçeği şüphesi gibi) tespit
+  // edilen sorunlar — boşsa uyarı yok. Dolu ise görünen % yanıltıcı olabilir, KPI'yı Düzenle'den
+  // kontrol etmeli (bkz. "Faturaların Ciroya Oranı", "Teklifin İşe Dönüş Oranı" vakaları).
+  uyarilar: string[]
 }
 
 interface DepartmanOzeti {
@@ -470,11 +471,12 @@ export default function KpiOzetPage() {
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-base">KPI'lar — en başarılıdan en başarısıza</CardTitle>
-              {secilenOzet.kpiler.some(k => k.yonUyumsuzMu) && (
+              {secilenOzet.kpiler.some(k => k.uyarilar.length > 0) && (
                 <p className="text-xs font-medium text-amber-700 flex items-center gap-1.5 mt-1">
                   <span className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-amber-400 text-amber-950 text-[10px] font-bold shrink-0">!</span>
-                  Bu departmanda {secilenOzet.kpiler.filter(k => k.yonUyumsuzMu).length} KPI&apos;nın
-                  &quot;Oran yönü&quot; ayarı &quot;Yön&quot;üyle çelişiyor — görünen yüzde yanıltıcı olabilir.
+                  Bu departmanda {secilenOzet.kpiler.filter(k => k.uyarilar.length > 0).length} KPI&apos;nın
+                  ayarında sorun var — görünen yüzde yanıltıcı olabilir, her birinin yanındaki &quot;!&quot;
+                  işaretine bak.
                 </p>
               )}
             </CardHeader>
@@ -494,9 +496,9 @@ export default function KpiOzetPage() {
                           rengi sayfanın varsayılanına (beyaza yakın) düşüp okunmaz oluyordu,
                           burada sabit koyu renk veriyoruz. */}
                       <span className="text-sm font-medium flex items-center gap-1.5" style={{ color: '#1f2937' }}>
-                        {k.yonUyumsuzMu && (
+                        {k.uyarilar.length > 0 && (
                           <span
-                            title="Oran yönü, KPI'nın yönüyle çelişiyor — görünen % yanıltıcı olabilir. KPI'yı Düzenle'den 'Yön' ve 'Oran yönü' ayarlarını kontrol et."
+                            title={k.uyarilar.join(' ')}
                             className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-amber-400 text-amber-950 text-[10px] font-bold shrink-0"
                           >
                             !

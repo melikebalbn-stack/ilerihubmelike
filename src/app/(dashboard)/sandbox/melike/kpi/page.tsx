@@ -1227,10 +1227,27 @@ function KpiVeriTablosu({
 }: { kpi: Kpi; yillar: number[]; onChanged: () => void; aktifYil: number | null; onAktifYilChange: (y: number) => void }) {
   const [ekstraYillar, setEkstraYillar] = useState<number[]>([])
   const [donemYilGirdi, setDonemYilGirdi] = useState('')
+  // KPI-YIL-ORT-EKLE: "Dönem Karşılaştır" tam bir aylık tablo + yıl düğmesi açıyor — ama bazen
+  // (ör. 2022/2023 gibi aylık kırılımı olmayan eski yıllar) Melike SADECE o yılın tek bir Ort.
+  // değerini girmek istiyor, yeni bir yıl düğmesi/tablo açılmasını istemiyor. Bu liste SADECE
+  // ortYillar'a (Ort. sütunlarına) boş bir sütun ekler, tumYillar'a (yıl düğmelerine) eklemez.
+  const [ortalamaIcinEklenenYillar, setOrtalamaIcinEklenenYillar] = useState<number[]>([])
+  const [ortYilGirdi, setOrtYilGirdi] = useState('')
   const tumYillar = useMemo(
     () => Array.from(new Set([...yillar, ...ekstraYillar])).sort((a, b) => b - a),
     [yillar, ekstraYillar],
   )
+
+  // KPI-YIL-SIL: yanlışlıkla eklenen bir yılın TÜM verisini (ölçümler, özel alanlar, ortalama)
+  // geri alınamaz şekilde siler — hem yıl düğmelerinden hem Ort. sütunundan kaldırabilir.
+  async function yiliSil(yil: number) {
+    if (!confirm(`${yil} yılına ait TÜM veriler (aylık ölçümler, ortalama) kalıcı olarak silinecek. Emin misin?`)) return
+    await fetch(`/api/sandbox/melike/kpi/${kpi.id}/yil/${yil}`, { method: 'DELETE' })
+    setEkstraYillar(prev => prev.filter(y => y !== yil))
+    setOrtalamaIcinEklenenYillar(prev => prev.filter(y => y !== yil))
+    if (aktifYil === yil) onAktifYilChange(tumYillar.find(y => y !== yil) ?? yil)
+    onChanged()
+  }
 
   // Aktif dönem: aynı anda sadece İKİ yıl (aktif + bir önceki) karşılaştırılır,
   // geçmiş tüm yıllar alt alta gösterilmez — yukarıdaki düğmelerle dönem değiştirilir.
@@ -1255,8 +1272,9 @@ function KpiVeriTablosu({
   const ortYillar = useMemo((): [number, number | null][] => {
     const hesap = new Map<number, number | null>(hesaplaOrtYillar(kpi))
     for (const y of tumYillar) if (!hesap.has(y)) hesap.set(y, null)
+    for (const y of ortalamaIcinEklenenYillar) if (!hesap.has(y)) hesap.set(y, null)
     return Array.from(hesap.entries()).sort(([a], [b]) => a - b)
-  }, [kpi, tumYillar])
+  }, [kpi, tumYillar, ortalamaIcinEklenenYillar])
   const hedefOrtYillari = useMemo(() => yillikHedefOrtalamasi(kpi), [kpi])
   function ortRenk(yil: number, ort: number | null) {
     const seviye = basariSeviyesi(kpi, hedefOrtYillari.get(yil) ?? null, ort)
@@ -1363,19 +1381,51 @@ function KpiVeriTablosu({
       <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
         <div className="flex flex-wrap gap-1">
           {tumYillar.map(y => (
-            <Button
-              key={y}
-              size="sm"
-              variant={y === aktifYil ? 'default' : 'outline'}
-              className="h-7 text-xs"
-              style={y === aktifYil ? { backgroundColor: NAVY } : undefined}
-              onClick={() => onAktifYilChange(y)}
-            >
-              {y} vs {y - 1}
-            </Button>
+            <div key={y} className="relative group">
+              <Button
+                size="sm"
+                variant={y === aktifYil ? 'default' : 'outline'}
+                className="h-7 text-xs pr-5"
+                style={y === aktifYil ? { backgroundColor: NAVY } : undefined}
+                onClick={() => onAktifYilChange(y)}
+              >
+                {y} vs {y - 1}
+              </Button>
+              <button
+                type="button"
+                title={`${y} yılını ve tüm verisini sil`}
+                className="absolute -right-1 -top-1 hidden group-hover:flex h-4 w-4 items-center justify-center rounded-full bg-red-600 text-white text-[10px] leading-none"
+                onClick={(e) => { e.stopPropagation(); yiliSil(y) }}
+              >
+                ×
+              </button>
+            </div>
           ))}
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex flex-wrap items-center gap-1">
+          <Input
+            type="number"
+            placeholder="Yıl"
+            className="w-20 h-7 text-xs"
+            value={ortYilGirdi}
+            onChange={e => setOrtYilGirdi(e.target.value)}
+          />
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 text-xs"
+            disabled={!ortYilGirdi.trim()}
+            onClick={() => {
+              const yil = Number(ortYilGirdi)
+              if (Number.isNaN(yil)) return
+              // Sadece Ort. sütununa boş bir yıl ekler — yıl düğmesi/aylık tablo AÇMAZ.
+              setOrtalamaIcinEklenenYillar(prev => (prev.includes(yil) ? prev : [...prev, yil]))
+              setOrtYilGirdi('')
+            }}
+          >
+            <PlusCircle className="h-3 w-3 mr-1" />
+            Geçmiş Yıl Ortalaması Ekle
+          </Button>
           <Input
             type="number"
             placeholder="Yıl"
@@ -1413,7 +1463,17 @@ function KpiVeriTablosu({
             <tr>
               <th className="p-2 text-left sticky left-0 z-10" style={{ backgroundColor: NAVY, color: 'white' }}></th>
               {ortYillar.map(([y]) => (
-                <th key={y} className="p-2 text-center font-semibold whitespace-nowrap border-l border-white/20" style={{ backgroundColor: NAVY, color: 'white' }}>{y} Ort.</th>
+                <th key={y} className="relative group p-2 text-center font-semibold whitespace-nowrap border-l border-white/20" style={{ backgroundColor: NAVY, color: 'white' }}>
+                  {y} Ort.
+                  <button
+                    type="button"
+                    title={`${y} yılını ve tüm verisini sil`}
+                    className="absolute right-1 top-1 hidden group-hover:flex h-4 w-4 items-center justify-center rounded-full bg-red-600 text-white text-[10px] leading-none"
+                    onClick={() => yiliSil(y)}
+                  >
+                    ×
+                  </button>
+                </th>
               ))}
               {donemUzunEtiketleri(kpi).map(ad => (
                 <th key={ad} className="p-2 text-center font-semibold whitespace-nowrap border-l border-white/20" style={{ backgroundColor: NAVY, color: 'white' }}>{ad}</th>

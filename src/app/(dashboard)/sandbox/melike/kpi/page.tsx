@@ -834,12 +834,23 @@ function tarihGirdi(v: string | null): string {
 }
 
 function AksiyonFormDialog({
-  kpiId, mevcut, onSaved,
-}: { kpiId: string; mevcut?: Aksiyon; onSaved: () => void }) {
+  kpiId, mevcut, onSaved, departmanlar, varsayilanDepartmanId,
+}: {
+  kpiId: string
+  mevcut?: Aksiyon
+  onSaved: () => void
+  departmanlar: Departman[]
+  varsayilanDepartmanId: string
+}) {
   const duzenlemeModu = !!mevcut
   const [acik, setAcik] = useState(false)
   const [reason, setReason] = useState(mevcut?.reason ?? '')
   const [action, setAction] = useState(mevcut?.action ?? '')
+  // KPI-AKSIYON-BASKA-DEPARTMAN: "Sorumlu" kişi KPI'nın kendi departmanıyla sınırlı değil —
+  // burada seçilen departman sadece "Sorumlu" listesini süzmek için, hangi departmandan kişi
+  // seçildiyse aksiyon ona atanmış sayılır (sorumluPersonelId zaten herhangi bir departmandan
+  // Personnel'e işaret edebiliyor, ek bir alan gerekmiyor).
+  const [sorumluDepartmanId, setSorumluDepartmanId] = useState(varsayilanDepartmanId)
   const [sorumluPersonelId, setSorumluPersonelId] = useState(mevcut?.sorumluPersonelId ?? '')
   const [startDate, setStartDate] = useState(tarihGirdi(mevcut?.startDate ?? null))
   const [endDate, setEndDate] = useState(tarihGirdi(mevcut?.endDate ?? null))
@@ -849,11 +860,11 @@ function AksiyonFormDialog({
 
   useEffect(() => {
     if (!acik) return
-    fetch(`/api/sandbox/melike/kpi/${kpiId}/aksiyon`)
+    fetch(`/api/sandbox/melike/kpi/${kpiId}/aksiyon?departman=${sorumluDepartmanId}`)
       .then(res => res.json())
       .then(d => setAdaylar(d.sorumluAdaylari ?? []))
       .catch(() => setAdaylar([]))
-  }, [acik, kpiId])
+  }, [acik, kpiId, sorumluDepartmanId])
 
   async function kaydet() {
     if (!action.trim()) return
@@ -876,7 +887,8 @@ function AksiyonFormDialog({
       })
       if (res.ok) {
         if (!duzenlemeModu) {
-          setReason(''); setAction(''); setSorumluPersonelId(''); setStartDate(''); setEndDate(''); setCompletionPercent('0')
+          setReason(''); setAction(''); setSorumluPersonelId(''); setSorumluDepartmanId(varsayilanDepartmanId)
+          setStartDate(''); setEndDate(''); setCompletionPercent('0')
         }
         setAcik(false)
         onSaved()
@@ -914,9 +926,23 @@ function AksiyonFormDialog({
             <Input value={action} onChange={e => setAction(e.target.value)} placeholder="Yapılacak iş" />
           </div>
           <div>
+            <Label>Sorumlunun Departmanı</Label>
+            <Select
+              value={sorumluDepartmanId}
+              onValueChange={v => { setSorumluDepartmanId(v); setSorumluPersonelId('') }}
+            >
+              <SelectTrigger><SelectValue placeholder="Departman seç" /></SelectTrigger>
+              <SelectContent>
+                {departmanlar.map(d => (
+                  <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
             <Label>Sorumlu</Label>
             <Select value={sorumluPersonelId} onValueChange={setSorumluPersonelId}>
-              <SelectTrigger><SelectValue placeholder="Kişi seç (departmandan)" /></SelectTrigger>
+              <SelectTrigger><SelectValue placeholder="Kişi seç" /></SelectTrigger>
               <SelectContent>
                 {adaylar.length === 0 ? (
                   <div className="px-2 py-1.5 text-xs text-muted-foreground">Bu departmanda kayıtlı kişi yok</div>
@@ -1978,7 +2004,7 @@ export default function MelikeKpiPage() {
                       <p className="text-xs text-muted-foreground mt-0.5">{aktifYil} vs {aktifYil - 1} dönemine ait</p>
                     )}
                   </div>
-                  <AksiyonFormDialog kpiId={secili.id} onSaved={yukle} />
+                  <AksiyonFormDialog kpiId={secili.id} onSaved={yukle} departmanlar={departmanlar} varsayilanDepartmanId={secilenDepartmanId} />
                 </CardHeader>
                 <CardContent>
                   {donemAksiyonlari.length === 0 ? (
@@ -2007,7 +2033,7 @@ export default function MelikeKpiPage() {
                               <td className="py-2 pr-4">{a.endDate ? new Date(a.endDate).toLocaleDateString('tr-TR') : '—'}</td>
                               <td className="py-2 pr-4">%{a.completionPercent ?? 0}</td>
                               <td className="py-2">
-                                <AksiyonFormDialog kpiId={secili.id} mevcut={a} onSaved={yukle} />
+                                <AksiyonFormDialog kpiId={secili.id} mevcut={a} onSaved={yukle} departmanlar={departmanlar} varsayilanDepartmanId={secilenDepartmanId} />
                               </td>
                             </tr>
                           ))}

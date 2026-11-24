@@ -1,13 +1,26 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 
-export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
+  const { searchParams } = new URL(request.url)
+  // KPI-AKSIYON-BASKA-DEPARTMAN: Melike bir KPI'nın aksiyonunu, o KPI'nın kendi departmanı
+  // dışında BAŞKA bir departmandaki birine de atayabilmek istedi (ör. Sistem Geliştirme'deki
+  // bir aksiyon aslında İK'dan birine atanacak) — ?departman=<OrgUnit id> verilirse sorumlu
+  // adayları o departmandan listelenir, verilmezse (eski davranış) KPI'nın kendi departmanından.
+  const departmanId = searchParams.get('departman')
+
   const kpi = await prisma.kPIDefinition.findUnique({
     where: { id },
-    select: { orgUnit: { select: { name: true } } },
+    select: { orgUnit: { select: { id: true, name: true } } },
   })
   if (!kpi) return NextResponse.json({ error: 'KPI bulunamadı' }, { status: 404 })
+
+  let hedefDepartmanAdi = kpi.orgUnit.name
+  if (departmanId && departmanId !== kpi.orgUnit.id) {
+    const hedefOrgUnit = await prisma.orgUnit.findUnique({ where: { id: departmanId }, select: { name: true } })
+    if (hedefOrgUnit) hedefDepartmanAdi = hedefOrgUnit.name
+  }
 
   // KPI-AYAR: önceden OrgUnit kodundan elle bakılan, az sayıda departmanı kapsayan ve
   // Personnel.bolum ile BÜYÜK/küçük harf uyuşmazlığı yüzünden hiçbir departmanda eşleşme
@@ -15,7 +28,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   // (serbest metin) zaten birebir aynı yazılıyor — doğrudan o karşılaştırılıyor, harf
   // büyüklüğüne duyarsız (gelecekte küçük bir yazım farkı yine sıfır sonuç vermesin diye).
   const sorumluAdaylari = await prisma.personnel.findMany({
-    where: { bolum: { equals: kpi.orgUnit.name, mode: 'insensitive' }, aktif: true },
+    where: { bolum: { equals: hedefDepartmanAdi, mode: 'insensitive' }, aktif: true },
     select: { id: true, adSoyad: true, gorev: true },
     orderBy: { adSoyad: 'asc' },
   })
